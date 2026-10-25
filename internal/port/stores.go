@@ -1227,7 +1227,10 @@ type CreateReportInput struct {
 	RawReportHash    string
 	ParserVersion    *string
 	ScanCompleteness string
-	Status           string
+	// CoveredFindingKinds are the finding kinds the parser says the report
+	// examined. Empty means it vouches for no kind.
+	CoveredFindingKinds []string
+	Status              string
 }
 
 // ReportStore persists scan reports.

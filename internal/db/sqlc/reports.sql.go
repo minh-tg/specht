@@ -191,7 +191,8 @@ INSERT INTO reports (
     total_findings, parser_version,
     started_at, error_message, raw_report_hash,
     raw_data,
-    base_revision, changed_files, scan_mode
+    base_revision, changed_files, scan_mode,
+    covered_finding_kinds
 ) VALUES (
     $1, $2, $3, $4,
     $5, $6, $7,
@@ -201,35 +202,37 @@ INSERT INTO reports (
     $16, $17,
     $18, $19, $20,
     $21,
-    $22, $23, $24
-) RETURNING id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode
+    $22, $23, $24,
+    $25::text[]
+) RETURNING id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds
 `
 
 type CreateReportParams struct {
-	ProjectID         pgtype.UUID        `json:"project_id"`
-	ToolName          string             `json:"tool_name"`
-	ToolVersion       pgtype.Text        `json:"tool_version"`
-	ScanType          string             `json:"scan_type"`
-	TargetID          pgtype.UUID        `json:"target_id"`
-	ArtifactID        pgtype.UUID        `json:"artifact_id"`
-	EnvironmentID     pgtype.UUID        `json:"environment_id"`
-	ScanTarget        pgtype.Text        `json:"scan_target"`
-	ScanScope         []byte             `json:"scan_scope"`
-	ScanScopeHash     pgtype.Text        `json:"scan_scope_hash"`
-	ScanCompleteness  string             `json:"scan_completeness"`
-	ScannerConfigHash pgtype.Text        `json:"scanner_config_hash"`
-	Branch            pgtype.Text        `json:"branch"`
-	CommitSha         pgtype.Text        `json:"commit_sha"`
-	Status            string             `json:"status"`
-	TotalFindings     pgtype.Int4        `json:"total_findings"`
-	ParserVersion     pgtype.Text        `json:"parser_version"`
-	StartedAt         pgtype.Timestamptz `json:"started_at"`
-	ErrorMessage      pgtype.Text        `json:"error_message"`
-	RawReportHash     pgtype.Text        `json:"raw_report_hash"`
-	RawData           []byte             `json:"raw_data"`
-	BaseRevision      pgtype.Text        `json:"base_revision"`
-	ChangedFiles      []byte             `json:"changed_files"`
-	ScanMode          string             `json:"scan_mode"`
+	ProjectID           pgtype.UUID        `json:"project_id"`
+	ToolName            string             `json:"tool_name"`
+	ToolVersion         pgtype.Text        `json:"tool_version"`
+	ScanType            string             `json:"scan_type"`
+	TargetID            pgtype.UUID        `json:"target_id"`
+	ArtifactID          pgtype.UUID        `json:"artifact_id"`
+	EnvironmentID       pgtype.UUID        `json:"environment_id"`
+	ScanTarget          pgtype.Text        `json:"scan_target"`
+	ScanScope           []byte             `json:"scan_scope"`
+	ScanScopeHash       pgtype.Text        `json:"scan_scope_hash"`
+	ScanCompleteness    string             `json:"scan_completeness"`
+	ScannerConfigHash   pgtype.Text        `json:"scanner_config_hash"`
+	Branch              pgtype.Text        `json:"branch"`
+	CommitSha           pgtype.Text        `json:"commit_sha"`
+	Status              string             `json:"status"`
+	TotalFindings       pgtype.Int4        `json:"total_findings"`
+	ParserVersion       pgtype.Text        `json:"parser_version"`
+	StartedAt           pgtype.Timestamptz `json:"started_at"`
+	ErrorMessage        pgtype.Text        `json:"error_message"`
+	RawReportHash       pgtype.Text        `json:"raw_report_hash"`
+	RawData             []byte             `json:"raw_data"`
+	BaseRevision        pgtype.Text        `json:"base_revision"`
+	ChangedFiles        []byte             `json:"changed_files"`
+	ScanMode            string             `json:"scan_mode"`
+	CoveredFindingKinds []string           `json:"covered_finding_kinds"`
 }
 
 func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Report, error) {
@@ -258,6 +261,7 @@ func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Rep
 		arg.BaseRevision,
 		arg.ChangedFiles,
 		arg.ScanMode,
+		arg.CoveredFindingKinds,
 	)
 	var i Report
 	err := row.Scan(
@@ -288,6 +292,7 @@ func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Rep
 		&i.BaseRevision,
 		&i.ChangedFiles,
 		&i.ScanMode,
+		&i.CoveredFindingKinds,
 	)
 	return i, err
 }
@@ -519,7 +524,7 @@ func (q *Queries) GetLatestCompletedFullReportByBranch(ctx context.Context, arg 
 }
 
 const getReportByID = `-- name: GetReportByID :one
-SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode FROM reports WHERE id = $1
+SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds FROM reports WHERE id = $1
 `
 
 func (q *Queries) GetReportByID(ctx context.Context, id pgtype.UUID) (Report, error) {
@@ -553,6 +558,7 @@ func (q *Queries) GetReportByID(ctx context.Context, id pgtype.UUID) (Report, er
 		&i.BaseRevision,
 		&i.ChangedFiles,
 		&i.ScanMode,
+		&i.CoveredFindingKinds,
 	)
 	return i, err
 }
@@ -722,7 +728,7 @@ func (q *Queries) ListFindingsTouchedByReport(ctx context.Context, arg ListFindi
 }
 
 const listReportsByProject = `-- name: ListReportsByProject :many
-SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode FROM reports
+SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds FROM reports
 WHERE project_id = $1
   AND ($4::text = '' OR branch = $4::text)
   AND ($5::text = '' OR
@@ -789,6 +795,7 @@ func (q *Queries) ListReportsByProject(ctx context.Context, arg ListReportsByPro
 			&i.BaseRevision,
 			&i.ChangedFiles,
 			&i.ScanMode,
+			&i.CoveredFindingKinds,
 		); err != nil {
 			return nil, err
 		}
@@ -1016,7 +1023,7 @@ UPDATE reports SET
     completed_at = CASE WHEN $2 = 'completed' OR $2 = 'failed' THEN NOW() ELSE completed_at END,
     error_message = $4
 WHERE id = $1 AND project_id = $5
-RETURNING id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode
+RETURNING id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds
 `
 
 type UpdateReportStatusParams struct {
@@ -1064,6 +1071,7 @@ func (q *Queries) UpdateReportStatus(ctx context.Context, arg UpdateReportStatus
 		&i.BaseRevision,
 		&i.ChangedFiles,
 		&i.ScanMode,
+		&i.CoveredFindingKinds,
 	)
 	return i, err
 }

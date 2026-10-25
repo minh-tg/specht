@@ -631,16 +631,35 @@ WHERE s.finding_id = ANY(sqlc.arg(finding_ids)::uuid[])
 
 -- name: RetireScopeSeverityWithoutEvidence :exec
 -- A report delete removes the scope row it supplied when no remaining report
--- in that scope observed the finding. Findings with other scopes keep those
--- rows; a finding with no scope at all keeps its historical severity.
+-- in that scope observed the finding after the scope last scanned clean. A
+-- clean scan is a completed, complete full report of the scope that covered
+-- the finding's kind and does not observe it: ingest retired the row then,
+-- and older evidence must not bring it back. Findings with other scopes keep
+-- those rows; a finding with no scope at all keeps its historical severity.
 DELETE FROM finding_scope_severities s
-WHERE s.finding_id = ANY(sqlc.arg(finding_ids)::uuid[])
+USING findings f
+WHERE f.id = s.finding_id
+  AND s.finding_id = ANY(sqlc.arg(finding_ids)::uuid[])
   AND s.scope_hash = sqlc.arg(scope_hash)
   AND NOT EXISTS (
       SELECT 1 FROM finding_occurrences o
       JOIN reports r ON r.id = o.report_id
       WHERE o.finding_id = s.finding_id
         AND COALESCE(r.scan_scope_hash, '') = s.scope_hash
+        AND NOT EXISTS (
+            SELECT 1 FROM reports clean
+            WHERE clean.project_id = r.project_id
+              AND clean.scan_scope_hash = s.scope_hash
+              AND clean.status = 'completed'
+              AND clean.scan_mode = 'full'
+              AND clean.scan_completeness = 'complete'
+              AND f.finding_kind = ANY(clean.covered_finding_kinds)
+              AND (clean.created_at, clean.id) > (r.created_at, r.id)
+              AND NOT EXISTS (
+                  SELECT 1 FROM finding_occurrences seen
+                  WHERE seen.finding_id = s.finding_id AND seen.report_id = clean.id
+              )
+        )
   );
 
 -- name: RestoreScopeSeverityFromNewestEvidence :exec
