@@ -852,3 +852,27 @@ func TestIngestSlotsLeaveAConnectionFree(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_SSOAllowPrivateIssuer(t *testing.T) {
+	for value, want := range map[string]bool{"": false, "false": false, "true": true, "1": true, "TRUE": true} {
+		t.Run("value="+value, func(t *testing.T) {
+			t.Setenv("WATCHER_ENABLE", "")
+			t.Setenv("SSO_ALLOW_PRIVATE_ISSUER", value)
+
+			cfg, err := Load()
+
+			require.NoError(t, err)
+			assert.Equal(t, want, cfg.SSO.AllowPrivateIssuer)
+		})
+	}
+}
+
+func TestLoad_SSOAllowPrivateIssuerRejectsATypo(t *testing.T) {
+	t.Setenv("WATCHER_ENABLE", "")
+	t.Setenv("SSO_ALLOW_PRIVATE_ISSUER", "yes")
+
+	_, err := Load()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "SSO_ALLOW_PRIVATE_ISSUER")
+}

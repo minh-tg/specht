@@ -182,3 +182,61 @@ func TestSafeHTTPClient_RefusesRedirects(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "redirects are not allowed")
 }
+
+func TestSafeDialContextAllowHost(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+	_, port, err := net.SplitHostPort(srv.Listener.Addr().String())
+	require.NoError(t, err)
+
+	dial := func(allowedHost, host string) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+		defer cancel()
+		conn, err := SafeDialContextAllowHost(&net.Dialer{Timeout: 200 * time.Millisecond}, false, allowedHost)(ctx, "tcp", net.JoinHostPort(host, port))
+		if conn != nil {
+			_ = conn.Close()
+		}
+		return err
+	}
+
+	t.Run("the allowed loopback host connects", func(t *testing.T) {
+		require.NoError(t, dial("127.0.0.1", "127.0.0.1"))
+	})
+	t.Run("the host match ignores case", func(t *testing.T) {
+		require.NoError(t, dial("LOCALHOST", "localhost"))
+	})
+	t.Run("another host is refused although the exception is on", func(t *testing.T) {
+		err := dial("10.0.0.5", "127.0.0.1")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "refusing connection to non-public address")
+	})
+	t.Run("a name that resolves to loopback is not the allowed host", func(t *testing.T) {
+		err := dial("127.0.0.1", "localhost")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "refusing connection to non-public address")
+	})
+	t.Run("the allowed private host passes the guard", func(t *testing.T) {
+		// Nothing listens on 10.255.255.1, so the dial fails for lack of a
+		// route or by timeout. It must not fail at the guard.
+		if err := dial("10.255.255.1", "10.255.255.1"); err != nil {
+			assert.NotContains(t, err.Error(), "refusing connection")
+		}
+	})
+	t.Run("the same private host is refused without the exception", func(t *testing.T) {
+		err := dial("", "10.255.255.1")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "refusing connection to non-public address")
+	})
+	t.Run("link-local passes the guard for the allowed host only", func(t *testing.T) {
+		if err := dial("169.254.10.10", "169.254.10.10"); err != nil {
+			assert.NotContains(t, err.Error(), "refusing connection")
+		}
+	})
+	t.Run("a public-looking special range stays refused for the allowed host", func(t *testing.T) {
+		err := dial("100.64.0.1", "100.64.0.1")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "refusing connection to non-public address")
+	})
+}

@@ -258,7 +258,11 @@ Keycloak that is `https://kc.example.com/realms/<realm>`, for Auth0
 differs in any character is refused, and the `iss` claim of every ID token must
 match it byte for byte. Each endpoint must be an absolute `https` URL (`http`
 only on a loopback host), and the provider must resolve to a public address:
-connections to private and link-local addresses are refused.
+connections to private and link-local addresses are refused. For an identity
+provider inside your network, set `SSO_ALLOW_PRIVATE_ISSUER=true`: the host of
+`SSO_ISSUER_URL`, and only that host, may then resolve to a private, loopback or
+link-local address. An endpoint the discovery document names on any other host
+is still refused, so a document cannot point the server at an internal service.
 
 Discovery runs on the first sign-in, not at startup, so the server starts while
 the provider is down. A fetch is tried up to three times; if all fail, the login
@@ -273,6 +277,7 @@ the last document it fetched.
 | `SSO_CLIENT_SECRET` | *(empty)* | **Secret.** OAuth client secret. Required unless `SSO_PUBLIC_CLIENT=true`. |
 | `SSO_PUBLIC_CLIENT` | `false` | Allows an empty `SSO_CLIENT_SECRET`, for an identity provider client registered as public. PKCE protects the code exchange in that case. Leave it off for a confidential client: an empty secret then stops the server from starting instead of silently weakening the login. |
 | `SSO_ISSUER_URL` | *(empty)* | Must be `https`; plain `http` is accepted only for a loopback host, for a local IdP. |
+| `SSO_ALLOW_PRIVATE_ISSUER` | `false` | Lets the host of `SSO_ISSUER_URL` resolve to a private, loopback or link-local address, for an identity provider on an internal network. Any other host stays refused. Parsed as a boolean; an invalid value stops the server from starting. |
 | `SSO_REDIRECT_URI` | *(empty)* | Must match the IdP's registered redirect URI. |
 | `SSO_GROUPS_CLAIM` | `groups` | Claim carrying IdP group membership. |
 | `SSO_ALLOWED_DOMAINS` | *(empty)* | Comma/space-separated email domains that may auto-provision. Empty refuses every unknown subject. |

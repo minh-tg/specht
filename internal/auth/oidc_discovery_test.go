@@ -276,3 +276,47 @@ func TestDiscovery_URLDropsOneTrailingSlashOfTheIssuer(t *testing.T) {
 	assert.Equal(t, "https://kc.example.com/realms/acme/.well-known/openid-configuration", discoveryURL("https://kc.example.com/realms/acme"))
 	assert.Equal(t, "https://accounts.google.com/.well-known/openid-configuration", discoveryURL("https://accounts.google.com"))
 }
+
+// privateIssuerAuth builds an authenticator for an https issuer on a loopback
+// address, the stand-in for an identity provider on a private network. The
+// server speaks TLS with an untrusted certificate, so a request that gets past
+// the dial guard fails on the certificate and one that does not fails with the
+// guard's message.
+func privateIssuerAuth(t *testing.T, allow bool) (*OIDCAuthenticator, *httptest.Server) {
+	t.Helper()
+	srv := httptest.NewTLSServer(http.NotFoundHandler())
+	t.Cleanup(srv.Close)
+	a, err := NewOIDCAuthenticator(OIDCConfig{
+		ClientID: "c", ClientSecret: "s", IssuerURL: srv.URL,
+		RedirectURI:        "http://localhost:8080/api/v1/auth/sso/callback",
+		AllowPrivateIssuer: allow,
+	}, nil)
+	require.NoError(t, err)
+	return a, srv
+}
+
+func guardRefused(a *OIDCAuthenticator, target string) bool {
+	resp, err := a.httpClient.Get(target)
+	if err == nil {
+		_ = resp.Body.Close()
+		return false
+	}
+	return strings.Contains(err.Error(), "refusing connection to non-public address")
+}
+
+func TestPrivateIssuer_IssuerHostMayBePrivateWhenAllowed(t *testing.T) {
+	a, srv := privateIssuerAuth(t, true)
+	assert.False(t, guardRefused(a, srv.URL+discoveryPath), "the issuer host is reachable")
+}
+
+func TestPrivateIssuer_OtherHostsStayGuardedWhenAllowed(t *testing.T) {
+	a, srv := privateIssuerAuth(t, true)
+	_, port, _ := strings.Cut(strings.TrimPrefix(srv.URL, "https://"), ":")
+	assert.True(t, guardRefused(a, "https://localhost:"+port+"/token"), "a discovered endpoint on another host is refused")
+	assert.True(t, guardRefused(a, "https://169.254.169.254/latest/meta-data/"), "cloud metadata is refused")
+}
+
+func TestPrivateIssuer_IssuerHostIsRefusedByDefault(t *testing.T) {
+	a, srv := privateIssuerAuth(t, false)
+	assert.True(t, guardRefused(a, srv.URL+discoveryPath))
+}
