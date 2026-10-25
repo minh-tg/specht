@@ -39,6 +39,30 @@ describe("mutation query invalidation", () => {
     expect(client.getQueryState(queryKeys.project("probe"))?.isInvalidated).toBe(true);
   });
 
+  it("drops cached member suggestions after adding or removing a member", async () => {
+    const { client, wrapper } = harness();
+    const keys = [
+      [...queryKeys.memberSuggestions("probe"), "ada"],
+      [...queryKeys.memberSuggestions("probe"), "ada lov"],
+    ];
+    const seed = () => {
+      for (const key of keys) client.setQueryData(key, [{ user_id: "u2", email: "ada@x.io" }]);
+    };
+    seed();
+    const add = renderHook(() => useAddProjectMember("probe"), { wrapper });
+    await act(async () => {
+      await add.result.current.mutateAsync({ user_id: "u2", role: "member" });
+    });
+    for (const key of keys) expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+
+    seed();
+    const remove = renderHook(() => useRemoveProjectMember("probe"), { wrapper });
+    await act(async () => {
+      await remove.result.current.mutateAsync({ userId: "u2", role: "member", restorable: true });
+    });
+    for (const key of keys) expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+  });
+
   it("refreshes all cached finding filters after a report upload", async () => {
     const { client, wrapper } = harness();
     const keys = [

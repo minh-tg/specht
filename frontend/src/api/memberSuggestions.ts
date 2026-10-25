@@ -4,7 +4,7 @@ import type { components } from "@/types/api.gen";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiFetch } from "./client";
-import { useCapabilities } from "./hooks";
+import { queryKeys, useCapabilities } from "./hooks";
 
 /** A person offered when adding someone by email. */
 export type PersonSuggestion = components["schemas"]["MemberSuggestion"];
@@ -47,7 +47,7 @@ export function useMemberSuggestions(slug: string, query: string, enabled = true
   const active = enabled && !!slug && !registrationOpen
     && queryLength(typed) >= MIN_SUGGESTION_QUERY && queryLength(trimmed) >= MIN_SUGGESTION_QUERY;
   const result = useQuery({
-    queryKey: ["projects", slug, "member-suggestions", trimmed] as const,
+    queryKey: [...queryKeys.memberSuggestions(slug), trimmed] as const,
     queryFn: ({ signal }) =>
       apiFetch<PersonSuggestion[]>(
         `/api/v1/projects/${encodeURIComponent(slug)}/member-suggestions?q=${
