@@ -132,9 +132,20 @@ type sarifRun struct {
 			Rules         []sarifRule `json:"rules"`
 			Notifications []any       `json:"notifications"`
 		} `json:"driver"`
+		Extensions []struct {
+			Rules []sarifRule `json:"rules"`
+		} `json:"extensions"`
 	} `json:"tool"`
+	Artifacts []struct {
+		Location struct {
+			URI string `json:"uri"`
+		} `json:"location"`
+	} `json:"artifacts"`
 	Invocations []struct {
-		ExecutionSuccessful bool `json:"executionSuccessful"`
+		ExecutionSuccessful        *bool `json:"executionSuccessful"`
+		ToolExecutionNotifications []struct {
+			Level string `json:"level"`
+		} `json:"toolExecutionNotifications"`
 	} `json:"invocations"`
 	Taxonomies []struct {
 		Name     string `json:"name"`
@@ -209,6 +220,7 @@ func convert(budget *parseutil.Budget, log sarifLog) (*domain.NormalizedReport, 
 		ScanScope:          &domain.ScanScope{Ext: map[string]string{}},
 	}
 	skipped := 0
+	var proofs []parseutil.RuleRun
 	for _, run := range log.Runs {
 		tool := run.Tool.Driver.Name
 		if tool == "" {
@@ -219,10 +231,12 @@ func convert(budget *parseutil.Budget, log sarifLog) (*domain.NormalizedReport, 
 			nr.ScanScope.Ext[ns+"_tool_version"] = run.Tool.Driver.Version
 		}
 		rules := indexRules(run.Tool.Driver.Rules)
+		proof := runProof(run)
 		for _, result := range run.Results {
 			rule, ruleID := resolveRule(run.Tool.Driver.Rules, rules, result)
 			if ruleID == "" || suppressedAccepted(result) {
 				skipped++
+				proof.Unproven[ruleID] = true
 				continue
 			}
 			if err := budget.Add(1); err != nil {
@@ -230,7 +244,9 @@ func convert(budget *parseutil.Budget, log sarifLog) (*domain.NormalizedReport, 
 			}
 			nr.Findings = append(nr.Findings, parseutil.HardenFinding(convertResult(result, rule, ruleID, ns)))
 		}
+		proofs = append(proofs, proof)
 	}
+	nr.ExaminedKeys = parseutil.ExaminedFromRuns(proofs)
 	if skipped > 0 {
 		nr.ScanScope.Ext["skipped_results"] = strconv.Itoa(skipped)
 	}
