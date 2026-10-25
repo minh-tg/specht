@@ -398,6 +398,106 @@ func TestDetectCIEnvironment_GitLab(t *testing.T) {
 	assert.Equal(t, "mr-branch", branch)
 }
 
+func TestDetectCIEnvironment_GitHubPullRequestUsesHead(t *testing.T) {
+	for _, event := range []string{"pull_request", "pull_request_target"} {
+		t.Run(event, func(t *testing.T) {
+			clearCIEnvironment(t)
+			t.Setenv("GITHUB_EVENT_NAME", event)
+			t.Setenv("GITHUB_BASE_REF", "main")
+			t.Setenv("GITHUB_SHA", "mergecommit")
+			t.Setenv("GITHUB_REF_NAME", "12/merge")
+			t.Setenv("GITHUB_EVENT_PATH", writeEventPayload(t, map[string]any{
+				"pull_request": map[string]any{"head": map[string]any{"sha": "headsha", "ref": "feat/x"}},
+			}))
+
+			var baseRef, commit, branch string
+			detectCIEnvironment(&baseRef, &commit, &branch)
+			assert.Equal(t, "main", baseRef)
+			assert.Equal(t, "headsha", commit)
+			assert.Equal(t, "feat/x", branch)
+		})
+	}
+}
+
+func TestDetectCIEnvironment_GitHubPullRequestKeepsFlags(t *testing.T) {
+	clearCIEnvironment(t)
+	t.Setenv("GITHUB_EVENT_NAME", "pull_request")
+	t.Setenv("GITHUB_EVENT_PATH", writeEventPayload(t, map[string]any{
+		"pull_request": map[string]any{"head": map[string]any{"sha": "headsha", "ref": "feat/x"}},
+	}))
+	commit, branch := "flagsha", "flagbranch"
+	var baseRef string
+	detectCIEnvironment(&baseRef, &commit, &branch)
+	assert.Equal(t, "flagsha", commit)
+	assert.Equal(t, "flagbranch", branch)
+}
+
+func TestDetectCIEnvironment_GitHubPushIgnoresEventHead(t *testing.T) {
+	clearCIEnvironment(t)
+	t.Setenv("GITHUB_EVENT_NAME", "push")
+	t.Setenv("GITHUB_SHA", "pushsha")
+	t.Setenv("GITHUB_REF_NAME", "main")
+	t.Setenv("GITHUB_EVENT_PATH", writeEventPayload(t, map[string]any{
+		"pull_request": map[string]any{"head": map[string]any{"sha": "headsha", "ref": "feat/x"}},
+	}))
+	var baseRef, commit, branch string
+	detectCIEnvironment(&baseRef, &commit, &branch)
+	assert.Equal(t, "pushsha", commit)
+	assert.Equal(t, "main", branch)
+}
+
+func TestRun_GitHubPullRequestReportsAndChecksTheHead(t *testing.T) {
+	clearCIEnvironment(t)
+	t.Setenv("API_KEY", "test-key")
+	t.Setenv("GITHUB_EVENT_NAME", "pull_request")
+	t.Setenv("GITHUB_BASE_REF", "main")
+	t.Setenv("GITHUB_SHA", "mergecommit")
+	t.Setenv("GITHUB_REF_NAME", "12/merge")
+	t.Setenv("GITHUB_EVENT_PATH", writeEventPayload(t, map[string]any{
+		"pull_request": map[string]any{"head": map[string]any{"sha": "headsha", "ref": "feat/x"}},
+	}))
+
+	var ingested client.IngestPayload
+	var previewCommit, checkHead string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/reports":
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&ingested))
+			writeTestJSONResponse(t, w, client.IngestResponse{ReportID: "rep-1"})
+		case "/api/v1/projects/my-app/pr-check":
+			previewCommit = r.URL.Query().Get("commit")
+			writeTestJSONResponse(t, w, client.PRCheckPreview{Conclusion: "success", Title: "ok", Summary: "ok"})
+		case "/repos/o/r/check-runs":
+			var body struct {
+				HeadSHA string `json:"head_sha"`
+			}
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			checkHead = body.HeadSHA
+			w.WriteHeader(http.StatusCreated)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("API_URL", srv.URL)
+
+	var stdout, stderr bytes.Buffer
+	args := []string{
+		"-file=../../internal/parser/trivy/testdata/alpine-scan.json",
+		"-project=my-app",
+		"-tool=trivy",
+		"-publish-check",
+		"-github-token=tok",
+		"-github-repo=o/r",
+	}
+	code := run(args, bytes.NewReader(nil), &stdout, &stderr, githubCheckRunClient(srv))
+	assert.Equal(t, 0, code, stderr.String())
+	assert.Equal(t, "headsha", ingested.CommitSha, "the report records the commit the check is published on")
+	assert.Equal(t, "feat/x", ingested.Branch)
+	assert.Equal(t, "headsha", previewCommit)
+	assert.Equal(t, "headsha", checkHead)
+}
+
 func TestApplyGateFlags_IgnoresDeprecatedStatus(t *testing.T) {
 	var payload client.IngestPayload
 	applyGateFlags(&payload, &adapterFlags{status: "open", severity: "high"})

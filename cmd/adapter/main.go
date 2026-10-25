@@ -708,7 +708,22 @@ func printContextBanner(w io.Writer, p client.IngestPayload) {
 	writeDiagnosticLine(w, "")
 }
 
+// detectCIEnvironment fills the base ref, commit and branch the flags left
+// empty. On a GitHub pull request GITHUB_SHA is the temporary merge commit
+// (pull_request) or the base branch tip (pull_request_target), and
+// GITHUB_REF_NAME is "N/merge", so the pull request head from the event
+// payload comes first. The report, the PR check preview and the check run then
+// all name the head commit, the one the pull request lists and required
+// checks look at.
 func detectCIEnvironment(baseRef, commit, branch *string) {
+	if sha, ref, ok := pullRequestHead(); ok {
+		if *commit == "" {
+			*commit = sha
+		}
+		if *branch == "" {
+			*branch = ref
+		}
+	}
 	if *baseRef == "" {
 		if v := os.Getenv("GITHUB_BASE_REF"); v != "" {
 			*baseRef = v
@@ -738,6 +753,8 @@ func detectCIEnvironment(baseRef, commit, branch *string) {
 type githubPullRequestEvent struct {
 	PullRequest *struct {
 		Head struct {
+			Sha  string `json:"sha"`
+			Ref  string `json:"ref"`
 			Repo struct {
 				Fork     bool   `json:"fork"`
 				FullName string `json:"full_name"`
@@ -758,12 +775,8 @@ func isForkPullRequest() bool {
 	if os.Getenv("GITHUB_EVENT_NAME") != "pull_request" {
 		return false
 	}
-	raw, err := os.ReadFile(os.Getenv("GITHUB_EVENT_PATH"))
-	if err != nil {
-		return false
-	}
-	var event githubPullRequestEvent
-	if err := json.Unmarshal(raw, &event); err != nil || event.PullRequest == nil {
+	event, ok := readPullRequestEvent()
+	if !ok {
 		return false
 	}
 	head := event.PullRequest.Head.Repo
@@ -772,6 +785,37 @@ func isForkPullRequest() bool {
 	}
 	base := event.PullRequest.Base.Repo.FullName
 	return head.FullName != "" && base != "" && head.FullName != base
+}
+
+// readPullRequestEvent decodes GITHUB_EVENT_PATH. It reports false when the
+// file is missing, unreadable or carries no pull_request object.
+func readPullRequestEvent() (githubPullRequestEvent, bool) {
+	var event githubPullRequestEvent
+	raw, err := os.ReadFile(os.Getenv("GITHUB_EVENT_PATH"))
+	if err != nil {
+		return event, false
+	}
+	if err := json.Unmarshal(raw, &event); err != nil || event.PullRequest == nil {
+		return event, false
+	}
+	return event, true
+}
+
+// pullRequestHead returns the head commit and branch on a pull_request or
+// pull_request_target event whose payload names a head commit. Any other
+// event, or an unreadable payload, reports false and the plain environment
+// variables apply.
+func pullRequestHead() (sha, ref string, ok bool) {
+	switch os.Getenv("GITHUB_EVENT_NAME") {
+	case "pull_request", "pull_request_target":
+	default:
+		return "", "", false
+	}
+	event, ok := readPullRequestEvent()
+	if !ok || event.PullRequest.Head.Sha == "" {
+		return "", "", false
+	}
+	return event.PullRequest.Head.Sha, event.PullRequest.Head.Ref, true
 }
 
 // skipForkPullRequest explains on stderr and in the job summary that the gate
@@ -840,6 +884,9 @@ Environment:
   API_KEY                API key for authentication (required, alias SPECHT_API_KEY)
   GITHUB_BASE_REF        Auto-detected PR target branch in GitHub Actions
   GITHUB_SHA             Auto-detected commit SHA in GitHub Actions
+  GITHUB_EVENT_PATH      On pull_request and pull_request_target events, the
+                         pull request head commit and branch from this payload
+                         replace GITHUB_SHA and GITHUB_REF_NAME
   GITHUB_REPOSITORY      Auto-detected GitHub repository (owner/repo)
   GITHUB_STEP_SUMMARY    Auto-detected path to Markdown job summary
   GITHUB_TOKEN           Auto-detected GitHub token
