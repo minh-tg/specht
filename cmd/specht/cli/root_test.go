@@ -6,12 +6,40 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/minh-tg/specht/internal/client"
 	"github.com/minh-tg/specht/internal/version"
 )
+
+func TestNewEnvClientReadsSpechtPrefixedNames(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+	env := map[string]string{"SPECHT_API_URL": srv.URL, "SPECHT_API_KEY": "alias-key"}
+
+	cl, err := newEnvClient(func(name string) string { return env[name] })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cl.ListProjects(); err != nil {
+		t.Fatalf("the client must reach SPECHT_API_URL: %v", err)
+	}
+	if gotAuth != "Bearer alias-key" {
+		t.Fatalf("want the SPECHT_API_KEY bearer, got %q", gotAuth)
+	}
+}
+
+func TestNewEnvClientRequiresAKey(t *testing.T) {
+	if _, err := newEnvClient(func(string) string { return "" }); err == nil {
+		t.Fatal("expected a missing key error")
+	}
+}
 
 func TestRootRegistersProjectTeams(t *testing.T) {
 	var gotPath string

@@ -90,25 +90,31 @@ type settings struct {
 }
 
 // DefaultDeps wires the production dependencies from the environment:
-// API_URL (default http://localhost:8080) and the required API_KEY.
+// API_URL (default http://localhost:8080) and the required API_KEY, or their
+// aliases SPECHT_API_URL and SPECHT_API_KEY.
 func DefaultDeps() Deps {
 	return Deps{
 		NewClient: func() (*client.Client, error) {
-			apiURL := os.Getenv("API_URL")
-			if apiURL == "" {
-				apiURL = "http://localhost:8080"
-			}
-			token := os.Getenv("API_KEY")
-			if token == "" {
-				return nil, errors.New("API_KEY environment variable is required")
-			}
-			return client.New(apiURL, client.WithToken(token)), nil
+			return newEnvClient(os.Getenv)
 		},
 		RunWatcherBackfill: runWatcherBackfill,
 		In:                 os.Stdin,
 		Out:                os.Stdout,
 		ErrW:               os.Stderr,
 	}
+}
+
+// newEnvClient builds the API client from the URL and key in the environment.
+func newEnvClient(getenv func(string) string) (*client.Client, error) {
+	apiURL := client.EnvAPIURL(getenv)
+	if apiURL == "" {
+		apiURL = client.DefaultAPIURL
+	}
+	token := client.EnvAPIKey(getenv)
+	if token == "" {
+		return nil, errors.New("API_KEY environment variable is required (set API_KEY or SPECHT_API_KEY)")
+	}
+	return client.New(apiURL, client.WithToken(token)), nil
 }
 
 // NewRootCmd builds the command tree. Groups are registered in their own

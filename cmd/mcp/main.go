@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,8 +17,8 @@ const usage = `specht-mcp serves a Specht server to an AI assistant over the Mod
 
 It takes no arguments. Configure it with environment variables:
 
-  API_KEY              a project API key or a session token (required)
-  API_URL              the Specht server (default http://localhost:8080)
+  API_KEY              a project API key or a session token (required, alias SPECHT_API_KEY)
+  API_URL              the Specht server (default http://localhost:8080, alias SPECHT_API_URL)
   MCP_ALLOW_MUTATIONS  true to also offer the tools that change state (default false)
 
 Run specht-mcp -version to print its version.
@@ -40,18 +41,27 @@ func handleInfoFlags(args []string, out io.Writer) bool {
 	return false
 }
 
+// apiConfig reads the server URL and the key, each under its plain name or the
+// SPECHT_ alias, the plain name first.
+func apiConfig(getenv func(string) string) (apiURL, apiKey string, err error) {
+	apiURL = client.EnvAPIURL(getenv)
+	if apiURL == "" {
+		apiURL = client.DefaultAPIURL
+	}
+	apiKey = client.EnvAPIKey(getenv)
+	if apiKey == "" {
+		return "", "", errors.New("API_KEY environment variable is required (set API_KEY or SPECHT_API_KEY)")
+	}
+	return apiURL, apiKey, nil
+}
+
 func main() {
 	if handleInfoFlags(os.Args[1:], os.Stdout) {
 		return
 	}
-	apiURL := os.Getenv("API_URL")
-	if apiURL == "" {
-		apiURL = "http://localhost:8080"
-	}
-
-	apiKey := os.Getenv("API_KEY")
-	if apiKey == "" {
-		log.Fatal("API_KEY environment variable is required")
+	apiURL, apiKey, err := apiConfig(os.Getenv)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	opts, err := loadToolOptions(apiKey, os.Getenv)
