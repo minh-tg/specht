@@ -142,7 +142,7 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 		},
 		Version:               "1",
 		ContractVersion:       1,
-		FingerprintVersion:    1,
+		FingerprintVersion:    fingerprintVersion,
 		FindingKinds:          []scanner.FindingKind{"sca"},
 		ScanTypes:             []domain.ScanType{domain.ScanTypeLockfile, domain.ScanTypeSBOM, domain.ScanTypeRepository, domain.ScanTypeImage, domain.ScanTypeFilesystem},
 		ProvidesPackages:      true,
@@ -239,7 +239,7 @@ func convertToScanType(s string) domain.ScanType {
 func convert(budget *parseutil.Budget, report osvReport) (*domain.NormalizedReport, error) {
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
-		FingerprintVersion: 1,
+		FingerprintVersion: fingerprintVersion,
 		Completeness:       domain.CompletenessUnknown,
 		ScanScope:          &domain.ScanScope{Ext: make(map[string]string)},
 		Findings:           nil,
@@ -333,14 +333,7 @@ type osvFinding struct {
 // normalized converts one OSV vulnerability into a NormalizedFinding.
 func (f osvFinding) normalized() domain.NormalizedFinding {
 	v := f.vuln
-	purl := f.pkg.PURL
-	if f.affected != nil && f.affected.Package.PURL != "" {
-		purl = f.affected.Package.PURL
-	}
-	if purl == "" {
-		ecosystem, name := f.pkg.Ecosystem, f.pkg.Name
-		purl = "pkg:" + strings.ToLower(ecosystem) + "/" + name
-	}
+	purl := f.installedPURL()
 
 	fixedVersion := firstFixedVersion(f.affected)
 	cveID := firstCVEAlias(v)
@@ -405,6 +398,35 @@ func (f osvFinding) normalized() domain.NormalizedFinding {
 		Dimensions:   dims,
 		Extensions:   ext,
 	}
+}
+
+// fingerprintVersion is the version of this scanner's identity formula.
+// Version 2 keys a finding on the installed version of the package, so
+// lodash 4.17.20 and 4.17.15 are two findings. Version 1 took the advisory's
+// unversioned purl and merged them.
+const fingerprintVersion = 2
+
+// installedPURL is the purl of the scanned package at its installed version,
+// the purl every other SCA adapter keys a finding on. The scanned package's
+// own purl comes first. Without one, the advisory's affected package gives
+// the purl type and name (OSV ecosystem names such as "Go" or "crates.io"
+// are not purl types), and the installed version is added to it.
+func (f osvFinding) installedPURL() string {
+	if f.pkg.PURL != "" {
+		return domain.NormalizePURL(f.pkg.PURL)
+	}
+	base := ""
+	if f.affected != nil {
+		base = domain.NormalizePURL(f.affected.Package.PURL)
+	}
+	if base == "" {
+		base = "pkg:" + strings.ToLower(f.pkg.Ecosystem) + "/" + f.pkg.Name
+	}
+	_, name, version := domain.SplitPURL(base)
+	if name == "" || f.pkg.Version == "" {
+		return base
+	}
+	return strings.TrimSuffix(base, "@"+version) + "@" + f.pkg.Version
 }
 
 // firstFixedVersion returns the last fixed version recorded across the
