@@ -34,7 +34,7 @@ func TestParseSkipsNonFailures(t *testing.T) {
 	assert.Equal(t, domain.ScanTypeIaC, rep.ScanType)
 
 	s3 := rep.Findings[0]
-	assert.Equal(t, "iac:aws-s3-enable-versioning:aws_s3_bucket.data", s3.Fingerprint)
+	assert.Equal(t, "iac:aws-s3-enable-versioning:aws_s3_bucket.data:main.tf", s3.Fingerprint)
 	assert.Equal(t, "iac", s3.FindingKind)
 	assert.Equal(t, domain.SeverityHigh, s3.Severity)
 	assert.Equal(t, "main.tf:10", s3.Location)
@@ -65,7 +65,7 @@ func TestParseUpstreamStatuses(t *testing.T) {
 	report, err := s.Parse(context.Background(), data)
 	require.NoError(t, err)
 	require.Len(t, report.Findings, 1)
-	assert.Equal(t, "iac:failed:", report.Findings[0].Fingerprint)
+	assert.Equal(t, "iac:failed::(unknown)", report.Findings[0].Fingerprint)
 	assert.False(t, s.DetectFormat([]byte(`{"results":[{"rule_id":"another-scanner"}]}`)))
 }
 

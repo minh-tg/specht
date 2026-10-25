@@ -38,7 +38,7 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 		},
 		Version:               "1",
 		ContractVersion:       1,
-		FingerprintVersion:    1,
+		FingerprintVersion:    fingerprintVersion,
 		FindingKinds:          []scanner.FindingKind{"iac"},
 		ScanTypes:             []domain.ScanType{domain.ScanTypeIaC},
 		ProvidesPackages:      false,
@@ -99,7 +99,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	}
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
-		FingerprintVersion: 1,
+		FingerprintVersion: fingerprintVersion,
 		Completeness:       domain.CompletenessUnknown,
 		ScanType:           domain.ScanTypeIaC,
 		Target:             &domain.TargetInfo{Kind: "terraform"},
@@ -207,7 +207,7 @@ func convert(r tfsecResult) domain.NormalizedFinding {
 		title = r.RuleID
 	}
 	f := domain.NormalizedFinding{
-		Fingerprint: "iac:" + r.RuleID + ":" + r.Resource,
+		Fingerprint: fingerprint(r, file),
 		FindingKind: "iac",
 		Title:       title,
 		Description: description,
@@ -231,6 +231,22 @@ func convert(r tfsecResult) domain.NormalizedFinding {
 		}
 	}
 	return f
+}
+
+// fingerprintVersion is the version of this scanner's identity formula.
+// Version 2 adds the file, so one resource address in two modules is two
+// findings. Version 1 was the rule and the resource only.
+const fingerprintVersion = 2
+
+// fingerprint is the rule, the resource and the file, the IaC identity
+// Checkov findings use, so a finding stays put when its resource moves
+// within the file. A result that names no resource falls back to the line.
+func fingerprint(r tfsecResult, file string) string {
+	fp := "iac:" + r.RuleID + ":" + r.Resource + ":" + file
+	if line := parseutil.SafeLine(r.Location.StartLine); r.Resource == "" && line > 0 {
+		fp += ":" + strconv.Itoa(line)
+	}
+	return fp
 }
 
 func normalizeSeverity(s string) domain.Severity {
