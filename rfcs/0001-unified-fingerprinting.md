@@ -89,12 +89,14 @@ Finding identity is partitioned into two distinct layers:
 
 ### 4.3 IaC (Infrastructure as Code)
 
-* **Format**: `iac:<rule_id>:<resource_address>`
+* **Format**: `iac:<rule_id>:<resource_address>:<relative_path>`
 * **Rules**:
-  - Infrastructure identity is rooted in the declarative resource address (e.g. Terraform `aws_s3_bucket.audit_logs`, Kubernetes `Deployment/production/web`).
-  - File moves and module restructuring preserve finding identity as long as the deployed resource identity remains stable.
+  - Infrastructure identity is the declarative resource address (e.g. Terraform `aws_s3_bucket.audit_logs`, Kubernetes `Deployment/production/web`) plus the file that declares it.
+  - A Terraform address is unique only inside its module. The same `aws_s3_bucket.logs` in two modules is two resources, and without the module location both would collapse into one finding. The relative path stands in for the module location.
+  - Moving a resource within its file keeps the finding. Moving it to another file, or a module to another directory, is a new finding and the old one closes on the next complete scan. The path is the file, not the directory, so two files of one directory that declare the same address stay apart.
+  - A result that names no resource (a Dockerfile instruction, say) falls back to the line it failed on.
 * **Example**:
-  `iac:CKV_AWS_18:aws_s3_bucket.access_logs`
+  `iac:CKV_AWS_18:aws_s3_bucket.access_logs:infra/s3.tf`
 
 ### 4.4 Secrets
 
