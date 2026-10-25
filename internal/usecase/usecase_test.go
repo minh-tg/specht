@@ -3699,6 +3699,39 @@ func TestBulkTriage_Success(t *testing.T) {
 	assert.Equal(t, "false_positive", results[0].AnalysisState)
 }
 
+// The store lookup returns one row per distinct id, so a repeated id used to
+// fail the count check and apply nothing. It is collapsed instead, and the
+// event counts each finding once.
+func TestBulkTriage_RepeatedIDCountsOnce(t *testing.T) {
+	const id = "0000000a-0000-0000-0000-000000000021"
+	row := makeFindingRow(1)
+	row.ID = id
+	fr := &mockFindingRepo{}
+	fr.listByIDsFn = func(ctx context.Context, ids []string) ([]port.Finding, error) {
+		return []port.Finding{row}, nil
+	}
+	var gotIDs []string
+	var gotEvent port.FindingEventInput
+	fr.bulkTriageFn = func(ctx context.Context, arg port.UpdateAnalysisInput, ids []string, event port.FindingEventInput) ([]port.Finding, error) {
+		gotIDs, gotEvent = ids, event
+		return []port.Finding{row}, nil
+	}
+	uc := New(Deps{Stores: &port.Stores{Findings: fr, Projects: memberProjects()}})
+
+	results, err := uc.BulkTriage(findingScopeCtx(findingFixtureProjectID), BulkTriageInput{
+		FindingIDs:    []string{id, strings.ToUpper(id), id},
+		AnalysisState: "false_positive",
+		Reason:        "test code",
+		UserID:        "00000000-0000-0000-0000-000000000040",
+	})
+	require.NoError(t, err)
+	assert.Len(t, results, 1)
+	assert.Equal(t, []string{id}, gotIDs)
+	var changes map[string]any
+	require.NoError(t, json.Unmarshal(gotEvent.Changes, &changes))
+	assert.EqualValues(t, 1, changes["count"])
+}
+
 func TestBulkTriage_FindingsNotFound(t *testing.T) {
 	fr := &mockFindingRepo{}
 	fr.listByIDsFn = func(ctx context.Context, ids []string) ([]port.Finding, error) {
