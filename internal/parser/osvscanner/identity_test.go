@@ -51,10 +51,10 @@ func TestAScopedPackageKeepsItsScope(t *testing.T) {
 }
 
 func TestTheScannerSaysItsIdentitiesChanged(t *testing.T) {
-	assert.EqualValues(t, 2, osvscanner.NewScanner().Descriptor().FingerprintVersion)
+	assert.EqualValues(t, 3, osvscanner.NewScanner().Descriptor().FingerprintVersion)
 	rep, err := osvscanner.NewScanner().Parse(context.Background(), []byte(`{"results":[]}`))
 	require.NoError(t, err)
-	assert.EqualValues(t, 2, rep.FingerprintVersion)
+	assert.EqualValues(t, 3, rep.FingerprintVersion)
 }
 
 func TestAGoVersionKeepsItsLeadingV(t *testing.T) {

@@ -280,12 +280,8 @@ func addOsvPackages(budget *parseutil.Budget, nr *domain.NormalizedReport, resul
 			return err
 		}
 		pkg.Package = pkg.Package.withGoVersion()
-		purl := pkg.Package.PURL
-		if purl == "" {
-			purl = "pkg:" + strings.ToLower(pkg.Package.Ecosystem) + "/" + pkg.Package.Name
-		}
 		nr.Packages = append(nr.Packages, parseutil.HardenPackage(domain.PackageRef{
-			PURL:         domain.NormalizePURL(purl),
+			PURL:         pkg.Package.purl(advisoryPURL(pkg)),
 			Ecosystem:    pkg.Package.Ecosystem,
 			Name:         pkg.Package.Name,
 			Version:      pkg.Package.Version,
@@ -406,30 +402,31 @@ func (f osvFinding) normalized() domain.NormalizedFinding {
 // Version 2 keys a finding on the installed version of the package, so
 // lodash 4.17.20 and 4.17.15 are two findings, and spells a Go module
 // version with its leading "v" as Grype and Trivy do. Version 1 took the
-// advisory's unversioned purl and merged them.
-const fingerprintVersion = 2
+// advisory's unversioned purl and merged them. Version 3 builds the purl of a
+// package that has none from the ecosystem's purl type (golang, cargo, gem,
+// composer and so on) where version 2 used the lowercased OSV ecosystem name.
+const fingerprintVersion = 3
 
-// installedPURL is the purl of the scanned package at its installed version,
-// the purl every other SCA adapter keys a finding on. The scanned package's
-// own purl comes first. Without one, the advisory's affected package gives
-// the purl type and name (OSV ecosystem names such as "Go" or "crates.io"
-// are not purl types), and the installed version is added to it.
+// installedPURL is the purl of the scanned package at its installed version
+// (see osvPkg.purl), the purl every other SCA adapter keys a finding on.
 func (f osvFinding) installedPURL() string {
-	if f.pkg.PURL != "" {
-		return domain.NormalizePURL(f.pkg.PURL)
-	}
-	base := ""
+	advisory := ""
 	if f.affected != nil {
-		base = domain.NormalizePURL(f.affected.Package.PURL)
+		advisory = f.affected.Package.PURL
 	}
-	if base == "" {
-		base = "pkg:" + strings.ToLower(f.pkg.Ecosystem) + "/" + f.pkg.Name
+	return f.pkg.purl(advisory)
+}
+
+// advisoryPURL is the purl of the first affected package that one of the
+// package's vulnerabilities names for it, or "". The inventory entry has no
+// finding of its own to ask, and a finding uses its own advisory's.
+func advisoryPURL(pkg osvPkgResult) string {
+	for _, v := range pkg.Vulnerabilities {
+		if a := v.Affected.forPackage(pkg.Package); a != nil && a.Package.PURL != "" {
+			return a.Package.PURL
+		}
 	}
-	_, name, version := domain.SplitPURL(base)
-	if name == "" || f.pkg.Version == "" {
-		return base
-	}
-	return strings.TrimSuffix(base, "@"+version) + "@" + f.pkg.Version
+	return ""
 }
 
 // withGoVersion spells a Go module version the way Go, Grype and Trivy do,
