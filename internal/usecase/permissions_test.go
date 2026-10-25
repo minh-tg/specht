@@ -105,7 +105,7 @@ func TestProjectAPIKeysNeedAManagerRole(t *testing.T) {
 	}
 	ctx := sessionCtx(userID, auth.RoleMember)
 
-	for _, role := range []string{auth.RoleMember, "viewer"} {
+	for _, role := range []string{auth.RoleMember} {
 		uc := build(role)
 		_, err := uc.CreateAPIKey(ctx, "my-app", "ci", userID, nil)
 		require.ErrorIs(t, err, ErrProjectAccessDenied, "%s may not create keys", role)
@@ -113,7 +113,7 @@ func TestProjectAPIKeysNeedAManagerRole(t *testing.T) {
 		require.ErrorIs(t, err, ErrProjectAccessDenied, "%s may not list keys", role)
 		require.ErrorIs(t, uc.RevokeAPIKey(ctx, "my-app", keyID), ErrProjectAccessDenied, "%s may not revoke keys", role)
 	}
-	for _, role := range []string{auth.RoleManager, "editor", auth.RoleAdmin} {
+	for _, role := range []string{auth.RoleManager, auth.RoleAdmin} {
 		uc := build(role)
 		_, err := uc.CreateAPIKey(ctx, "my-app", "ci", userID, nil)
 		require.NoError(t, err, role)

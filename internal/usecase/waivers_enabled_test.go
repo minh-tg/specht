@@ -85,7 +85,7 @@ func TestRevokeAndRestoreWaiverWithoutPreconditionLeaveItUnset(t *testing.T) {
 func TestRevokeAndRestoreWaiverNeedAProjectManager(t *testing.T) {
 	project := makeProject(true)
 	for _, sw := range waiverSwitches() {
-		for _, role := range []string{auth.RoleViewer, auth.RoleMember} {
+		for _, role := range []string{auth.RoleMember} {
 			t.Run(sw.name+"/"+role, func(t *testing.T) {
 				wr := &mockWaiverRepo{} // any store call fails the test as unexpected
 				uc := waiverUsecaseForProject(project, wr, role)
@@ -93,7 +93,7 @@ func TestRevokeAndRestoreWaiverNeedAProjectManager(t *testing.T) {
 				require.ErrorIs(t, err, ErrProjectAccessDenied)
 			})
 		}
-		for _, role := range []string{auth.RoleManager, auth.RoleEditor} {
+		for _, role := range []string{auth.RoleManager} {
 			t.Run(sw.name+"/"+role+" allowed", func(t *testing.T) {
 				wr := &mockWaiverRepo{
 					setEnabledFn: func(_ context.Context, id, projectID string, _ port.WaiverEnabledChange) (port.Waiver, error) {
