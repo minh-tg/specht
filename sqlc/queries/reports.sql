@@ -12,7 +12,7 @@ INSERT INTO reports (
     started_at, error_message, raw_report_hash,
     raw_data,
     base_revision, changed_files, scan_mode,
-    covered_finding_kinds
+    covered_finding_kinds, examined_keys
 ) VALUES (
     $1, $2, $3, $4,
     $5, $6, $7,
@@ -23,7 +23,7 @@ INSERT INTO reports (
     $18, $19, $20,
     $21,
     $22, $23, $24,
-    sqlc.narg(covered_finding_kinds)::text[]
+    sqlc.narg(covered_finding_kinds)::text[], sqlc.narg(examined_keys)::text[]
 ) RETURNING *;
 
 -- name: GetReportByID :one

@@ -51,6 +51,7 @@ func (r *pgReportPort) Create(ctx context.Context, input port.CreateReportInput)
 		ParserVersion:       textPtrFromString(input.ParserVersion),
 		ScanCompleteness:    completeness,
 		CoveredFindingKinds: input.CoveredFindingKinds,
+		ExaminedKeys:        input.ExaminedKeys,
 	})
 	if err != nil {
 		// The duplicate-report unique violation (23505 on the raw-content
@@ -1025,7 +1026,7 @@ func (r *pgFindingPort) MarkFixedWithEvent(ctx context.Context, findingID, repor
 
 // MarkAbsentFindingsFixed implements the scan-equivalence auto-fix writer:
 // the SQL closes qualifying rows and returns them so the caller can log events.
-func (r *pgFindingPort) MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string, findingKinds []string) ([]port.Finding, error) {
+func (r *pgFindingPort) MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
 	pid, err := parseID(projectID)
 	if err != nil {
 		return nil, err
@@ -1038,7 +1039,6 @@ func (r *pgFindingPort) MarkAbsentFindingsFixed(ctx context.Context, projectID, 
 		ProjectID:     pid,
 		ScanScopeHash: textPtrFromString(&scopeHash),
 		ReportID:      rid,
-		FindingKinds:  findingKinds,
 	})
 	if err != nil {
 		return nil, mappingErr(err)

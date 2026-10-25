@@ -88,7 +88,7 @@ func TestIngestReport_AutoFixClosesAbsentFindings(t *testing.T) {
 		projectID, scopeHash, reportID string
 	}
 	var call *writerCall
-	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string, findingKinds []string) ([]port.Finding, error) {
+	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
 		call = &writerCall{projectID, scopeHash, reportID}
 		return []port.Finding{{
 			ID: "find-fixed", ProjectID: projectID, FindingKind: "sca",
@@ -132,7 +132,7 @@ func TestIngestReport_AutoFixClosesAbsentFindings(t *testing.T) {
 // writer, so an unseen fingerprint stays open.
 func TestIngestReport_AutoFixSkipsUnknownCompleteness(t *testing.T) {
 	uc, fr, _ := autofixHarness(t, domain.CompletenessUnknown)
-	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string, findingKinds []string) ([]port.Finding, error) {
+	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
 		t.Error("writer must not run for an unknown-completeness scan")
 		return nil, nil
 	}
@@ -151,7 +151,7 @@ func TestIngestReport_AutoFixSkipsUnknownCompleteness(t *testing.T) {
 // completeness-complete parser never reaches the writer.
 func TestAutoFixAbsentFindings_SkipsIncrementalScans(t *testing.T) {
 	_, fr, _ := autofixHarness(t, domain.CompletenessComplete)
-	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string, findingKinds []string) ([]port.Finding, error) {
+	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
 		t.Error("writer must not run for an incremental scan")
 		return nil, nil
 	}
@@ -170,7 +170,7 @@ func TestAutoFixAbsentFindings_SkipsIncrementalScans(t *testing.T) {
 // failed and surfaces, instead of silently skipping the closure.
 func TestIngestReport_AutoFixStoreErrorFailsIngest(t *testing.T) {
 	uc, fr, rr := autofixHarness(t, domain.CompletenessComplete)
-	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string, findingKinds []string) ([]port.Finding, error) {
+	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
 		return nil, assert.AnError
 	}
 	var failedStatus string
@@ -187,4 +187,36 @@ func TestIngestReport_AutoFixStoreErrorFailsIngest(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "auto-fix absent findings")
 	assert.Equal(t, "failed", failedStatus)
+}
+
+// A report of unknown completeness reaches the writer only when it names the
+// findings it checked, and a partial one never does.
+func TestAutoFixAbsentFindings_ExaminedKeysGate(t *testing.T) {
+	cases := []struct {
+		name         string
+		completeness domain.ScanCompleteness
+		keys         []string
+		wantWriter   bool
+	}{
+		{"unknown with keys", domain.CompletenessUnknown, []string{domain.ExaminedRule("sast", "r1")}, true},
+		{"unknown without keys", domain.CompletenessUnknown, nil, false},
+		{"partial with keys", domain.CompletenessPartial, []string{domain.ExaminedRule("sast", "r1")}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, fr, _ := autofixHarness(t, domain.CompletenessUnknown)
+			ran := false
+			fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
+				ran = true
+				return nil, nil
+			}
+			uc := New(Deps{Stores: &port.Stores{Findings: fr}})
+			err := uc.autoFixAbsentFindings(context.Background(), makeProject(true),
+				IngestReportInput{ProjectSlug: "my-app", Scanner: "sarif", ScanMode: ScanModeFull},
+				port.Report{ID: "rep-1"},
+				&domain.NormalizedReport{Completeness: tc.completeness, ExaminedKeys: tc.keys}, "scope-hash")
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantWriter, ran)
+		})
+	}
 }

@@ -38,7 +38,7 @@ func TestScopeClosureKeepsOtherScopesActive(t *testing.T) {
 			main := s.report(t, "main", "critical", 4, time.Minute)
 			_, err := s.pool.Exec(s.ctx, `UPDATE reports SET scan_completeness='complete' WHERE id=$1`, main)
 			require.NoError(t, err)
-			clean, err := s.stores.Reports.Create(s.ctx, port.CreateReportInput{ProjectID: s.projectID, ToolName: "trivy", ScanType: "image", ScanScopeHash: "main", ScanScope: []byte(`{}`), RawReportHash: "clean", ScanMode: "full", ScanCompleteness: "complete"})
+			clean, err := s.stores.Reports.Create(s.ctx, port.CreateReportInput{ProjectID: s.projectID, ToolName: "trivy", ScanType: "image", ScanScopeHash: "main", ScanScope: []byte(`{}`), RawReportHash: "clean", ScanMode: "full", ScanCompleteness: "complete", CoveredFindingKinds: []string{"sca"}})
 			require.NoError(t, err)
 			if manual {
 				_, err = s.stores.Reports.UpdateStatus(s.ctx, clean.ID, s.projectID, "completed", 0, nil)
@@ -50,7 +50,7 @@ func TestScopeClosureKeepsOtherScopesActive(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, usecase.VerifyPresent, result.Outcome)
 			} else {
-				fixed, err := s.stores.Findings.MarkAbsentFindingsFixed(s.ctx, s.projectID, "main", clean.ID, []string{"sca"})
+				fixed, err := s.stores.Findings.MarkAbsentFindingsFixed(s.ctx, s.projectID, "main", clean.ID)
 				require.NoError(t, err)
 				require.Empty(t, fixed)
 			}

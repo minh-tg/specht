@@ -630,7 +630,7 @@ type mockFindingRepo struct {
 	port.FindingStore
 	hasOccurrenceFn                   func(context.Context, string, string) (bool, error)
 	markFixedFn                       func(context.Context, string) (port.Finding, error)
-	markAbsentFixedFn                 func(context.Context, string, string, string, []string) ([]port.Finding, error)
+	markAbsentFixedFn                 func(context.Context, string, string, string) ([]port.Finding, error)
 	bulkCreateEventsFn                func(context.Context, []string, port.FindingEventInput) error
 	createOccurrenceFn                func(context.Context, port.OccurrenceInput) (port.Occurrence, error)
 	upsertDimensionFn                 func(context.Context, port.DimensionInput) error
@@ -980,11 +980,11 @@ func (m *mockFindingRepo) MarkFixed(ctx context.Context, findingID string) (port
 // MarkAbsentFindingsFixed defaults to a no-op: every full ingest whose
 // parser vouches for completeness reaches the auto-fix writer, and for
 // most tests nothing qualifies as fixed.
-func (m *mockFindingRepo) MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string, findingKinds []string) ([]port.Finding, error) {
+func (m *mockFindingRepo) MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
 	if m.markAbsentFixedFn == nil {
 		return nil, nil
 	}
-	return m.markAbsentFixedFn(ctx, projectID, scopeHash, reportID, findingKinds)
+	return m.markAbsentFixedFn(ctx, projectID, scopeHash, reportID)
 }
 
 // BulkCreateEvents defaults to a no-op, matching CreateEvent.
