@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/minh-tg/specht/internal/domain"
@@ -91,6 +92,9 @@ type trivySecret struct {
 	Match    string          `json:"Match"`
 	Code     json.RawMessage `json:"Code"`
 	Layer    *trivyLayer     `json:"Layer"`
+	// StartLine and EndLine are the 1-based lines of the match.
+	StartLine int `json:"StartLine"`
+	EndLine   int `json:"EndLine"`
 }
 
 type trivyMisconfig struct {
@@ -100,6 +104,15 @@ type trivyMisconfig struct {
 	Title    string      `json:"Title"`
 	Message  string      `json:"Message"`
 	Layer    *trivyLayer `json:"Layer"`
+	// CauseMetadata names the resource a check failed on (for Terraform the
+	// address, such as aws_s3_bucket.logs) and its line range.
+	CauseMetadata trivyCause `json:"CauseMetadata"`
+}
+
+type trivyCause struct {
+	Resource  string `json:"Resource"`
+	StartLine int    `json:"StartLine"`
+	EndLine   int    `json:"EndLine"`
 }
 
 // Finding kind constants this adapter emits. Trivy emits multiple kinds from
@@ -132,7 +145,7 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 		},
 		Version:               "2",
 		ContractVersion:       1,
-		FingerprintVersion:    1,
+		FingerprintVersion:    fingerprintVersion,
 		FindingKinds:          []scanner.FindingKind{kindSCA, kindSecret, kindIaC},
 		ScanTypes:             []domain.ScanType{domain.ScanTypeImage, domain.ScanTypeIaC, domain.ScanTypeFilesystem},
 		ProvidesPackages:      true,
@@ -234,7 +247,7 @@ func decode(data []byte) (trivyReport, error) {
 func convert(budget *parseutil.Budget, report trivyReport) (*domain.NormalizedReport, error) {
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
-		FingerprintVersion: 1,
+		FingerprintVersion: fingerprintVersion,
 		// Trivy scans its whole target (every result class covers the
 		// target it ran against), so absence in a rescan is meaningful:
 		// VerifyFix can treat newer complete trivy reports as proof a
@@ -502,16 +515,19 @@ func addSecrets(budget *parseutil.Budget, nr *domain.NormalizedReport, result tr
 		if err := budget.Add(1); err != nil {
 			return err
 		}
-		fp := "secret:" + s.RuleID + ":" + result.Target
+		start, end := lineRange(s.StartLine, s.EndLine)
+		dims := []domain.Dimension{{Key: domain.DimRuleID, Value: s.RuleID}}
+		if start > 0 {
+			dims = append(dims, domain.Dimension{Key: domain.DimLine, Value: strconv.Itoa(start)})
+		}
 		nr.Findings = append(nr.Findings, parseutil.HardenFinding(domain.NormalizedFinding{
-			Fingerprint: fp,
-			FindingKind: kindSecret,
-			Title:       s.Title,
-			Severity:    normalizeSeverity(s.Severity),
-			Location:    cleanTarget,
-			Dimensions: []domain.Dimension{
-				{Key: domain.DimRuleID, Value: s.RuleID},
-			},
+			Fingerprint:  secretFingerprint(s.RuleID, cleanTarget, start),
+			FindingKind:  kindSecret,
+			Title:        s.Title,
+			Severity:     normalizeSeverity(s.Severity),
+			Location:     lineLocation(cleanTarget, start),
+			CodeLocation: codeLocation(cleanTarget, start, end),
+			Dimensions:   dims,
 			Extensions: map[string]any{
 				"category": s.Category,
 			},
@@ -533,16 +549,21 @@ func addMisconfigs(budget *parseutil.Budget, nr *domain.NormalizedReport, result
 		if ruleID == "" {
 			ruleID = m.ID
 		}
-		fp := "iac:" + ruleID + ":" + result.Target
+		resource := m.CauseMetadata.Resource
+		start, end := lineRange(m.CauseMetadata.StartLine, m.CauseMetadata.EndLine)
+		dims := []domain.Dimension{{Key: domain.DimRuleID, Value: ruleID}}
+		if resource != "" {
+			dims = append(dims, domain.Dimension{Key: domain.DimResource, Value: resource})
+		}
 		nr.Findings = append(nr.Findings, parseutil.HardenFinding(domain.NormalizedFinding{
-			Fingerprint: fp,
-			FindingKind: kindIaC,
-			Title:       m.Title,
-			Severity:    normalizeSeverity(m.Severity),
-			Location:    cleanTarget,
-			Dimensions: []domain.Dimension{
-				{Key: domain.DimRuleID, Value: ruleID},
-			},
+			Fingerprint:  misconfigFingerprint(ruleID, resource, cleanTarget, start),
+			FindingKind:  kindIaC,
+			Title:        m.Title,
+			Severity:     normalizeSeverity(m.Severity),
+			Location:     lineLocation(cleanTarget, start),
+			Resource:     resource,
+			CodeLocation: codeLocation(cleanTarget, start, end),
+			Dimensions:   dims,
 			Extensions: map[string]any{
 				"message":      m.Message,
 				"severity_raw": m.Severity,
@@ -550,6 +571,58 @@ func addMisconfigs(budget *parseutil.Budget, nr *domain.NormalizedReport, result
 		}))
 	}
 	return nil
+}
+
+// fingerprintVersion is the version of this scanner's identity formula.
+// Version 2 tells apart two secrets of one rule in one file and two resources
+// that fail one check in one file, and keys both on the cleaned path. Version
+// 1 merged each pair into one finding.
+const fingerprintVersion = 2
+
+// secretFingerprint is the rule, the file and the line of the match. Trivy
+// masks the credential in its own output, so the line is the only thing that
+// tells two secrets of one rule in one file apart.
+func secretFingerprint(ruleID, file string, line int) string {
+	fp := "secret:" + ruleID + ":" + file
+	if line > 0 {
+		fp += ":" + strconv.Itoa(line)
+	}
+	return fp
+}
+
+// misconfigFingerprint is the rule, the resource and the file, the IaC
+// identity Checkov findings use, so a finding stays put when its resource
+// moves within the file. A check that names no resource (a Dockerfile
+// instruction, say) falls back to the line it failed on.
+func misconfigFingerprint(ruleID, resource, file string, line int) string {
+	fp := "iac:" + ruleID + ":" + resource + ":" + file
+	if resource == "" && line > 0 {
+		fp += ":" + strconv.Itoa(line)
+	}
+	return fp
+}
+
+func lineRange(start, end int) (int, int) {
+	start = parseutil.SafeLine(start)
+	end = parseutil.SafeLine(end)
+	if end < start {
+		end = start
+	}
+	return start, end
+}
+
+func lineLocation(file string, line int) string {
+	if line <= 0 {
+		return file
+	}
+	return file + ":" + strconv.Itoa(line)
+}
+
+func codeLocation(file string, start, end int) *domain.CodeLocation {
+	if start <= 0 || file == "unknown" {
+		return nil
+	}
+	return &domain.CodeLocation{File: file, StartLine: start, EndLine: end}
 }
 
 // trivyCoveredKinds returns the covered kinds in a stable order.
