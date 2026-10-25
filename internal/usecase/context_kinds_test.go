@@ -39,6 +39,22 @@ func TestResolveArtifact_StoresTypesTheCheckAccepts(t *testing.T) {
 	}
 }
 
+func TestResolveTarget_StoresKindsTheCheckAccepts(t *testing.T) {
+	var got string
+	tr := &mockTargetRepo{}
+	tr.upsertFn = func(ctx context.Context, projectID, name, kind, locator, owner string) (port.Target, error) {
+		got = kind
+		return port.Target{ID: "t1"}, nil
+	}
+	uc := New(Deps{Stores: &port.Stores{Targets: tr}})
+	nr := &domain.NormalizedReport{ScanType: domain.ScanTypeIaC, Target: &domain.TargetInfo{Identifier: "main.tf", Kind: "iac"}}
+	id, identifier := uc.resolveTarget(context.Background(), makeProject(true), IngestReportInput{}, nr)
+	assert.Equal(t, "t1", id)
+	assert.Equal(t, "main.tf", identifier)
+	assert.Equal(t, "iac_stack", got)
+	assert.Equal(t, "iac", nr.Target.Kind, "the parser kind feeds the scope hash and stays untouched")
+}
+
 func TestResolveArtifact_SkipsTypesOutsideTheVocabulary(t *testing.T) {
 	ar := &mockArtifactRepo{} // an Upsert call returns an error and an empty id
 	uc := New(Deps{Stores: &port.Stores{Artifacts: ar}})

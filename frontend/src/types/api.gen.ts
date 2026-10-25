@@ -3308,8 +3308,8 @@ export interface components {
       /** Format: uuid */
       project_id: string;
       name: string;
-      /** @example container-image */
-      kind: string;
+      /** @enum {string} */
+      kind: "repo" | "service" | "container_image" | "filesystem" | "iac_stack" | "package";
       locator?: string;
       /** Format: date-time */
       created_at: string;

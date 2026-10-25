@@ -518,10 +518,9 @@ func (u *Usecases) resolveTarget(ctx context.Context, project port.Project, inpu
 		return "", ""
 	}
 	identifier = nr.Target.Identifier
-	kind := nr.Target.Kind
-	if kind == "" {
-		kind = string(nr.ScanType)
-	}
+	// Only the stored kind is normalised. nr.Target.Kind stays as the parser
+	// wrote it, because the scan scope hash reads it.
+	kind := domain.NormalizeTargetKind(nr.Target.Kind, nr.ScanType)
 	t, err := u.deps.Stores.Targets.Upsert(ctx, project.ID, identifier, kind, identifier, input.Owner)
 	if err != nil {
 		slog.Warn("upsert target failed", "project", project.ID, "target", identifier, "error", err)

@@ -25,6 +25,31 @@ func TestNormalizeArtifactType(t *testing.T) {
 	}
 }
 
+func TestNormalizeTargetKind_StaysInsideTheCheckVocabulary(t *testing.T) {
+	allowed := []string{"repo", "service", "container_image", "filesystem", "iac_stack", "package"}
+	for _, tc := range []struct {
+		kind     string
+		scanType ScanType
+		want     string
+	}{
+		{"container_image", ScanTypeImage, "container_image"},
+		{"repository", ScanTypeRepository, "repo"},
+		{"cyclonedx", ScanTypeSBOM, "package"},
+		{"vm", ScanTypeImage, "filesystem"},
+		{"iac", ScanTypeIaC, "iac_stack"},
+		{"terraform", ScanTypeIaC, "iac_stack"},
+		{"", ScanTypeImage, "container_image"},
+		{"", ScanTypeLockfile, "package"},
+		{"", ScanTypeDAST, "service"},
+		{"", ScanTypeFilesystem, "filesystem"},
+		{"something-new", "", "filesystem"},
+	} {
+		got := NormalizeTargetKind(tc.kind, tc.scanType)
+		assert.Equal(t, tc.want, got, "%q/%q", tc.kind, tc.scanType)
+		assert.True(t, slices.Contains(allowed, got), got)
+	}
+}
+
 func TestArtifactTypeForScan_StaysInsideTheCheckVocabulary(t *testing.T) {
 	for _, st := range []ScanType{ScanTypeImage, ScanTypeFilesystem, ScanTypeRepository, ScanTypeIaC, ScanTypeSBOM, ScanTypeLockfile} {
 		got := ArtifactTypeForScan(st)
