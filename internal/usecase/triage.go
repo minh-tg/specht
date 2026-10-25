@@ -331,6 +331,10 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 	if err := validateBulkTriage(input); err != nil {
 		return nil, err
 	}
+	// The lookup returns one row per distinct id, so a repeated id (or the
+	// same UUID in another case) must collapse before the count check and
+	// before it inflates the event's count.
+	input.FindingIDs = distinctUUIDs(input.FindingIDs)
 
 	findings, err := u.deps.Stores.Findings.ListByIDs(ctx, input.FindingIDs)
 	if err != nil {
@@ -382,6 +386,22 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 		}
 	}
 	return results, nil
+}
+
+// distinctUUIDs returns ids in canonical form, first occurrence kept, in
+// order. The caller has already checked that every id parses.
+func distinctUUIDs(ids []string) []string {
+	seen := make(map[string]bool, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		canonical := uuid.MustParse(id).String()
+		if seen[canonical] {
+			continue
+		}
+		seen[canonical] = true
+		out = append(out, canonical)
+	}
+	return out
 }
 
 // validateBulkTriage checks the analysis state and finding-ID list before
