@@ -132,9 +132,9 @@ func vulnerabilityFinding(v cdxVulnerability, c cdxComponent) domain.NormalizedF
 		{Key: "installed_version", Value: c.Version},
 		{Key: "purl", Value: purl},
 	}
-	if fix != nil {
-		dims = append(dims, domain.Dimension{Key: "fixed_version", Value: fix.Summary})
-	}
+	// The recommendation is free text ("Upgrade lodash to 4.17.21 or later"),
+	// so it is the fix summary and never the fixed_version dimension: patch
+	// proposals and upgrade suggestions take that dimension as a version.
 
 	ext := map[string]any{
 		"package": map[string]any{"name": c.Name, "version": c.Version, "type": c.Type},
