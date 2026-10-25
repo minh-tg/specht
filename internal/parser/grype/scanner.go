@@ -11,7 +11,10 @@ import (
 )
 
 type grypeDoc struct {
-	Matches []grypeMatch `json:"matches"`
+	Matches    []grypeMatch `json:"matches"`
+	Descriptor struct {
+		Configuration json.RawMessage `json:"configuration"`
+	} `json:"descriptor"`
 }
 
 type grypeMatch struct {
@@ -176,6 +179,13 @@ func convert(budget *parseutil.Budget, doc grypeDoc) (*domain.NormalizedReport, 
 		Completeness:       domain.CompletenessUnknown,
 		ScanType:           domain.ScanTypeFilesystem,
 		Findings:           nil,
+	}
+
+	if unfiltered(doc.Descriptor.Configuration) {
+		// The run's own configuration shows nothing hid a match, so a
+		// vulnerability absent from it was looked for and is gone.
+		nr.Completeness = domain.CompletenessComplete
+		nr.CoveredFindingKinds = []string{"sca"}
 	}
 
 	if len(doc.Matches) > 0 && len(doc.Matches[0].Artifact.Locations) > 0 {

@@ -215,3 +215,51 @@ func TestSARIFReportWithoutRuleListClosesNothing(t *testing.T) {
 	h.ingest(slug, "sarif", "bbbb0001", sarifDoc(t, "Gosec", nil, nil, nil, nil))
 	require.Equal(t, "open", h.onlyState(slug))
 }
+
+// grypeDoc builds a Grype report from an SBOM, whose matches carry no file
+// location, so the scan scope stays the same with and without matches.
+func grypeDoc(t *testing.T, vulnerable bool, configuration map[string]any) []byte {
+	t.Helper()
+	matches := []map[string]any{}
+	if vulnerable {
+		matches = append(matches, map[string]any{
+			"vulnerability": map[string]any{"id": "CVE-2031-1000", "severity": "High", "namespace": "nvd"},
+			"artifact": map[string]any{
+				"name": "lodash", "version": "4.17.20", "type": "npm", "purl": "pkg:npm/lodash@4.17.20",
+			},
+			"matchDetails": []map[string]any{{"type": "exact-direct-match"}},
+		})
+	}
+	descriptor := map[string]any{"name": "grype", "version": "0.120.1"}
+	if configuration != nil {
+		descriptor["configuration"] = configuration
+	}
+	raw, err := json.Marshal(map[string]any{"matches": matches, "descriptor": descriptor})
+	require.NoError(t, err)
+	return raw
+}
+
+func TestGrypeClosesOnlyWhenNoFilterHidMatches(t *testing.T) {
+	h, cleanup := newEvidenceHarness(t)
+	defer cleanup()
+	open := map[string]any{"only-fixed": false, "only-notfixed": false, "ignore": []any{}, "exclude": []any{}}
+	cases := []struct {
+		name  string
+		clean map[string]any
+		want  string
+	}{
+		{"unfiltered", open, "fixed"},
+		{"only-fixed set", map[string]any{"only-fixed": true, "only-notfixed": false}, "open"},
+		{"user ignore rule", map[string]any{"only-fixed": false, "only-notfixed": false, "ignore": []any{map[string]any{"vulnerability": "CVE-1"}}}, "open"},
+		{"no configuration recorded", nil, "open"},
+	}
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			slug := h.project()
+			h.ingest(slug, "grype", fmt.Sprintf("aaaa%04d", i), grypeDoc(t, true, open))
+			require.Equal(t, "open", h.onlyState(slug))
+			h.ingest(slug, "grype", fmt.Sprintf("bbbb%04d", i), grypeDoc(t, false, tc.clean))
+			require.Equal(t, tc.want, h.onlyState(slug))
+		})
+	}
+}
