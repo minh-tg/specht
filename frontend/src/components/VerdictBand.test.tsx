@@ -161,9 +161,10 @@ describe("VerdictBand", () => {
     expect(screen.getByText("A project manager or admin can upload a report or connect CI."))
       .toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Set up CI" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "CI setup" })).not.toBeInTheDocument();
   });
 
-  it("shows the upload hint without admin links for project managers", () => {
+  it("gives a project manager who is not a global admin the upload and CI setup links", () => {
     renderBand({
       gate: { threshold_breached: false, blocking_count: 0, blocked_by: [] },
       stats: { report_count: 0, total_findings: 0, by_severity: [] },
@@ -176,8 +177,8 @@ describe("VerdictBand", () => {
       "href",
       "/alpha/reports/upload",
     );
-    expect(screen.queryByRole("link", { name: "Set up CI" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "CI setup" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Set up CI" })).toHaveAttribute("href", "/alpha/setup");
+    expect(screen.getByRole("link", { name: "CI setup" })).toHaveAttribute("href", "/alpha/setup");
   });
 
   it("adds the setup links for admins", () => {

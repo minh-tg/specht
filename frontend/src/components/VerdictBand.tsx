@@ -1,4 +1,4 @@
-import { POLL_MS, useGateStatus, useMe, useProjectRole, useProjectStats } from "@/api/hooks";
+import { POLL_MS, useGateStatus, useProject, useProjectRole, useProjectStats } from "@/api/hooks";
 import { InfoTip } from "@/components/InfoTip";
 import { INLINE_LINK } from "@/components/inlineLink";
 import { ReportFreshness } from "@/components/ReportFreshness";
@@ -43,13 +43,14 @@ function verdictSentence(verdict: Verdict, blockers: number): string {
 export function VerdictBand({ slug }: { readonly slug: string; }) {
   const gateQuery = useGateStatus(slug, undefined, { refetchInterval: POLL_MS });
   const statsQuery = useProjectStats(slug, { refetchInterval: POLL_MS });
-  const { data: me } = useMe();
+  const { data: project } = useProject(slug);
   const { canUploadReports, isLoading: roleLoading } = useProjectRole(slug);
 
   const gate = gateQuery.data;
   const stats = statsQuery.data;
   const verdict = projectVerdict({ gate, stats });
-  const isAdmin = me?.role === "admin";
+  // The setup page and its API keys are for whoever the server lets manage CI on this project.
+  const canManageCI = project?.permissions?.manage_ci === true;
   const blockers = blockerCount(gate);
   const waived = gate?.waived_count ?? 0;
   const policy = gate?.policy;
@@ -148,7 +149,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
         {waived > 0 && (
           <span className="text-muted-foreground text-body tabular-nums">· {waived} waived</span>
         )}
-        {isAdmin && (
+        {canManageCI && (
           <Link
             to={`/${slug}/setup`}
             className="text-muted-foreground hover:text-foreground ml-auto text-meta"
@@ -183,7 +184,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
           >
             Upload a report
           </Link>
-          {isAdmin && (
+          {canManageCI && (
             <>
               {" · "}
               <Link
