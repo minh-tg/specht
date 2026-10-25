@@ -2,6 +2,7 @@ package sbom_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 
@@ -176,4 +177,69 @@ func TestCVSSAllIsEmptyWithoutVectors(t *testing.T) {
 	"vulnerabilities":[{"id":"CVE-2024-0002","affects":[{"ref":"c1"}],"ratings":[{"severity":"high","score":7.1}]}]}`)
 	require.Len(t, nr.Findings, 1)
 	assert.Empty(t, nr.Findings[0].CVSSAll)
+}
+
+// qualified rewrites the component purls of the Grype fixture the way Syft and
+// Trivy write them: a package-id, build qualifiers and a subpath.
+func qualified(t *testing.T, suffix string) []byte {
+	t.Helper()
+	data, err := os.ReadFile("testdata/grype-cyclonedx.json")
+	require.NoError(t, err)
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal(data, &doc))
+	for _, c := range doc["components"].([]any) {
+		component := c.(map[string]any)
+		component["purl"] = component["purl"].(string) + suffix
+	}
+	out, err := json.Marshal(doc)
+	require.NoError(t, err)
+	return out
+}
+
+func TestVulnerabilityIdentityIgnoresPURLQualifiersAndSubpath(t *testing.T) {
+	plain, err := os.ReadFile("testdata/grype-cyclonedx.json")
+	require.NoError(t, err)
+	want, err := sbom.NewScanner().Parse(context.Background(), plain)
+	require.NoError(t, err)
+	require.Len(t, want.Findings, 3)
+
+	for name, suffix := range map[string]string{
+		"package-id":         "?package-id=0123456789abcdef",
+		"jar type":           "?type=jar",
+		"arch and distro":    "?arch=amd64&distro=debian-12",
+		"classifier":         "?classifier=sources&type=jar",
+		"subpath":            "#src/main",
+		"qualifiers+subpath": "?arch=arm64#pkg",
+	} {
+		t.Run(name, func(t *testing.T) {
+			got, err := sbom.NewScanner().Parse(context.Background(), qualified(t, suffix))
+			require.NoError(t, err)
+			require.Len(t, got.Findings, len(want.Findings))
+			for i, f := range got.Findings {
+				assert.Equal(t, want.Findings[i].Fingerprint, f.Fingerprint,
+					"the same package exported with %s is the same finding", suffix)
+				assert.Equal(t, want.Findings[i].Dimensions, f.Dimensions)
+				assert.Equal(t, want.Findings[i].Extensions["purl"], f.Extensions["purl"])
+			}
+			for i, p := range got.Packages {
+				assert.Equal(t, want.Packages[i].PURL, p.PURL, "the inventory and the findings share one purl")
+			}
+		})
+	}
+}
+
+func TestAReferenceThatIsAPURLIsNormalizedToo(t *testing.T) {
+	a := parseDoc(t, `{"bomFormat":"CycloneDX","components":[],
+		"vulnerabilities":[{"id":"CVE-9","ratings":[{"severity":"high"}],"affects":[{"ref":"pkg:maven/org.acme/lib@1.0?type=jar&classifier=sources"}]}]}`)
+	b := parseDoc(t, `{"bomFormat":"CycloneDX","components":[],
+		"vulnerabilities":[{"id":"CVE-9","ratings":[{"severity":"high"}],"affects":[{"ref":"pkg:maven/org.acme/lib@1.0"}]}]}`)
+	require.Len(t, a.Findings, 1)
+	assert.Equal(t, "CVE-9:pkg:maven/org.acme/lib@1.0", a.Findings[0].Fingerprint)
+	assert.Equal(t, b.Findings[0].Fingerprint, a.Findings[0].Fingerprint)
+}
+
+func TestTheScannerSaysItsIdentitiesChanged(t *testing.T) {
+	assert.EqualValues(t, 2, sbom.NewScanner().Descriptor().FingerprintVersion)
+	assert.EqualValues(t, 2, parseDoc(t, `{"bomFormat":"CycloneDX","components":[]}`).FingerprintVersion)
+	assert.EqualValues(t, 2, parseDoc(t, `{"spdxVersion":"SPDX-2.3","packages":[]}`).FingerprintVersion)
 }
