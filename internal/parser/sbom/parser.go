@@ -30,6 +30,12 @@ import (
 	"github.com/minh-tg/specht/internal/scanner"
 )
 
+// fingerprintVersion is the version of this scanner's identity formula, which
+// applies to the findings of a CycloneDX vulnerabilities section. Version 2
+// drops the qualifiers and subpath of the component purl from the identity;
+// version 1 kept them as written.
+const fingerprintVersion = 2
+
 // Scanner adapts SBOM documents to the normalized domain model.
 type Scanner struct{}
 
@@ -57,7 +63,7 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 		},
 		Version:               "1",
 		ContractVersion:       1,
-		FingerprintVersion:    1,
+		FingerprintVersion:    fingerprintVersion,
 		FindingKinds:          nil,
 		ScanTypes:             []domain.ScanType{domain.ScanTypeSBOM},
 		ProvidesPackages:      true,
@@ -139,7 +145,7 @@ func parseCycloneDX(budget *parseutil.Budget, data []byte) (*domain.NormalizedRe
 	}
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
-		FingerprintVersion: 1,
+		FingerprintVersion: fingerprintVersion,
 		Completeness:       domain.CompletenessComplete,
 		ScanType:           domain.ScanTypeSBOM,
 		ScanScope:          &domain.ScanScope{},
@@ -214,7 +220,7 @@ func parseSPDX(budget *parseutil.Budget, data []byte) (*domain.NormalizedReport,
 	}
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
-		FingerprintVersion: 1,
+		FingerprintVersion: fingerprintVersion,
 		Completeness:       domain.CompletenessComplete,
 		ScanType:           domain.ScanTypeSBOM,
 		ScanScope: &domain.ScanScope{Ext: map[string]string{

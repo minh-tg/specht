@@ -73,6 +73,7 @@ const maxAdvisories = 10
 // findings, one for each vulnerability and affected component. The identity is
 // the vulnerability id and the package URL, the same as every other SCA
 // scanner, so the same flaw reported by Grype or Trivy is the same finding.
+// The package URL is the one the inventory stores (see vulnerabilityFinding).
 // It returns how many affected references named no known component.
 func vulnerabilityFindings(budget *parseutil.Budget, vulns []cdxVulnerability, components []cdxComponent) (findings []domain.NormalizedFinding, unresolved int, err error) {
 	byRef := map[string]cdxComponent{}
@@ -104,8 +105,21 @@ func vulnerabilityFindings(budget *parseutil.Budget, vulns []cdxVulnerability, c
 	return findings, unresolved, nil
 }
 
+// vulnerabilityFinding builds the finding of one vulnerability in one component.
+//
+// The purl in the identity has its qualifiers and subpath dropped
+// (domain.NormalizePURL), the same form the component inventory is stored in
+// and the same form every other SCA adapter keys a finding on. A qualifier is
+// never part of the identity, whatever the ecosystem. Syft adds a package-id
+// that differs between two exports of one image; arch and distro (OS packages)
+// and type or classifier (Maven) describe how a package was built or packaged,
+// not which package it is, and the vulnerability applies to the name and
+// version. Keeping them would split one finding into several between exports,
+// and from the same flaw reported by Trivy or Grype, which both drop them.
+// What this gives up: one package at one version built for two distributions
+// is one finding, but distribution packages carry the release in their version.
 func vulnerabilityFinding(v cdxVulnerability, c cdxComponent) domain.NormalizedFinding {
-	purl := c.PURL
+	purl := domain.NormalizePURL(c.PURL)
 	if purl == "" {
 		// Without a package URL two components would share an identity. A
 		// generic one built from name and version keeps them apart.

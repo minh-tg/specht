@@ -73,6 +73,7 @@ Finding identity is partitioned into two distinct layers:
   3. Otherwise, use the scanner's primary identifier (e.g., `GHSA-...`).
 * **PURL Normalization**:
   PURL qualifiers (e.g. repository URLs, architecture) and subpaths are stripped. Name and version are lowercased where ecosystem-appropriate.
+  No qualifier is part of the identity, in any ecosystem. Syft's `package-id`, `arch` and `distro` of an OS package, and `type` and `classifier` of a Maven artifact describe how a package was built or packaged, not which package it is, and they change between exports. Every adapter, including the CycloneDX vulnerabilities reader, drops them so the same flaw in the same package is one finding across scanners and across exports.
 * **Example**:
   `sca:CVE-2024-21538:pkg:npm/lodash@4.17.20`
 
