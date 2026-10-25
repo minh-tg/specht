@@ -1,7 +1,11 @@
 package cli
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -35,6 +39,98 @@ func TestFindingsListEmpty(t *testing.T) {
 	}
 	if got := out.String(); !strings.Contains(got, "No findings found.") {
 		t.Fatalf("unexpected output: %q", got)
+	}
+}
+
+// pagedFindingsHandler serves total findings the way the server does: 20 per
+// page without a limit, at most 500 per page, and an offset to skip.
+func pagedFindingsHandler(t *testing.T, total int, requests *[]string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		*requests = append(*requests, r.URL.RawQuery)
+		limit, offset := 20, 0
+		if v := r.URL.Query().Get("limit"); v != "" {
+			limit, _ = strconv.Atoi(v)
+		}
+		limit = min(limit, 500)
+		if v := r.URL.Query().Get("offset"); v != "" {
+			offset, _ = strconv.Atoi(v)
+		}
+		page := []map[string]string{}
+		for i := offset; i < min(offset+limit, total); i++ {
+			page = append(page, map[string]string{"id": fmt.Sprintf("f%d", i)})
+		}
+		if err := json.NewEncoder(w).Encode(page); err != nil {
+			t.Errorf("write findings page: %v", err)
+		}
+	}
+}
+
+func listedFindingIDs(t *testing.T, raw string) []string {
+	t.Helper()
+	var rows []struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(raw), &rows); err != nil {
+		t.Fatalf("decode output: %v: %q", err, raw)
+	}
+	ids := make([]string, len(rows))
+	for i, row := range rows {
+		ids[i] = row.ID
+	}
+	return ids
+}
+
+func TestFindingsListPagesThroughEveryFinding(t *testing.T) {
+	var requests []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/projects/demo/findings", pagedFindingsHandler(t, 1203, &requests))
+	d, out, _ := testDeps(t, mux)
+	if err := runCmd(t, d, "findings", "list", "--project", "demo", "--format", "json"); err != nil {
+		t.Fatal(err)
+	}
+	ids := listedFindingIDs(t, out.String())
+	if len(ids) != 1203 {
+		t.Fatalf("want 1203 findings, got %d (requests %v)", len(ids), requests)
+	}
+	for i, id := range ids {
+		if id != fmt.Sprintf("f%d", i) {
+			t.Fatalf("row %d is %s: pages overlap or skip", i, id)
+		}
+	}
+	if len(requests) != 3 {
+		t.Fatalf("want 3 page requests, got %v", requests)
+	}
+}
+
+func TestFindingsListLimitCapsTheTotal(t *testing.T) {
+	var requests []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/projects/demo/findings", pagedFindingsHandler(t, 1203, &requests))
+	d, out, _ := testDeps(t, mux)
+	if err := runCmd(t, d, "findings", "list", "--project", "demo", "--format", "json", "--limit", "600"); err != nil {
+		t.Fatal(err)
+	}
+	if ids := listedFindingIDs(t, out.String()); len(ids) != 600 || ids[599] != "f599" {
+		t.Fatalf("want f0..f599, got %d rows (requests %v)", len(ids), requests)
+	}
+	if want := []string{"limit=500", "limit=100&offset=500"}; !slices.Equal(requests, want) {
+		t.Fatalf("want requests %v, got %v", want, requests)
+	}
+}
+
+func TestFindingsListExactPageEndsOnEmptyPage(t *testing.T) {
+	var requests []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/projects/demo/findings", pagedFindingsHandler(t, 500, &requests))
+	d, out, _ := testDeps(t, mux)
+	if err := runCmd(t, d, "findings", "list", "--project", "demo", "--format", "json"); err != nil {
+		t.Fatal(err)
+	}
+	if ids := listedFindingIDs(t, out.String()); len(ids) != 500 {
+		t.Fatalf("want 500 findings, got %d", len(ids))
+	}
+	if len(requests) != 2 {
+		t.Fatalf("want a full page then an empty one, got %v", requests)
 	}
 }
 

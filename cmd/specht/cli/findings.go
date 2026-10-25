@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/minh-tg/specht/internal/client"
 	"github.com/spf13/cobra"
 )
 
@@ -48,7 +49,7 @@ func newFindingsListCmd(d Deps, s *settings) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			findings, err := cl.ListFindings(project, severities, statuses, int32(limit), 0)
+			findings, err := listAllFindings(cl, project, severities, statuses, limit)
 			if err != nil {
 				return err
 			}
@@ -73,8 +74,36 @@ func newFindingsListCmd(d Deps, s *settings) *cobra.Command {
 	cmd.Flags().StringVar(&project, "project", "", "project slug")
 	cmd.Flags().StringVar(&severity, "severity", "", "filter by severity")
 	cmd.Flags().StringVar(&status, "status", "", "filter by status")
-	cmd.Flags().StringVar(&limitStr, "limit", "", "limit results")
+	cmd.Flags().StringVar(&limitStr, "limit", "", "maximum findings to return (default: all, fetched 500 per request)")
 	return cmd
+}
+
+// findingsPageSize is the largest page the server returns for one request.
+const findingsPageSize = 500
+
+// listAllFindings requests pages of findingsPageSize until a short page, so
+// the server's default page of 20 and its 500-row ceiling do not truncate the
+// result. A positive limit caps the total; 0 means every finding.
+func listAllFindings(cl *client.Client, project string, severities, statuses []string, limit int) ([]client.Finding, error) {
+	all := []client.Finding{}
+	for {
+		size := findingsPageSize
+		if limit > 0 {
+			size = min(size, limit-len(all))
+		}
+		// The server's offset is an int32, so paging stops there too.
+		if size <= 0 || len(all) > math.MaxInt32-findingsPageSize {
+			return all, nil
+		}
+		page, err := cl.ListFindings(project, severities, statuses, int32(size), int32(len(all)))
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, page...)
+		if len(page) < size {
+			return all, nil
+		}
+	}
 }
 
 func newFindingsGetCmd(d Deps, s *settings) *cobra.Command {
