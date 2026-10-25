@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/usecase"
 )
 
@@ -76,6 +77,8 @@ func (h *Handler) ListEvidence(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusNotFound, "not_found", assessMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
 			respondAccessDenied(w, r, "finding")
+		case errors.Is(err, usecase.ErrInvalidFindingID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		default:
 			slog.Error("list evidence", "error", err)
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not list evidence")
@@ -228,11 +231,16 @@ func (h *Handler) GetSignoff(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.usecase.GetSignoff(r.Context(), findingID)
 	if err != nil {
-		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+		switch {
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
 			respondAccessDenied(w, r, "finding")
-		} else {
-			slog.Error("get signoff", "error", err)
+		case errors.Is(err, usecase.ErrInvalidFindingID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
+		case errors.Is(err, usecase.ErrFindingNotFound), errors.Is(err, port.ErrNotFound):
 			respondError(w, http.StatusNotFound, "not_found", "signoff not found")
+		default:
+			slog.Error("get signoff", "error", err)
+			respondError(w, http.StatusInternalServerError, "internal_error", "could not get signoff")
 		}
 		return
 	}

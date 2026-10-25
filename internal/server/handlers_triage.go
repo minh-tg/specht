@@ -955,6 +955,8 @@ func (h *Handler) ListFindingEvents(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusNotFound, "not_found", triageMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
 			respondAccessDenied(w, r, "finding")
+		case errors.Is(err, usecase.ErrInvalidFindingID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		default:
 			slog.Error("list finding events", "finding_id", id, "error", err)
 			respondError(w, http.StatusInternalServerError, "events_failed", "could not list finding events")
