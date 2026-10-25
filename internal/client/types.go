@@ -367,6 +367,7 @@ type ScannerDescriptor struct {
 	ScanTypes             []string        `json:"scan_types"`
 	ProvidesPackages      bool            `json:"provides_packages"`
 	SupportsAutoDetection bool            `json:"supports_auto_detection"`
+	SupportsAutoClose     bool            `json:"supports_auto_close"`
 	Formats               []ScannerFormat `json:"formats"`
 }
 

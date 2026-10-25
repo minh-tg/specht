@@ -1,18 +1,24 @@
 package usecase
 
+import "github.com/minh-tg/specht/internal/scanner"
+
 // ScannerDescriptorResponse is the API representation of one scanner
 // capability. It is capability discovery for compile-time plugins — never
 // runtime code loading.
 type ScannerDescriptorResponse struct {
 	Name string `json:"name"`
 	// DisplayName is what people call the tool; Name is the identifier to send.
-	DisplayName           string                  `json:"display_name"`
-	Version               string                  `json:"version"`
-	FindingKinds          []string                `json:"finding_kinds"`
-	ScanTypes             []string                `json:"scan_types"`
-	ProvidesPackages      bool                    `json:"provides_packages"`
-	SupportsAutoDetection bool                    `json:"supports_auto_detection"`
-	Formats               []ScannerFormatResponse `json:"formats"`
+	DisplayName           string   `json:"display_name"`
+	Version               string   `json:"version"`
+	FindingKinds          []string `json:"finding_kinds"`
+	ScanTypes             []string `json:"scan_types"`
+	ProvidesPackages      bool     `json:"provides_packages"`
+	SupportsAutoDetection bool     `json:"supports_auto_detection"`
+	// SupportsAutoClose is true when a report from this scanner can prove a
+	// finding is gone. False means findings it reports are never closed by a
+	// later scan that omits them.
+	SupportsAutoClose bool                    `json:"supports_auto_close"`
+	Formats           []ScannerFormatResponse `json:"formats"`
 }
 
 // ScannerFormatResponse describes one file a scanner reads and how to make it.
@@ -47,6 +53,10 @@ func (u *Usecases) ListScanners() []ScannerDescriptorResponse {
 				Name: f.Name, Extensions: f.Extensions, Command: f.Command, TestedWith: f.TestedWith, Note: f.Note,
 			}
 		}
+		autoClose := false
+		if sc, err := u.deps.Registry.Get(d.Name); err == nil {
+			autoClose = scanner.SupportsAutoClose(sc)
+		}
 		out[i] = ScannerDescriptorResponse{
 			Name:                  d.Name,
 			DisplayName:           d.ShownName(),
@@ -56,6 +66,7 @@ func (u *Usecases) ListScanners() []ScannerDescriptorResponse {
 			ScanTypes:             types,
 			ProvidesPackages:      d.ProvidesPackages,
 			SupportsAutoDetection: d.SupportsAutoDetection,
+			SupportsAutoClose:     autoClose,
 		}
 	}
 	return out

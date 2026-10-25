@@ -4028,7 +4028,7 @@ components:
 
     Scanner:
       type: object
-      required: [name, display_name, version, finding_kinds, scan_types, provides_packages, supports_auto_detection, formats]
+      required: [name, display_name, version, finding_kinds, scan_types, provides_packages, supports_auto_detection, supports_auto_close, formats]
       properties:
         name: { type: string, example: trivy, description: The identifier to send as `scanner`. }
         display_name: { type: string, example: Trivy, description: What people call the tool. }
@@ -4045,6 +4045,9 @@ components:
           items: { type: string, example: image }
         provides_packages: { type: boolean }
         supports_auto_detection: { type: boolean }
+        supports_auto_close:
+          type: boolean
+          description: True when a report from this scanner can prove a finding is gone, so a later full scan that omits the finding closes it. Whether one report does depends on its content (a rule list, passed checks, an unfiltered run). False means a finding it reports is never closed by a scan that omits it.
 
     ScannerFormat:
       type: object
@@ -4210,6 +4213,14 @@ components:
         introduced_by_report_id: { type: string, format: uuid }
         introduced_commit_sha: { type: string }
         context: { $ref: "#/components/schemas/FindingContext" }
+        scanner:
+          type: object
+          description: "Set on GET /findings/{id}: the scanner of the latest observation. Absent when that scanner is not registered."
+          required: [name, display_name, supports_auto_close]
+          properties:
+            name: { type: string, example: gitleaks }
+            display_name: { type: string, example: Gitleaks }
+            supports_auto_close: { type: boolean, description: "False when this scanner's report cannot prove a fix, so a later scan that omits the finding leaves it open." }
         raw_data_expired:
           type: boolean
           description: "Set on GET /findings/{id} and absent from list responses. True when the report of the finding's latest observation has had its raw payload cleared by the retention sweep."
