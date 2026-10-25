@@ -448,17 +448,17 @@ func TestQueryBatch_CacheHitsSkipQuerybatchNetwork(t *testing.T) {
 		BatchSize: 5, CacheTTL: time.Hour, Now: now,
 	})
 
-	queries := []Query{queryFor("b"), queryFor("a")} // order swapped second time
+	queries := []Query{queryFor("b"), queryFor("a")}
 	if _, err := c.QueryBatch(context.Background(), queries); err != nil {
 		t.Fatalf("first QueryBatch: %v", err)
 	}
 	if posts.Load() != 1 || gets.Load() != 1 {
 		t.Fatalf("after first call: posts=%d gets=%d, want 1 and 1", posts.Load(), gets.Load())
 	}
-	// Same content, different order, within TTL: querybatch cache hit, so no
-	// new POST. The full-record GET is NOT cached by querybatch and re-runs —
-	// that is correct (each poll refetches full records for freshness).
-	if _, err := c.QueryBatch(context.Background(), []Query{queryFor("a"), queryFor("b")}); err != nil {
+	// Same batch within TTL: querybatch cache hit, so no new POST. The
+	// full-record GET is not cached by querybatch and re-runs, so each poll
+	// refetches full records for freshness.
+	if _, err := c.QueryBatch(context.Background(), queries); err != nil {
 		t.Fatalf("second QueryBatch: %v", err)
 	}
 	if posts.Load() != 1 {
@@ -723,11 +723,55 @@ func TestOSVEcosystemMapping(t *testing.T) {
 	}
 }
 
-func TestQueryBatch_CacheKeyIgnoresQueryOrder(t *testing.T) {
+func TestQueryBatch_CacheKeyDependsOnQueryOrder(t *testing.T) {
 	a := cacheKey([]Query{queryFor("b"), queryFor("a")})
 	b := cacheKey([]Query{queryFor("a"), queryFor("b")})
-	if a != b {
-		t.Errorf("cache keys differ for reordered same-content batches: %s vs %s", a, b)
+	if a == b {
+		t.Errorf("reordered batches share cache key %s; cached results are positional", a)
+	}
+}
+
+func TestQueryBatch_ReorderedBatchKeepsResultsWithTheirQuery(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/querybatch" {
+			var req struct {
+				Queries []struct {
+					Package struct{ Name string } `json:"package"`
+				} `json:"queries"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Error(err)
+				return
+			}
+			results := make([]map[string]any, 0, len(req.Queries))
+			for _, q := range req.Queries {
+				results = append(results, map[string]any{"vulns": []map[string]string{{"id": "GHSA-" + q.Package.Name}}})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
+			return
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/vulns/")
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": id, "summary": id})
+	}))
+	defer srv.Close()
+
+	c := NewHTTPClient(HTTPClientConfig{
+		Endpoint:     srv.URL + "/querybatch",
+		VulnEndpoint: srv.URL + "/vulns/{id}",
+		BatchSize:    10,
+		CacheTTL:     time.Hour,
+		HTTP:         srv.Client(),
+	})
+	for _, order := range [][]string{{"b", "a"}, {"a", "b"}} {
+		got, err := c.QueryBatch(context.Background(), []Query{queryFor(order[0]), queryFor(order[1])})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, name := range order {
+			if id := got[i].Advisories[0].ID; id != "GHSA-"+name {
+				t.Errorf("order %v: result %d = %s, want GHSA-%s", order, i, id, name)
+			}
+		}
 	}
 }
 
