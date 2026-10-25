@@ -9,3 +9,12 @@ with two different keys of one rule (`generic-api-key`) on lines 2 and 3.
   flag, and the author, date and commit are replaced.
 
 `gitleaks.json` is an earlier capture used by the other tests.
+
+`gitleaks-two-secrets.sarif`, `gitleaks-history.sarif` and `gitleaks-redacted.sarif`
+are real Gitleaks 8.30.1 SARIF reports of a `.env` file with two GitHub tokens.
+
+- Commands: `gitleaks detect --source . --no-git --report-format sarif` (two secrets),
+  `gitleaks detect --source . --report-format sarif` over three commits (history, where
+  one token is in two commits at different lines) and `--no-git --redact` (redacted).
+- Changes: the tokens are replaced by placeholders, the rule list is cut to the one rule
+  that fired, and the commit ids, author, email and dates are replaced.

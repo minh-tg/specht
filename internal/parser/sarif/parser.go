@@ -23,6 +23,9 @@
 //     without dropping usable results.
 //   - Findings without any location are kept with an "(unknown)" file and
 //     no file/line dimensions rather than dropped.
+//   - A log whose runs are all Gitleaks belongs to the gitleaks adapter, which
+//     reads the secrets with a keyed identity; a Gitleaks run in a log that
+//     mixes tools is refused here instead of being read as SAST.
 //   - Every finding is SAST. SARIF carries no finding-kind field and the
 //     adapter does not guess: IaC and secret producers keep their native
 //     adapters (checkov, trivy) or a future dedicated SARIF-kind adapter.
@@ -88,9 +91,31 @@ func (s *Scanner) Recognize(data []byte) scanner.Recognition {
 	}
 	runs, _ := shape.List("runs")
 	if strings.HasPrefix(shape.String("version"), "2.1") && len(runs) > 0 {
+		if onlyGitleaks(data) {
+			return scanner.NotRecognized
+		}
 		return scanner.Definite
 	}
 	return scanner.Possible
+}
+
+// isGitleaks is true for the tool name Gitleaks writes into a SARIF log.
+func isGitleaks(tool string) bool { return strings.EqualFold(strings.TrimSpace(tool), "gitleaks") }
+
+// onlyGitleaks is true when every run of the log is Gitleaks'. Its results are
+// credentials, which the gitleaks adapter identifies by a keyed digest. Read
+// here they would be SAST findings that collapse into one per rule and file.
+func onlyGitleaks(data []byte) bool {
+	var log sarifLog
+	if err := json.Unmarshal(data, &log); err != nil || len(log.Runs) == 0 {
+		return false
+	}
+	for _, run := range log.Runs {
+		if !isGitleaks(run.Tool.Driver.Name) {
+			return false
+		}
+	}
+	return true
 }
 
 // findingArrays names the arrays of a document that carry findings and
@@ -126,6 +151,13 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 		cause := fmt.Errorf("unsupported version %q (want 2.1.x)", version)
 		return nil, scanner.Malformed("sarif", scanner.Detail(
 			fmt.Sprintf("the file declares SARIF version %q; this reader accepts 2.1.x", version), cause))
+	}
+	for _, run := range log.Runs {
+		if isGitleaks(run.Tool.Driver.Name) {
+			cause := fmt.Errorf("a Gitleaks run in a log with other tools")
+			return nil, scanner.Malformed("sarif", scanner.Detail(
+				"the file holds a Gitleaks run next to other tools; its results are secrets, so upload the Gitleaks report on its own as gitleaks", cause))
+		}
 	}
 	return parseutil.Hardened(convert(budget, log))
 }

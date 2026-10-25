@@ -117,7 +117,7 @@ The table is generated from the parsers, so it lists exactly what they read.
 | **Grype** | JSON (`.json`) | `grype dir:. -o json > grype.json` | Grype 0.120.1 |
 | **SBOM (CycloneDX or SPDX)** | CycloneDX JSON (`.json`)<br>SPDX JSON (`.json`) | `syft dir:. -o cyclonedx-json=sbom.json`<br>`syft dir:. -o spdx-json=sbom.json` | Syft 1.54.0, Trivy 0.74.0, Grype 0.120.1<br>Syft 1.54.0 |
 | **SARIF (any tool)** | SARIF 2.1.0 (`.sarif`, `.json`) | `gosec -fmt sarif -out gosec.sarif ./...` | CodeQL 2.27.0, Gosec 2.29.0, Hadolint 2.14.0, Trivy 0.74.0 |
-| **Gitleaks** | JSON (`.json`) | `gitleaks detect --report-format json --report-path gitleaks.json` | Gitleaks 8.30.1 |
+| **Gitleaks** | JSON (`.json`)<br>SARIF (`.sarif`, `.json`) | `gitleaks detect --report-format json --report-path gitleaks.json`<br>`gitleaks detect --report-format sarif --report-path gitleaks.sarif` | Gitleaks 8.30.1 |
 | **tfsec** | JSON (`.json`) | `tfsec . --format json --out tfsec.json` | tfsec 1.28.14 |
 | **Nuclei** | JSON Lines (`.jsonl`, `.ndjson`) | `nuclei -u https://example.com -jsonl -o nuclei.jsonl` | Nuclei 3.11.1 |
 
@@ -128,6 +128,7 @@ The table is generated from the parsers, so it lists exactly what they read.
 - **SBOM (CycloneDX or SPDX)**: A CycloneDX file that lists vulnerabilities, such as Grype's, also gives findings.
 - **SARIF (any tool)**: For tools without a scanner of their own here, such as Gosec, Hadolint (`--format sarif`) and CodeQL. Trivy, Grype and Semgrep also write it, but use their own scanner when there is one.
 - **Gitleaks**: Reports written with `--redact` are accepted.
+- **Gitleaks**: Read as secrets, with the same identity as the JSON report. Upload it as Gitleaks, not as generic SARIF.
 - **Nuclei**: One finding per template and URL.
 <!-- scanners:end -->
 
