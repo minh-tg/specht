@@ -180,7 +180,9 @@ func TestDiscovery_DocumentIssuerMismatchRefusesLoginWithoutRetry(t *testing.T) 
 	_, err := a.StartLogin(rec, httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/login", nil), "")
 
 	require.ErrorIs(t, err, ErrSSOProviderUnavailable)
-	assert.ErrorContains(t, err, "does not match SSO_ISSUER_URL")
+	assert.ErrorContains(t, err, "does not match configured SSO_ISSUER_URL")
+	assert.ErrorContains(t, err, fmt.Sprintf("issuer %q", strings.TrimSuffix(idp.issuer(), "/")), "the document's value is printed quoted")
+	assert.ErrorContains(t, err, fmt.Sprintf("SSO_ISSUER_URL %q", idp.issuer()), "the configured value is printed quoted")
 	assert.Empty(t, rec.Result().Cookies(), "a login that cannot start leaves no cookie")
 	discovery, _ := idp.hits()
 	assert.Equal(t, 1, discovery, "a wrong document is not fetched again within one attempt")
@@ -319,4 +321,23 @@ func TestPrivateIssuer_OtherHostsStayGuardedWhenAllowed(t *testing.T) {
 func TestPrivateIssuer_IssuerHostIsRefusedByDefault(t *testing.T) {
 	a, srv := privateIssuerAuth(t, false)
 	assert.True(t, guardRefused(a, srv.URL+discoveryPath))
+}
+
+func TestDiscovery_IssuerMismatchIsLoggedWithBothValues(t *testing.T) {
+	idp := newKeycloakIdP(t)
+	idp.set(func(p *keycloakIdP) { p.doc["issuer"] = strings.TrimSuffix(p.issuer(), "/") })
+	var logged []string
+	a, err := NewOIDCAuthenticator(OIDCConfig{
+		ClientID: "c", ClientSecret: "s", IssuerURL: idp.issuer(),
+		RedirectURI: "http://localhost:8080/api/v1/auth/sso/callback",
+	}, func(msg string, _ ...any) { logged = append(logged, msg) })
+	require.NoError(t, err)
+
+	_, err = a.StartLogin(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/login", nil), "")
+
+	require.ErrorIs(t, err, ErrSSOProviderUnavailable)
+	require.Len(t, logged, 1)
+	assert.Contains(t, logged[0], fmt.Sprintf("%q", idp.issuer()))
+	assert.Contains(t, logged[0], fmt.Sprintf("%q", strings.TrimSuffix(idp.issuer(), "/")))
+	assert.Contains(t, logged[0], "/.well-known/openid-configuration")
 }

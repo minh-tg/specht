@@ -145,7 +145,11 @@ func (a *OIDCAuthenticator) fetchDiscovery(ctx context.Context) (providerMetadat
 // since the client secret and access tokens are sent to them.
 func (a *OIDCAuthenticator) validateMetadata(m providerMetadata) error {
 	if m.Issuer != a.cfg.IssuerURL {
-		return errDiscoveryInvalid{fmt.Sprintf("discovery document issuer %q does not match SSO_ISSUER_URL %q exactly", m.Issuer, a.cfg.IssuerURL)}
+		msg := fmt.Sprintf("discovery document issuer %q does not match configured SSO_ISSUER_URL %q: set SSO_ISSUER_URL to exactly the issuer value from %s", m.Issuer, a.cfg.IssuerURL, discoveryURL(a.cfg.IssuerURL))
+		if a.logger != nil {
+			a.logger("oidc discovery issuer mismatch: " + msg)
+		}
+		return errDiscoveryInvalid{msg}
 	}
 	required := []struct{ name, value string }{
 		{"authorization_endpoint", m.AuthorizationEndpoint},
