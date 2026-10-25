@@ -9,6 +9,19 @@ DO UPDATE SET
     metadata = EXCLUDED.metadata
 RETURNING *;
 
+-- name: UpsertArtifactByDigest :one
+-- A digest identifies the content, so a second tag of one image is the same
+-- artifact: the row keeps its first name and takes the newest scan's fields.
+INSERT INTO artifacts (project_id, target_id, artifact_type, name, version, digest, locator, metadata)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (project_id, artifact_type, digest) WHERE digest IS NOT NULL
+DO UPDATE SET
+    target_id = EXCLUDED.target_id,
+    version = EXCLUDED.version,
+    locator = EXCLUDED.locator,
+    metadata = EXCLUDED.metadata
+RETURNING *;
+
 -- name: ListArtifacts :many
 SELECT * FROM artifacts
 WHERE project_id = $1
