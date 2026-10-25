@@ -124,6 +124,18 @@ func TestRecommendationBecomesTheFix(t *testing.T) {
 	assert.Equal(t, "Upgrade to 1.2.3", nr.Findings[0].Fix.Summary)
 }
 
+func TestARecommendationIsNotAFixedVersion(t *testing.T) {
+	nr := parseDoc(t, `{"bomFormat":"CycloneDX","components":[{"bom-ref":"a","name":"lodash","version":"4.17.20","purl":"pkg:npm/lodash@4.17.20"}],
+	"vulnerabilities":[{"id":"CVE-2021-23337","ratings":[{"severity":"high"}],"affects":[{"ref":"a"}],"recommendation":"Upgrade lodash to version 4.17.21 or later."}]}`)
+	require.Len(t, nr.Findings, 1)
+	for _, d := range nr.Findings[0].Dimensions {
+		assert.NotEqual(t, domain.DimFixedVersion, d.Key,
+			"free text in fixed_version becomes the version an upgrade proposal writes into the manifest")
+	}
+	require.NotNil(t, nr.Findings[0].Fix)
+	assert.Equal(t, "Upgrade lodash to version 4.17.21 or later.", nr.Findings[0].Fix.Summary)
+}
+
 func TestACleanCycloneDXWithAnEmptyVulnerabilityListIsStillSBOM(t *testing.T) {
 	nr := parseDoc(t, `{"bomFormat":"CycloneDX","components":[{"name":"x","version":"1","purl":"pkg:npm/x@1"}],"vulnerabilities":[]}`)
 	assert.Empty(t, nr.Findings)
