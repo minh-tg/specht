@@ -20,6 +20,7 @@ import (
 	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/notify"
 	"github.com/minh-tg/specht/internal/patch"
+	"github.com/minh-tg/specht/internal/policy"
 	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/reqctx"
 	"github.com/minh-tg/specht/internal/usecase"
@@ -815,42 +816,13 @@ func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, findings)
 }
 
-// severityRankToken maps one severity name to its gate rank (0 when unknown).
-func severityRankToken(token string) int16 {
-	switch strings.TrimSpace(token) {
-	case "critical":
-		return 4
-	case "high":
-		return 3
-	case "medium":
-		return 2
-	case "low":
-		return 1
-	default:
-		return 0
-	}
-}
-
 // parseMinSeverityRank resolves a comma-separated severity list to the
 // blocking floor: the LOWEST severity named, so every listed severity blocks.
 // Unknown tokens are ignored; an empty or wholly unknown list floors at the
 // default of high.
 func parseMinSeverityRank(severities string) int16 {
-	if severities == "" {
-		return 3 // default: high+
+	if rank := policy.LowestListedRank(strings.Split(severities, ",")); rank != 0 {
+		return rank
 	}
-	minRank := int16(0)
-	for _, p := range strings.Split(severities, ",") {
-		rank := severityRankToken(p)
-		if rank == 0 {
-			continue
-		}
-		if minRank == 0 || rank < minRank {
-			minRank = rank
-		}
-	}
-	if minRank == 0 {
-		return 3
-	}
-	return minRank
+	return 3 // default: high+
 }

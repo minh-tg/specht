@@ -324,7 +324,7 @@ func tightenSeverityFloor(policyFloor, requested int16) int16 {
 func (u *Usecases) ingestGateSettings(ctx context.Context, project port.Project, requested []string) (int16, []gate.GatePolicy) {
 	var asked int16
 	if len(requested) > 0 {
-		asked = gateSeverityRank(requested, nil)
+		asked = gateSeverityRank(requested)
 	}
 	floor, effective, err := u.gateFloor(ctx, project, asked)
 	if err != nil {

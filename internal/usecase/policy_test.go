@@ -320,6 +320,7 @@ func TestCheckGateAfterIngest_RequestedFloorOnlyTightens(t *testing.T) {
 		{name: "medium request tightens default high floor", gateSeverity: []string{"medium"}, want: 2},
 		{name: "no request under critical policy", settings: `{"policy":{"severity_floor":"critical"}}`, want: 4},
 		{name: "high request tightens critical policy", settings: `{"policy":{"severity_floor":"critical"}}`, gateSeverity: []string{"high"}, want: 3},
+		{name: "padded and capitalized labels count", gateSeverity: []string{"critical", " High", " MEDIUM "}, want: 2},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
