@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -188,6 +189,34 @@ func TestGetFinding_FailedRefreshIsNotRetriedWithinBackoff(t *testing.T) {
 	require.NoError(t, err)
 	uc.intelRefresh.wg.Wait()
 	assert.Equal(t, 2, provider.callCount(), "the feed is retried once the backoff has elapsed")
+}
+
+// unresolvedIntel is an intel store whose feeds never know any CVE.
+type unresolvedIntel struct{}
+
+func (unresolvedIntel) Lookup(string) (intel.Record, bool, bool) { return intel.Record{}, false, false }
+
+func (unresolvedIntel) Refresh(context.Context, []string) error { return nil }
+
+func TestIntelRefresher_PrunesExpiredRetryEntries(t *testing.T) {
+	clock := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	r := &intelRefresher{now: func() time.Time { return clock }}
+	ctx := context.Background()
+
+	// Fill the retry map with CVEs that resolved nothing.
+	for i := range intelRetryPruneAt {
+		r.schedule(ctx, unresolvedIntel{}, fmt.Sprintf("CVE-2024-%05d", i))
+	}
+	r.wg.Wait()
+	require.Len(t, r.retryAfter, intelRetryPruneAt)
+
+	// Once their backoff has ended, the next failure sweeps them out.
+	clock = clock.Add(intelRetryBackoff + time.Second)
+	r.schedule(ctx, unresolvedIntel{}, "CVE-2025-00001")
+	r.wg.Wait()
+	assert.Len(t, r.retryAfter, 1, "expired retry entries are dropped")
+	_, kept := r.retryAfter["CVE-2025-00001"]
+	assert.True(t, kept)
 }
 
 func TestGetFinding_WithoutAnIntelStoreCarriesNoIntel(t *testing.T) {

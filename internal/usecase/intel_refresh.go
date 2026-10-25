@@ -14,6 +14,11 @@ const (
 	// intelRetryBackoff keeps a CVE that failed or stayed unresolved from
 	// starting a new refresh on every detail read.
 	intelRetryBackoff = 5 * time.Minute
+	// intelRetryPruneAt is the retryAfter size at which expired entries are
+	// swept before a new one is added. Entries only live for
+	// intelRetryBackoff, so the map stays near the number of distinct CVEs
+	// that failed within one backoff window.
+	intelRetryPruneAt = 1024
 )
 
 // intelRefresher runs intel refreshes off the request path. It keeps at most
@@ -40,8 +45,11 @@ func (r *intelRefresher) schedule(ctx context.Context, store IntelStore, cve str
 	if _, busy := r.inflight[cve]; busy {
 		return
 	}
-	if until, ok := r.retryAfter[cve]; ok && r.clock().Before(until) {
-		return
+	if until, ok := r.retryAfter[cve]; ok {
+		if r.clock().Before(until) {
+			return
+		}
+		delete(r.retryAfter, cve)
 	}
 	if r.inflight == nil {
 		r.inflight = make(map[string]struct{})
@@ -66,10 +74,24 @@ func (r *intelRefresher) run(ctx context.Context, store IntelStore, cve string) 
 		if r.retryAfter == nil {
 			r.retryAfter = make(map[string]time.Time)
 		}
+		if len(r.retryAfter) >= intelRetryPruneAt {
+			r.pruneExpiredLocked()
+		}
 		r.retryAfter[cve] = r.clock().Add(intelRetryBackoff)
 		return
 	}
 	delete(r.retryAfter, cve)
+}
+
+// pruneExpiredLocked drops retry entries whose backoff has ended; schedule
+// treats them as absent anyway. Callers hold mu.
+func (r *intelRefresher) pruneExpiredLocked() {
+	now := r.clock()
+	for cve, until := range r.retryAfter {
+		if !now.Before(until) {
+			delete(r.retryAfter, cve)
+		}
+	}
 }
 
 // clock reads the refresher's time source. Callers hold mu.
