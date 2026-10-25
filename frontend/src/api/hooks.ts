@@ -529,6 +529,7 @@ export function useTriageFinding() {
       analysisState,
       reason,
       analysisExpiresAt,
+      expectedState,
     }: {
       findingId: string;
       analysisState: AnalysisState;
@@ -536,6 +537,11 @@ export function useTriageFinding() {
       analysisExpiresAt?: string;
       /** The state before this change. It only names Undo's confirmation; the server restores it. */
       previousState?: AnalysisState;
+      /**
+       * The state the caller saw. The server refuses the write with `analysis_conflict` when the
+       * finding has moved on since, so a decision made on a stale page cannot replace a newer one.
+       */
+      expectedState?: string;
     }) =>
       apiFetch<TriageResponse>(`/api/v1/findings/${encodeURIComponent(findingId)}`, {
         method: "PATCH",
@@ -543,12 +549,15 @@ export function useTriageFinding() {
           analysis_state: analysisState,
           reason: reason ?? "",
           analysis_expires_at: analysisExpiresAt ?? null,
+          ...(expectedState ? { expected_state: expectedState } : {}),
         }),
       }),
     onSuccess: refresh,
     onError: (error) => {
       // A 401 is the session ending, which redirects instead.
       if (error instanceof APIError && error.status === 401) return;
+      // Someone else triaged the finding first: load their decision so the page shows it.
+      if (error instanceof APIError && error.code === "analysis_conflict") void refresh();
       toast.error(error.message || "Could not save the triage.");
     },
   });

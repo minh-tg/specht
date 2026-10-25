@@ -43,6 +43,7 @@ let triageCalls: Array<{ url: string; body: string; }>;
 let gateFixture: Record<string, unknown>;
 let gateFails: boolean;
 let findingFails: boolean;
+let triageConflict: boolean;
 
 function makeFinding(overrides: FindingFixture = {}): Record<string, unknown> {
   return {
@@ -87,6 +88,7 @@ beforeEach(() => {
   gateFixture = { blocked_by: [] };
   gateFails = false;
   findingFails = false;
+  triageConflict = false;
   globalThis.fetch = vi.fn().mockImplementation(
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -124,6 +126,19 @@ beforeEach(() => {
       }
       if (url.endsWith("/findings/f1") && method === "PATCH") {
         triageCalls.push({ url, body: String(init?.body ?? "") });
+        if (triageConflict) {
+          return {
+            ok: false,
+            status: 409,
+            json: () =>
+              Promise.resolve({
+                error: {
+                  code: "analysis_conflict",
+                  message: "The finding was triaged by someone else since you loaded it.",
+                },
+              }),
+          } as Response;
+        }
         return {
           ok: true,
           json: () =>
@@ -224,7 +239,33 @@ describe("FindingDetail triage validation", () => {
       analysis_state: "accepted_risk",
       reason: "risk accepted for Q3",
       analysis_expires_at: new Date(2099, 5, 1, 23, 59, 59, 999).toISOString(),
+      expected_state: "unanalyzed",
     });
+  });
+
+  it("refuses to overwrite a decision made since the page loaded and shows the newer one", async () => {
+    triageConflict = true;
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+
+    await chooseOption(user, screen.getAllByRole("combobox")[0], "False positive");
+    await user.type(screen.getByPlaceholderText("Reason"), "not reachable");
+    const findingLoads = () =>
+      vi.mocked(fetch).mock.calls.filter(([input, init]) =>
+        String(input).endsWith("/findings/f1") && (init?.method ?? "GET") === "GET"
+      ).length;
+    const loadsBefore = findingLoads();
+    // Another user marks it exploitable while this page still shows "unanalyzed".
+    findingFixture = { analysis_state: "exploitable" };
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(JSON.parse(triageCalls[0].body).expected_state).toBe("unanalyzed");
+    expect(
+      await screen.findAllByText("The finding was triaged by someone else since you loaded it."),
+    ).not.toHaveLength(0);
+    await waitFor(() => expect(findingLoads()).toBeGreaterThan(loadsBefore));
+    expect(await screen.findByText(/^Currently: Exploitable/)).toBeInTheDocument();
   });
 
   it("blocks false_positive until a reason is provided", async () => {
