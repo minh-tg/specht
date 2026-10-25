@@ -192,7 +192,7 @@ INSERT INTO reports (
     started_at, error_message, raw_report_hash,
     raw_data,
     base_revision, changed_files, scan_mode,
-    covered_finding_kinds
+    covered_finding_kinds, examined_keys
 ) VALUES (
     $1, $2, $3, $4,
     $5, $6, $7,
@@ -203,8 +203,8 @@ INSERT INTO reports (
     $18, $19, $20,
     $21,
     $22, $23, $24,
-    $25::text[]
-) RETURNING id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds
+    $25::text[], $26::text[]
+) RETURNING id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds, examined_keys
 `
 
 type CreateReportParams struct {
@@ -233,6 +233,7 @@ type CreateReportParams struct {
 	ChangedFiles        []byte             `json:"changed_files"`
 	ScanMode            string             `json:"scan_mode"`
 	CoveredFindingKinds []string           `json:"covered_finding_kinds"`
+	ExaminedKeys        []string           `json:"examined_keys"`
 }
 
 func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Report, error) {
@@ -262,6 +263,7 @@ func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Rep
 		arg.ChangedFiles,
 		arg.ScanMode,
 		arg.CoveredFindingKinds,
+		arg.ExaminedKeys,
 	)
 	var i Report
 	err := row.Scan(
@@ -293,6 +295,7 @@ func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Rep
 		&i.ChangedFiles,
 		&i.ScanMode,
 		&i.CoveredFindingKinds,
+		&i.ExaminedKeys,
 	)
 	return i, err
 }
@@ -524,7 +527,7 @@ func (q *Queries) GetLatestCompletedFullReportByBranch(ctx context.Context, arg 
 }
 
 const getReportByID = `-- name: GetReportByID :one
-SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds FROM reports WHERE id = $1
+SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds, examined_keys FROM reports WHERE id = $1
 `
 
 func (q *Queries) GetReportByID(ctx context.Context, id pgtype.UUID) (Report, error) {
@@ -559,6 +562,7 @@ func (q *Queries) GetReportByID(ctx context.Context, id pgtype.UUID) (Report, er
 		&i.ChangedFiles,
 		&i.ScanMode,
 		&i.CoveredFindingKinds,
+		&i.ExaminedKeys,
 	)
 	return i, err
 }
@@ -728,7 +732,7 @@ func (q *Queries) ListFindingsTouchedByReport(ctx context.Context, arg ListFindi
 }
 
 const listReportsByProject = `-- name: ListReportsByProject :many
-SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds FROM reports
+SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds, examined_keys FROM reports
 WHERE project_id = $1
   AND ($4::text = '' OR branch = $4::text)
   AND ($5::text = '' OR
@@ -796,6 +800,7 @@ func (q *Queries) ListReportsByProject(ctx context.Context, arg ListReportsByPro
 			&i.ChangedFiles,
 			&i.ScanMode,
 			&i.CoveredFindingKinds,
+			&i.ExaminedKeys,
 		); err != nil {
 			return nil, err
 		}
@@ -1023,7 +1028,7 @@ UPDATE reports SET
     completed_at = CASE WHEN $2 = 'completed' OR $2 = 'failed' THEN NOW() ELSE completed_at END,
     error_message = $4
 WHERE id = $1 AND project_id = $5
-RETURNING id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds
+RETURNING id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds, examined_keys
 `
 
 type UpdateReportStatusParams struct {
@@ -1072,6 +1077,7 @@ func (q *Queries) UpdateReportStatus(ctx context.Context, arg UpdateReportStatus
 		&i.ChangedFiles,
 		&i.ScanMode,
 		&i.CoveredFindingKinds,
+		&i.ExaminedKeys,
 	)
 	return i, err
 }

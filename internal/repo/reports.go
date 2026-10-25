@@ -43,6 +43,9 @@ type CreateReportParams struct {
 	// CoveredFindingKinds are the finding kinds the report examined. Nil
 	// stores NULL: the report vouches for no kind.
 	CoveredFindingKinds []string
+	// ExaminedKeys are the per-finding proofs the report carries. Nil stores
+	// NULL.
+	ExaminedKeys []string
 }
 
 func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc.Report, error) {
@@ -73,6 +76,7 @@ func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc
 		Status:              "processing",
 		StartedAt:           pgtype.Timestamptz{Time: time.Now(), Valid: true},
 		CoveredFindingKinds: arg.CoveredFindingKinds,
+		ExaminedKeys:        arg.ExaminedKeys,
 	})
 }
 

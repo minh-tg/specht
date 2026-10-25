@@ -428,6 +428,7 @@ type Report struct {
 	ChangedFiles        []byte             `json:"changed_files"`
 	ScanMode            string             `json:"scan_mode"`
 	CoveredFindingKinds []string           `json:"covered_finding_kinds"`
+	ExaminedKeys        []string           `json:"examined_keys"`
 }
 
 type ReportIntroducedFinding struct {

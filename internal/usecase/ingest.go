@@ -321,16 +321,17 @@ func (u *Usecases) ingestParsedReport(ctx context.Context, project port.Project,
 // nothing by absence, and parsers that cannot vouch for completeness
 // default to unknown, neither of which ever reaches the store.
 func (u *Usecases) autoFixAbsentFindings(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, nr *domain.NormalizedReport, scopeHash string) error {
-	if input.ScanMode != ScanModeFull || nr.Completeness != domain.CompletenessComplete {
+	if input.ScanMode != ScanModeFull || nr.Completeness == domain.CompletenessPartial {
 		return nil
 	}
-	if len(nr.CoveredFindingKinds) == 0 {
-		// The report does not vouch for any finding kind. An empty Trivy
-		// report, an SBOM inventory or a partial scan must not close rows it
-		// never examined.
+	kindsVouched := nr.Completeness == domain.CompletenessComplete && len(nr.CoveredFindingKinds) > 0
+	if !kindsVouched && len(domain.NormalizeExaminedKeys(nr.ExaminedKeys)) == 0 {
+		// The report does not vouch for any finding kind and names no
+		// finding it checked. An empty Trivy report, an SBOM inventory or a
+		// partial scan must not close rows it never examined.
 		return nil
 	}
-	fixed, err := u.deps.Stores.Findings.MarkAbsentFindingsFixed(ctx, project.ID, scopeHash, report.ID, nr.CoveredFindingKinds)
+	fixed, err := u.deps.Stores.Findings.MarkAbsentFindingsFixed(ctx, project.ID, scopeHash, report.ID)
 	if err != nil {
 		return fmt.Errorf("auto-fix absent findings: %w", err)
 	}
@@ -687,6 +688,7 @@ func (u *Usecases) createReport(ctx context.Context, project port.Project, input
 		ParserVersion:       textPtr(input.ParserVersion),
 		ScanCompleteness:    string(nr.Completeness),
 		CoveredFindingKinds: nr.CoveredFindingKinds,
+		ExaminedKeys:        domain.NormalizeExaminedKeys(nr.ExaminedKeys),
 		Status:              "processing",
 	})
 	if err != nil {

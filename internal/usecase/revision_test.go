@@ -676,7 +676,7 @@ func TestIngestReport_SameBytesCommitDifferentBranchIngestsTwoReports(t *testing
 	}
 
 	var fixedScopes []string
-	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string, findingKinds []string) ([]port.Finding, error) {
+	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
 		fixedScopes = append(fixedScopes, scopeHash)
 		return nil, nil
 	}

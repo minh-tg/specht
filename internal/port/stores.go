@@ -968,12 +968,12 @@ type FindingStore interface {
 	// under the finding lock. Other active evidence returns ErrFindingStillObserved.
 	MarkFixedWithEvent(ctx context.Context, findingID, reportID string, event FindingEventInput) (Finding, error)
 	// MarkAbsentFindingsFixed is the ingest-time auto-fix writer: it closes
-	// open or reopened findings of the covered kinds that an equivalent
-	// complete scan (same project and scope hash) observed, that no scope
-	// still observes after this scope's superseded rows are retired, and
-	// that reportID does not observe, returning the closed findings.
-	// Callers gate it to full scans whose parsed completeness is "complete".
-	MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string, findingKinds []string) ([]Finding, error)
+	// open or reopened findings that reportID proves it looked for (its
+	// covered kinds or examined keys), that an equivalent scan (same project
+	// and scope hash) observed, that no scope still observes after this
+	// scope's superseded rows are retired, and that reportID does not
+	// observe, returning the closed findings. Callers gate it to full scans.
+	MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string) ([]Finding, error)
 	// BulkCreateEvents records one event shape for many findings in a
 	// single statement, keeping large closures (the auto-fix writer)
 	// O(1) in queries instead of O(findings).
@@ -1230,7 +1230,9 @@ type CreateReportInput struct {
 	// CoveredFindingKinds are the finding kinds the parser says the report
 	// examined. Empty means it vouches for no kind.
 	CoveredFindingKinds []string
-	Status              string
+	// ExaminedKeys prove, finding by finding, what the report looked for.
+	ExaminedKeys []string
+	Status       string
 }
 
 // ReportStore persists scan reports.

@@ -59,7 +59,6 @@ func (r *pgFindingRepo) retireAbsentScopeAndFix(ctx context.Context, input sqlc.
 	q := sqlc.New(tx)
 	ids, err := q.LockAbsentScopeFindings(ctx, sqlc.LockAbsentScopeFindingsParams{
 		ReportID: input.ReportID, ProjectID: input.ProjectID, ScopeHash: input.ScanScopeHash.String,
-		FindingKinds: input.FindingKinds,
 	})
 	if err != nil {
 		return nil, err

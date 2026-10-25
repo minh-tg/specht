@@ -599,6 +599,7 @@ WHERE f.project_id = $1
 ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC;
 
 -- name: LockAbsentScopeFindings :many
+-- Only findings the current report proves it looked for are locked.
 -- Lock before retiring scope rows so concurrent scoped upserts cannot be lost.
 SELECT f.id
 FROM findings f
@@ -607,7 +608,7 @@ LEFT JOIN reports prior ON prior.id = s.report_id
 JOIN reports current ON current.id = sqlc.arg(report_id)
 WHERE f.project_id = sqlc.arg(project_id)
   AND s.scope_hash = sqlc.arg(scope_hash)
-  AND f.finding_kind = ANY(sqlc.arg(finding_kinds)::text[])
+  AND report_examined_finding(current.scan_completeness, current.covered_finding_kinds, current.examined_keys, f.id, f.finding_kind, f.fingerprint)
   AND ((s.report_id IS NULL AND s.observed_at <= current.created_at)
        OR (prior.created_at, prior.id) < (current.created_at, current.id))
   AND NOT EXISTS (
@@ -652,8 +653,7 @@ WHERE f.id = s.finding_id
               AND clean.scan_scope_hash = s.scope_hash
               AND clean.status = 'completed'
               AND clean.scan_mode = 'full'
-              AND clean.scan_completeness = 'complete'
-              AND f.finding_kind = ANY(clean.covered_finding_kinds)
+              AND report_examined_finding(clean.scan_completeness, clean.covered_finding_kinds, clean.examined_keys, f.id, f.finding_kind, f.fingerprint)
               AND (clean.created_at, clean.id) > (r.created_at, r.id)
               AND NOT EXISTS (
                   SELECT 1 FROM finding_occurrences seen
@@ -699,36 +699,41 @@ WHERE f.id = highest.finding_id;
 -- name: MarkAbsentScopedFindingsFixed :many
 -- Scan-equivalence auto-fix: closes findings that an equivalent complete
 -- scan of the same scope observed, that no scope still observes, and that
--- the current report ($3) no longer observes. A scope row is retired only by
+-- the current report no longer observes. A scope row is retired only by
 -- a newer complete scan of that scope without the finding, so no rows left
 -- means every scope that saw it has since scanned clean. The observation in
 -- this scope keeps a clean scan of a branch that never saw the finding from
--- closing it, and nothing may be newer than the current report. Incremental
--- and incomplete scans never reach this query: the caller only invokes it
--- for full scans whose parsed completeness is 'complete'.
+-- closing it, and nothing may be newer than the current report. The current
+-- report must prove it looked for the finding: its kind is covered by a
+-- complete report, or its own examined keys name the finding. Incremental
+-- scans never reach this query, and a partial report proves nothing.
 UPDATE findings
 SET state = 'fixed', updated_at = NOW()
-WHERE findings.project_id = $1
+WHERE findings.project_id = sqlc.arg(project_id)
   AND findings.state IN ('open', 'reopened')
-  AND findings.finding_kind = ANY(sqlc.arg(finding_kinds)::text[])
+  AND EXISTS (
+      SELECT 1 FROM reports examiner
+      WHERE examiner.id = sqlc.arg(report_id)
+        AND report_examined_finding(examiner.scan_completeness, examiner.covered_finding_kinds, examiner.examined_keys, findings.id, findings.finding_kind, findings.fingerprint)
+  )
   AND NOT EXISTS (SELECT 1 FROM finding_scope_severities s WHERE s.finding_id = findings.id)
   AND NOT EXISTS (
       SELECT 1 FROM finding_occurrences occ
       WHERE occ.finding_id = findings.id
-        AND occ.report_id = $3
+        AND occ.report_id = sqlc.arg(report_id)
   )
   AND EXISTS (
       SELECT 1 FROM finding_occurrences fo
       JOIN reports r ON r.id = fo.report_id
       WHERE fo.finding_id = findings.id
-        AND r.scan_scope_hash = $2
-        AND r.scan_completeness = 'complete'
+        AND r.scan_scope_hash = sqlc.arg(scan_scope_hash)
+        AND r.scan_completeness <> 'partial'
         AND r.status = 'completed'
   )
   AND NOT EXISTS (
       SELECT 1 FROM finding_occurrences nf
       JOIN reports nr ON nr.id = nf.report_id
-      JOIN reports current ON current.id = $3
+      JOIN reports current ON current.id = sqlc.arg(report_id)
       WHERE nf.finding_id = findings.id
         AND (nr.created_at, nr.id) > (current.created_at, current.id)
   )
