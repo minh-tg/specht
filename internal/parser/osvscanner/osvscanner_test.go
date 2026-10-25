@@ -46,7 +46,7 @@ func TestParse_GoScan(t *testing.T) {
 
 	finding := report.Findings[0]
 
-	expectedFP := "GHSA-c3h9-896r-86jm:pkg:golang/github.com/gogo/protobuf@1.3.1"
+	expectedFP := "GHSA-c3h9-896r-86jm:pkg:golang/github.com/gogo/protobuf@v1.3.1"
 	assert.Equal(t, expectedFP, finding.Fingerprint)
 	assert.Equal(t, "sca", finding.FindingKind)
 	assert.Equal(t, 3, int(finding.Severity)) // high
@@ -75,7 +75,7 @@ func TestParse_GoScan(t *testing.T) {
 	assert.Equal(t, []string{"CVE-2021-3121"}, finding.Extensions["aliases"])
 
 	// The location names the affected package and where it was observed.
-	assert.Equal(t, "github.com/gogo/protobuf 1.3.1 in /home/user/project/go.mod", finding.Location)
+	assert.Equal(t, "github.com/gogo/protobuf v1.3.1 in /home/user/project/go.mod", finding.Location)
 }
 
 func TestParseCVSSInfo(t *testing.T) {
@@ -209,7 +209,7 @@ func TestParse_RejectsMalformedAffectedRecords(t *testing.T) {
 }
 
 func TestParse_MultipleResultsPreservesLastTargetAndInventory(t *testing.T) {
-	data := []byte(`{"results":[{"source":{"path":"repo/go.mod","type":"lockfile"},"packages":[{"package":{"name":"acme/first","version":"1.2.3","ecosystem":"Go","purl":"pkg:golang/acme/first@1.2.3"},"vulnerabilities":[{"id":"GO-2026-0001","summary":"first issue"}]}]},{"source":{"path":"service/package-lock.json","type":"repository"},"packages":[{"package":{"name":"last","version":"4.5.6","ecosystem":"npm","purl":"pkg:npm/last@4.5.6"},"vulnerabilities":[{"id":"GHSA-2026-0002","summary":"last issue"}]}]}]}`)
+	data := []byte(`{"results":[{"source":{"path":"repo/go.mod","type":"lockfile"},"packages":[{"package":{"name":"acme/first","version":"1.2.3","ecosystem":"Go","purl":"pkg:golang/acme/first@v1.2.3"},"vulnerabilities":[{"id":"GO-2026-0001","summary":"first issue"}]}]},{"source":{"path":"service/package-lock.json","type":"repository"},"packages":[{"package":{"name":"last","version":"4.5.6","ecosystem":"npm","purl":"pkg:npm/last@4.5.6"},"vulnerabilities":[{"id":"GHSA-2026-0002","summary":"last issue"}]}]}]}`)
 	report, err := osvscanner.NewScanner().Parse(context.Background(), data)
 	require.NoError(t, err)
 	require.NotNil(t, report.Target)
@@ -230,7 +230,7 @@ func TestParse_MultipleResultsPreservesLastTargetAndInventory(t *testing.T) {
 
 	require.Len(t, report.Findings, 2)
 	wantFingerprints := []string{
-		"GO-2026-0001:pkg:golang/acme/first@1.2.3",
+		"GO-2026-0001:pkg:golang/acme/first@v1.2.3",
 		"GHSA-2026-0002:pkg:npm/last@4.5.6",
 	}
 	gotFingerprints := make([]string, len(report.Findings))

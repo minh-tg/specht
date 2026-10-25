@@ -279,6 +279,7 @@ func addOsvPackages(budget *parseutil.Budget, nr *domain.NormalizedReport, resul
 		if err := budget.Add(1); err != nil {
 			return err
 		}
+		pkg.Package = pkg.Package.withGoVersion()
 		purl := pkg.Package.PURL
 		if purl == "" {
 			purl = "pkg:" + strings.ToLower(pkg.Package.Ecosystem) + "/" + pkg.Package.Name
@@ -296,6 +297,7 @@ func addOsvPackages(budget *parseutil.Budget, nr *domain.NormalizedReport, resul
 
 func addOsvVulns(budget *parseutil.Budget, nr *domain.NormalizedReport, result osvResult) error {
 	for _, pkg := range result.Packages {
+		pkg.Package = pkg.Package.withGoVersion()
 		groupAnalysis := make(map[string]osvCallAnalysis, len(pkg.Groups))
 		for _, g := range pkg.Groups {
 			for id, analysis := range g.ExperimentalAnalysis {
@@ -402,8 +404,9 @@ func (f osvFinding) normalized() domain.NormalizedFinding {
 
 // fingerprintVersion is the version of this scanner's identity formula.
 // Version 2 keys a finding on the installed version of the package, so
-// lodash 4.17.20 and 4.17.15 are two findings. Version 1 took the advisory's
-// unversioned purl and merged them.
+// lodash 4.17.20 and 4.17.15 are two findings, and spells a Go module
+// version with its leading "v" as Grype and Trivy do. Version 1 took the
+// advisory's unversioned purl and merged them.
 const fingerprintVersion = 2
 
 // installedPURL is the purl of the scanned package at its installed version,
@@ -427,6 +430,24 @@ func (f osvFinding) installedPURL() string {
 		return base
 	}
 	return strings.TrimSuffix(base, "@"+version) + "@" + f.pkg.Version
+}
+
+// withGoVersion spells a Go module version the way Go, Grype and Trivy do,
+// with a leading "v". OSV-Scanner writes 1.3.1 where they write v1.3.1, so
+// without this the same module version became two purls and two findings
+// when a project ran OSV-Scanner next to Grype or Trivy. A version that
+// already starts with "v", or with anything but a digit, is kept, as is any
+// other ecosystem. A purl that carries the old spelling is rewritten too.
+func (p osvPkg) withGoVersion() osvPkg {
+	if !strings.EqualFold(p.Ecosystem, "Go") || p.Version == "" || p.Version[0] < '0' || p.Version[0] > '9' {
+		return p
+	}
+	old := p.Version
+	p.Version = "v" + old
+	if purl := domain.NormalizePURL(p.PURL); strings.HasSuffix(purl, "@"+old) {
+		p.PURL = strings.TrimSuffix(purl, "@"+old) + "@" + p.Version
+	}
+	return p
 }
 
 // firstFixedVersion returns the last fixed version recorded across the
