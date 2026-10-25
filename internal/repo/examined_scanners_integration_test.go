@@ -216,9 +216,17 @@ func TestSARIFReportWithoutRuleListClosesNothing(t *testing.T) {
 	require.Equal(t, "open", h.onlyState(slug))
 }
 
-// grypeDoc builds a Grype report from an SBOM, whose matches carry no file
-// location, so the scan scope stays the same with and without matches.
-func grypeDoc(t *testing.T, vulnerable bool, configuration map[string]any) []byte {
+// grypeImage and grypeDirectory are the source blocks Grype writes for the two
+// scans the tests repeat.
+var (
+	grypeImage     = map[string]any{"type": "image", "target": map[string]any{"userInput": "registry.example.com/app:1.4", "imageID": "sha256:aa"}}
+	grypeDirectory = map[string]any{"type": "directory", "target": map[string]any{"userInput": "."}}
+)
+
+// grypeDoc builds a Grype report of the given source. A report with matches
+// carries file locations, as a real scan does, so the scan scope may not
+// depend on them: the same scope has to come out with and without matches.
+func grypeDoc(t *testing.T, source map[string]any, vulnerable bool, configuration map[string]any) []byte {
 	t.Helper()
 	matches := []map[string]any{}
 	if vulnerable {
@@ -226,6 +234,7 @@ func grypeDoc(t *testing.T, vulnerable bool, configuration map[string]any) []byt
 			"vulnerability": map[string]any{"id": "CVE-2031-1000", "severity": "High", "namespace": "nvd"},
 			"artifact": map[string]any{
 				"name": "lodash", "version": "4.17.20", "type": "npm", "purl": "pkg:npm/lodash@4.17.20",
+				"locations": []map[string]any{{"path": "/app/package-lock.json"}},
 			},
 			"matchDetails": []map[string]any{{"type": "exact-direct-match"}},
 		})
@@ -234,7 +243,11 @@ func grypeDoc(t *testing.T, vulnerable bool, configuration map[string]any) []byt
 	if configuration != nil {
 		descriptor["configuration"] = configuration
 	}
-	raw, err := json.Marshal(map[string]any{"matches": matches, "descriptor": descriptor})
+	doc := map[string]any{"matches": matches, "descriptor": descriptor}
+	if source != nil {
+		doc["source"] = source
+	}
+	raw, err := json.Marshal(doc)
 	require.NoError(t, err)
 	return raw
 }
@@ -256,9 +269,43 @@ func TestGrypeClosesOnlyWhenNoFilterHidMatches(t *testing.T) {
 	for i, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			slug := h.project()
-			h.ingest(slug, "grype", fmt.Sprintf("aaaa%04d", i), grypeDoc(t, true, open))
+			h.ingest(slug, "grype", fmt.Sprintf("aaaa%04d", i), grypeDoc(t, grypeImage, true, open))
 			require.Equal(t, "open", h.onlyState(slug))
-			h.ingest(slug, "grype", fmt.Sprintf("bbbb%04d", i), grypeDoc(t, false, tc.clean))
+			h.ingest(slug, "grype", fmt.Sprintf("bbbb%04d", i), grypeDoc(t, grypeImage, false, tc.clean))
+			require.Equal(t, tc.want, h.onlyState(slug))
+		})
+	}
+}
+
+// TestGrypeCleanScanClosesOnlyTheSameSource checks the scan scope that ties a
+// clean report to the earlier one. The source is the only target a clean
+// report has, so it decides whether the rescan counts as the same scan.
+func TestGrypeCleanScanClosesOnlyTheSameSource(t *testing.T) {
+	h, cleanup := newEvidenceHarness(t)
+	defer cleanup()
+	open := map[string]any{"only-fixed": false, "only-notfixed": false, "ignore": []any{}, "exclude": []any{}}
+	image := func(ref string) map[string]any {
+		return map[string]any{"type": "image", "target": map[string]any{"userInput": ref, "imageID": "sha256:bb"}}
+	}
+	cases := []struct {
+		name         string
+		first, clean map[string]any
+		want         string
+	}{
+		{"same image", grypeImage, grypeImage, "fixed"},
+		{"same image under a new tag", grypeImage, image("registry.example.com/app:1.5"), "fixed"},
+		{"same image through a transport prefix", grypeImage, image("docker:registry.example.com/app:1.5"), "fixed"},
+		{"another image", grypeImage, image("registry.example.com/other:1.4"), "open"},
+		{"same directory", grypeDirectory, grypeDirectory, "fixed"},
+		{"image then directory", grypeImage, grypeDirectory, "open"},
+		{"directory then image", grypeDirectory, grypeImage, "open"},
+	}
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			slug := h.project()
+			h.ingest(slug, "grype", fmt.Sprintf("aaaa%04d", i), grypeDoc(t, tc.first, true, open))
+			require.Equal(t, "open", h.onlyState(slug))
+			h.ingest(slug, "grype", fmt.Sprintf("bbbb%04d", i), grypeDoc(t, tc.clean, false, open))
 			require.Equal(t, tc.want, h.onlyState(slug))
 		})
 	}

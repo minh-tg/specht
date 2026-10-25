@@ -12,6 +12,7 @@ import (
 
 type grypeDoc struct {
 	Matches    []grypeMatch `json:"matches"`
+	Source     grypeSource  `json:"source"`
 	Descriptor struct {
 		Configuration json.RawMessage `json:"configuration"`
 	} `json:"descriptor"`
@@ -188,7 +189,14 @@ func convert(budget *parseutil.Budget, doc grypeDoc) (*domain.NormalizedReport, 
 		nr.CoveredFindingKinds = []string{"sca"}
 	}
 
-	if len(doc.Matches) > 0 && len(doc.Matches[0].Artifact.Locations) > 0 {
+	if target, scanType, ok := sourceIdentity(doc.Source); ok {
+		// The source is in every report, clean or not, so it keeps the scan
+		// scope the same across scans and lets a clean scan close findings.
+		nr.Target = &target
+		nr.ScanType = scanType
+	} else if len(doc.Matches) > 0 && len(doc.Matches[0].Artifact.Locations) > 0 {
+		// A report without a source can only name the target from where its
+		// first match was found.
 		loc := doc.Matches[0].Artifact.Locations[0]
 		nr.Target = &domain.TargetInfo{
 			Kind:       "filesystem",
