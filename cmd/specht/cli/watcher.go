@@ -221,11 +221,7 @@ func buildPollDeps(
 	options WatcherBackfillOptions,
 ) watcher.PollDeps {
 	return watcher.PollDeps{
-		Client: watcher.NewHTTPClient(watcher.HTTPClientConfig{
-			Endpoint:     watcherConfig.OSVEndpoint,
-			VulnEndpoint: watcherConfig.OSVVulnEndpoint,
-			CacheTTL:     0,
-		}),
+		Client:   watcher.NewHTTPClient(backfillClientConfig(watcherConfig)),
 		Store:    store,
 		Projects: projectIDs,
 		Inventory: func(ctx context.Context, projectID string, since time.Duration) ([]port.InventoryPackage, error) {
@@ -254,6 +250,18 @@ func buildPollDeps(
 		Logger:       slog.Default(),
 		InventoryTTL: inventoryTTL,
 		Since:        options.Since,
+	}
+}
+
+// backfillClientConfig builds the OSV client settings for a backfill run
+// from the same WATCHER_* settings the server daemon reads. Caching stays
+// off: a backfill is a single sweep.
+func backfillClientConfig(watcherConfig *config.Watcher) watcher.HTTPClientConfig {
+	return watcher.HTTPClientConfig{
+		Endpoint:     watcherConfig.OSVEndpoint,
+		VulnEndpoint: watcherConfig.OSVVulnEndpoint,
+		BatchSize:    watcherConfig.BatchSize,
+		CacheTTL:     0,
 	}
 }
 

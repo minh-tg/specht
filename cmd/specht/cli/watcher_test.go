@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/minh-tg/specht/internal/config"
 	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/watcher"
 )
@@ -73,6 +74,17 @@ func TestWatchedProjectIDsSkipsOptedOutProjects(t *testing.T) {
 	got := watchedProjectIDs(projects)
 	if strings.Join(got, ",") != "on-1,on-2" {
 		t.Fatalf("watchedProjectIDs = %v, want [on-1 on-2]", got)
+	}
+}
+
+func TestBackfillClientConfigUsesWatcherBatchSize(t *testing.T) {
+	t.Setenv("WATCHER_BATCH_SIZE", "25")
+	cfg, err := config.WatcherConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := backfillClientConfig(cfg).BatchSize; got != 25 {
+		t.Fatalf("BatchSize = %d, want 25 from WATCHER_BATCH_SIZE", got)
 	}
 }
 
