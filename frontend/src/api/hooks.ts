@@ -82,6 +82,8 @@ export const queryKeys = {
     slug === undefined ? (["project-stats"] as const) : (["project-stats", slug] as const),
   projectMembers: (slug?: string) =>
     slug === undefined ? (["project-members"] as const) : (["project-members", slug] as const),
+  /** Every cached answer for the add-member suggestions; one entry per typed query. */
+  memberSuggestions: (slug: string) => ["projects", slug, "member-suggestions"] as const,
   projectTeams: (slug?: string) =>
     slug === undefined ? (["project-teams"] as const) : (["project-teams", slug] as const),
   teams: () => ["teams"] as const,
@@ -675,15 +677,19 @@ export function useAddProjectMember(slug: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.projectMembers(slug) });
       queryClient.invalidateQueries({ queryKey: queryKeys.project(slug) });
+      // Suggestions leave out current members, so a cached answer would still offer this person.
+      queryClient.invalidateQueries({ queryKey: queryKeys.memberSuggestions(slug) });
     },
   });
 }
 
 export function useRemoveProjectMember(slug: string) {
   const queryClient = useQueryClient();
+  // Also runs after Undo grants the person back.
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.projectMembers(slug) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.project(slug) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.memberSuggestions(slug) });
   };
   return useMutation({
     meta: {
