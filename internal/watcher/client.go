@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -485,15 +484,15 @@ func truncate(b []byte, n int) string {
 	return string(b[:n]) + "..."
 }
 
-// cacheKey derives a stable key for a query chunk from the sorted
-// (ecosystem, name) pairs, so identical batches hit regardless of the order
-// they were collected in.
+// cacheKey derives a key for a query chunk from the (ecosystem, name) pairs
+// in query order. The cached body is positional (result i answers query i),
+// so a reordered batch must miss: serving [b, a]'s body for [a, b] would pair
+// each package with the other's advisories.
 func cacheKey(queries []Query) string {
 	pairs := make([]string, len(queries))
 	for i, q := range queries {
 		pairs[i] = q.Package.Ecosystem + "\x00" + q.Package.Name
 	}
-	sort.Strings(pairs)
 	sum := sha256.Sum256([]byte(strings.Join(pairs, "\x01")))
 	return hex.EncodeToString(sum[:])
 }
