@@ -169,7 +169,7 @@ func parseCycloneDX(budget *parseutil.Budget, data []byte) (*domain.NormalizedRe
 			return nil, err
 		}
 		nr.Packages = append(nr.Packages, parseutil.HardenPackage(domain.PackageRef{
-			PURL:      c.PURL,
+			PURL:      domain.NormalizePURL(c.PURL),
 			Ecosystem: ecosystemFromPURL(c.PURL),
 			Name:      c.Name,
 			Version:   c.Version,
@@ -247,7 +247,7 @@ func parseSPDX(budget *parseutil.Budget, data []byte) (*domain.NormalizedReport,
 			return nil, err
 		}
 		nr.Packages = append(nr.Packages, parseutil.HardenPackage(domain.PackageRef{
-			PURL:      purl,
+			PURL:      domain.NormalizePURL(purl),
 			Ecosystem: ecosystemFromPURL(purl),
 			Name:      p.Name,
 			Version:   p.VersionInfo,
