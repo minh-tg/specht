@@ -750,6 +750,15 @@ func scopeTargetIdentifier(kind, identifier string) string {
 	case "container_image":
 		return trimImageReference(identifier)
 	case "package":
+		if strings.HasPrefix(identifier, "pkg:") {
+			// The last @ of a purl may be an npm scope (pkg:npm/@angular/core),
+			// so the version is whatever SplitPURL finds after the last slash.
+			pkgType, name, version := domain.SplitPURL(identifier)
+			if name != "" && version != "" {
+				return "pkg:" + pkgType + "/" + name
+			}
+			return identifier
+		}
 		if i := strings.LastIndex(identifier, "@"); i > 0 {
 			return identifier[:i]
 		}
