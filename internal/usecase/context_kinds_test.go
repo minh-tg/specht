@@ -72,3 +72,43 @@ func TestResolveArtifact_SkipsTypesOutsideTheVocabulary(t *testing.T) {
 		assert.Empty(t, uc.resolveArtifact(context.Background(), makeProject(true), tc.input, &domain.NormalizedReport{ScanType: tc.scanType}, ""))
 	}
 }
+
+func TestResolveTarget_FallsBackToTheRequestRepository(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		owner      string
+		target     *domain.TargetInfo
+		wantID     string
+		wantName   string
+		wantKind   string
+		wantUpsert bool
+	}{
+		{"checkov kind only", "github://acme/app", &domain.TargetInfo{Kind: "terraform"}, "t1", "github://acme/app", "repo", true},
+		{"no target at all", "github://acme/app", nil, "t1", "github://acme/app", "repo", true},
+		{"no owner stays null", "", &domain.TargetInfo{Kind: "iac"}, "", "", "", false},
+		{"team name is not a repository", "platform-team", nil, "", "", "", false},
+		{"parser identifier wins", "github://acme/app", &domain.TargetInfo{Identifier: "main.tf", Kind: "iac"}, "t1", "main.tf", "iac_stack", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var name, kind string
+			var called bool
+			tr := &mockTargetRepo{}
+			tr.upsertFn = func(ctx context.Context, projectID, n, k, locator, owner string) (port.Target, error) {
+				called, name, kind = true, n, k
+				return port.Target{ID: "t1"}, nil
+			}
+			uc := New(Deps{Stores: &port.Stores{Targets: tr}})
+			nr := &domain.NormalizedReport{ScanType: domain.ScanTypeIaC, Target: tc.target}
+			before := scanScopeHash(IngestReportInput{Scanner: "checkov", Owner: tc.owner}, nr)
+			id, _ := uc.resolveTarget(context.Background(), makeProject(true), IngestReportInput{Owner: tc.owner}, nr)
+			assert.Equal(t, tc.wantID, id)
+			assert.Equal(t, tc.wantUpsert, called)
+			assert.Equal(t, tc.wantName, name)
+			assert.Equal(t, tc.wantKind, kind)
+			assert.Equal(t, before, scanScopeHash(IngestReportInput{Scanner: "checkov", Owner: tc.owner}, nr), "the scope hash does not read the fallback")
+			if tc.target == nil {
+				assert.Nil(t, nr.Target)
+			}
+		})
+	}
+}

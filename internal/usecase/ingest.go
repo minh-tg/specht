@@ -514,19 +514,39 @@ func (u *Usecases) resolveReportContext(ctx context.Context, project port.Projec
 
 // resolveTarget upserts the scan target (best-effort; failures log only).
 func (u *Usecases) resolveTarget(ctx context.Context, project port.Project, input IngestReportInput, nr *domain.NormalizedReport) (id, identifier string) {
-	if nr.Target == nil || nr.Target.Identifier == "" {
+	var kind string
+	if nr.Target != nil && nr.Target.Identifier != "" {
+		identifier = nr.Target.Identifier
+		// Only the stored kind is normalised. nr.Target.Kind stays as the
+		// parser wrote it, because the scan scope hash reads it.
+		kind = domain.NormalizeTargetKind(nr.Target.Kind, nr.ScanType)
+	} else if repo := requestRepository(input); repo != "" {
+		// Checkov, tfsec, Semgrep, Gitleaks, Nuclei and generic SARIF name no
+		// target. The repository the request names stands in for the stored
+		// row only. nr.Target is left alone, so the scan scope hash keeps
+		// reading the parser's own (empty) target and existing scopes do not
+		// move.
+		identifier, kind = repo, "repo"
+	} else {
 		return "", ""
 	}
-	identifier = nr.Target.Identifier
-	// Only the stored kind is normalised. nr.Target.Kind stays as the parser
-	// wrote it, because the scan scope hash reads it.
-	kind := domain.NormalizeTargetKind(nr.Target.Kind, nr.ScanType)
 	t, err := u.deps.Stores.Targets.Upsert(ctx, project.ID, identifier, kind, identifier, input.Owner)
 	if err != nil {
 		slog.Warn("upsert target failed", "project", project.ID, "target", identifier, "error", err)
 		return "", identifier
 	}
 	return t.ID, identifier
+}
+
+// requestRepository returns the repository the request names as
+// provider://owner/repo, or "" when owner is empty or not in that form (a team
+// name is not a repository).
+func requestRepository(input IngestReportInput) string {
+	ref, err := domain.ParseRepoRef(input.Owner)
+	if err != nil || ref.Provider == "" {
+		return ""
+	}
+	return ref.String()
 }
 
 // resolveArtifact upserts the scanned artifact, falling back to the report
