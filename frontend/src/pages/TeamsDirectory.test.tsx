@@ -413,6 +413,45 @@ describe("TeamsDirectory", () => {
     expect(fetchCalls.some((c) => c.url.includes("/api/v1/users"))).toBe(false);
   });
 
+  it("gives a team admin who is not a global admin the roster controls the server allows", async () => {
+    const user = userEvent.setup();
+    userRole = "member";
+    rosterRows = [
+      { team_id: "t1", user_id: "u1", user_email: "admin@acme.corp", role: "admin" },
+      { team_id: "t1", user_id: "u2", user_email: "ada@acme.corp", role: "member" },
+    ];
+    renderTeamsDirectory();
+
+    await user.click((await screen.findAllByRole("button", { name: "Manage Roster" }))[0]);
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    expect(await screen.findAllByRole("button", { name: "Remove" })).toHaveLength(2);
+
+    await user.type(screen.getByRole("combobox", { name: "Email address" }), "bo@acme.example");
+    await user.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() =>
+      expect(
+        fetchCalls.some((c) => c.url.endsWith("/api/v1/teams/t1/members") && c.method === "POST"),
+      ).toBe(true)
+    );
+    // A team admin cannot read the user directory, so the page does not ask for it.
+    expect(fetchCalls.some((c) => c.url.includes("/api/v1/users"))).toBe(false);
+  });
+
+  it("keeps the roster read-only for a plain member of the team", async () => {
+    const user = userEvent.setup();
+    userRole = "member";
+    rosterRows = [
+      { team_id: "t1", user_id: "u1", role: "member" },
+      { team_id: "t1", user_id: "u2", display_name: "Ada Okafor", role: "admin" },
+    ];
+    renderTeamsDirectory();
+
+    await user.click((await screen.findAllByRole("button", { name: "View Roster" }))[0]);
+    expect(await screen.findByText("Ada Okafor")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Email address" })).not.toBeInTheDocument();
+  });
+
   it("shows an admin each member's name with the email beneath it", async () => {
     const user = userEvent.setup();
     rosterRows = [
