@@ -69,6 +69,11 @@ func HardenReport(nr *domain.NormalizedReport) *domain.NormalizedReport {
 			s.Ext = ext
 		}
 	}
+	for i, k := range nr.ExaminedKeys {
+		// Cut NULs like the finding fields they are matched against; a cut
+		// to length would make a key name a finding it does not.
+		nr.ExaminedKeys[i] = strings.ReplaceAll(k, "\x00", "")
+	}
 	return nr
 }
 

@@ -24,6 +24,14 @@ type sarifRun struct {
 	Tool      sarifTool       `json:"tool"`
 	Results   []sarifResult   `json:"results"`
 	Artifacts []sarifArtifact `json:"artifacts"`
+	// Invocations say whether the run finished. Semgrep writes them when it
+	// hit errors.
+	Invocations []struct {
+		ExecutionSuccessful        *bool `json:"executionSuccessful"`
+		ToolExecutionNotifications []struct {
+			Level string `json:"level"`
+		} `json:"toolExecutionNotifications"`
+	} `json:"invocations"`
 }
 
 type sarifTool struct {
@@ -248,7 +256,9 @@ func convert(budget *parseutil.Budget, report sarifReport) (*domain.NormalizedRe
 	}
 
 	var seen []sighting
+	var proofs []parseutil.RuleRun
 	for _, run := range report.Runs {
+		proofs = append(proofs, runProof(run))
 		rules := indexRules(run.Tool.Driver.Rules)
 		for _, result := range run.Results {
 			if err := budget.Add(1); err != nil {
@@ -271,6 +281,7 @@ func convert(budget *parseutil.Budget, report sarifReport) (*domain.NormalizedRe
 		}
 	}
 	nr.Findings = identify(seen)
+	nr.ExaminedKeys = parseutil.ExaminedFromRuns(proofs)
 
 	return nr, nil
 }
