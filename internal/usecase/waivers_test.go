@@ -604,3 +604,31 @@ func TestWaiverRefusesAContextThatNamesNothing(t *testing.T) {
 	})
 	require.ErrorIs(t, err, ErrInvalidWaiverRequest)
 }
+
+// A condition the gate cannot evaluate used to be stored, and the waiver then
+// covered nothing while the gate kept failing. Create and update refuse it.
+func TestWaiverConditionsTheGateCannotMatchAreRefused(t *testing.T) {
+	project := makeProject(true)
+	bad := []CreateWaiverConditionInput{{Field: "severity", Operator: "eq", Value: "HIGH"}}
+	wr := &mockWaiverRepo{
+		createWithDetailsFn: func(context.Context, port.CreateWaiverInput) (port.Waiver, error) {
+			t.Fatal("a refused waiver must not reach the store")
+			return port.Waiver{}, nil
+		},
+		updateWithDetailsFn: func(context.Context, port.Waiver, *port.WaiverExpiry, *[]port.WaiverCondition, *[]port.WaiverContext, *[]port.WaiverFindingTarget, port.WaiverEventInput) (port.Waiver, error) {
+			t.Fatal("a refused update must not reach the store")
+			return port.Waiver{}, nil
+		},
+	}
+	uc := waiverUsecaseForProject(project, wr, "")
+	ctx := sessionCtx("admin", auth.RoleAdmin)
+
+	_, err := uc.CreateWaiver(ctx, CreateWaiverInput{ProjectSlug: "my-app", Name: "n", Conditions: bad})
+	require.ErrorIs(t, err, ErrInvalidWaiverRequest)
+	assert.Contains(t, err.Error(), `"severity"`)
+
+	_, err = uc.UpdateWaiver(ctx, UpdateWaiverInput{
+		WaiverID: "00000000-0000-0000-0000-0000000000b1", ProjectSlug: "my-app", Conditions: bad,
+	})
+	require.ErrorIs(t, err, ErrInvalidWaiverRequest)
+}

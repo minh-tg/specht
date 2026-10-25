@@ -4678,9 +4678,25 @@ components:
       required: [id, field, operator, value]
       properties:
         id: { type: string, format: uuid }
-        field: { type: string, example: component.purl }
-        operator: { type: string, example: equals }
-        value: { type: string }
+        field: { type: string, example: severity_rank }
+        operator: { type: string, example: lte }
+        value: { type: string, example: "2" }
+
+    WaiverConditionInput:
+      type: object
+      required: [field, operator, value]
+      description: |
+        A finding the waiver covers must match every condition. Supported
+        operators per field: `severity_rank` takes `eq`, `neq`, `lt`, `lte`,
+        `gt`, `gte` with a whole number (1 low to 4 critical);
+        `finding_kind` and `fingerprint` take `eq`, `neq`; `title_pattern`
+        takes `contains`, `matches` (exact title); `cve_id` takes `eq`,
+        `contains`. Any other combination, an empty value or a non-numeric
+        rank is refused with 400 `invalid_body`.
+      properties:
+        field: { type: string, enum: [severity_rank, finding_kind, fingerprint, title_pattern, cve_id] }
+        operator: { type: string, enum: [eq, neq, lt, lte, gt, gte, contains, matches] }
+        value: { type: string, minLength: 1 }
 
     WaiverContext:
       type: object
@@ -4717,13 +4733,7 @@ components:
           example: "2026-12-31T00:00:00Z"
         conditions:
           type: array
-          items:
-            type: object
-            required: [field, operator, value]
-            properties:
-              field: { type: string }
-              operator: { type: string }
-              value: { type: string }
+          items: { $ref: "#/components/schemas/WaiverConditionInput" }
         contexts:
           type: array
           items:
@@ -4753,13 +4763,7 @@ components:
             send an RFC 3339 value to set it.
         conditions:
           type: array
-          items:
-            type: object
-            required: [field, operator, value]
-            properties:
-              field: { type: string }
-              operator: { type: string }
-              value: { type: string }
+          items: { $ref: "#/components/schemas/WaiverConditionInput" }
         contexts:
           type: array
           items:

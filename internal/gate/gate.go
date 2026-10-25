@@ -448,6 +448,49 @@ func waiverTargetsFinding(f Finding, targets []WaiverTarget) bool {
 	return false
 }
 
+// conditionOperators lists, per field, the operators matchCondition applies.
+// A condition outside this table never matches, so ValidateCondition refuses
+// it before it is stored.
+var conditionOperators = map[string][]string{
+	"severity_rank": {"eq", "neq", "lt", "lte", "gt", "gte"},
+	"finding_kind":  {"eq", "neq"},
+	"fingerprint":   {"eq", "neq"},
+	"title_pattern": {"contains", "matches"},
+	"cve_id":        {"eq", "contains"},
+}
+
+// ValidateCondition reports why a waiver condition could never match a
+// finding: an unknown field, an operator the field does not support, an
+// empty value, or a severity_rank value that is not a whole number. It
+// returns nil for a condition matchCondition can evaluate.
+func ValidateCondition(c WaiverCondition) error {
+	ops, ok := conditionOperators[c.Field]
+	if !ok {
+		return fmt.Errorf("condition field %q is not supported; use one of %s", c.Field, strings.Join(conditionFields(), ", "))
+	}
+	if !slices.Contains(ops, c.Operator) {
+		return fmt.Errorf("condition operator %q is not supported for %s; use one of %s", c.Operator, c.Field, strings.Join(ops, ", "))
+	}
+	if strings.TrimSpace(c.Value) == "" {
+		return fmt.Errorf("condition value for %s must not be empty", c.Field)
+	}
+	if c.Field == "severity_rank" {
+		if _, err := strconv.Atoi(c.Value); err != nil {
+			return fmt.Errorf("condition value for severity_rank must be a whole number (1 low to 4 critical), got %q", c.Value)
+		}
+	}
+	return nil
+}
+
+func conditionFields() []string {
+	fields := make([]string, 0, len(conditionOperators))
+	for f := range conditionOperators {
+		fields = append(fields, f)
+	}
+	slices.Sort(fields)
+	return fields
+}
+
 func matchCondition(f Finding, c WaiverCondition) bool {
 	switch c.Field {
 	case "severity_rank":
