@@ -47,7 +47,7 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 		},
 		Version:               "3",
 		ContractVersion:       1,
-		FingerprintVersion:    1,
+		FingerprintVersion:    fingerprintVersion,
 		FindingKinds:          []scanner.FindingKind{"dast"},
 		ScanTypes:             []domain.ScanType{domain.ScanTypeDAST},
 		ProvidesPackages:      false,
@@ -171,7 +171,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	}
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
-		FingerprintVersion: 1,
+		FingerprintVersion: fingerprintVersion,
 		Completeness:       domain.CompletenessUnknown,
 		ScanType:           domain.ScanTypeDAST,
 		ScanScope:          &domain.ScanScope{Ext: map[string]string{}},
@@ -280,6 +280,25 @@ type nucleiEvent struct {
 	Host      string `json:"host"`
 	MatchedAt string `json:"matched-at"`
 	Type      string `json:"type"`
+	// MatcherName names which of a template's matchers fired. A template
+	// such as http-missing-security-headers reports one event per missing
+	// header at the same URL, told apart only by this name.
+	MatcherName string `json:"matcher-name"`
+}
+
+// fingerprintVersion is the version of this scanner's identity formula.
+// Version 2 adds the matcher name, so two matchers of one template at one
+// URL are two findings. Version 1 merged them.
+const fingerprintVersion = 2
+
+// fingerprint is the template, the matcher when the event names one, and
+// the identity URL. An event without a matcher name keeps its version 1
+// identity.
+func fingerprint(ev nucleiEvent, identity string) string {
+	if ev.MatcherName == "" {
+		return "dast:" + ev.TemplateID + ":" + identity
+	}
+	return "dast:" + ev.TemplateID + ":" + ev.MatcherName + ":" + identity
 }
 
 func convert(ev nucleiEvent) domain.NormalizedFinding {
@@ -310,12 +329,15 @@ func convert(ev nucleiEvent) domain.NormalizedFinding {
 	if ev.Type != "" {
 		meta["nuclei_type"] = ev.Type
 	}
+	if ev.MatcherName != "" {
+		meta["matcher_name"] = ev.MatcherName
+	}
 	cleanLoc := parseutil.CleanFilePath(target)
 	if cleanLoc == "" {
 		cleanLoc = parseutil.SanitizeText(target, parseutil.MaxPathLength)
 	}
 	return parseutil.HardenFinding(domain.NormalizedFinding{
-		Fingerprint: "dast:" + ev.TemplateID + ":" + identity,
+		Fingerprint: fingerprint(ev, identity),
 		FindingKind: "dast",
 		Title:       title,
 		Description: ev.Info.Description,
