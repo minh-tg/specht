@@ -297,16 +297,16 @@ an external issue tracker. Disabled by default.
 | `INTEL_EPSS_ENDPOINT` | `https://api.first.org/data/v1/epss` | EPSS feed. |
 | `INTEL_KEV_ENDPOINT` | `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json` | CISA KEV catalog. |
 
-### Client (adapter and CLI)
+### Client (adapter, CLI and MCP bridge)
 
-Read by `specht-adapter` and `specht`, not by the server.
+Read by `specht-adapter`, `specht` and `specht-mcp`, not by the server.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `API_URL` | `http://localhost:8080` | Specht base URL. |
 | `API_KEY` | *required* | A project API key, or a session token for admin operations. |
 | `SPECHT_PROJECT` | *(empty)* | Adapter only: project slug, used when the report and `-project` give none. |
-| `SPECHT_API_URL`, `SPECHT_API_KEY` | *(empty)* | Aliases for `API_URL` and `API_KEY`, for runners where those names collide with other tools. |
+| `SPECHT_API_URL`, `SPECHT_API_KEY` | *(empty)* | Aliases for `API_URL` and `API_KEY`, for runners where those names collide with other tools. Read only when the unprefixed name is empty. |
 | `SPECHT_OWNER` | *(derived)* | Adapter only: repository owner recorded on the report. Defaults to the owner of `GITHUB_REPOSITORY` or `CI_PROJECT_PATH`. |
 | `SPECHT_ENVIRONMENT` | *(empty)* | Adapter only: deployment environment (for example `production`) recorded on the report. |
 

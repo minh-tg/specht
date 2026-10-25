@@ -36,6 +36,32 @@ func TestInfoFlagsPrintAndStop(t *testing.T) {
 	}
 }
 
+func TestAPIConfigReadsBothNames(t *testing.T) {
+	cases := []struct {
+		name             string
+		env              map[string]string
+		wantURL, wantKey string
+	}{
+		{"aliases only", map[string]string{"SPECHT_API_URL": "https://alias", "SPECHT_API_KEY": "alias-key"}, "https://alias", "alias-key"},
+		{"plain names win", map[string]string{"API_URL": "https://plain", "SPECHT_API_URL": "https://alias", "API_KEY": "plain-key", "SPECHT_API_KEY": "alias-key"}, "https://plain", "plain-key"},
+		{"url defaults", map[string]string{"API_KEY": "plain-key"}, "http://localhost:8080", "plain-key"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			url, key, err := apiConfig(func(name string) string { return tc.env[name] })
+			if err != nil {
+				t.Fatal(err)
+			}
+			if url != tc.wantURL || key != tc.wantKey {
+				t.Fatalf("got %q %q, want %q %q", url, key, tc.wantURL, tc.wantKey)
+			}
+		})
+	}
+	if _, _, err := apiConfig(func(string) string { return "" }); err == nil {
+		t.Fatal("expected a missing key error")
+	}
+}
+
 func TestInfoFlagsLeaveEverythingElseToTheServer(t *testing.T) {
 	for _, args := range [][]string{nil, {}, {"serve"}, {"-x"}} {
 		var out bytes.Buffer
