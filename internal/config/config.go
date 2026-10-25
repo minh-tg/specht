@@ -597,6 +597,20 @@ func loadIntel(s *Server) error {
 // a subcommand may build a Server without them. The server calls it at
 // startup, and it reports every problem together so one attempt shows
 // everything to fix instead of one error per restart.
+// IngestSlots is the number of ingests the server may run at once on its
+// pool: IngestConcurrency, or def when unset, capped at DBMaxConns-1. An
+// ingest holds its transaction's connection while it writes the report row
+// on a second one. With as many ingests as connections, each holds one and
+// waits for another until the request times out. One connection left over
+// lets one of them finish and free its own.
+func (s *Server) IngestSlots(def int) int {
+	slots := s.IngestConcurrency
+	if slots < 1 {
+		slots = def
+	}
+	return max(1, min(slots, s.DBMaxConns-1))
+}
+
 func (s *Server) Validate() error {
 	var problems []error
 	if s.DBURL == "" {
@@ -622,8 +636,10 @@ func (s *Server) Validate() error {
 	if s.Intel.TTL <= 0 {
 		problems = append(problems, errors.New("INTEL_TTL must be a positive duration"))
 	}
-	if s.DBMaxConns < 1 {
-		problems = append(problems, errors.New("DB_MAX_CONNS must be at least 1"))
+	if s.DBMaxConns < 2 {
+		// An ingest writes its report row on a second connection while its
+		// transaction holds the first, so a one-connection pool never ingests.
+		problems = append(problems, errors.New("DB_MAX_CONNS must be at least 2"))
 	}
 	if s.DBMinConns < 0 || s.DBMinConns > s.DBMaxConns {
 		problems = append(problems, fmt.Errorf("DB_MIN_CONNS must be between 0 and DB_MAX_CONNS (%d), got %d", s.DBMaxConns, s.DBMinConns))

@@ -535,6 +535,7 @@ func TestServerValidate_NamesEachProblemByItsVariable(t *testing.T) {
 		"zero inventory ttl":     {func(s *Server) { s.InventoryTTL = 0 }, "INVENTORY_TTL"},
 		"negative intel ttl":     {func(s *Server) { s.Intel.TTL = -time.Second }, "INTEL_TTL"},
 		"no connections":         {func(s *Server) { s.DBMaxConns = 0 }, "DB_MAX_CONNS"},
+		"one connection":         {func(s *Server) { s.DBMaxConns, s.DBMinConns = 1, 0 }, "DB_MAX_CONNS"},
 		"negative min":           {func(s *Server) { s.DBMinConns = -1 }, "DB_MIN_CONNS"},
 		"min above max":          {func(s *Server) { s.DBMinConns, s.DBMaxConns = 30, 20 }, "DB_MIN_CONNS"},
 		"zero session age":       {func(s *Server) { s.SessionMaxAge = 0 }, "SESSION_MAX_AGE"},
@@ -772,6 +773,25 @@ func TestLoad_InvalidFingerprintKeyFailsWithoutEchoingIt(t *testing.T) {
 			_, err := Load()
 			assert.ErrorContains(t, err, "FINGERPRINT_KEY")
 			assert.NotContains(t, err.Error(), bad)
+		})
+	}
+}
+
+func TestIngestSlotsLeaveAConnectionFree(t *testing.T) {
+	cases := map[string]struct {
+		concurrency, maxConns, want int
+	}{
+		"default fits the default pool": {0, 20, 8},
+		"setting fits the pool":         {12, 20, 12},
+		"default above a small pool":    {0, 8, 7},
+		"setting equal to the pool":     {20, 20, 19},
+		"smallest pool":                 {0, 2, 1},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			s := validServer()
+			s.IngestConcurrency, s.DBMaxConns = tc.concurrency, tc.maxConns
+			assert.Equal(t, tc.want, s.IngestSlots(8))
 		})
 	}
 }
