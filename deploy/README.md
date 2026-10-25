@@ -246,6 +246,26 @@ that use `https`; `http` is accepted only for a loopback host (`localhost`,
 `127.0.0.1`, `::1`), for a local identity provider. The redirect URI must not
 carry a fragment.
 
+The server finds the provider's endpoints through OpenID Connect Discovery: it
+removes one trailing slash from `SSO_ISSUER_URL`, appends
+`/.well-known/openid-configuration`, and takes the authorization, token,
+UserInfo and JWKS endpoints from that document. Set `SSO_ISSUER_URL` to the
+exact `issuer` value the document advertises, trailing slash included. For
+Keycloak that is `https://kc.example.com/realms/<realm>`, for Auth0
+`https://<tenant>.auth0.com/` (with the slash), for Google
+`https://accounts.google.com`, and for Entra ID
+`https://login.microsoftonline.com/<tenant id>/v2.0`. A document whose `issuer`
+differs in any character is refused, and the `iss` claim of every ID token must
+match it byte for byte. Each endpoint must be an absolute `https` URL (`http`
+only on a loopback host), and the provider must resolve to a public address:
+connections to private and link-local addresses are refused.
+
+Discovery runs on the first sign-in, not at startup, so the server starts while
+the provider is down. A fetch is tried up to three times; if all fail, the login
+route answers `503` and logs the reason, and the next sign-in tries again. The
+document is cached for an hour. When a refresh fails, the server keeps using
+the last document it fetched.
+
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `SSO_ENABLE` | `false` | Mounts the SSO login and callback routes. |
