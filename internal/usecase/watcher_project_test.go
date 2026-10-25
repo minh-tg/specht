@@ -18,6 +18,7 @@ type fakeWatcherStore struct {
 	port.WatcherStore
 	project     port.Project
 	lastPoll    *time.Time
+	failures    int32
 	global      port.WatcherState
 	globalMiss  bool
 	updateErr   error
@@ -43,10 +44,10 @@ func (f *fakeWatcherStore) UpdateProjectConfig(_ context.Context, _ string, enab
 }
 
 func (f *fakeWatcherStore) GetProjectState(context.Context, string) (port.WatcherProjectState, error) {
-	if f.lastPoll == nil {
+	if f.lastPoll == nil && f.failures == 0 {
 		return port.WatcherProjectState{}, port.ErrNotFound
 	}
-	return port.WatcherProjectState{LastSuccessfulPollAt: f.lastPoll}, nil
+	return port.WatcherProjectState{LastSuccessfulPollAt: f.lastPoll, ConsecutiveFailures: f.failures}, nil
 }
 
 func (f *fakeWatcherStore) GetState(context.Context) (port.WatcherState, error) {
@@ -97,11 +98,18 @@ func TestGetProjectWatcher_ReportsSettingsAndStatus(t *testing.T) {
 		{"waiting for the first poll", serverOn, func(f *fakeWatcherStore) {}, WatcherStatusWaiting, true, true, false},
 		{"polled recently", serverOn, func(f *fakeWatcherStore) { f.lastPoll = &recent }, WatcherStatusOK, true, true, true},
 		{"last poll older than the interval explains", serverOn, func(f *fakeWatcherStore) { f.lastPoll = &old }, WatcherStatusStale, true, false, true},
-		{"the watcher's polls are failing", serverOn, func(f *fakeWatcherStore) {
+		{"the project's polls are failing", serverOn, func(f *fakeWatcherStore) {
+			f.lastPoll = &recent
+			f.failures = 3
+		}, WatcherStatusFailing, true, false, true},
+		{"the project fails before its first successful poll", serverOn, func(f *fakeWatcherStore) {
+			f.failures = 1
+		}, WatcherStatusFailing, true, false, false},
+		{"another project's failures do not mark this one failing", serverOn, func(f *fakeWatcherStore) {
 			f.lastPoll = &recent
 			f.globalMiss = false
 			f.global = port.WatcherState{ConsecutiveFailures: 3}
-		}, WatcherStatusFailing, true, false, true},
+		}, WatcherStatusOK, true, true, true},
 		{"switched off for the project", serverOn, func(f *fakeWatcherStore) { f.project.CveWatcherEnabled = false }, WatcherStatusDisabled, false, true, false},
 		{"the server does not run the watcher", WatcherSettings{Enabled: false, PollInterval: time.Hour}, func(f *fakeWatcherStore) {}, WatcherStatusServerOff, false, true, false},
 		{"off for the project and for the server reads as off for the project", WatcherSettings{}, func(f *fakeWatcherStore) { f.project.CveWatcherEnabled = false }, WatcherStatusDisabled, false, true, false},

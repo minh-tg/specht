@@ -576,6 +576,7 @@ func watcherPollDeps(stores *port.Stores, cfg *config.Server, ids []string, name
 		RecordFailure: func(ctx context.Context, errText string, ts time.Time) error {
 			return stores.Watcher.RecordFailure(ctx, errText, ts)
 		},
+		RecordProjectFailure: stores.Watcher.RecordProjectFailure,
 		RecordSuccess: func(ctx context.Context, ts time.Time) error {
 			return stores.Watcher.UpdateState(ctx, ts)
 		},

@@ -38,6 +38,9 @@ type WatcherRepo interface {
 	// UpsertProjectState advances one project's watermark after a fully
 	// successful poll of that project.
 	UpsertProjectState(ctx context.Context, projectID pgtype.UUID, ts time.Time) error
+	// RecordProjectFailure bumps one project's consecutive-failure counter
+	// and stores the error text; its watermark is left unchanged.
+	RecordProjectFailure(ctx context.Context, projectID pgtype.UUID, errText string) error
 }
 
 type pgWatcherRepo struct {
@@ -85,6 +88,13 @@ func (r *pgWatcherRepo) GetProjectConfig(ctx context.Context, projectID pgtype.U
 
 func (r *pgWatcherRepo) GetProjectState(ctx context.Context, projectID pgtype.UUID) (sqlc.WatcherProjectState, error) {
 	return r.q.GetProjectWatcherState(ctx, projectID)
+}
+
+func (r *pgWatcherRepo) RecordProjectFailure(ctx context.Context, projectID pgtype.UUID, errText string) error {
+	return r.q.RecordProjectWatcherFailure(ctx, sqlc.RecordProjectWatcherFailureParams{
+		ProjectID: projectID,
+		LastError: pgtype.Text{String: errText, Valid: true},
+	})
 }
 
 func (r *pgWatcherRepo) UpsertProjectState(ctx context.Context, projectID pgtype.UUID, ts time.Time) error {

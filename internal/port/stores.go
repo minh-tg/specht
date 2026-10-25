@@ -1430,10 +1430,14 @@ type WatcherState struct {
 	ConsecutiveFailures  int32
 }
 
-// WatcherProjectState is a project's own watermark.
+// WatcherProjectState is a project's own watermark and failure state.
+// ConsecutiveFailures counts this project's failed polls since its last
+// success; LastError is the most recent failure's text.
 type WatcherProjectState struct {
 	ProjectID            string
 	LastSuccessfulPollAt *time.Time
+	ConsecutiveFailures  int32
+	LastError            *string
 }
 
 // WatcherStore persists the watcher watermark/health rows.
@@ -1449,7 +1453,12 @@ type WatcherStore interface {
 	// an unknown project.
 	UpdateProjectConfig(ctx context.Context, projectID string, enabled *bool, intervalSeconds *int32) (Project, error)
 	GetProjectState(ctx context.Context, projectID string) (WatcherProjectState, error)
+	// UpsertProjectState advances a project's watermark and clears its
+	// failure state.
 	UpsertProjectState(ctx context.Context, projectID string, ts time.Time) error
+	// RecordProjectFailure counts one failed poll of a project and stores
+	// the error text, leaving the watermark unchanged.
+	RecordProjectFailure(ctx context.Context, projectID, errText string) error
 }
 
 // ---------- Aggregate ----------

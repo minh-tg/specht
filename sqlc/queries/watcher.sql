@@ -62,14 +62,26 @@ RETURNING id, slug, name, cve_watcher_enabled, cve_watcher_interval_seconds;
 -- A project's own watcher watermark (per-project cutoff so disabling a
 -- project cannot lose advisories). Returns pgx.ErrNoRows when the project
 -- has never polled (cold start / catch-up from full history).
-SELECT project_id, last_successful_poll_at
+SELECT project_id, last_successful_poll_at, consecutive_failures, last_error
 FROM watcher_project_state
 WHERE project_id = $1;
 
 -- name: UpsertProjectWatcherState :exec
 -- Advances one project's watermark after a fully successful poll of that
--- project's inventory.
+-- project's inventory and clears its failure state.
 INSERT INTO watcher_project_state (project_id, last_successful_poll_at)
 VALUES ($1, $2::timestamptz)
 ON CONFLICT (project_id) DO UPDATE SET
-    last_successful_poll_at = EXCLUDED.last_successful_poll_at;
+    last_successful_poll_at = EXCLUDED.last_successful_poll_at,
+    consecutive_failures = 0,
+    last_error = NULL;
+
+-- name: RecordProjectWatcherFailure :exec
+-- Bumps one project's consecutive-failure counter and records the error,
+-- leaving its watermark alone. Upserts so a project that fails before its
+-- first successful poll still records state.
+INSERT INTO watcher_project_state (project_id, consecutive_failures, last_error)
+VALUES ($1, 1, $2)
+ON CONFLICT (project_id) DO UPDATE SET
+    consecutive_failures = watcher_project_state.consecutive_failures + 1,
+    last_error = EXCLUDED.last_error;

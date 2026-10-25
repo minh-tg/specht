@@ -88,13 +88,18 @@ type WatcherSettingsInput struct {
 	ResetInterval bool
 }
 
-func projectWatcherStatus(cfg WatcherSettings, enabled bool, interval time.Duration, lastPoll *time.Time, global port.WatcherState, now time.Time) string {
+// projectWatcherStatus derives one project's status from its own poll state.
+// Failing comes from the project's failure counter, not the global one: the
+// daemon keeps the global counter up while any project fails, so reading it
+// here marked every project failing because of one.
+func projectWatcherStatus(cfg WatcherSettings, enabled bool, interval time.Duration, state port.WatcherProjectState, now time.Time) string {
+	lastPoll := state.LastSuccessfulPollAt
 	switch {
 	case !enabled:
 		return WatcherStatusDisabled
 	case !cfg.Enabled:
 		return WatcherStatusServerOff
-	case global.ConsecutiveFailures > 0:
+	case state.ConsecutiveFailures > 0:
 		return WatcherStatusFailing
 	case lastPoll == nil:
 		return WatcherStatusWaiting
@@ -115,21 +120,17 @@ func (u *Usecases) projectWatcherResponse(ctx context.Context, p port.Project, n
 		interval = defaultProjectWatcherInterval
 	}
 
-	var lastPoll *time.Time
 	state, err := u.deps.Stores.Watcher.GetProjectState(ctx, p.ID)
 	switch {
 	case err == nil:
-		lastPoll = state.LastSuccessfulPollAt
 	case errors.Is(err, port.ErrNotFound):
+		state = port.WatcherProjectState{}
 	default:
 		return nil, fmt.Errorf("get project watcher state: %w", err)
 	}
-	global, err := u.deps.Stores.Watcher.GetState(ctx)
-	if err != nil && !errors.Is(err, port.ErrNotFound) {
-		return nil, fmt.Errorf("get watcher state: %w", err)
-	}
+	lastPoll := state.LastSuccessfulPollAt
 
-	status := projectWatcherStatus(cfg, p.CveWatcherEnabled, interval, lastPoll, global, now)
+	status := projectWatcherStatus(cfg, p.CveWatcherEnabled, interval, state, now)
 	resp := &ProjectWatcherResponse{
 		Enabled:                  p.CveWatcherEnabled,
 		IntervalSeconds:          p.CveWatcherIntervalSecs,

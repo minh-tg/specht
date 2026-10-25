@@ -40,7 +40,7 @@ func (q *Queries) GetProjectWatcherConfig(ctx context.Context, id pgtype.UUID) (
 }
 
 const getProjectWatcherState = `-- name: GetProjectWatcherState :one
-SELECT project_id, last_successful_poll_at
+SELECT project_id, last_successful_poll_at, consecutive_failures, last_error
 FROM watcher_project_state
 WHERE project_id = $1
 `
@@ -51,7 +51,12 @@ WHERE project_id = $1
 func (q *Queries) GetProjectWatcherState(ctx context.Context, projectID pgtype.UUID) (WatcherProjectState, error) {
 	row := q.db.QueryRow(ctx, getProjectWatcherState, projectID)
 	var i WatcherProjectState
-	err := row.Scan(&i.ProjectID, &i.LastSuccessfulPollAt)
+	err := row.Scan(
+		&i.ProjectID,
+		&i.LastSuccessfulPollAt,
+		&i.ConsecutiveFailures,
+		&i.LastError,
+	)
 	return i, err
 }
 
@@ -95,6 +100,27 @@ type IncrementWatcherFailureParams struct {
 // failure before any successful poll (no row yet) still records state.
 func (q *Queries) IncrementWatcherFailure(ctx context.Context, arg IncrementWatcherFailureParams) error {
 	_, err := q.db.Exec(ctx, incrementWatcherFailure, arg.LastError, arg.Column2)
+	return err
+}
+
+const recordProjectWatcherFailure = `-- name: RecordProjectWatcherFailure :exec
+INSERT INTO watcher_project_state (project_id, consecutive_failures, last_error)
+VALUES ($1, 1, $2)
+ON CONFLICT (project_id) DO UPDATE SET
+    consecutive_failures = watcher_project_state.consecutive_failures + 1,
+    last_error = EXCLUDED.last_error
+`
+
+type RecordProjectWatcherFailureParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	LastError pgtype.Text `json:"last_error"`
+}
+
+// Bumps one project's consecutive-failure counter and records the error,
+// leaving its watermark alone. Upserts so a project that fails before its
+// first successful poll still records state.
+func (q *Queries) RecordProjectWatcherFailure(ctx context.Context, arg RecordProjectWatcherFailureParams) error {
+	_, err := q.db.Exec(ctx, recordProjectWatcherFailure, arg.ProjectID, arg.LastError)
 	return err
 }
 
@@ -190,7 +216,9 @@ const upsertProjectWatcherState = `-- name: UpsertProjectWatcherState :exec
 INSERT INTO watcher_project_state (project_id, last_successful_poll_at)
 VALUES ($1, $2::timestamptz)
 ON CONFLICT (project_id) DO UPDATE SET
-    last_successful_poll_at = EXCLUDED.last_successful_poll_at
+    last_successful_poll_at = EXCLUDED.last_successful_poll_at,
+    consecutive_failures = 0,
+    last_error = NULL
 `
 
 type UpsertProjectWatcherStateParams struct {
@@ -199,7 +227,7 @@ type UpsertProjectWatcherStateParams struct {
 }
 
 // Advances one project's watermark after a fully successful poll of that
-// project's inventory.
+// project's inventory and clears its failure state.
 func (q *Queries) UpsertProjectWatcherState(ctx context.Context, arg UpsertProjectWatcherStateParams) error {
 	_, err := q.db.Exec(ctx, upsertProjectWatcherState, arg.ProjectID, arg.Column2)
 	return err
