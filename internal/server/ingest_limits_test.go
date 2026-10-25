@@ -12,8 +12,16 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/client"
 	"github.com/minh-tg/specht/internal/usecase"
 )
+
+// The adapter and the CLI must wait out a full-length upload, a queued slot
+// included, or a slow but successful ingest fails on the client side.
+func TestClientIngestTimeoutOutlastsTheServerWindow(t *testing.T) {
+	serverWindow := ingestBodyWindow + ingestWindow + ingestWriteSlack + defaultIngestQueueWait
+	assert.Greater(t, client.IngestRequestTimeout, serverWindow)
+}
 
 // deadlineRecorder is a ResponseWriter that, like the real connection
 // writer, accepts per-request read and write deadlines.

@@ -1321,6 +1321,55 @@ func TestRetryTransportRetriesNetworkErrors(t *testing.T) {
 	assert.Equal(t, []time.Duration{time.Second, 3 * time.Second}, slept)
 }
 
+func TestAdapterHTTPClientBoundsEachAttempt(t *testing.T) {
+	var remaining []time.Duration
+	base := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		deadline, ok := req.Context().Deadline()
+		require.True(t, ok, "every attempt has a deadline")
+		remaining = append(remaining, time.Until(deadline))
+		status := http.StatusOK
+		if len(remaining) == 1 {
+			status = http.StatusServiceUnavailable
+		}
+		return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader("{}")), Header: make(http.Header), Request: req}, nil
+	})
+	hc := newAdapterHTTPClient(&http.Client{Transport: base}, func(context.Context, time.Duration) {})
+	assert.Zero(t, hc.Timeout, "a client-wide timeout would cover every retry together")
+
+	req, err := http.NewRequest(http.MethodPost, "http://example.test/api/v1/reports", strings.NewReader("{}"))
+	require.NoError(t, err)
+	resp, err := hc.Do(req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+
+	require.Len(t, remaining, 2, "the 503 is retried")
+	for _, d := range remaining {
+		assert.InDelta(t, client.IngestRequestTimeout.Seconds(), d.Seconds(), 1, "each upload attempt gets the full ingest timeout")
+	}
+
+	remaining = nil
+	req, err = http.NewRequest(http.MethodGet, "http://example.test/api/v1/projects/p/gate", nil)
+	require.NoError(t, err)
+	resp, err = hc.Do(req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	assert.InDelta(t, client.DefaultRequestTimeout.Seconds(), remaining[len(remaining)-1].Seconds(), 1)
+}
+
+func TestRetryTransportDoesNotRetryAnAttemptTimeout(t *testing.T) {
+	var calls int
+	base := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		return nil, context.DeadlineExceeded
+	})
+	rt := &retryTransport{base: base, sleep: func(context.Context, time.Duration) {}}
+	req, err := http.NewRequest(http.MethodPost, "http://example.test/api/v1/reports", strings.NewReader("{}"))
+	require.NoError(t, err)
+	_, err = rt.RoundTrip(req)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Equal(t, 1, calls)
+}
+
 func TestRetryTransportStopsOnContextCancelDuringBackoff(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var calls int

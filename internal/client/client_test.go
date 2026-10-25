@@ -423,8 +423,10 @@ func TestErrorHandling(t *testing.T) {
 	assert.Contains(t, ce.Message, "bad key")
 }
 
-func TestDefaultHTTPClientHasTimeout(t *testing.T) {
-	assert.Equal(t, defaultRequestTimeout, New("http://localhost").httpClient.Timeout)
+func TestDefaultHTTPClientBoundsEachRequest(t *testing.T) {
+	hc := New("http://localhost").httpClient
+	assert.Zero(t, hc.Timeout, "a client-wide timeout would cut off a long ingest")
+	assert.IsType(t, &timeoutTransport{}, hc.Transport)
 }
 
 func TestWithContextCancelsInFlightRequest(t *testing.T) {

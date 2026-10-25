@@ -341,11 +341,6 @@ func isDuplicateReport(err error) bool {
 	return apiErr.StatusCode == http.StatusConflict && (apiErr.Code == "duplicate_report" || apiErr.Code == "")
 }
 
-// adapterRequestTimeout bounds one API attempt when the caller supplied no
-// client. It mirrors the API client's own default so wrapping the client in
-// retries does not change the timeout contract.
-const adapterRequestTimeout = 60 * time.Second
-
 // retryBackoff holds the wait before each retry. A transient failure is
 // retried at most len(retryBackoff) times.
 var retryBackoff = []time.Duration{time.Second, 3 * time.Second}
@@ -365,20 +360,19 @@ var adapterSleep = func(ctx context.Context, d time.Duration) {
 }
 
 // newAdapterHTTPClient returns a client whose requests retry transient
-// failures. It wraps hc when given, or a client with the adapter request
-// timeout, so retries apply on every run.
+// failures. It wraps hc when given, or a fresh client, so retries apply on
+// every run. The timeout sits inside the retries and bounds each attempt, with
+// the longer ingest timeout for the report upload. A client-wide Timeout would
+// instead cover every attempt and backoff together and cut off an ingest the
+// server is still allowed to finish.
 func newAdapterHTTPClient(hc *http.Client, sleep func(context.Context, time.Duration)) *http.Client {
 	if hc == nil {
-		hc = &http.Client{Timeout: adapterRequestTimeout}
+		hc = &http.Client{}
 	} else {
 		clone := *hc
 		hc = &clone
 	}
-	base := hc.Transport
-	if base == nil {
-		base = http.DefaultTransport
-	}
-	hc.Transport = &retryTransport{base: base, sleep: sleep}
+	hc.Transport = &retryTransport{base: client.NewTimeoutTransport(hc.Transport), sleep: sleep}
 	return hc
 }
 
@@ -418,10 +412,12 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 // retryableAttempt reports whether the attempt may be repeated. A canceled
-// context is not retried: shutdown must stay prompt.
+// context is not retried: shutdown must stay prompt. An attempt that ran out
+// its own timeout is not retried either: the server outlived its whole window,
+// and a repeated upload would only wait that long again.
 func retryableAttempt(req *http.Request, resp *http.Response, err error) bool {
 	if err != nil {
-		return req.Context().Err() == nil
+		return req.Context().Err() == nil && !errors.Is(err, context.DeadlineExceeded)
 	}
 	switch resp.StatusCode {
 	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:

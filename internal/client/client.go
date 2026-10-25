@@ -10,13 +10,9 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/minh-tg/specht/internal/netutil"
 )
-
-// defaultRequestTimeout bounds API requests made by the default HTTP client.
-const defaultRequestTimeout = 60 * time.Second
 
 // API path prefixes centralize route construction for the Specht API.
 const (
@@ -38,11 +34,13 @@ type Client struct {
 }
 
 // New builds a client for the given base URL (e.g. http://localhost:8080).
-// Requests use a 60-second timeout unless WithHTTPClient replaces the default.
+// Unless WithHTTPClient replaces the default, each request gets the timeout
+// RequestTimeout picks for it: DefaultRequestTimeout, or IngestRequestTimeout
+// for a report upload.
 func New(baseURL string, opts ...Option) *Client {
 	c := &Client{
 		baseURL:    strings.TrimRight(baseURL, "/"),
-		httpClient: &http.Client{Timeout: defaultRequestTimeout},
+		httpClient: &http.Client{Transport: NewTimeoutTransport(nil)},
 	}
 	for _, o := range opts {
 		o(c)
