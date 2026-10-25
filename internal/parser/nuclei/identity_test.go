@@ -30,6 +30,24 @@ func TestAnEventWithoutAMatcherNameKeepsItsIdentity(t *testing.T) {
 	assert.Equal(t, "dast:t:https://h.example.com/a", rep.Findings[0].Fingerprint)
 }
 
+func TestTheLocationIsAWellFormedURL(t *testing.T) {
+	data, err := os.ReadFile("testdata/nuclei-two-matchers.jsonl")
+	require.NoError(t, err)
+	rep, err := NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+	assert.Equal(t, "http://127.0.0.1:18099/", rep.Findings[0].Location)
+
+	rep, err = NewScanner().Parse(context.Background(), []byte(`{"template-id":"t","host":"https://h.example.com","matched-at":"https://h.example.com/a//b?token=s3cret#x"}`))
+	require.NoError(t, err)
+	assert.Equal(t, "https://h.example.com/a//b", rep.Findings[0].Location, "the URL keeps its authority and path, and drops the query")
+}
+
+func TestANetworkTargetIsKeptAsIs(t *testing.T) {
+	rep, err := NewScanner().Parse(context.Background(), []byte(`{"template-id":"ssh-auth","host":"10.0.0.5:22","matched-at":"10.0.0.5:22","type":"network"}`))
+	require.NoError(t, err)
+	assert.Equal(t, "10.0.0.5:22", rep.Findings[0].Location)
+}
+
 func TestTheScannerSaysItsIdentitiesChanged(t *testing.T) {
 	assert.EqualValues(t, 2, NewScanner().Descriptor().FingerprintVersion)
 	rep, err := NewScanner().Parse(context.Background(), []byte(`{"template-id":"t","host":"https://h.example.com"}`))

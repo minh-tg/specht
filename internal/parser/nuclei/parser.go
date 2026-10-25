@@ -332,10 +332,10 @@ func convert(ev nucleiEvent) domain.NormalizedFinding {
 	if ev.MatcherName != "" {
 		meta["matcher_name"] = ev.MatcherName
 	}
-	cleanLoc := parseutil.CleanFilePath(target)
-	if cleanLoc == "" {
-		cleanLoc = parseutil.SanitizeText(target, parseutil.MaxPathLength)
-	}
+	// The location is the identity URL, never a cleaned file path: path
+	// cleaning folds the // after the scheme into one slash. The query is
+	// left out, as its values may carry payloads or tokens.
+	cleanLoc := parseutil.SanitizeText(identity, parseutil.MaxPathLength)
 	return parseutil.HardenFinding(domain.NormalizedFinding{
 		Fingerprint: fingerprint(ev, identity),
 		FindingKind: "dast",
