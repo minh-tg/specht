@@ -46,7 +46,7 @@ func TestParse_GoScan(t *testing.T) {
 
 	finding := report.Findings[0]
 
-	expectedFP := "GHSA-c3h9-896r-86jm:pkg:golang/github.com/gogo/protobuf"
+	expectedFP := "GHSA-c3h9-896r-86jm:pkg:golang/github.com/gogo/protobuf@1.3.1"
 	assert.Equal(t, expectedFP, finding.Fingerprint)
 	assert.Equal(t, "sca", finding.FindingKind)
 	assert.Equal(t, 3, int(finding.Severity)) // high
@@ -125,10 +125,8 @@ func TestParse_GoFullScan(t *testing.T) {
 	}
 	assert.True(t, found, "non-vulnerable module github.com/spf13/cobra missing from inventory")
 
-	// Every finding maps to a captured package. osv findings identify
-	// packages by name only: finding purls are built from the OSV
-	// affected.package record, which carries no version (see TestParse_GoScan),
-	// while the inventory records purl@version. Compare at name level.
+	// Every finding maps to a captured package. Compare at name level: the
+	// inventory keeps the purl a scanner reports, which may carry qualifiers.
 	findingPURLs := map[string]bool{}
 	for _, f := range report.Findings {
 		for _, d := range f.Dimensions {
@@ -173,9 +171,9 @@ func TestParse_AffectedPackageSelection(t *testing.T) {
 		purl     string
 		fixed    string
 	}{
-		{"legacy object", `{"package":{"name":"lodash","ecosystem":"npm","purl":"pkg:npm/lodash"},"ranges":[{"events":[{"fixed":"4.17.21"}]}]}`, "pkg:npm/lodash", "4.17.21"},
-		{"matching package is not first", `[{"package":{"name":"lodash.trim","ecosystem":"npm","purl":"pkg:npm/lodash.trim"},"ranges":[{"events":[{"fixed":"4.5.1"}]}]},{"package":{"name":"lodash","ecosystem":"npm","purl":"pkg:npm/lodash"},"ranges":[{"events":[{"fixed":"4.17.21"}]}]}]`, "pkg:npm/lodash", "4.17.21"},
-		{"same name in another ecosystem", `[{"package":{"name":"lodash","ecosystem":"RubyGems","purl":"pkg:gem/lodash"},"ranges":[{"events":[{"fixed":"1.0.0"}]}]},{"package":{"name":"lodash","ecosystem":"npm","purl":"pkg:npm/lodash"},"ranges":[{"events":[{"fixed":"4.17.21"}]}]}]`, "pkg:npm/lodash", "4.17.21"},
+		{"legacy object", `{"package":{"name":"lodash","ecosystem":"npm","purl":"pkg:npm/lodash"},"ranges":[{"events":[{"fixed":"4.17.21"}]}]}`, "pkg:npm/lodash@4.17.20", "4.17.21"},
+		{"matching package is not first", `[{"package":{"name":"lodash.trim","ecosystem":"npm","purl":"pkg:npm/lodash.trim"},"ranges":[{"events":[{"fixed":"4.5.1"}]}]},{"package":{"name":"lodash","ecosystem":"npm","purl":"pkg:npm/lodash"},"ranges":[{"events":[{"fixed":"4.17.21"}]}]}]`, "pkg:npm/lodash@4.17.20", "4.17.21"},
+		{"same name in another ecosystem", `[{"package":{"name":"lodash","ecosystem":"RubyGems","purl":"pkg:gem/lodash"},"ranges":[{"events":[{"fixed":"1.0.0"}]}]},{"package":{"name":"lodash","ecosystem":"npm","purl":"pkg:npm/lodash"},"ranges":[{"events":[{"fixed":"4.17.21"}]}]}]`, "pkg:npm/lodash@4.17.20", "4.17.21"},
 		{"no matching package", `[{"package":{"name":"lodash.trim","ecosystem":"npm","purl":"pkg:npm/lodash.trim"}}]`, "pkg:npm/lodash@4.17.20", ""},
 		{"package-less advisory", `[{"ranges":[{"events":[{"fixed":"99.0.0"}]}]}]`, "pkg:npm/lodash@4.17.20", ""},
 		{"empty list", `[]`, "pkg:npm/lodash@4.17.20", ""},
