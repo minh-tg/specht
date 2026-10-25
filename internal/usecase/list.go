@@ -15,6 +15,7 @@ import (
 	"github.com/minh-tg/specht/internal/intel"
 	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/remediate"
+	"github.com/minh-tg/specht/internal/scanner"
 )
 
 // ProjectResponse is the API representation of a project.
@@ -67,6 +68,9 @@ type FindingResponse struct {
 	// Context is the latest observed deployment context. Nil when the
 	// finding has no linked scan occurrence — missing context is explicit.
 	Context *FindingContextResponse `json:"context,omitempty"`
+	// Scanner is the scanner of the finding's latest observation. Set on the
+	// detail view only, and nil when the scanner is not registered.
+	Scanner *FindingScannerResponse `json:"scanner,omitempty"`
 	// RawDataExpired and RawDataExpiresAt describe the report of the latest observation, the
 	// evidence a finding was last seen in. Only the detail view computes them, so the list leaves
 	// both out.
@@ -88,6 +92,16 @@ type FindingResponse struct {
 	// Nil when the finding has no CVE-shaped vulnerability_id dimension or
 	// no configured feed knows the identifier.
 	Intel *intel.Record `json:"intel,omitempty"`
+}
+
+// FindingScannerResponse names the scanner that last observed a finding and
+// says whether its reports can close the finding.
+type FindingScannerResponse struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"display_name"`
+	// SupportsAutoClose is false when the scanner's report cannot prove a fix,
+	// so a later scan that omits the finding leaves it open.
+	SupportsAutoClose bool `json:"supports_auto_close"`
 }
 
 // FindingContextResponse carries the human-readable deployment context of
@@ -594,6 +608,7 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 			Branch:          dc.Branch,
 			CommitSha:       dc.CommitSha,
 		}
+		resp.Scanner = u.findingScanner(dc.ToolName)
 		resp.RawDataExpired = &dc.RawDataExpired
 		resp.RawDataExpiresAt = rawExpiresAt(dc.ReportCreatedAt, dc.RawDataExpired, u.deps.RawRetentionDays)
 		dims, err := u.deps.Stores.Findings.ListDimensions(ctx, id.String())
@@ -614,6 +629,23 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 		u.attachIntel(ctx, dims, &resp)
 	}
 	return &resp, nil
+}
+
+// findingScanner describes the registered scanner called name, or nil when
+// there is none.
+func (u *Usecases) findingScanner(name string) *FindingScannerResponse {
+	if u.deps.Registry == nil || name == "" {
+		return nil
+	}
+	sc, err := u.deps.Registry.Get(name)
+	if err != nil {
+		return nil
+	}
+	return &FindingScannerResponse{
+		Name:              name,
+		DisplayName:       sc.Descriptor().ShownName(),
+		SupportsAutoClose: scanner.SupportsAutoClose(sc),
+	}
 }
 
 // attachIntel resolves the finding's CVE through the intel store on the read

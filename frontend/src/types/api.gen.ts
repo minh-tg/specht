@@ -2453,6 +2453,8 @@ export interface components {
       scan_types: string[];
       provides_packages: boolean;
       supports_auto_detection: boolean;
+      /** @description True when a report from this scanner can prove a finding is gone, so a later full scan that omits the finding closes it. Whether one report does depends on its content (a rule list, passed checks, an unfiltered run). False means a finding it reports is never closed by a scan that omits it. */
+      supports_auto_close: boolean;
     };
     ScannerFormat: {
       /** @example SARIF */
@@ -2653,6 +2655,15 @@ export interface components {
       introduced_by_report_id?: string;
       introduced_commit_sha?: string;
       context?: components["schemas"]["FindingContext"];
+      /** @description Set on GET /findings/{id}: the scanner of the latest observation. Absent when that scanner is not registered. */
+      scanner?: {
+        /** @example gitleaks */
+        name: string;
+        /** @example Gitleaks */
+        display_name: string;
+        /** @description False when this scanner's report cannot prove a fix, so a later scan that omits the finding leaves it open. */
+        supports_auto_close: boolean;
+      };
       /** @description Set on GET /findings/{id} and absent from list responses. True when the report of the finding's latest observation has had its raw payload cleared by the retention sweep. */
       raw_data_expired?: boolean;
       /**

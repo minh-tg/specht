@@ -144,6 +144,28 @@ func SupportsIncremental(s Scanner) bool {
 	return ok && incremental.SupportsIncremental()
 }
 
+// AutoCloser is optionally implemented by scanners whose report can prove a
+// finding is gone, so a later scan that omits it closes it: a whole-kind
+// guarantee (Trivy), a rule list or passed check (SARIF, Semgrep, Checkov) or
+// an unfiltered run (Grype). Whether a given report does depends on its
+// content. Scanners that do not implement it never close a finding by absence.
+type AutoCloser interface {
+	Scanner
+	// SupportsAutoClose reports whether a report from this scanner can prove
+	// a fix.
+	SupportsAutoClose() bool
+}
+
+// SupportsAutoClose reports whether s can close findings by absence. A nil
+// scanner never can.
+func SupportsAutoClose(s Scanner) bool {
+	if s == nil {
+		return false
+	}
+	closer, ok := s.(AutoCloser)
+	return ok && closer.SupportsAutoClose()
+}
+
 var (
 	// ErrNoMatch is returned by Registry.Detect when no registered scanner
 	// recognizes the data.

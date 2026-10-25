@@ -64,3 +64,33 @@ func TestListScannersTellsPeopleWhatEachOneReads(t *testing.T) {
 		{Name: "SARIF", Extensions: []string{".json", ".sarif"}, Command: "semgrep scan --sarif", TestedWith: "Semgrep 1.172.0", Note: "Same findings."},
 	}, got[0].Formats)
 }
+
+// closingScanner can prove a fix.
+type closingScanner struct{ mockScanner }
+
+func (c *closingScanner) SupportsAutoClose() bool { return true }
+
+func TestListScannersSaysWhichOnesCanCloseFindings(t *testing.T) {
+	registry := scanner.NewRegistry()
+	require.NoError(t, registry.Register(&closingScanner{mockScanner{name: "trivy"}}))
+	require.NoError(t, registry.Register(&mockScanner{name: "gitleaks"}))
+
+	got := New(Deps{Registry: registry}).ListScanners()
+
+	require.Len(t, got, 2)
+	assert.True(t, got[0].SupportsAutoClose)
+	assert.False(t, got[1].SupportsAutoClose)
+}
+
+func TestFindingScannerNamesTheLastObserver(t *testing.T) {
+	registry := scanner.NewRegistry()
+	require.NoError(t, registry.Register(&closingScanner{mockScanner{name: "trivy"}}))
+	require.NoError(t, registry.Register(&mockScanner{name: "gitleaks"}))
+	uc := New(Deps{Registry: registry})
+
+	assert.Equal(t, &FindingScannerResponse{Name: "trivy", DisplayName: "trivy", SupportsAutoClose: true}, uc.findingScanner("trivy"))
+	assert.False(t, uc.findingScanner("gitleaks").SupportsAutoClose)
+	assert.Nil(t, uc.findingScanner("unregistered"))
+	assert.Nil(t, uc.findingScanner(""))
+	assert.Nil(t, New(Deps{}).findingScanner("trivy"))
+}
