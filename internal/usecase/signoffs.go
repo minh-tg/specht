@@ -44,7 +44,7 @@ func (u *Usecases) UpsertSignoff(ctx context.Context, findingID, userID, status,
 func (u *Usecases) GetSignoff(ctx context.Context, findingID string) (*SignoffResponse, error) {
 	fid, err := uuid.Parse(findingID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid finding id: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidFindingID, err)
 	}
 	if err := u.checkFindingProjectAccess(ctx, fid); err != nil {
 		return nil, err
