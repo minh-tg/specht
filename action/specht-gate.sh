@@ -206,6 +206,30 @@ verify_release() {
   )
 }
 
+# Prints the gate scope the adapter gets, always as true or false. An empty
+# input means true on pull_request events and false otherwise. The value is
+# passed explicitly because the adapter, left to itself, gates on the change
+# whenever a base ref is known, which would turn introduced-only: false into
+# true on every pull request.
+introduced_only() {
+  local value="${SPECHT_INPUT_INTRODUCED_ONLY:-}"
+  case "$value" in
+    true | false)
+      printf '%s\n' "$value"
+      ;;
+    "")
+      if [[ "${SPECHT_EVENT_NAME:-}" == pull_request* ]]; then
+        printf 'true\n'
+      else
+        printf 'false\n'
+      fi
+      ;;
+    *)
+      error "introduced-only must be true, false or empty, got '${value}'"
+      ;;
+  esac
+}
+
 # Extracts the verified archive and runs the adapter. The adapter's exit code
 # is the step's: 0 pass, 1 blocked (findings), 2 error.
 run_adapter() {
@@ -225,17 +249,9 @@ run_adapter() {
     args+=(-project "$SPECHT_INPUT_PROJECT")
   fi
 
-  local introduced="${SPECHT_INPUT_INTRODUCED_ONLY:-}"
-  if [[ -z "$introduced" ]]; then
-    if [[ "${SPECHT_EVENT_NAME:-}" == pull_request* ]]; then
-      introduced=true
-    else
-      introduced=false
-    fi
-  fi
-  if [[ "$introduced" == "true" ]]; then
-    args+=(-introduced-only)
-  fi
+  local introduced
+  introduced="$(introduced_only)"
+  args+=("-introduced-only=${introduced}")
 
   local base_ref="${SPECHT_INPUT_BASE_REF:-}"
   if [[ -z "$base_ref" ]]; then
@@ -256,37 +272,45 @@ run_adapter() {
   "$bin" "${args[@]}"
 }
 
-mode="${1:-run}"
-case "$mode" in
-  identity)
-    certificate_identity "${2:?usage: specht-gate.sh identity TAG}"
-    ;;
-  prepare)
-    resolve_release
-    resolve_skip
-    if [[ -z "${GITHUB_OUTPUT:-}" ]]; then
-      error "GITHUB_OUTPUT is required for prepare"
-    fi
-    {
-      echo "version=$file_version"
-      echo "tag=$tag"
-      echo "os=$os"
-      echo "arch=$arch"
-      echo "asset=$asset"
-      echo "skipped=$skipped"
-    } >>"$GITHUB_OUTPUT"
-    ;;
-  run)
-    resolve_release
-    resolve_skip
-    if [[ "$skipped" == "true" ]]; then
-      exit 0
-    fi
-    download_release
-    verify_release
-    run_adapter
-    ;;
-  *)
-    error "unknown mode '${mode}'; expected prepare, run or identity"
-    ;;
-esac
+main() {
+  local mode="${1:-run}"
+  case "$mode" in
+    identity)
+      certificate_identity "${2:?usage: specht-gate.sh identity TAG}"
+      ;;
+    prepare)
+      resolve_release
+      resolve_skip
+      if [[ -z "${GITHUB_OUTPUT:-}" ]]; then
+        error "GITHUB_OUTPUT is required for prepare"
+      fi
+      {
+        echo "version=$file_version"
+        echo "tag=$tag"
+        echo "os=$os"
+        echo "arch=$arch"
+        echo "asset=$asset"
+        echo "skipped=$skipped"
+      } >>"$GITHUB_OUTPUT"
+      ;;
+    run)
+      resolve_release
+      resolve_skip
+      if [[ "$skipped" == "true" ]]; then
+        exit 0
+      fi
+      download_release
+      verify_release
+      run_adapter
+      ;;
+    *)
+      error "unknown mode '${mode}'; expected prepare, run or identity"
+      ;;
+  esac
+}
+
+# Sourcing the script defines its functions without running a mode, so the
+# tests can call one function at a time.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
