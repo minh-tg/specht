@@ -31,6 +31,9 @@ func TestNormalizeDCSeverity(t *testing.T) {
 		{"Critical", domain.SeverityCritical},
 		{"HIGH", domain.SeverityHigh},
 		{"MEDIUM", domain.SeverityMedium},
+		// GHSA advisories from the NPM and OSS Index analyzers say moderate.
+		{"moderate", domain.SeverityMedium},
+		{"MODERATE", domain.SeverityMedium},
 		{"LOW", domain.SeverityLow},
 		{"", domain.SeverityUnknown},
 		{"UNKNOWN", domain.SeverityUnknown},

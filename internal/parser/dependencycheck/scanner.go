@@ -293,7 +293,7 @@ func normalizeDCSeverity(s string) domain.Severity {
 		return domain.SeverityCritical
 	case "HIGH":
 		return domain.SeverityHigh
-	case "MEDIUM":
+	case "MEDIUM", "MODERATE":
 		return domain.SeverityMedium
 	case "LOW":
 		return domain.SeverityLow
