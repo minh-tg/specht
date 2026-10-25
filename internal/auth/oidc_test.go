@@ -32,7 +32,27 @@ func mustOIDC(t *testing.T, issuerURL string) *OIDCAuthenticator {
 		RedirectURI:  "http://localhost:8080/callback",
 	}, nil)
 	require.NoError(t, err)
+	seedEndpoints(a)
 	return a
+}
+
+// seedEndpoints fills the discovery cache with fixed endpoints under the
+// issuer, as if its discovery document had been fetched, so tests about the
+// rest of the flow need neither a discovery document nor a reachable issuer.
+// oidc_discovery_test.go covers discovery itself.
+func seedEndpoints(a *OIDCAuthenticator) {
+	base := strings.TrimSuffix(a.cfg.IssuerURL, "/")
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.meta = providerMetadata{
+		Issuer:                a.cfg.IssuerURL,
+		AuthorizationEndpoint: base + "/oauth/authorize",
+		TokenEndpoint:         base + "/oauth/token",
+		UserinfoEndpoint:      base + "/userinfo",
+		JWKSURI:               base + "/.well-known/jwks.json",
+	}
+	a.metaOK = true
+	a.metaExpiry = time.Now().Add(time.Hour)
 }
 
 func TestOIDC_SSRFAddressChecks(t *testing.T) {

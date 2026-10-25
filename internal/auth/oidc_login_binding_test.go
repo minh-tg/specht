@@ -40,6 +40,9 @@ func newStrictIdP(t *testing.T) *strictIdP {
 	key := newOIDCTestKey(t)
 	p := &strictIdP{codes: map[string]strictGrant{}}
 	p.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveTestDiscovery(w, r, p.srv.URL) {
+			return
+		}
 		switch r.URL.Path {
 		case "/oauth/token":
 			_ = r.ParseForm()

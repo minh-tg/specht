@@ -60,11 +60,16 @@ type OIDCAuthenticator struct {
 	// now is the clock for the login cookie's expiry; tests replace it.
 	now func() time.Time
 
-	jwksURL    string
 	httpClient *http.Client
 	mu         sync.RWMutex
 	keyCache   map[string]any
 	keyExpiry  time.Time
+	// meta holds the endpoints from the discovery document once metaOK is
+	// set; metaExpiry is when a refresh is next attempted (see provider).
+	meta            providerMetadata
+	metaOK          bool
+	metaExpiry      time.Time
+	discoveryFlight singleflight.Group
 	// jwksFlight coalesces concurrent JWKS refreshes: when a key rotation
 	// invalidates the cache, the first callback that misses re-fetches the
 	// JWKS while the rest share that single in-flight fetch instead of each
@@ -104,11 +109,12 @@ func isBlockedIP(ip net.IP) bool {
 }
 
 // NewOIDCAuthenticator builds an SSO authenticator from the given config.
-// The issuer URL is validated up front: it is the base for the token,
-// userinfo, and JWKS endpoints, and the token exchange posts the client
-// secret to it, so a non-HTTPS (off-loopback) issuer is refused rather than
+// The issuer URL is validated up front: the discovery document is fetched
+// from it, and the token exchange posts the client secret to an endpoint it
+// names, so a non-HTTPS (off-loopback) issuer is refused rather than
 // silently shipping the secret in the clear. An error is returned on invalid
-// issuers, so startup wiring can fail fast before serving.
+// issuers, so startup wiring can fail fast before serving. The provider
+// itself is not contacted here; discovery runs on the first login.
 func NewOIDCAuthenticator(cfg OIDCConfig, logger func(msg string, args ...any)) (*OIDCAuthenticator, error) {
 	if err := ValidateIssuerURL(cfg.IssuerURL); err != nil {
 		return nil, err
@@ -132,7 +138,6 @@ func NewOIDCAuthenticator(cfg OIDCConfig, logger func(msg string, args ...any)) 
 		logger:   logger,
 		stateKey: stateKey,
 		now:      time.Now,
-		jwksURL:  strings.TrimSuffix(cfg.IssuerURL, "/") + "/.well-known/jwks.json",
 		httpClient: &http.Client{
 			Timeout:   15 * time.Second,
 			Transport: transport,
@@ -153,14 +158,17 @@ func (a *OIDCAuthenticator) Authenticate(ctx context.Context, token string) (*Id
 }
 
 func (a *OIDCAuthenticator) exchangeCode(ctx context.Context, code, codeVerifier string) (map[string]any, error) {
-	// The client secret is POSTed below to an endpoint derived from the
-	// issuer; refuse anything but the validated HTTPS (or loopback) issuer
-	// base. This is a second line of defense behind the constructor check —
-	// a config bug must never send the secret to a plaintext endpoint.
-	if err := ValidateIssuerURL(a.cfg.IssuerURL); err != nil {
+	meta, err := a.provider(ctx)
+	if err != nil {
 		return nil, err
 	}
-	tokenURL := strings.TrimSuffix(a.cfg.IssuerURL, "/") + "/oauth/token"
+	// The client secret is POSTed below to the discovered token endpoint.
+	// Discovery already checked that it is HTTPS (or loopback); checking
+	// again here means no later change can send the secret in the clear.
+	tokenURL := meta.TokenEndpoint
+	if err := validateEndpointURL(tokenURL); err != nil {
+		return nil, err
+	}
 	data := url.Values{}
 	data.Set("grant_type", "authorization_code")
 	data.Set("code", code)
@@ -205,6 +213,8 @@ func (a *OIDCAuthenticator) exchangeCode(ctx context.Context, code, codeVerifier
 // nonce claims before accepting it. The OIDC subject (sub) claim is used as
 // the stable user identifier.
 func (a *OIDCAuthenticator) identityFromIDToken(ctx context.Context, idToken string, wantNonce string) (*Identity, error) {
+	// iss must equal the configured issuer byte for byte, trailing slash
+	// included; discovery checked that the provider advertises the same one.
 	tok, err := jwt.Parse(idToken, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
 			if _, ok := t.Method.(*jwt.SigningMethodECDSA); !ok {
@@ -216,7 +226,7 @@ func (a *OIDCAuthenticator) identityFromIDToken(ctx context.Context, idToken str
 			return nil, fmt.Errorf("id_token missing kid")
 		}
 		return a.fetchJWKKey(ctx, kid)
-	}, jwt.WithValidMethods([]string{"RS256", "ES256"}), jwt.WithIssuer(strings.TrimSuffix(a.cfg.IssuerURL, "/")), jwt.WithAudience(a.cfg.ClientID), jwt.WithExpirationRequired())
+	}, jwt.WithValidMethods([]string{"RS256", "ES256"}), jwt.WithIssuer(a.cfg.IssuerURL), jwt.WithAudience(a.cfg.ClientID), jwt.WithExpirationRequired())
 	if err != nil {
 		return nil, errors.Join(ErrInvalidCredential, err)
 	}
@@ -351,7 +361,14 @@ func IsSSOAdmin(groups []string, adminGroups []string) bool {
 // fetchUserInfoBody GETs the issuer's userinfo endpoint with the access
 // token and returns the bounded response body.
 func (a *OIDCAuthenticator) fetchUserInfoBody(ctx context.Context, accessToken string) ([]byte, error) {
-	userInfoURL := strings.TrimSuffix(a.cfg.IssuerURL, "/") + "/userinfo"
+	meta, err := a.provider(ctx)
+	if err != nil {
+		return nil, err
+	}
+	userInfoURL := meta.UserinfoEndpoint
+	if userInfoURL == "" {
+		return nil, errors.New("userinfo: the provider advertises no userinfo_endpoint")
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, userInfoURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("userinfo request: %w", err)
@@ -638,6 +655,10 @@ func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, cla
 			if a.logger != nil {
 				a.logger("oidc token exchange failed", "error", err)
 			}
+			if errors.Is(err, ErrSSOProviderUnavailable) {
+				http.Error(w, "the identity provider is unavailable, try signing in again later", http.StatusServiceUnavailable)
+				return
+			}
 			http.Error(w, "token exchange failed", http.StatusInternalServerError)
 			return
 		}
@@ -648,6 +669,9 @@ func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, cla
 			return
 		}
 
+		// The stored identity key keeps the issuer without a trailing slash,
+		// as links made before discovery have it. Only this key is trimmed;
+		// identityFromIDToken compared the iss claim exactly.
 		issueCallbackSession(w, r, issuer, strings.TrimSuffix(a.cfg.IssuerURL, "/"), ident, returnTo, binding)
 	}
 }
@@ -692,10 +716,14 @@ func jwksKeyToPublicKey(k jwksKey, logger func(msg string, args ...any)) (any, b
 	}
 }
 
-// fetchJWKS downloads the issuer's JSON Web Key Set and caches the keys it
-// contains until jwksCacheTTL elapses.
+// fetchJWKS downloads the JSON Web Key Set at the discovered jwks_uri and
+// caches the keys it contains until jwksCacheTTL elapses.
 func (a *OIDCAuthenticator) fetchJWKS(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.jwksURL, nil)
+	meta, err := a.provider(ctx)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, meta.JWKSURI, nil)
 	if err != nil {
 		return fmt.Errorf("jwks request: %w", err)
 	}

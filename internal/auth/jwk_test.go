@@ -96,7 +96,11 @@ func TestOIDCIdentityFromIDTokenAcceptsES256JWKSKey(t *testing.T) {
 	}}})
 	require.NoError(t, err)
 
-	issuer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var issuer *httptest.Server
+	issuer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveTestDiscovery(w, r, issuer.URL) {
+			return
+		}
 		if r.URL.Path != "/.well-known/jwks.json" {
 			http.NotFound(w, r)
 			return

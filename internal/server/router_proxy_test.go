@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -14,18 +15,61 @@ import (
 )
 
 // testOIDC builds an OIDC authenticator for router-level SSO tests. The
-// issuer is a loopback URL (permitted over plain HTTP) and is never actually
-// contacted: the login handler only builds the provider's authorize URL.
+// issuer is a loopback server (permitted over plain HTTP) that only serves
+// the discovery document: the login handler needs no more than the
+// authorization endpoint it names.
 func testOIDC(t *testing.T) *auth.OIDCAuthenticator {
 	t.Helper()
+	provider := newDiscoveryOnlyIdP(t)
 	oidc, err := auth.NewOIDCAuthenticator(auth.OIDCConfig{
 		ClientID:     "test-client",
 		ClientSecret: "secret",
-		IssuerURL:    "http://127.0.0.1",
+		IssuerURL:    provider.URL,
 		RedirectURI:  "http://127.0.0.1/api/v1/auth/sso/callback",
 	}, nil)
 	require.NoError(t, err)
 	return oidc
+}
+
+// serveDiscovery answers a provider's discovery request with endpoints under
+// base and reports whether the request was one.
+func serveDiscovery(w http.ResponseWriter, r *http.Request, base string) bool {
+	if r.URL.Path != "/.well-known/openid-configuration" {
+		return false
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = fmt.Fprintf(w, `{"issuer":%q,"authorization_endpoint":%q,"token_endpoint":%q,"userinfo_endpoint":%q,"jwks_uri":%q}`,
+		base, base+"/oauth/authorize", base+"/oauth/token", base+"/userinfo", base+"/.well-known/jwks.json")
+	return true
+}
+
+func newDiscoveryOnlyIdP(t *testing.T) *httptest.Server {
+	t.Helper()
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !serveDiscovery(w, r, srv.URL) {
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestSSOLogin_UnreachableProviderIs503(t *testing.T) {
+	provider := httptest.NewServer(http.NotFoundHandler())
+	provider.Close()
+	oidc, err := auth.NewOIDCAuthenticator(auth.OIDCConfig{
+		ClientID: "test-client", ClientSecret: "secret", IssuerURL: provider.URL,
+		RedirectURI: "http://127.0.0.1/api/v1/auth/sso/callback",
+	}, nil)
+	require.NoError(t, err, "a provider that is down does not stop the server from starting")
+
+	w := httptest.NewRecorder()
+	ssoLoginHandler(oidc)(w, httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/login", nil))
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.Contains(t, w.Body.String(), "identity provider")
+	assert.Empty(t, w.Result().Cookies())
 }
 
 // ssoStateCookie extracts the login state cookie (sso_state_<hash of state>)
