@@ -79,6 +79,41 @@ else
   echo "ok: introduced-only 'yes' is refused"
 fi
 
+# Failures of the script itself exit 2, never 1, which means blocked by
+# findings. Each case runs one function in a sourced copy of the script.
+expect_exit() {
+  local want="$1" what="$2" body="$3"
+  shift 3
+  local got=0
+  "${clean_env[@]}" "$@" bash -c "source \"\$1\"; ${body}" _ "$script" >/dev/null 2>&1 || got=$?
+  check "$want" "$got" "exit code when ${what}"
+}
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+mkdir -p "$work/bin" "$work/rel"
+# A stand-in cosign whose verdict the test controls.
+printf '#!/usr/bin/env bash\nexit "${FAKE_COSIGN_EXIT:-0}"\n' >"$work/bin/cosign"
+chmod +x "$work/bin/cosign"
+printf 'adapter bytes\n' >"$work/rel/specht-adapter_1.2.3_linux_amd64.tar.gz"
+verify="tmp='$work/rel'; asset=specht-adapter_1.2.3_linux_amd64.tar.gz; os=linux; tag=v1.2.3; verify_release"
+sum="$(cd "$work/rel" && sha256sum specht-adapter_1.2.3_linux_amd64.tar.gz)"
+
+expect_exit 2 "the release base URL override is refused" "main identity v1.2.3" SPECHT_RELEASE_BASE_URL="http://127.0.0.1:8123"
+expect_exit 2 "the mode is unknown" "main bogus"
+expect_exit 2 "the runner OS is unsupported" "resolve_release" SPECHT_INPUT_VERSION=v1.2.3 RUNNER_OS=Plan9 RUNNER_ARCH=X64
+expect_exit 2 "the api-key is missing on a push" "resolve_skip" SPECHT_EVENT_NAME=push SPECHT_INPUT_API_KEY=
+expect_exit 2 "introduced-only is not a boolean" "introduced_only" SPECHT_INPUT_INTRODUCED_ONLY=yes
+expect_exit 2 "the download fails" "tag=v1.2.3; asset=a.tar.gz; download_release" SPECHT_SELFTEST=1 SPECHT_RELEASE_BASE_URL="http://127.0.0.1:1" RUNNER_TEMP="$work/dl"
+
+printf '%s\n' "$sum" >"$work/rel/SHA256SUMS"
+expect_exit 0 "the signature and checksum verify" "$verify" PATH="$work/bin:$PATH"
+expect_exit 2 "the signature does not verify" "$verify" PATH="$work/bin:$PATH" FAKE_COSIGN_EXIT=1
+printf '%s  other.tar.gz\n' "${sum%% *}" >"$work/rel/SHA256SUMS"
+expect_exit 2 "SHA256SUMS has no entry for the asset" "$verify" PATH="$work/bin:$PATH"
+printf '%064d  specht-adapter_1.2.3_linux_amd64.tar.gz\n' 0 >"$work/rel/SHA256SUMS"
+expect_exit 2 "the archive checksum does not match" "$verify" PATH="$work/bin:$PATH"
+
 if [[ "$failures" -ne 0 ]]; then
   echo "::error::${failures} check(s) failed" >&2
   exit 1
