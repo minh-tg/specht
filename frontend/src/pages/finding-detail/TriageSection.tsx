@@ -40,6 +40,7 @@ export function TriageSection({
         findingId,
         analysisState: selectedState,
         previousState: currentState,
+        expectedState: currentState,
         reason: selectedOption?.requiresReason ? reason : undefined,
         analysisExpiresAt: selectedOption?.requiresExpiry
           ? toExpiryTimestamp(expiresAt)
