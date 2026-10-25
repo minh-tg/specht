@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
 	"github.com/minh-tg/specht/internal/parser"
@@ -131,5 +132,33 @@ CREATE TRIGGER reject_inventory BEFORE INSERT ON report_packages FOR EACH ROW EX
 			require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM finding_occurrences o JOIN reports r ON r.id=o.report_id WHERE r.commit_sha=$1`, strings.Repeat("3", 40)).Scan(&occurrences))
 			require.Zero(t, occurrences)
 		})
+	}
+}
+
+// An ingest holds its transaction's connection and writes the report row on a
+// second one. The server caps concurrent ingests below the pool size on that
+// basis, so one ingest must never need a third connection at once.
+func TestIngestFitsInTwoConnections(t *testing.T) {
+	dsn, drop := newTestDatabase(t)
+	defer drop()
+	cfg, err := pgxpool.ParseConfig(dsn)
+	require.NoError(t, err)
+	cfg.MaxConns = 2
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	require.NoError(t, err)
+	defer pool.Close()
+	stores := NewPortStores(pool)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err = stores.Projects.Create(ctx, port.CreateProjectInput{Slug: "two-conns", Name: "Two Conns", DeploymentThreshold: "high", Settings: []byte(`{}`)})
+	require.NoError(t, err)
+	registry := scanner.NewRegistry()
+	for _, sc := range parser.Builtins() {
+		require.NoError(t, registry.Register(sc))
+	}
+	u := usecase.New(usecase.Deps{Stores: stores, Registry: registry})
+	for i, severity := range []string{"HIGH", "", "CRITICAL"} {
+		_, err := u.IngestReport(ctx, usecase.IngestReportInput{ProjectSlug: "two-conns", Scanner: "trivy", Branch: "main", CommitSha: strings.Repeat(string(rune('a'+i)), 40), RawData: transactionalTrivyReport(t, severity)})
+		require.NoError(t, err)
 	}
 }

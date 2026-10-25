@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -228,13 +229,17 @@ func main() {
 		IngestMaxFindings:       cfg.IngestMaxFindings,
 	})
 
+	ingestSlots := cfg.IngestSlots(server.DefaultIngestConcurrency)
+	if wanted := cmp.Or(cfg.IngestConcurrency, server.DefaultIngestConcurrency); wanted > ingestSlots {
+		slog.Warn("ingest concurrency capped below the database pool", "configured", wanted, "used", ingestSlots, "db_max_conns", cfg.DBMaxConns)
+	}
 	handler := server.NewRouter(server.RouterConfig{
 		Usecases:    uc,
 		CORSOrigins: cfg.CORSOrigins,
 
 		RegistrationDisabled:    cfg.RegistrationDisabled,
 		SSOAllowUnverifiedEmail: cfg.SSO.AllowUnverifiedEmail,
-		IngestConcurrency:       cfg.IngestConcurrency,
+		IngestConcurrency:       ingestSlots,
 		IngestMemoryBudget:      cfg.IngestMemoryBudget,
 		Ready:                   pool.Ping,
 		TrustedProxies:          cfg.TrustedProxies,
