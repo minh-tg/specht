@@ -97,11 +97,14 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	// installed at all: rs/cors reads an empty list as "any origin".
 	origins := strings.FieldsFunc(cfg.CORSOrigins, func(c rune) bool { return c == ',' || c == ' ' })
 	if len(origins) > 0 {
+		// PATCH carries single-finding triage. Retry-After (the 429 delay) and
+		// X-Archived-Findings (the count after a report delete) are read by
+		// the UI; X-Request-Id lets a cross-origin client quote a failure.
 		r.Use(cors.Handler(cors.Options{
 			AllowedOrigins:   origins,
-			AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+			AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 			AllowedHeaders:   []string{"Accept", "Authorization", headerContentType},
-			ExposedHeaders:   []string{"Link", "X-Total-Count"},
+			ExposedHeaders:   []string{"Link", "X-Total-Count", "Retry-After", "X-Archived-Findings", requestIDHeader},
 			AllowCredentials: true,
 			MaxAge:           300,
 		}))
