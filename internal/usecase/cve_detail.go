@@ -190,24 +190,7 @@ func (u *Usecases) GetFindingCVE(ctx context.Context, findingID string) (*CVEDet
 	if err != nil {
 		return nil, fmt.Errorf("get finding dimensions: %w", err)
 	}
-	cve := ""
-	for _, d := range dims {
-		if d.Key == "vulnerability_id" && cvedetail.ValidCVEID(d.Value) {
-			cve = d.Value
-			break
-		}
-	}
-	if cve == "" {
-		// A scanner can use a GHSA as the primary id and carry the CVE as an
-		// alias. The alias is a valid identity for the provider and intel
-		// lookups, so use it when the primary id is not a CVE.
-		for _, d := range dims {
-			if d.Key == "alias" && cvedetail.ValidCVEID(d.Value) {
-				cve = d.Value
-				break
-			}
-		}
-	}
+	cve := findingCVE(dims, cvedetail.ValidCVEID)
 	if cve == "" {
 		return nil, ErrNotCVE
 	}
@@ -572,6 +555,25 @@ func firstNonEmpty(values ...string) string {
 	for _, v := range values {
 		if v != "" {
 			return v
+		}
+	}
+	return ""
+}
+
+// findingCVE returns the CVE a finding is about: its vulnerability_id when
+// that is a CVE, otherwise the first CVE among its alias dimensions. A
+// scanner can use a GHSA as the primary id and carry the CVE as an alias;
+// the alias is a valid identity for the provider and intel lookups. isCVE
+// decides what counts as a CVE id. Empty means the finding has none.
+func findingCVE(dims []port.FindingDimension, isCVE func(string) bool) string {
+	for _, d := range dims {
+		if d.Key == "vulnerability_id" && isCVE(d.Value) {
+			return d.Value
+		}
+	}
+	for _, d := range dims {
+		if d.Key == "alias" && isCVE(d.Value) {
+			return d.Value
 		}
 	}
 	return ""

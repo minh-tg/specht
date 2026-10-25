@@ -115,6 +115,30 @@ func TestGetFinding_ReturnsWithoutWaitingOnIntelRefresh(t *testing.T) {
 	assert.Equal(t, 1, provider.callCount())
 }
 
+func TestGetFinding_ResolvesIntelThroughACVEAlias(t *testing.T) {
+	provider := newGatedIntelProvider(nil)
+	t.Cleanup(provider.release)
+	uc := newIntelTestUsecases(provider)
+	fr := uc.deps.Stores.Findings.(*mockFindingRepo)
+	fr.listDimensionsFn = func(ctx context.Context, findingID string) ([]port.FindingDimension, error) {
+		return []port.FindingDimension{
+			{Key: "vulnerability_id", Value: "GHSA-aaaa-bbbb-cccc"},
+			{Key: "alias", Value: intelTestCVE},
+		}, nil
+	}
+
+	_, err := uc.GetFinding(memberSessionCtx(), intelTestFindingID)
+	require.NoError(t, err)
+	provider.release()
+	uc.intelRefresh.wg.Wait()
+	require.Equal(t, 1, provider.callCount(), "a GHSA-primary finding refreshes its CVE alias")
+
+	finding, err := uc.GetFinding(memberSessionCtx(), intelTestFindingID)
+	require.NoError(t, err)
+	require.NotNil(t, finding.Intel, "intel resolves through the CVE alias")
+	assert.Equal(t, intelTestCVE, finding.Intel.CVEID)
+}
+
 func TestGetFinding_ConcurrentMissesStartOneRefresh(t *testing.T) {
 	provider := newGatedIntelProvider(nil)
 	t.Cleanup(provider.release)

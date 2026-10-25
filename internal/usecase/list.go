@@ -619,19 +619,14 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 // attachIntel resolves the finding's CVE through the intel store on the read
 // path. It never waits on a feed: the response carries whatever is cached
 // right now, and a miss or a TTL-stale entry schedules a background refresh
-// that lands on a later read. Findings without a CVE-shaped vulnerability_id
-// dimension carry no intel at all.
+// that lands on a later read. The CVE is picked like the CVE detail picks it:
+// the vulnerability_id when it is a CVE, else a CVE alias. Findings with
+// neither carry no intel at all.
 func (u *Usecases) attachIntel(ctx context.Context, dims []port.FindingDimension, resp *FindingResponse) {
 	if u.deps.Intel == nil {
 		return
 	}
-	cve := ""
-	for _, d := range dims {
-		if d.Key == "vulnerability_id" && intel.IsCVE(d.Value) {
-			cve = d.Value
-			break
-		}
-	}
+	cve := findingCVE(dims, intel.IsCVE)
 	if cve == "" {
 		return
 	}
