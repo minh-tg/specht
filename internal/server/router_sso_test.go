@@ -21,7 +21,11 @@ func TestNewRouter_SSOWithNonJWTAuth_NoPanic(t *testing.T) {
 	// Minimal fake provider: the token endpoint returns an access token with
 	// no id_token. Enable compatibility to exercise the later token-issuer
 	// failure path this test is intended to cover.
-	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var provider *httptest.Server
+	provider = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if serveDiscovery(w, r, provider.URL) {
+			return
+		}
 		switch r.URL.Path {
 		case "/oauth/token":
 			w.Header().Set("Content-Type", "application/json")

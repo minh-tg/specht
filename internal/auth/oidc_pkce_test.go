@@ -54,6 +54,7 @@ func TestStartLogin_StillSendsPKCEWithoutAClientSecret(t *testing.T) {
 		ClientID: "c", IssuerURL: "https://idp.example.com", RedirectURI: "http://localhost:8080/callback",
 	}, nil)
 	require.NoError(t, err)
+	seedEndpoints(a)
 
 	login := startTestLogin(t, a, "")
 
@@ -102,6 +103,7 @@ func TestExchangeCode_OmitsAnEmptyClientSecret(t *testing.T) {
 	defer srv.Close()
 	a, err := NewOIDCAuthenticator(OIDCConfig{ClientID: "c", IssuerURL: srv.URL, RedirectURI: "http://localhost:8080/cb"}, nil)
 	require.NoError(t, err)
+	seedEndpoints(a)
 
 	_, err = a.exchangeCode(context.Background(), "c", "v")
 

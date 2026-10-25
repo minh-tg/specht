@@ -256,7 +256,19 @@ func ssoCookie(name, value string, maxAge int, secure bool) *http.Cookie {
 // returnPath is where the SPA should land afterwards; it is reduced to a
 // same-origin path before it is stored. Cookies of this browser's older
 // logins are retired so that at most maxPendingSSOLogins stay pending.
+//
+// The authorization endpoint comes from the provider's discovery document.
+// When it cannot be fetched, StartLogin sets no cookie and returns an error
+// wrapping ErrSSOProviderUnavailable.
 func (a *OIDCAuthenticator) StartLogin(w http.ResponseWriter, r *http.Request, returnPath string) (string, error) {
+	meta, err := a.provider(r.Context())
+	if err != nil {
+		return "", err
+	}
+	authorize, err := url.Parse(meta.AuthorizationEndpoint)
+	if err != nil {
+		return "", fmt.Errorf("parse authorization endpoint: %w", err)
+	}
 	state, err := GenerateStateToken()
 	if err != nil {
 		return "", err
@@ -279,7 +291,7 @@ func (a *OIDCAuthenticator) StartLogin(w http.ResponseWriter, r *http.Request, r
 	// Secure comes from the proxy-aware transport verdict above.
 	// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure
 	http.SetCookie(w, ssoCookie(ssoStateCookieName(state), a.sealLogin(state, login), int(ssoLoginTTL/time.Second), secure))
-	return a.loginURL(state, secret), nil
+	return a.loginURL(authorize, state, secret), nil
 }
 
 // retireOldLogins deletes this browser's expired or unreadable state cookies
@@ -325,10 +337,13 @@ func partAt(parts []string, i int) string {
 	return ""
 }
 
-// loginURL builds the authorization URL of one login. The nonce and the PKCE
-// challenge are derived from the cookie secret.
-func (a *OIDCAuthenticator) loginURL(state, secret string) string {
-	params := url.Values{}
+// loginURL builds the authorization URL of one login on the provider's
+// authorization endpoint, keeping any query the endpoint already carries
+// (OAuth 2.0, RFC 6749 section 3.1). The nonce and the PKCE challenge are
+// derived from the cookie secret.
+func (a *OIDCAuthenticator) loginURL(endpoint *url.URL, state, secret string) string {
+	u := *endpoint
+	params := u.Query()
 	params.Set("client_id", a.cfg.ClientID)
 	params.Set("redirect_uri", a.cfg.RedirectURI)
 	params.Set("response_type", "code")
@@ -337,5 +352,6 @@ func (a *OIDCAuthenticator) loginURL(state, secret string) string {
 	params.Set("nonce", a.nonce(state, secret))
 	params.Set("code_challenge", pkceChallenge(a.pkceVerifier(state, secret)))
 	params.Set("code_challenge_method", "S256")
-	return strings.TrimSuffix(a.cfg.IssuerURL, "/") + "/oauth/authorize?" + params.Encode()
+	u.RawQuery = params.Encode()
+	return u.String()
 }

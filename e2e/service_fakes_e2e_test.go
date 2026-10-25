@@ -63,8 +63,8 @@ func TestE2E_ServiceWiring(t *testing.T) {
 		defer resp.Body.Close()
 		require.Equal(t, http.StatusFound, resp.StatusCode)
 		loc := resp.Header.Get("Location")
-		require.True(t, stringsKeep(loc, fakes.idp.Issuer()+"/oauth/authorize"),
-			"redirect targets the configured IdP: %s", loc)
+		require.True(t, stringsKeep(loc, fakes.idp.Issuer()+fakeIdPEndpointPrefix+"/auth?"),
+			"redirect targets the authorization endpoint the IdP's discovery document names: %s", loc)
 		require.Contains(t, loc, "client_id="+e2eIdPClientID)
 		require.Contains(t, loc, "state=")
 	})

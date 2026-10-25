@@ -194,10 +194,11 @@ func (o *fakeOSV) callCount() int {
 	return o.queries
 }
 
-// fakeIdP is a loopback OIDC provider: static authorize redirect (echoing
-// state and nonce through a one-shot code), JWKS, token exchange, and
-// userinfo — the exact endpoints NewOIDCAuthenticator derives from the
-// issuer.
+// fakeIdP is a loopback OIDC provider: discovery document, authorize
+// redirect (echoing state and nonce through a one-shot code), JWKS, token
+// exchange, and userinfo. The endpoints sit under Keycloak-style paths that
+// only the discovery document names, so a client that guesses paths from the
+// issuer fails.
 type fakeIdP struct {
 	key   *rsa.PrivateKey
 	srv   *httptest.Server
@@ -252,12 +253,25 @@ func newFakeIdP() *fakeIdP {
 	return p
 }
 
+// fakeIdPEndpointPrefix is where the fake keeps its endpoints, the layout of
+// a Keycloak realm.
+const fakeIdPEndpointPrefix = "/protocol/openid-connect"
+
 func (p *fakeIdP) Issuer() string { return p.srv.URL }
 
 func (p *fakeIdP) serve(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+	base := p.srv.URL + fakeIdPEndpointPrefix
 	switch r.URL.Path {
-	case "/oauth/authorize":
+	case "/.well-known/openid-configuration":
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"issuer":                 p.Issuer(),
+			"authorization_endpoint": base + "/auth",
+			"token_endpoint":         base + "/token",
+			"userinfo_endpoint":      base + "/userinfo",
+			"jwks_uri":               base + "/certs",
+		})
+	case fakeIdPEndpointPrefix + "/auth":
 		// A real provider redirects back to the registered callback with
 		// the exact state (and nonce) the client sent.
 		q := r.URL.Query()
@@ -277,11 +291,11 @@ func (p *fakeIdP) serve(w http.ResponseWriter, r *http.Request) {
 		vals.Set("state", q.Get("state"))
 		back.RawQuery = vals.Encode()
 		http.Redirect(w, r, back.String(), http.StatusFound)
-	case "/.well-known/jwks.json":
+	case fakeIdPEndpointPrefix + "/certs":
 		n := base64.RawURLEncoding.EncodeToString(p.key.PublicKey.N.Bytes())
 		e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(p.key.PublicKey.E)).Bytes())
 		_, _ = fmt.Fprintf(w, `{"keys":[{"kty":"RSA","kid":"e2e-kid","alg":"RS256","use":"sig","n":%q,"e":%q}]}`, n, e)
-	case "/oauth/token":
+	case fakeIdPEndpointPrefix + "/token":
 		_ = r.ParseForm()
 		p.mu.Lock()
 		stored, ok := p.codes[r.Form.Get("code")]
@@ -295,7 +309,7 @@ func (p *fakeIdP) serve(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"access_token": "e2e-access", "token_type": "Bearer", "id_token": idToken,
 		})
-	case "/userinfo":
+	case fakeIdPEndpointPrefix + "/userinfo":
 		p.mu.Lock()
 		email, sub, verified := p.email, p.subjectFor(p.email), !p.unverified
 		p.mu.Unlock()

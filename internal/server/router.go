@@ -7,6 +7,8 @@ package server
 import (
 	"cmp"
 	"context"
+	"errors"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -531,6 +533,11 @@ func capabilitiesHandler(registrationDisabled, ssoEnabled bool, setupRequired fu
 func ssoLoginHandler(oidc OIDCAuthenticator) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		loginURL, err := oidc.StartLogin(w, r, r.URL.Query().Get("redirect"))
+		if errors.Is(err, auth.ErrSSOProviderUnavailable) {
+			slog.Warn("sso login: identity provider discovery failed", "error", err)
+			http.Error(w, "sign-in is unavailable: the identity provider could not be reached or its discovery document is invalid", http.StatusServiceUnavailable)
+			return
+		}
 		if err != nil {
 			http.Error(w, "failed to start sign-in", http.StatusInternalServerError)
 			return
