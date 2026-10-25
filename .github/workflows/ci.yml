@@ -84,12 +84,27 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/specht?sslmode=disable
 
-      - name: Roll back every migration
+      # Each migrate-down call must undo exactly one migration: the applied
+      # version drops to the previous file's number after every call, and the
+      # schema is empty only after the last one.
+      - name: Roll back every migration, one per call
         run: |
-          count=$(find migrations -name '*.up.sql' | wc -l)
-          test "$count" -gt 0
-          for _ in $(seq 1 "$count"); do
+          applied() {
+            docker exec postgres psql -U postgres -d specht -tAc \
+              "SELECT COALESCE((SELECT version FROM schema_migrations), 0)"
+          }
+          mapfile -t versions < <(find migrations -name '*.up.sql' -printf '%f\n' | cut -d_ -f1 | sort -n | sed 's/^0*//')
+          test "${#versions[@]}" -gt 0
+          test "$(applied)" = "${versions[-1]}"
+          for ((i = ${#versions[@]} - 1; i >= 0; i--)); do
             go run ./cmd/server migrate-down
+            want=0
+            if [ "$i" -gt 0 ]; then want=${versions[i - 1]}; fi
+            got=$(applied)
+            if [ "$got" != "$want" ]; then
+              echo "after rolling back ${versions[i]} the schema is at version $got, want $want"
+              exit 1
+            fi
           done
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/specht?sslmode=disable

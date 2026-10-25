@@ -32,7 +32,8 @@ func RunMigrations(databaseURL, migrationsPath string) (retErr error) {
 	return nil
 }
 
-// RollbackMigrations rolls back the most recent migration batch.
+// RollbackMigrations rolls back the newest applied migration, one step.
+// Call it again to undo the next one. It is a no-op on an empty schema.
 func RollbackMigrations(databaseURL, migrationsPath string) (retErr error) {
 	m, err := migrate.New("file://"+migrationsPath, databaseURL)
 	if err != nil {
@@ -48,7 +49,13 @@ func RollbackMigrations(databaseURL, migrationsPath string) (retErr error) {
 		}
 	}()
 
-	if err := m.Down(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+	// Steps(-1) on an empty schema reports os.ErrNotExist, which it also
+	// reports when the applied version is missing from the source, so the
+	// empty case is checked first instead of swallowing that error.
+	if _, _, err := m.Version(); errors.Is(err, migrate.ErrNilVersion) {
+		return nil
+	}
+	if err := m.Steps(-1); err != nil {
 		return fmt.Errorf("migration down: %w", err)
 	}
 
