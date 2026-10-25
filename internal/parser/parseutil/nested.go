@@ -118,31 +118,55 @@ func HardenExtensions(m map[string]any) map[string]any {
 			dropped = true
 			continue
 		}
-		size := len(key) + len(encoded) + len(`"":,`)
+		// The key is measured as JSON writes it: escaping can make it up to
+		// six times longer than its raw bytes ("<" is written <).
+		encodedKey, err := json.Marshal(key)
+		if err != nil {
+			dropped = true
+			continue
+		}
+		size := len(encodedKey) + len(encoded) + len(`:,`)
 		entries = append(entries, entry{key, value, size})
 		total += size
 	}
-	if !changed && !dropped && total <= MaxExtensionsBytes {
+	if !changed && !dropped && total <= MaxExtensionsBytes && fitsExtensions(m) {
 		return m
 	}
 
+	slices.SortStableFunc(entries, func(a, b entry) int { return b.size - a.size })
+	marker := len(`"":true,`) + len(truncatedKey)
 	if total > MaxExtensionsBytes {
 		dropped = true
-		slices.SortStableFunc(entries, func(a, b entry) int { return b.size - a.size })
-		marker := len(`"":true,`) + len(truncatedKey)
 		for len(entries) > 0 && total+marker > MaxExtensionsBytes {
 			total -= entries[0].size
 			entries = entries[1:]
 		}
 	}
-	out := make(map[string]any, len(entries)+1)
-	for _, e := range entries {
-		out[e.key] = e.value
+	build := func() map[string]any {
+		out := make(map[string]any, len(entries)+1)
+		for _, e := range entries {
+			out[e.key] = e.value
+		}
+		if dropped {
+			out[truncatedKey] = true
+		}
+		return out
 	}
-	if dropped {
-		out[truncatedKey] = true
+	out := build()
+	// The estimate is an upper bound, so this only drops more if a value
+	// serializes larger inside the document than on its own.
+	for len(entries) > 0 && !fitsExtensions(out) {
+		dropped = true
+		entries = entries[1:]
+		out = build()
 	}
 	return out
+}
+
+// fitsExtensions reports whether m serializes within MaxExtensionsBytes.
+func fitsExtensions(m map[string]any) bool {
+	b, err := json.Marshal(m)
+	return err == nil && len(b) <= MaxExtensionsBytes
 }
 
 // cleanValue strips NUL bytes from every string inside v. It reports whether it
