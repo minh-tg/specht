@@ -42,9 +42,10 @@ func TestPermissionsMatchTheWritePathPredicates(t *testing.T) {
 }
 
 // Upload is offered exactly to the roles the ingest check admits, so a member
-// is never shown a form the server answers with 403.
+// is never shown a form the server answers with 403. The legacy "editor"
+// spelling is left out: no stored membership can carry it.
 func TestUploadReportsMatchesTheIngestCheck(t *testing.T) {
-	for _, role := range []string{auth.RoleAdmin, auth.RoleManager, "editor", auth.RoleMember, "viewer", "guest"} {
+	for _, role := range []string{auth.RoleAdmin, auth.RoleManager, auth.RoleMember, "viewer", "guest"} {
 		uc := permissionsUsecase(role, true)
 		allowed := uc.requireProjectIngest(sessionCtx("u1", auth.RoleMember), makeProject(true).ID) == nil
 		assert.Equal(t, allowed, permissionsForRole(role).UploadReports, role)
