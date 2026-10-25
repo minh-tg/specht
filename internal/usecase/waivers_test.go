@@ -605,6 +605,33 @@ func TestWaiverRefusesAContextThatNamesNothing(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidWaiverRequest)
 }
 
+// A malformed waiver id must match ErrInvalidID on every waiver id method, so
+// the handlers answer 400 instead of 500.
+func TestWaiverMethods_MalformedIDIsErrInvalidID(t *testing.T) {
+	uc := waiverUsecaseForProject(makeProject(true), &mockWaiverRepo{}, "")
+	ctx := sessionCtx("admin", auth.RoleAdmin)
+	calls := map[string]func() error{
+		"get": func() error { _, err := uc.GetWaiver(ctx, "my-app", "abc"); return err },
+		"update": func() error {
+			_, err := uc.UpdateWaiver(ctx, UpdateWaiverInput{ProjectSlug: "my-app", WaiverID: "abc", Name: "n"})
+			return err
+		},
+		"delete":   func() error { return uc.DeleteWaiver(ctx, "my-app", "abc") },
+		"toggle":   func() error { _, err := uc.ToggleWaiver(ctx, "my-app", "abc", ""); return err },
+		"revoke":   func() error { _, err := uc.RevokeWaiver(ctx, "my-app", "abc", "", nil); return err },
+		"restore":  func() error { _, err := uc.RestoreWaiver(ctx, "my-app", "abc", "", nil); return err },
+		"approve":  func() error { _, err := uc.ApproveWaiver(ctx, "my-app", "abc", ""); return err },
+		"reject":   func() error { _, err := uc.RejectWaiver(ctx, "my-app", "abc", "no"); return err },
+		"withdraw": func() error { _, err := uc.WithdrawWaiver(ctx, "my-app", "abc"); return err },
+		"events":   func() error { _, err := uc.ListWaiverEvents(ctx, "my-app", "abc"); return err },
+	}
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			assert.ErrorIs(t, call(), ErrInvalidID)
+		})
+	}
+}
+
 // A condition the gate cannot evaluate used to be stored, and the waiver then
 // covered nothing while the gate kept failing. Create and update refuse it.
 func TestWaiverConditionsTheGateCannotMatchAreRefused(t *testing.T) {
