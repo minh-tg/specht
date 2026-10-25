@@ -95,6 +95,15 @@ func (s *Scanner) Recognize(data []byte) scanner.Recognition {
 // packages (see scanner.CheckDocument).
 var findingArrays = []string{"results", "runs", "rules"}
 
+// RedactRaw scrubs matched source from raw SARIF evidence and caps the result
+// at scanner.RawEvidenceCap. A region's snippet holds the matched text, which
+// for a secret scanner such as Gitleaks is the credential itself, and a
+// contextRegion holds the source around it. Both keys are redacted at any
+// depth. Data that cannot be decoded is an error and no output comes back.
+func (s *Scanner) RedactRaw(data []byte) ([]byte, error) {
+	return parseutil.RedactRawJSON("sarif", data, "snippet", "contextRegion")
+}
+
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
 	budget, err := parseutil.NewBudget(ctx, data, findingArrays...)
 	if err != nil {
