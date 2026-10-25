@@ -37,6 +37,15 @@ func TestCorrelate_CrossToolSCA(t *testing.T) {
 	assert.Empty(t, res.Uncertain)
 }
 
+// Grouping compares one canonical id per observation, as the package doc
+// says, not the overlap of the identifier sets.
+func TestCorrelate_SCAGroupsOnCanonicalIDNotOverlap(t *testing.T) {
+	a := sca("GHSA-x", "lodash", "npm", "CVE-2024-0001", "CVE-2024-0002")
+	b := sca("CVE-2024-0002", "lodash", "npm")
+	res := Correlate([]domain.NormalizedFinding{a, b})
+	assert.Empty(t, res.Groups, "CVE-2024-0001 and CVE-2024-0002 are different keys")
+}
+
 func TestCorrelate_SharedVulnNeverGroupsAcrossPackages(t *testing.T) {
 	a := sca("CVE-2024-1111", "lodash", "npm")
 	b := sca("CVE-2024-1111", "axios", "npm")
