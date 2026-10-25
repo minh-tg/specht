@@ -540,12 +540,10 @@ func (u *Usecases) resolveArtifact(ctx context.Context, project port.Project, in
 	if artifactName == "" {
 		return ""
 	}
-	artifactType := input.ArtifactType
-	if artifactType == "" && nr.Artifact != nil {
-		artifactType = nr.Artifact.Kind
-	}
-	if artifactType == "" {
-		artifactType = string(nr.ScanType)
+	artifactType, ok := resolveArtifactType(input, nr)
+	if !ok {
+		slog.Warn("artifact type not recognised, artifact not recorded", "project", project.ID, "artifact", artifactName, "artifact_type", input.ArtifactType, "scan_type", nr.ScanType)
+		return ""
 	}
 	metadata := []byte("{}")
 	if nr.Artifact != nil {
@@ -571,6 +569,23 @@ func (u *Usecases) resolveArtifact(ctx context.Context, project port.Project, in
 		return ""
 	}
 	return a.ID
+}
+
+// resolveArtifactType picks the artifact type from the request, then the
+// parser, then the scan type, and maps it onto the artifacts.artifact_type
+// vocabulary. A raw scan type such as "image" is never stored, because the
+// CHECK constraint rejects it and the artifact row would be lost.
+func resolveArtifactType(input IngestReportInput, nr *domain.NormalizedReport) (string, bool) {
+	if input.ArtifactType != "" {
+		return domain.NormalizeArtifactType(input.ArtifactType)
+	}
+	if nr.Artifact != nil && nr.Artifact.Kind != "" {
+		if t, ok := domain.NormalizeArtifactType(nr.Artifact.Kind); ok {
+			return t, true
+		}
+	}
+	t := domain.ArtifactTypeForScan(nr.ScanType)
+	return t, t != ""
 }
 
 // resolveEnvironment makes sure the scan environment exists (best-effort;

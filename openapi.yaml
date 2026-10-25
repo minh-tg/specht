@@ -4099,7 +4099,10 @@ components:
         digest: { type: string, maxLength: 255, description: "Content digest of the scanned artifact, e.g. `sha256:...`." }
         artifact_name: { type: string, maxLength: 255 }
         artifact_version: { type: string, maxLength: 255 }
-        artifact_type: { type: string, maxLength: 255, example: container-image }
+        artifact_type:
+          type: string
+          enum: [container_image, sbom, repository_snapshot, filesystem, sarif, iac_stack]
+          description: "Kind of the scanned artifact. Case is ignored and hyphens are read as underscores; any other value is refused with 400 `invalid_field`. When empty it follows the scan type: an image scan is `container_image`, a repository scan `repository_snapshot`, an IaC scan `iac_stack`, a filesystem or lockfile scan `filesystem`, an SBOM `sbom`. A DAST scan records no artifact."
 
     IngestResponse:
       type: object
@@ -4923,7 +4926,7 @@ components:
         id: { type: string, format: uuid }
         project_id: { type: string, format: uuid }
         target_id: { type: string, format: uuid }
-        artifact_type: { type: string, example: container-image }
+        artifact_type: { type: string, enum: [container_image, sbom, repository_snapshot, filesystem, sarif, iac_stack] }
         name: { type: string }
         version: { type: string }
         digest: { type: string }

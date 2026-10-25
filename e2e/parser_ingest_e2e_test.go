@@ -533,3 +533,26 @@ func TestE2E_ContextTablesReads(t *testing.T) {
 	require.Equal(t, artifacts[0].TargetID, targets[0].ID,
 		"the artifact hangs off the scanned target")
 }
+
+// An artifact named without a type takes its type from the scan, mapped onto
+// the stored vocabulary, and a type outside that vocabulary is refused before
+// anything is written.
+func TestE2E_ArtifactTypeFollowsTheScanAndIsValidated(t *testing.T) {
+	slug := newProject(t, "artifact-type")
+	ingestRaw(t, slug, "trivy", "trivy-alpine-scan.json", map[string]any{
+		"artifact_name": "registry.example/alpine",
+	})
+	artifacts := request[[]artifactRow](t, http.MethodGet,
+		"/api/v1/projects/"+slug+"/artifacts", adminToken, nil, http.StatusOK)
+	require.Len(t, artifacts, 1, "the artifact row is written, not dropped by the CHECK")
+	require.Equal(t, "container_image", artifacts[0].ArtifactType)
+
+	raw, err := os.ReadFile(filepath.Join("testdata", "trivy-alpine-scan.json"))
+	require.NoError(t, err)
+	status, body := doJSON(t, http.MethodPost, "/api/v1/reports", adminToken, map[string]any{
+		"project": slug, "scanner": "trivy", "raw_data": json.RawMessage(raw),
+		"artifact_name": "other", "artifact_type": "image",
+	})
+	require.Equal(t, http.StatusBadRequest, status, string(body))
+	require.Contains(t, string(body), "artifact_type")
+}

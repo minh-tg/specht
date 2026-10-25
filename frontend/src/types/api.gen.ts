@@ -2510,8 +2510,17 @@ export interface components {
       digest?: string;
       artifact_name?: string;
       artifact_version?: string;
-      /** @example container-image */
-      artifact_type?: string;
+      /**
+       * @description Kind of the scanned artifact. Case is ignored and hyphens are read as underscores; any other value is refused with 400 `invalid_field`. When empty it follows the scan type: an image scan is `container_image`, a repository scan `repository_snapshot`, an IaC scan `iac_stack`, a filesystem or lockfile scan `filesystem`, an SBOM `sbom`. A DAST scan records no artifact.
+       * @enum {string}
+       */
+      artifact_type?:
+        | "container_image"
+        | "sbom"
+        | "repository_snapshot"
+        | "filesystem"
+        | "sarif"
+        | "iac_stack";
     };
     IngestResponse: {
       /** Format: uuid */
@@ -3312,8 +3321,14 @@ export interface components {
       project_id: string;
       /** Format: uuid */
       target_id?: string;
-      /** @example container-image */
-      artifact_type: string;
+      /** @enum {string} */
+      artifact_type:
+        | "container_image"
+        | "sbom"
+        | "repository_snapshot"
+        | "filesystem"
+        | "sarif"
+        | "iac_stack";
       name: string;
       version?: string;
       digest?: string;
