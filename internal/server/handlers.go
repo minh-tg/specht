@@ -350,7 +350,7 @@ type ingestRequest struct {
 	// findings this report introduced.
 	GateIntroducedOnly bool   `json:"gate_introduced_only,omitempty"`
 	GateSeverity       string `json:"gate_severity,omitempty"`
-	GateStatus         string `json:"gate_status,omitempty"`
+	GateStatus         string `json:"gate_status,omitempty"` // read only to refuse it
 	Environment        string `json:"environment,omitempty"`
 	Owner              string `json:"owner,omitempty"`
 	Digest             string `json:"digest,omitempty"`

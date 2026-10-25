@@ -77,6 +77,9 @@ func TestIngestReport_RefusesBadMetadataByName(t *testing.T) {
 		"environment":   strings.Repeat("e", 65),
 		"artifact_name": strings.Repeat("n", 256),
 		"owner":         "own\x1ber",
+		// The gate has no status filter; accepting the field and dropping it
+		// gave a verdict computed without the filter the caller asked for.
+		"gate_status": "open,reopened",
 	} {
 		t.Run(field, func(t *testing.T) {
 			called := false

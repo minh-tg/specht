@@ -2503,8 +2503,6 @@ export interface components {
       scan_mode: "full" | "incremental";
       /** @description Comma-separated override for the post-ingest threshold check. */
       gate_severity?: string;
-      /** @description Comma-separated status override for the post-ingest threshold check. */
-      gate_status?: string;
       /** @description Scope the post-ingest threshold check to what this report introduced. */
       gate_introduced_only?: boolean;
       /** @description Deployment environment. Derived from the report when empty. */

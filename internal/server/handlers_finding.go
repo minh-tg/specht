@@ -169,6 +169,13 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "missing_field", "scanner is required")
 		return
 	}
+	if req.GateStatus != "" {
+		// The gate only ever counts open findings, and the GET
+		// gate route has no status filter either, so there is nothing for
+		// this field to narrow. Refuse it rather than accept and ignore it.
+		respondError(w, http.StatusBadRequest, "invalid_field", "gate_status is not supported; the gate always counts open findings")
+		return
+	}
 	if field, problem := req.invalidField(); field != "" {
 		respondError(w, http.StatusBadRequest, "invalid_field", field+" "+problem)
 		return
@@ -178,12 +185,9 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var gateSeverity, gateStatus []string
+	var gateSeverity []string
 	if req.GateSeverity != "" {
 		gateSeverity = strings.Split(req.GateSeverity, ",")
-	}
-	if req.GateStatus != "" {
-		gateStatus = strings.Split(req.GateStatus, ",")
 	}
 
 	// The write phase runs on a context a hang-up cannot cancel (see
@@ -204,7 +208,6 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		ScanMode:           req.ScanMode,
 		GateIntroducedOnly: req.GateIntroducedOnly,
 		GateSeverity:       gateSeverity,
-		GateStatus:         gateStatus,
 		Environment:        req.Environment,
 		Owner:              req.Owner,
 		Digest:             req.Digest,

@@ -65,11 +65,10 @@ type IngestReportInput struct {
 	BaseRevision string
 	ChangedFiles []string
 	ScanMode     string
-	// GateSeverity and GateStatus narrow which findings count as blocking
-	// for the post-ingest threshold check. GateSeverity can only tighten the
-	// project policy floor; an empty list keeps the policy floor.
+	// GateSeverity narrows which findings count as blocking for the
+	// post-ingest threshold check. It can only tighten the project policy
+	// floor; an empty list keeps the policy floor.
 	GateSeverity []string
-	GateStatus   []string
 	// GateIntroducedOnly scopes the post-ingest threshold check to findings
 	// this report introduced, letting CI target new risk without ignoring
 	// existing debt (the full gate still covers it).

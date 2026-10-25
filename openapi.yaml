@@ -4096,7 +4096,6 @@ components:
           items: { type: string, maxLength: 1024 }
         scan_mode: { type: string, enum: [full, incremental], default: full }
         gate_severity: { type: string, description: Comma-separated override for the post-ingest threshold check. }
-        gate_status: { type: string, description: Comma-separated status override for the post-ingest threshold check. }
         gate_introduced_only:
           type: boolean
           description: Scope the post-ingest threshold check to what this report introduced.

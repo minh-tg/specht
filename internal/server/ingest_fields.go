@@ -46,7 +46,6 @@ func (r ingestRequest) invalidField() (field, problem string) {
 		{"base_revision", r.BaseRevision, maxTextFieldBytes},
 		{"scan_mode", r.ScanMode, maxTextFieldBytes},
 		{"gate_severity", r.GateSeverity, maxTextFieldBytes},
-		{"gate_status", r.GateStatus, maxTextFieldBytes},
 		{"environment", r.Environment, maxEnvironmentBytes},
 		{"owner", r.Owner, maxTextFieldBytes},
 		{"digest", r.Digest, maxTextFieldBytes},

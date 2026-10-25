@@ -401,16 +401,18 @@ func TestDetectCIEnvironment_GitLab(t *testing.T) {
 func TestApplyGateFlags_IgnoresDeprecatedStatus(t *testing.T) {
 	var payload client.IngestPayload
 	applyGateFlags(&payload, &adapterFlags{status: "open", severity: "high"})
-	assert.Empty(t, payload.GateStatus, "the deprecated flag must not reach the payload")
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "open", "the deprecated flag must not reach the payload")
 	assert.Equal(t, "high", payload.GateSeverity)
 }
 
 func TestRun_StatusFlagDeprecated(t *testing.T) {
-	var captured []client.IngestPayload
+	var captured []map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/reports":
-			var payload client.IngestPayload
+			var payload map[string]any
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
 			captured = append(captured, payload)
 			writeTestJSONResponse(t, w, client.IngestResponse{ReportID: "rep-status"})
@@ -439,8 +441,8 @@ func TestRun_StatusFlagDeprecated(t *testing.T) {
 	}
 
 	require.Len(t, captured, 2)
-	assert.Empty(t, captured[0].GateStatus, "the deprecated flag must not reach the payload")
-	assert.Empty(t, captured[1].GateStatus)
+	assert.NotContains(t, captured[0], "gate_status", "the deprecated flag must not reach the payload")
+	assert.NotContains(t, captured[1], "gate_status")
 }
 
 func TestRun_Help(t *testing.T) {
