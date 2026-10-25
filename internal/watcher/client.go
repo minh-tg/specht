@@ -35,6 +35,11 @@ const (
 	DefaultBatchSize = 100
 	// DefaultVulnFetchConcurrency bounds simultaneous full-advisory requests.
 	DefaultVulnFetchConcurrency = 5
+	// maxQueryBatchPages bounds how many querybatch round trips one chunk may
+	// take while following next_page_token. OSV pages at 1,000 vulns per
+	// query, so this allows far more history than any real package has; a
+	// response that keeps paging past it is treated as malformed.
+	maxQueryBatchPages = 64
 )
 
 // Query is one entry of the querybatch "queries" array. Ecosystem carries
@@ -42,6 +47,10 @@ const (
 // it from stored casing via OSVEcosystem.
 type Query struct {
 	Package QueryPackage `json:"package"`
+	// PageToken asks OSV for the next page of a query whose previous
+	// response carried next_page_token. Callers leave it empty; the client
+	// sets it while following pagination.
+	PageToken string `json:"page_token,omitempty"`
 }
 
 // QueryPackage identifies one package for the OSV querybatch API. This is a
@@ -217,22 +226,59 @@ func (c *HTTPClient) QueryBatch(ctx context.Context, queries []Query) ([]QueryRe
 	return results, nil
 }
 
-// queryBatchChunk performs one querybatch POST and returns the matched
-// vulnerability IDs per query (the only data querybatch returns). The raw
-// response body is cached under a stable key derived from the chunk; a cache
-// hit short-circuits the network round trip entirely.
+// queryBatchChunk returns the matched vulnerability IDs per query for one
+// chunk. OSV paginates a querybatch result (above 1,000 vulns for one query
+// or 3,000 for the batch) and marks the cut with next_page_token. Every query
+// that carries a token is re-sent with page_token until none is left, and its
+// IDs are appended to that query's list. Stopping at the first page would
+// drop advisories while the poll still counted as a success.
 func (c *HTTPClient) queryBatchChunk(ctx context.Context, queries []Query) ([][]string, error) {
+	ids := make([][]string, len(queries))
+	pending := queries
+	// index maps a position in pending back to its position in queries.
+	index := make([]int, len(queries))
+	for i := range index {
+		index[i] = i
+	}
+	for page := 0; len(pending) > 0; page++ {
+		if page == maxQueryBatchPages {
+			return nil, fmt.Errorf("%w: querybatch still paging after %d requests", ErrMalformedResponse, page)
+		}
+		results, err := c.queryBatchPage(ctx, pending)
+		if err != nil {
+			return nil, err
+		}
+		var next []Query
+		var nextIndex []int
+		for j, r := range results {
+			ids[index[j]] = append(ids[index[j]], r.ids...)
+			if r.nextPageToken != "" {
+				q := pending[j]
+				q.PageToken = r.nextPageToken
+				next = append(next, q)
+				nextIndex = append(nextIndex, index[j])
+			}
+		}
+		pending, index = next, nextIndex
+	}
+	return ids, nil
+}
+
+// queryBatchPage performs one querybatch POST and returns one result per
+// query. The raw response body is cached under a key derived from the
+// queries, page tokens included; a cache hit skips the network round trip.
+func (c *HTTPClient) queryBatchPage(ctx context.Context, queries []Query) ([]batchResult, error) {
 	key := cacheKey(queries)
 	if raw, ok := c.cache.get(key); ok {
-		if ids, err := decodeQueryBatch(raw); err == nil {
-			if err := validateIDLength(ids, len(queries)); err != nil {
+		if results, err := decodeQueryBatch(raw); err == nil {
+			if err := validateResultCount(results, len(queries)); err != nil {
 				// A cached body whose result count no longer matches the
 				// query count is treated as corrupted (drop the cache
 				// entry) rather than trusted.
 				c.cache.del(key)
 				return nil, err
 			}
-			return ids, nil
+			return results, nil
 		}
 		// A corrupted cache entry falls through to a refetch.
 	}
@@ -267,14 +313,14 @@ func (c *HTTPClient) queryBatchChunk(ctx context.Context, queries []Query) ([][]
 	}
 
 	c.cache.put(key, raw)
-	ids, err := decodeQueryBatch(raw)
+	results, err := decodeQueryBatch(raw)
 	if err != nil {
 		return nil, err
 	}
-	if err := validateIDLength(ids, len(queries)); err != nil {
+	if err := validateResultCount(results, len(queries)); err != nil {
 		return nil, err
 	}
-	return ids, nil
+	return results, nil
 }
 
 // fetchFullRecords fetches the full advisory record for every distinct ID
@@ -432,38 +478,48 @@ func isAdvisoryGone(err error) bool {
 	return errors.As(err, &httpErr) && httpErr.Status == http.StatusNotFound
 }
 
-// validateIDLength enforces a 1:1 correspondence between the queries sent
+// validateResultCount enforces a 1:1 correspondence between the queries sent
 // and the results returned. A short results array means the upstream silently
 // dropped responses, which must be surfaced as a malformed (non-retryable)
 // response — otherwise advisories would be silently lost while the poll's
 // watermark still advanced.
-func validateIDLength(ids [][]string, queryCount int) error {
-	if len(ids) != queryCount {
-		return fmt.Errorf("%w: got %d results for %d queries", ErrMalformedResponse, len(ids), queryCount)
+func validateResultCount(results []batchResult, queryCount int) error {
+	if len(results) != queryCount {
+		return fmt.Errorf("%w: got %d results for %d queries", ErrMalformedResponse, len(results), queryCount)
 	}
 	return nil
 }
 
+// batchResult is one querybatch results entry: the matched IDs on this page
+// and the token for the next page, empty on the last page.
+type batchResult struct {
+	ids           []string
+	nextPageToken string
+}
+
 // decodeQueryBatch parses the querybatch response envelope and returns the
-// matched vulnerability IDs per query. The response shape is
+// matched vulnerability IDs and next page token per query. The response
+// shape is
 //
-//	{"results":[{"vulns":[{"id":"GHSA-...","modified":"..."}, ...]}, ...]}
+//	{"results":[{"vulns":[{"id":"GHSA-...","modified":"..."}, ...],
+//	             "next_page_token":"..."}, ...]}
 //
 // with one results entry per query, in query order. OSV's querybatch endpoint
 // returns only the id and modified fields per match — the full advisory
 // records must be fetched separately (see fetchFullRecords).
-func decodeQueryBatch(raw []byte) ([][]string, error) {
+func decodeQueryBatch(raw []byte) ([]batchResult, error) {
 	var envelope struct {
 		Results []struct {
 			Vulns []struct {
 				ID string `json:"id"`
 			} `json:"vulns"`
+			NextPageToken string `json:"next_page_token"`
 		} `json:"results"`
 	}
 	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrMalformedResponse, err)
 	}
-	results := make([][]string, 0, len(envelope.Results))
+	results := make([]batchResult, 0, len(envelope.Results))
 	for i, r := range envelope.Results {
 		ids := make([]string, 0, len(r.Vulns))
 		for _, v := range r.Vulns {
@@ -472,7 +528,7 @@ func decodeQueryBatch(raw []byte) ([][]string, error) {
 			}
 			ids = append(ids, v.ID)
 		}
-		results = append(results, ids)
+		results = append(results, batchResult{ids: ids, nextPageToken: r.NextPageToken})
 	}
 	return results, nil
 }
@@ -491,7 +547,7 @@ func truncate(b []byte, n int) string {
 func cacheKey(queries []Query) string {
 	pairs := make([]string, len(queries))
 	for i, q := range queries {
-		pairs[i] = q.Package.Ecosystem + "\x00" + q.Package.Name
+		pairs[i] = q.Package.Ecosystem + "\x00" + q.Package.Name + "\x00" + q.PageToken
 	}
 	sum := sha256.Sum256([]byte(strings.Join(pairs, "\x01")))
 	return hex.EncodeToString(sum[:])
