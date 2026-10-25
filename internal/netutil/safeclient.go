@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -91,6 +92,51 @@ func SafeDialContext(dialer *net.Dialer, allowLoopback bool) func(context.Contex
 		}
 		for _, ip := range ips {
 			if IsBlockedIP(ip) && !(allowLoopback && ip.IsLoopback()) {
+				return nil, fmt.Errorf("refusing connection to non-public address %q", ip)
+			}
+		}
+		var lastErr error
+		for _, ip := range ips {
+			conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+			if dialErr == nil {
+				return conn, nil
+			}
+			lastErr = dialErr
+		}
+		return nil, lastErr
+	}
+}
+
+// isInternalIP reports whether ip is a private, loopback or link-local address,
+// the ranges an operator can legitimately host an internal service on.
+func isInternalIP(ip net.IP) bool {
+	return ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast()
+}
+
+// SafeDialContextAllowHost behaves like SafeDialContext, except that a
+// connection to allowedHost may reach private, loopback and link-local
+// addresses. Every other host stays under the full block list, so a name taken
+// from a remote document cannot use the exception. The host comparison is
+// case-insensitive and ignores the port. An empty allowedHost allows nothing.
+func SafeDialContextAllowHost(dialer *net.Dialer, allowLoopback bool, allowedHost string) func(context.Context, string, string) (net.Conn, error) {
+	guarded := SafeDialContext(dialer, allowLoopback)
+	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, fmt.Errorf("invalid destination %q: %w", address, err)
+		}
+		if allowedHost == "" || !strings.EqualFold(host, allowedHost) {
+			return guarded(ctx, network, address)
+		}
+		ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+		if err != nil {
+			return nil, fmt.Errorf("resolve %q: %w", host, err)
+		}
+		if len(ips) == 0 {
+			return nil, fmt.Errorf("resolve %q: no addresses", host)
+		}
+		for _, ip := range ips {
+			if IsBlockedIP(ip) && !isInternalIP(ip) {
 				return nil, fmt.Errorf("refusing connection to non-public address %q", ip)
 			}
 		}

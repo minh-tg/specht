@@ -174,6 +174,11 @@ type SSOConfig struct {
 	// never send email_verified and defaults to false; the login is still
 	// bound to the provider's stable subject afterwards.
 	AllowUnverifiedEmail bool
+	// AllowPrivateIssuer lets the identity provider host named in IssuerURL
+	// resolve to a private, loopback or link-local address, for a provider
+	// inside the operator's network. Endpoints on any other host stay
+	// guarded. It defaults to false.
+	AllowPrivateIssuer bool
 }
 
 // RateLimit is the resolved rate limiter configuration: a strict per-IP
@@ -566,6 +571,14 @@ func Load() (*Server, error) {
 			return nil, fmt.Errorf("SHUTDOWN_TIMEOUT must be a duration such as 150s: %w", err)
 		}
 		s.ShutdownTimeout = d
+	}
+
+	if v := os.Getenv("SSO_ALLOW_PRIVATE_ISSUER"); v != "" {
+		allow, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("SSO_ALLOW_PRIVATE_ISSUER is invalid: %q (want true or false)", v)
+		}
+		s.SSO.AllowPrivateIssuer = allow
 	}
 
 	if v := os.Getenv("REGISTRATION_ENABLED"); v != "" {

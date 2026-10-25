@@ -31,6 +31,10 @@ type OIDCConfig struct {
 	// AllowUserInfoOnly permits userinfo-based identity only when the token
 	// response omits id_token. This is an insecure compatibility downgrade.
 	AllowUserInfoOnly bool
+	// AllowPrivateIssuer lets the SSO HTTP client connect to a private,
+	// loopback or link-local address, but only for the host of IssuerURL. Hosts
+	// named in the discovery document stay behind the SSRF guard.
+	AllowPrivateIssuer bool
 	// StateKey signs the per-login state cookie (see StartLogin). Replicas of
 	// one deployment must share it, so main derives it from the JWT secret.
 	// Empty means a random key for this process, which suits a single
@@ -130,9 +134,11 @@ func NewOIDCAuthenticator(cfg OIDCConfig, logger func(msg string, args ...any)) 
 	}
 	issuer, _ := url.Parse(cfg.IssuerURL)
 	allowLoopback := issuer.Scheme == "http" && isLoopbackHost(issuer.Hostname())
-	transport := &http.Transport{
-		DialContext: safeDialContext(&net.Dialer{Timeout: 10 * time.Second}, allowLoopback),
+	dial := safeDialContext(&net.Dialer{Timeout: 10 * time.Second}, allowLoopback)
+	if cfg.AllowPrivateIssuer {
+		dial = netutil.SafeDialContextAllowHost(&net.Dialer{Timeout: 10 * time.Second}, allowLoopback, issuer.Hostname())
 	}
+	transport := &http.Transport{DialContext: dial}
 	return &OIDCAuthenticator{
 		cfg:      cfg,
 		logger:   logger,
