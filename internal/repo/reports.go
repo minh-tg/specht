@@ -40,6 +40,9 @@ type CreateReportParams struct {
 	RawReportHash    pgtype.Text
 	ParserVersion    pgtype.Text
 	ScanCompleteness string
+	// CoveredFindingKinds are the finding kinds the report examined. Nil
+	// stores NULL: the report vouches for no kind.
+	CoveredFindingKinds []string
 }
 
 func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc.Report, error) {
@@ -48,27 +51,28 @@ func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc
 		changedFiles = []byte("[]")
 	}
 	return r.q.CreateReport(ctx, sqlc.CreateReportParams{
-		ProjectID:        arg.ProjectID,
-		ToolName:         arg.ToolName,
-		ToolVersion:      arg.ToolVersion,
-		ScanType:         arg.ScanType,
-		ScanTarget:       arg.ScanTarget,
-		TargetID:         arg.TargetID,
-		ArtifactID:       arg.ArtifactID,
-		EnvironmentID:    arg.EnvironmentID,
-		ScanScope:        arg.ScanScope,
-		ScanScopeHash:    arg.ScanScopeHash,
-		Branch:           arg.Branch,
-		CommitSha:        arg.CommitSha,
-		BaseRevision:     arg.BaseRevision,
-		ChangedFiles:     changedFiles,
-		ScanMode:         orFull(arg.ScanMode),
-		RawData:          arg.RawData,
-		RawReportHash:    arg.RawReportHash,
-		ParserVersion:    arg.ParserVersion,
-		ScanCompleteness: orUnknown(arg.ScanCompleteness),
-		Status:           "processing",
-		StartedAt:        pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		ProjectID:           arg.ProjectID,
+		ToolName:            arg.ToolName,
+		ToolVersion:         arg.ToolVersion,
+		ScanType:            arg.ScanType,
+		ScanTarget:          arg.ScanTarget,
+		TargetID:            arg.TargetID,
+		ArtifactID:          arg.ArtifactID,
+		EnvironmentID:       arg.EnvironmentID,
+		ScanScope:           arg.ScanScope,
+		ScanScopeHash:       arg.ScanScopeHash,
+		Branch:              arg.Branch,
+		CommitSha:           arg.CommitSha,
+		BaseRevision:        arg.BaseRevision,
+		ChangedFiles:        changedFiles,
+		ScanMode:            orFull(arg.ScanMode),
+		RawData:             arg.RawData,
+		RawReportHash:       arg.RawReportHash,
+		ParserVersion:       arg.ParserVersion,
+		ScanCompleteness:    orUnknown(arg.ScanCompleteness),
+		Status:              "processing",
+		StartedAt:           pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		CoveredFindingKinds: arg.CoveredFindingKinds,
 	})
 }
 

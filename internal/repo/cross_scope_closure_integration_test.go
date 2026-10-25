@@ -16,11 +16,13 @@ import (
 )
 
 type branchIngest struct {
-	ctx  context.Context
-	pool *pgxpool.Pool
-	uc   *usecase.Usecases
-	slug string
-	n    int
+	ctx       context.Context
+	pool      *pgxpool.Pool
+	stores    *port.Stores
+	uc        *usecase.Usecases
+	slug      string
+	projectID string
+	n         int
 }
 
 func newBranchIngest(t *testing.T, slug string) (*branchIngest, func()) {
@@ -28,13 +30,14 @@ func newBranchIngest(t *testing.T, slug string) (*branchIngest, func()) {
 	pool, cleanup := setupIngestPool(t)
 	ctx := context.Background()
 	stores := NewPortStores(pool)
-	_, err := stores.Projects.Create(ctx, port.CreateProjectInput{Slug: slug, Name: slug, DeploymentThreshold: "high", Settings: []byte(`{}`)})
+	project, err := stores.Projects.Create(ctx, port.CreateProjectInput{Slug: slug, Name: slug, DeploymentThreshold: "high", Settings: []byte(`{}`)})
 	require.NoError(t, err)
 	registry := scanner.NewRegistry()
 	for _, sc := range parser.Builtins() {
 		require.NoError(t, registry.Register(sc))
 	}
-	return &branchIngest{ctx: ctx, pool: pool, uc: usecase.New(usecase.Deps{Stores: stores, Registry: registry}), slug: slug}, cleanup
+	uc := usecase.New(usecase.Deps{Stores: stores, Registry: registry})
+	return &branchIngest{ctx: ctx, pool: pool, stores: stores, uc: uc, slug: slug, projectID: project.ID}, cleanup
 }
 
 // scan uploads a Trivy image scan of branch and returns its report id.
@@ -116,4 +119,49 @@ func TestCleanScanOfABranchThatNeverSawTheFindingDoesNotCloseIt(t *testing.T) {
 	require.NoError(t, err)
 	b.scan(t, "release", false)
 	require.Equal(t, "reopened", b.state(t), "release never observed the finding")
+}
+
+func TestReportDeleteDoesNotReviveEvidenceACleanScanRetired(t *testing.T) {
+	b, cleanup := newBranchIngest(t, "delete-revive")
+	defer cleanup()
+	b.scan(t, "main", true)
+	b.scan(t, "main", false)
+	require.Equal(t, "fixed", b.state(t))
+	reopening := b.scan(t, "main", true)
+	require.Equal(t, 1, b.scopes(t))
+
+	_, err := b.stores.Reports.DeleteReportAndSettle(b.ctx, reopening, b.projectID, nil)
+	require.NoError(t, err)
+	require.Zero(t, b.scopes(t), "the clean scan after the first observation already retired it")
+}
+
+func TestReportDeleteRestoresEvidenceNewerThanTheLastCleanScan(t *testing.T) {
+	b, cleanup := newBranchIngest(t, "delete-restore")
+	defer cleanup()
+	b.scan(t, "main", true)
+	b.scan(t, "main", false)
+	seen := b.scan(t, "main", true)
+	latest := b.scan(t, "main", true)
+
+	_, err := b.stores.Reports.DeleteReportAndSettle(b.ctx, latest, b.projectID, nil)
+	require.NoError(t, err)
+	var source string
+	require.NoError(t, b.pool.QueryRow(b.ctx, `SELECT report_id::text FROM finding_scope_severities`).Scan(&source))
+	require.Equal(t, seen, source)
+}
+
+func TestReportDeleteKeepsEvidenceWhenTheCleanScanDidNotCoverTheKind(t *testing.T) {
+	b, cleanup := newBranchIngest(t, "delete-other-kind")
+	defer cleanup()
+	b.scan(t, "main", true)
+	clean := b.scan(t, "main", false)
+	reopening := b.scan(t, "main", true)
+	// A complete report that examined other kinds only says nothing about
+	// this vulnerability.
+	_, err := b.pool.Exec(b.ctx, `UPDATE reports SET covered_finding_kinds = ARRAY['secret'] WHERE id = $1`, clean)
+	require.NoError(t, err)
+
+	_, err = b.stores.Reports.DeleteReportAndSettle(b.ctx, reopening, b.projectID, nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, b.scopes(t))
 }

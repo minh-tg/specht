@@ -119,16 +119,13 @@ func TestMigration000058_BackfillsScopeSeverities(t *testing.T) {
 	// finding. The sleep keeps observed_at strictly increasing.
 	observe := func(scopeHash pgtype.Text, severity string, rank int16) {
 		t.Helper()
-		report, err := repos.Reports.Create(ctx, CreateReportParams{
-			ProjectID: project.ID, ToolName: "trivy", ScanType: "image",
-			ScanScope: []byte(`{}`), ScanScopeHash: scopeHash,
-			Branch: pgtype.Text{Valid: false}, CommitSha: pgtype.Text{Valid: false},
-			RawReportHash: pgtype.Text{Valid: false}, ParserVersion: pgtype.Text{Valid: false},
-			ToolVersion: pgtype.Text{Valid: false}, ScanTarget: pgtype.Text{Valid: false},
-		})
-		require.NoError(t, err)
+		// The schema is at 000057, so the report goes in with plain SQL: the
+		// generated insert names columns later migrations add.
+		var reportID pgtype.UUID
+		require.NoError(t, pool.QueryRow(ctx, `INSERT INTO reports (project_id, tool_name, scan_type, scan_scope, scan_scope_hash, status)
+			VALUES ($1, 'trivy', 'image', '{}', $2, 'processing') RETURNING id`, project.ID, scopeHash).Scan(&reportID))
 		_, err = repos.Findings.CreateOccurrence(ctx, CreateOccurrenceParams{
-			FindingID: finding.ID, ReportID: report.ID, Title: "Path traversal",
+			FindingID: finding.ID, ReportID: reportID, Title: "Path traversal",
 			Description: pgtype.Text{Valid: false}, Severity: severity, SeverityRank: rank,
 			Score: pgtype.Numeric{Valid: false}, ToolName: "trivy",
 			ToolVersion: pgtype.Text{Valid: false}, ParserVersion: pgtype.Text{Valid: false},
