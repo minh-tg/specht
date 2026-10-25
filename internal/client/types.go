@@ -26,7 +26,6 @@ type IngestPayload struct {
 	ScanMode           string          `json:"scan_mode,omitempty"`
 	GateIntroducedOnly bool            `json:"gate_introduced_only,omitempty"`
 	GateSeverity       string          `json:"gate_severity,omitempty"`
-	GateStatus         string          `json:"gate_status,omitempty"`
 	Environment        string          `json:"environment,omitempty"`
 	Owner              string          `json:"owner,omitempty"`
 	Digest             string          `json:"digest,omitempty"`
