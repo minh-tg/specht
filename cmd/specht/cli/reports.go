@@ -205,12 +205,10 @@ func readScanFile(d Deps, path string) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	// PowerShell's > writes UTF-16, which no scanner output parser reads. A UTF-8 byte order
-	// mark, which many Windows editors add, is harmless but makes the file invalid JSON.
-	if bytes.HasPrefix(data, []byte{0xFF, 0xFE}) || bytes.HasPrefix(data, []byte{0xFE, 0xFF}) {
-		return nil, fmt.Errorf("%s is UTF-16 text, which Specht cannot read: save it as UTF-8 and upload it again", name)
+	data, err = client.NormalizeScanText(name, data)
+	if err != nil {
+		return nil, err
 	}
-	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 	if len(bytes.TrimSpace(data)) == 0 {
 		return nil, fmt.Errorf("%s is empty", name)
 	}

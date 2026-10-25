@@ -54,9 +54,58 @@ func clearCIEnvironment(t *testing.T) {
 	}
 }
 
+func TestReadRawInput_StripsUTF8ByteOrderMark(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bom.json")
+	require.NoError(t, os.WriteFile(path, append([]byte{0xEF, 0xBB, 0xBF}, `{"Results":[]}`...), 0o600))
+	var stderr bytes.Buffer
+	raw, code := readRawInput(path, nil, &stderr)
+	require.Zero(t, code, stderr.String())
+	assert.Equal(t, `{"Results":[]}`, string(raw))
+}
+
+func TestReadRawInput_RefusesUTF16(t *testing.T) {
+	var stderr bytes.Buffer
+	_, code := readRawInput("", bytes.NewReader([]byte{0xFF, 0xFE, '{', 0, '}', 0}), &stderr)
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr.String(), "standard input is UTF-16 text")
+}
+
+func TestBuildPayload_RefusesInputThatIsNotJSON(t *testing.T) {
+	clearCIEnvironment(t)
+	var stderr bytes.Buffer
+	_, code := buildPayload([]byte(`{"Results":`), &adapterFlags{project: "my-app", tool: "trivy"}, &stderr)
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr.String(), "not valid JSON or JSON lines")
+}
+
+func TestRun_UTF8ByteOrderMarkIngests(t *testing.T) {
+	clearCIEnvironment(t)
+	t.Setenv("API_KEY", "test-key")
+	var ingested client.IngestPayload
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/reports":
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&ingested))
+			writeTestJSONResponse(t, w, client.IngestResponse{ReportID: "rep-1"})
+		case "/api/v1/projects/my-app/gate":
+			writeTestJSONResponse(t, w, client.GateStatus{})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("API_URL", srv.URL)
+
+	stdin := bytes.NewReader(append([]byte{0xEF, 0xBB, 0xBF}, `{"Results":[]}`...))
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-project=my-app", "-tool=trivy"}, stdin, &stdout, &stderr, srv.Client())
+	assert.Equal(t, 0, code, stderr.String())
+	assert.JSONEq(t, `{"Results":[]}`, string(ingested.RawData))
+}
+
 func TestBuildPayload_PreservesNonEnvelopeScannerOutput(t *testing.T) {
 	clearCIEnvironment(t)
-	raw := []byte(`{"Results":`)
+	raw := []byte(`{"Results":[]}`)
 	flags := &adapterFlags{project: "my-app", tool: "trivy"}
 	var stderr bytes.Buffer
 

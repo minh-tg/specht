@@ -103,7 +103,9 @@ func writeDiagnosticLine(w io.Writer, message string) {
 func readRawInput(file string, stdin io.Reader, stderr io.Writer) ([]byte, int) {
 	var rawInput []byte
 	var err error
+	name := "standard input"
 	if file != "" {
+		name = file
 		rawInput, err = os.ReadFile(file)
 		if err != nil {
 			writeDiagnostic(stderr, "error: reading file %q: %v\n", file, err)
@@ -115,6 +117,11 @@ func readRawInput(file string, stdin io.Reader, stderr io.Writer) ([]byte, int) 
 			writeDiagnostic(stderr, "error: reading stdin: %v\n", err)
 			return nil, 2
 		}
+	}
+	rawInput, err = client.NormalizeScanText(name, rawInput)
+	if err != nil {
+		writeDiagnostic(stderr, "error: %v\n", err)
+		return nil, 2
 	}
 	if len(bytes.TrimSpace(rawInput)) == 0 {
 		writeDiagnostic(stderr, "error: input is empty, provide a scan result file or pipe to stdin\n")
@@ -155,6 +162,12 @@ func buildPayload(rawInput []byte, f *adapterFlags, stderr io.Writer) (client.In
 	if f.excludeTool != "" && strings.EqualFold(payload.Scanner, f.excludeTool) {
 		writeDiagnostic(stderr, "skipped: scanner %q excluded by -exclude-tool flag\n", payload.Scanner)
 		return payload, -1
+	}
+	// The request embeds the scan result as raw JSON, so input that is not
+	// JSON or JSON lines could only fail later with an opaque marshal error.
+	if !json.Valid(payload.RawData) {
+		writeDiagnosticLine(stderr, "error: the scan result is not valid JSON or JSON lines")
+		return payload, 2
 	}
 
 	applyOwnerEnvironment(&payload, f)
