@@ -249,8 +249,13 @@ carry a fragment.
 The server finds the provider's endpoints through OpenID Connect Discovery: it
 removes one trailing slash from `SSO_ISSUER_URL`, appends
 `/.well-known/openid-configuration`, and takes the authorization, token,
-UserInfo and JWKS endpoints from that document. Set `SSO_ISSUER_URL` to the
-exact `issuer` value the document advertises, trailing slash included. For
+UserInfo and JWKS endpoints from that document. Set `SSO_ISSUER_URL` to exactly
+the `issuer` value from the identity provider's
+`/.well-known/openid-configuration`, trailing slash included. Open that URL in
+a browser and copy the field. When the two differ, the server logs and returns
+`discovery document issuer "<document>" does not match configured
+SSO_ISSUER_URL "<configured>"`, with both values quoted so a trailing slash or
+a different scheme is visible. For
 Keycloak that is `https://kc.example.com/realms/<realm>`, for Auth0
 `https://<tenant>.auth0.com/` (with the slash), for Google
 `https://accounts.google.com`, and for Entra ID
