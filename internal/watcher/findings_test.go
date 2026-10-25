@@ -471,6 +471,100 @@ func TestDecideFinding_EcosystemLowercase(t *testing.T) {
 	}
 }
 
+// babelTraverseAdvisory has the shape of GHSA-67hx-6x53-jw92
+// (CVE-2023-45133): one advisory, two npm packages. @babel/traverse is fixed
+// in 7.23.2; the deprecated babel-traverse has no fix.
+var babelTraverseAdvisory = Advisory{
+	ID:      "GHSA-67hx-6x53-jw92",
+	Aliases: []string{"CVE-2023-45133"},
+	Summary: "Babel vulnerable to arbitrary code execution when compiling specifically crafted malicious code",
+	Affected: []Affected{
+		{
+			Package: Package{Name: "@babel/traverse", Ecosystem: "npm"},
+			Ranges: []VersionRange{{Type: "SEMVER", Events: []RangeEvent{
+				{Introduced: "0"}, {Fixed: "7.23.2"},
+			}}},
+		},
+		{
+			Package: Package{Name: "babel-traverse", Ecosystem: "npm"},
+			Ranges: []VersionRange{{Type: "SEMVER", Events: []RangeEvent{
+				{Introduced: "0"},
+			}}},
+		},
+	},
+}
+
+func TestDecideFinding_IgnoresAffectedEntryForOtherPackage(t *testing.T) {
+	fixed := DecideInput{
+		ProjectID: "p",
+		Advisory:  babelTraverseAdvisory,
+		Purl:      "pkg:npm/%40babel/traverse@7.24.0",
+		Version:   "7.24.0",
+		Ecosystem: "npm",
+		Package:   "@babel/traverse",
+	}
+	dec, err := DecideFinding(context.Background(), fixed, stubGapCheck(false, nil))
+	if err != nil {
+		t.Fatalf("DecideFinding: %v", err)
+	}
+	if dec.Created {
+		t.Fatalf("fixed @babel/traverse 7.24.0 got a finding from the babel-traverse entry: %+v", dec.Finding.Dimensions)
+	}
+
+	vulnerable := fixed
+	vulnerable.Purl = "pkg:npm/%40babel/traverse@7.23.0"
+	vulnerable.Version = "7.23.0"
+	dec, err = DecideFinding(context.Background(), vulnerable, stubGapCheck(false, nil))
+	if err != nil {
+		t.Fatalf("DecideFinding: %v", err)
+	}
+	if !dec.Created {
+		t.Fatalf("vulnerable @babel/traverse 7.23.0 skipped: %s", dec.SkipReason)
+	}
+	if got := dimsMap(dec.Finding)["fixed_version"]; !reflect.DeepEqual(got, []string{"v7.23.2"}) {
+		t.Errorf("fixed_version = %v, want [v7.23.2] from the @babel/traverse entry", got)
+	}
+
+	legacy := fixed
+	legacy.Purl = "pkg:npm/babel-traverse@6.26.0"
+	legacy.Version = "6.26.0"
+	legacy.Package = "babel-traverse"
+	dec, err = DecideFinding(context.Background(), legacy, stubGapCheck(false, nil))
+	if err != nil {
+		t.Fatalf("DecideFinding: %v", err)
+	}
+	if !dec.Created {
+		t.Fatalf("babel-traverse 6.26.0 skipped: %s", dec.SkipReason)
+	}
+}
+
+func TestSamePackageName(t *testing.T) {
+	cases := []struct {
+		ecosystem, queried, affected string
+		want                         bool
+	}{
+		{"pypi", "Django", "django", true},
+		{"pypi", "zope.interface", "Zope_Interface", true},
+		{"pypi", "foo--bar", "foo.bar", true},
+		{"pypi", "foobar", "foo-bar", false},
+		{"npm", "@babel/traverse", "babel-traverse", false},
+		{"npm", "@babel/traverse", "@babel/traverse", true},
+		{"npm", "@types/node", "node", false},
+		{"go", "github.com/Foo/bar", "github.com/foo/bar", false},
+		{"maven", "org.apache.logging.log4j:log4j-core", "org.apache.logging.log4j:log4j-core", true},
+		{"maven", "org.apache.logging.log4j/log4j-core", "org.apache.logging.log4j:log4j-core", true},
+		{"maven", "org.apache.logging.log4j:log4j-api", "org.apache.logging.log4j:log4j-core", false},
+		{"rubygems", "Rails", "rails", true},
+		{"npm", "lodash", "", true},
+		{"npm", "", "lodash", true},
+	}
+	for _, c := range cases {
+		if got := samePackageName(c.ecosystem, c.queried, c.affected); got != c.want {
+			t.Errorf("samePackageName(%q, %q, %q) = %v, want %v", c.ecosystem, c.queried, c.affected, got, c.want)
+		}
+	}
+}
+
 func TestDecideFinding_NotAffected(t *testing.T) {
 	// A version outside the affected region must be skipped without even
 	// consulting the gap check (no finding title exists yet).
