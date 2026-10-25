@@ -341,7 +341,7 @@ func (u *Usecases) decideWaiver(ctx context.Context, projectSlug, waiverID, stat
 
 	id, err := uuid.Parse(waiverID)
 	if err != nil {
-		return nil, fmt.Errorf(errInvalidWaiverIDFormat, err)
+		return nil, invalidWaiverID(err)
 	}
 	waiver, err := u.deps.Stores.Waivers.GetByID(ctx, id.String(), project.ID)
 	if err != nil {

@@ -14,8 +14,11 @@ import (
 	"github.com/minh-tg/specht/internal/port"
 )
 
-// errInvalidWaiverIDFormat wraps waiver-id parse failures.
-const errInvalidWaiverIDFormat = "invalid waiver id: %w"
+// invalidWaiverID wraps a waiver-id parse failure so it matches ErrInvalidID
+// and the handlers answer 400 instead of 500.
+func invalidWaiverID(err error) error {
+	return fmt.Errorf("invalid waiver id: %w: %w", ErrInvalidID, err)
+}
 
 // WaiverResponse is the API representation of a waiver with its condition,
 // context, and target rows attached.
@@ -395,7 +398,7 @@ func (u *Usecases) GetWaiver(ctx context.Context, projectSlug, waiverID string) 
 
 	id, err := uuid.Parse(waiverID)
 	if err != nil {
-		return nil, fmt.Errorf(errInvalidWaiverIDFormat, err)
+		return nil, invalidWaiverID(err)
 	}
 
 	w, err := u.deps.Stores.Waivers.GetByID(ctx, id.String(), project.ID)
@@ -436,7 +439,7 @@ func (u *Usecases) UpdateWaiver(ctx context.Context, input UpdateWaiverInput) (*
 
 	id, err := uuid.Parse(input.WaiverID)
 	if err != nil {
-		return nil, fmt.Errorf(errInvalidWaiverIDFormat, err)
+		return nil, invalidWaiverID(err)
 	}
 	waiver := port.Waiver{
 		ID:          id.String(),
@@ -623,7 +626,7 @@ func (u *Usecases) DeleteWaiver(ctx context.Context, projectSlug, waiverID strin
 
 	id, err := uuid.Parse(waiverID)
 	if err != nil {
-		return fmt.Errorf(errInvalidWaiverIDFormat, err)
+		return invalidWaiverID(err)
 	}
 
 	var actorID string
@@ -647,7 +650,7 @@ func (u *Usecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID, acto
 
 	id, err := uuid.Parse(waiverID)
 	if err != nil {
-		return nil, fmt.Errorf(errInvalidWaiverIDFormat, err)
+		return nil, invalidWaiverID(err)
 	}
 
 	w, err := u.deps.Stores.Waivers.ToggleWithEvent(ctx, id.String(), project.ID, actorID)
@@ -683,7 +686,7 @@ func (u *Usecases) setWaiverEnabled(ctx context.Context, projectSlug, waiverID, 
 
 	id, err := uuid.Parse(waiverID)
 	if err != nil {
-		return nil, fmt.Errorf(errInvalidWaiverIDFormat, err)
+		return nil, invalidWaiverID(err)
 	}
 
 	eventType, verb := "revoked", "revoke"
@@ -718,7 +721,7 @@ func (u *Usecases) ListWaiverEvents(ctx context.Context, projectSlug, waiverID s
 
 	id, err := uuid.Parse(waiverID)
 	if err != nil {
-		return nil, fmt.Errorf(errInvalidWaiverIDFormat, err)
+		return nil, invalidWaiverID(err)
 	}
 
 	if _, err := u.deps.Stores.Waivers.GetByID(ctx, id.String(), project.ID); err != nil {

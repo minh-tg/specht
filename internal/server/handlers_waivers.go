@@ -120,12 +120,11 @@ func (h *Handler) GetWaiver(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	waiver, err := h.usecase.GetWaiver(r.Context(), slug, id)
 	if err != nil {
-		if errors.Is(err, port.ErrNotFound) {
-			respondError(w, http.StatusNotFound, "not_found", waiversMsgNotFound)
-		} else {
-			slog.Error("get waiver", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal_error", "could not get waiver")
+		if h.respondWaiverError(w, r, err) {
+			return
 		}
+		slog.Error("get waiver", "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "could not get waiver")
 		return
 	}
 	respondJSON(w, http.StatusOK, waiver)
@@ -210,16 +209,11 @@ func (h *Handler) DeleteWaiver(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 	if err := h.usecase.DeleteWaiver(r.Context(), slug, id); err != nil {
-		if errors.Is(err, usecase.ErrProjectAccessDenied) {
-			h.respondProjectAccessError(w, r, errProjectAccessDenied)
+		if h.respondWaiverError(w, r, err) {
 			return
 		}
-		if errors.Is(err, port.ErrNotFound) {
-			respondError(w, http.StatusNotFound, "not_found", waiversMsgNotFound)
-		} else {
-			slog.Error("delete waiver", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal_error", "could not delete waiver")
-		}
+		slog.Error("delete waiver", "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "could not delete waiver")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -315,12 +309,11 @@ func (h *Handler) ListWaiverEvents(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	events, err := h.usecase.ListWaiverEvents(r.Context(), slug, id)
 	if err != nil {
-		if errors.Is(err, port.ErrNotFound) {
-			respondError(w, http.StatusNotFound, "not_found", waiversMsgNotFound)
-		} else {
-			slog.Error("list waiver events", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal_error", "could not list waiver events")
+		if h.respondWaiverError(w, r, err) {
+			return
 		}
+		slog.Error("list waiver events", "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "could not list waiver events")
 		return
 	}
 	respondJSON(w, http.StatusOK, events)
@@ -385,6 +378,8 @@ func (h *Handler) respondWaiverError(w http.ResponseWriter, r *http.Request, err
 	switch {
 	case errors.Is(err, usecase.ErrProjectAccessDenied):
 		h.respondProjectAccessError(w, r, errProjectAccessDenied)
+	case errors.Is(err, usecase.ErrInvalidID):
+		respondError(w, http.StatusBadRequest, "invalid_id", "invalid waiver id format")
 	case errors.Is(err, usecase.ErrInvalidWaiverRequest):
 		respondError(w, http.StatusBadRequest, "invalid_body", err.Error())
 	case errors.Is(err, usecase.ErrWaiverScopeNotFound):
