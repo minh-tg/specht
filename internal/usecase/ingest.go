@@ -834,7 +834,10 @@ type ingestFindingsState struct {
 	known        map[string]port.Finding
 	knownIDs     []string
 	baselineSeen map[string]bool
-	createdSeen  map[string]bool
+	// reported holds the finding keys an earlier entry of this report already
+	// ingested. A repeated entry adds an occurrence but no second created or
+	// regression event and no second introduced count.
+	reported map[string]bool
 	// scopeHash is the scan scope of this ingest (see scanScopeHash).
 	scopeHash string
 	// scopeSev holds the per-scope severities of the known findings.
@@ -864,7 +867,7 @@ func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Projec
 		nowTime:        now(),
 		known:          make(map[string]port.Finding),
 		baselineSeen:   make(map[string]bool),
-		createdSeen:    make(map[string]bool),
+		reported:       make(map[string]bool),
 		seenIntroduced: make(map[string]bool),
 		batchStore:     batchStore,
 		scopeHash:      scanScopeHash(input, nr),
@@ -980,11 +983,14 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 		return err
 	}
 	// A report may name one finding more than once. Keep the map current for
-	// a newly created finding; createdSeen below suppresses a second event
-	// for an archived finding that already dispatched one in this report.
+	// a newly created finding. A known finding keeps its prefetched row, so
+	// the severity event compares against the value before this report; the
+	// repeat flag stops a second created, regression or introduced count.
 	if !exists {
 		st.known[key] = upserted
 	}
+	repeat := st.reported[key]
+	st.reported[key] = true
 	project := severityValue{text: upserted.CurrentSeverity, rank: upserted.CurrentSeverityRank}
 	if err := u.recordScopeSeverity(ctx, st, upserted, existing, exists, final, incoming, project); err != nil {
 		return err
@@ -993,21 +999,19 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 		return err
 	}
 
-	regression := exists && existing.State == string(finding.TechFixed)
+	regression := !repeat && exists && existing.State == string(finding.TechFixed)
 	introduced, changeType := classifyIngestChange(
 		known, regression, st.baselineID,
 		known && st.baselineSeen[existing.ID],
 	)
-	st.tallyIngest(introduced, changeType, upserted.ID)
+	// A repeated entry counts toward the total as pre-existing, the split a
+	// replay of this report computes from the distinct introduced findings.
+	st.tallyIngest(introduced && !repeat, changeType, upserted.ID)
 
 	if regression {
 		u.logRegressionEvent(ctx, st, upserted, f, newRank, existing.State)
 	}
-	created := !known && !st.createdSeen[key]
-	u.dispatchCreatedEvent(ctx, st, upserted, f, newRank, created)
-	if created {
-		st.createdSeen[key] = true
-	}
+	u.dispatchCreatedEvent(ctx, st, upserted, f, newRank, !known && !repeat)
 
 	if st.batchStore == nil {
 		if err := u.createFindingOccurrence(ctx, st, upserted, f); err != nil {

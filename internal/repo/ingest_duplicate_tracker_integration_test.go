@@ -66,3 +66,70 @@ func TestOneDuplicateFindingCreatesOneTrackerEvent(t *testing.T) {
 	}
 	require.Equal(t, 1, created, "one finding must create one event")
 }
+
+func duplicateTrivyReport(t *testing.T, tag string, copies int) []byte {
+	t.Helper()
+	vuln := map[string]any{
+		"VulnerabilityID": "CVE-2032-0001", "PkgName": "openssl", "InstalledVersion": "1.0",
+		"Severity": "HIGH", "Title": "duplicate", "PkgIdentifier": map[string]string{"PURL": "pkg:apk/alpine/openssl@1.0"},
+	}
+	vulns := []map[string]any{}
+	for range copies {
+		vulns = append(vulns, vuln)
+	}
+	raw, err := json.Marshal(map[string]any{
+		"SchemaVersion": 2, "ArtifactName": "dup:" + tag, "ArtifactType": "container_image",
+		"Results": []map[string]any{{
+			"Target": "dup:" + tag + " (alpine)", "Class": "os-pkgs", "Type": "alpine",
+			"Vulnerabilities": vulns,
+		}},
+	})
+	require.NoError(t, err)
+	return raw
+}
+
+func TestDuplicateEntryReopensFixedFindingOnce(t *testing.T) {
+	pool, cleanup := setupIngestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(pool)
+	_, err := stores.Projects.Create(ctx, port.CreateProjectInput{Slug: "dup-reopen", Name: "Dup Reopen", DeploymentThreshold: "high", Settings: []byte(`{}`)})
+	require.NoError(t, err)
+	registry := scanner.NewRegistry()
+	for _, sc := range parser.Builtins() {
+		require.NoError(t, registry.Register(sc))
+	}
+	trackerEvents := &countingTracker{}
+	uc := usecase.New(usecase.Deps{Stores: stores, Registry: registry, Tracker: trackerEvents})
+	ingest := func(raw []byte, commit string) *usecase.IngestReportOutput {
+		out, err := uc.IngestReport(ctx, usecase.IngestReportInput{ProjectSlug: "dup-reopen", Scanner: "trivy", RawData: raw, Branch: "main", CommitSha: commit})
+		require.NoError(t, err)
+		return out
+	}
+	ingest(duplicateTrivyReport(t, "1", 1), "aaaaaaa1")
+	ingest(duplicateTrivyReport(t, "2", 0), "aaaaaaa2")
+	var state string
+	require.NoError(t, pool.QueryRow(ctx, `SELECT state FROM findings`).Scan(&state))
+	require.Equal(t, "fixed", state)
+
+	trackerEvents.mu.Lock()
+	trackerEvents.events = nil
+	trackerEvents.mu.Unlock()
+	out := ingest(duplicateTrivyReport(t, "3", 2), "aaaaaaa3")
+
+	var regressions int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM finding_events WHERE event_type = 'regression'`).Scan(&regressions))
+	require.Equal(t, 1, regressions, "one reopened finding logs one regression")
+	trackerEvents.mu.Lock()
+	dispatched := 0
+	for _, event := range trackerEvents.events {
+		if event.Type == tracker.EventRegression {
+			dispatched++
+		}
+	}
+	trackerEvents.mu.Unlock()
+	require.Equal(t, 1, dispatched, "one reopened finding notifies the tracker once")
+	require.Equal(t, 2, out.TotalFindings, "total counts every reported entry")
+	require.Equal(t, 1, out.IntroducedCount, "the finding is introduced once")
+	require.Equal(t, 1, out.PreExistingCount)
+}
