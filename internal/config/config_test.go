@@ -263,26 +263,83 @@ func TestLoad_SSOAllowUserInfoOnlyOverride(t *testing.T) {
 
 func TestLoad_SSOUnverifiedEmailIsOffUnlessExplicitlyTrue(t *testing.T) {
 	tests := []struct {
-		value string
-		want  bool
+		value   string
+		want    bool
+		invalid bool
 	}{
-		{"", false},
-		{"true", true},
-		{"false", false},
-		{"yes", false},
-		{"1", false},
+		{"", false, false},
+		{"true", true, false},
+		{"false", false, false},
+		{"yes", false, true},
+		{"1", false, true},
+		{"TRUE", false, true},
 	}
-	for _, tc := range tests {
-		t.Run("value="+tc.value, func(t *testing.T) {
-			t.Setenv("WATCHER_ENABLE", "")
-			t.Setenv("SSO_ALLOW_UNVERIFIED_EMAIL", tc.value)
+	for _, name := range []string{"SSO_ALLOW_UNVERIFIED_EMAIL", "SSO_ALLOW_USERINFO_ONLY"} {
+		for _, tc := range tests {
+			t.Run(name+"="+tc.value, func(t *testing.T) {
+				t.Setenv("WATCHER_ENABLE", "")
+				t.Setenv(name, tc.value)
 
-			cfg, err := Load()
+				cfg, err := Load()
 
-			require.NoError(t, err)
-			assert.Equal(t, tc.want, cfg.SSO.AllowUnverifiedEmail,
-				"only the exact value true opts in, so a typo cannot weaken the default")
-		})
+				if tc.invalid {
+					require.Error(t, err, "only the exact value true opts in; anything else stops startup")
+					assert.Contains(t, err.Error(), name)
+					return
+				}
+				require.NoError(t, err)
+				got := cfg.SSO.AllowUnverifiedEmail
+				if name == "SSO_ALLOW_USERINFO_ONLY" {
+					got = cfg.SSO.AllowUserInfoOnly
+				}
+				assert.Equal(t, tc.want, got)
+			})
+		}
+	}
+}
+
+// A boolean switch used to read anything but the exact string true as false,
+// so RATE_LIMIT_ENABLED=1 silently turned every limiter off. ParseBool
+// spellings are accepted, empty keeps the default and anything else fails.
+func TestLoad_BooleanSwitchesParseOrFail(t *testing.T) {
+	read := map[string]func(*Server) bool{
+		"RATE_LIMIT_ENABLED": func(s *Server) bool { return s.RateLimit.Enable },
+		"WATCHER_ENABLE":     func(s *Server) bool { return s.Watcher.Enable },
+		"SSO_ENABLE":         func(s *Server) bool { return s.SSO.Enabled },
+		"SSO_PUBLIC_CLIENT":  func(s *Server) bool { return s.SSO.PublicClient },
+		"DB_MIGRATE":         func(s *Server) bool { return s.DBMigrate },
+	}
+	defaults := map[string]bool{"DB_MIGRATE": true}
+	for name, get := range read {
+		for _, tc := range []struct {
+			value   string
+			want    bool
+			invalid bool
+		}{
+			{"", defaults[name], false},
+			{"1", true, false},
+			{"TRUE", true, false},
+			{"True", true, false},
+			{"0", false, false},
+			{"false", false, false},
+			{"yes", false, true},
+			{"ture", false, true},
+		} {
+			t.Run(name+"="+tc.value, func(t *testing.T) {
+				t.Setenv("WATCHER_ENABLE", "")
+				t.Setenv(name, tc.value)
+
+				cfg, err := Load()
+
+				if tc.invalid {
+					require.Error(t, err)
+					assert.Contains(t, err.Error(), name)
+					return
+				}
+				require.NoError(t, err)
+				assert.Equal(t, tc.want, get(cfg))
+			})
+		}
 	}
 }
 
