@@ -3815,7 +3815,7 @@ export interface components {
     Id: string;
     /** @description Finding identifier. */
     FindingID: string;
-    /** @description Page size. Default 20, maximum 500. A malformed, negative, or oversized value falls back to the default. */
+    /** @description Page size. Default 20, maximum 500. A value above 500 is clamped to 500; a malformed or negative value, or one too large for a 32-bit integer, falls back to the default. */
     Limit: number;
     /** @description Items to skip. A malformed, negative, or out-of-range value falls back to 0. */
     Offset: number;
@@ -4688,7 +4688,7 @@ export interface operations {
       query?: {
         /** @description Case-insensitive substring match on the email address. Empty lists every account. */
         email?: string;
-        /** @description Page size. Default 20, maximum 500. A malformed, negative, or oversized value falls back to the default. */
+        /** @description Page size. Default 20, maximum 500. A value above 500 is clamped to 500; a malformed or negative value, or one too large for a 32-bit integer, falls back to the default. */
         limit?: components["parameters"]["Limit"];
         /** @description Items to skip. A malformed, negative, or out-of-range value falls back to 0. */
         offset?: components["parameters"]["Offset"];
@@ -4970,7 +4970,7 @@ export interface operations {
         commit?: string;
         /** @description Match commit as a case-insensitive prefix. Requires commit when true. */
         commit_prefix?: boolean;
-        /** @description Page size. Default 20, maximum 500. A malformed, negative, or oversized value falls back to the default. */
+        /** @description Page size. Default 20, maximum 500. A value above 500 is clamped to 500; a malformed or negative value, or one too large for a 32-bit integer, falls back to the default. */
         limit?: components["parameters"]["Limit"];
         /** @description Items to skip. A malformed, negative, or out-of-range value falls back to 0. */
         offset?: components["parameters"]["Offset"];
@@ -5117,7 +5117,7 @@ export interface operations {
         sort?: "severity" | "first_seen" | "last_seen" | "title";
         /** @description Sort direction. Defaults to `desc`, or `asc` for `title`. For `first_seen`, `asc` lists the oldest findings first. */
         dir?: "asc" | "desc";
-        /** @description Page size. Default 20, maximum 500. A malformed, negative, or oversized value falls back to the default. */
+        /** @description Page size. Default 20, maximum 500. A value above 500 is clamped to 500; a malformed or negative value, or one too large for a 32-bit integer, falls back to the default. */
         limit?: components["parameters"]["Limit"];
         /** @description Items to skip. A malformed, negative, or out-of-range value falls back to 0. */
         offset?: components["parameters"]["Offset"];
@@ -5318,7 +5318,7 @@ export interface operations {
          *     commas (`type=analysis_changed,comment`). Omit for every type.
          */
         type?: string[];
-        /** @description Page size. Default 50, maximum 500. A malformed, negative, or oversized value falls back to the default. */
+        /** @description Page size. Default 50, maximum 500. A value above 500 is clamped to 500; a malformed or negative value, or one too large for a 32-bit integer, falls back to the default. */
         limit?: number;
         /** @description Items to skip. A malformed, negative, or out-of-range value falls back to 0. */
         offset?: components["parameters"]["Offset"];

@@ -33,8 +33,9 @@ info:
     ## Conventions
 
     - List endpoints return a **bare JSON array**; pagination is
-      `limit`/`offset` (default 20, maximum 500). A malformed, negative, or
-      oversized limit falls back to the default rather than erroring.
+      `limit`/`offset` (default 20, maximum 500). A limit above 500 is
+      clamped to 500. A malformed or negative limit, or one too large for a
+      32-bit integer, falls back to the default rather than erroring.
     - Paginated lists carry **`X-Total-Count`**, the size of the filtered set
       independent of the page window, so a client can render "n of m" without
       walking the pages. Findings serves it today; a missing header means the
@@ -1618,7 +1619,7 @@ paths:
           schema: { type: array, items: { type: string } }
         - name: limit
           in: query
-          description: Page size. Default 50, maximum 500. A malformed, negative, or oversized value falls back to the default.
+          description: Page size. Default 50, maximum 500. A value above 500 is clamped to 500; a malformed or negative value, or one too large for a 32-bit integer, falls back to the default.
           schema: { type: integer, minimum: 0, maximum: 500, default: 50 }
         - $ref: "#/components/parameters/Offset"
       responses:
@@ -3569,7 +3570,7 @@ components:
     Limit:
       name: limit
       in: query
-      description: Page size. Default 20, maximum 500. A malformed, negative, or oversized value falls back to the default.
+      description: Page size. Default 20, maximum 500. A value above 500 is clamped to 500; a malformed or negative value, or one too large for a 32-bit integer, falls back to the default.
       schema: { type: integer, minimum: 0, maximum: 500, default: 20 }
     Offset:
       name: offset
