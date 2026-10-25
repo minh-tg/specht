@@ -19,6 +19,7 @@ type projectWithRole struct {
 		ManageMembers  bool `json:"manage_members"`
 		ManageCI       bool `json:"manage_ci"`
 		Triage         bool `json:"triage"`
+		UploadReports  bool `json:"upload_reports"`
 	} `json:"permissions"`
 }
 
@@ -58,6 +59,7 @@ func TestE2E_ProjectRoleAndKeyManagement(t *testing.T) {
 		require.False(t, p.Permissions.ManageCI)
 		require.False(t, p.Permissions.ApproveWaivers)
 		require.False(t, p.Permissions.Triage)
+		require.False(t, p.Permissions.UploadReports)
 
 		status, raw := doJSON(t, http.MethodPost, "/api/v1/auth/apikeys", userToken,
 			map[string]string{"project": slug, "name": "ci"})
@@ -74,6 +76,7 @@ func TestE2E_ProjectRoleAndKeyManagement(t *testing.T) {
 		require.True(t, p.Permissions.ManageCI)
 		require.True(t, p.Permissions.ApproveWaivers)
 		require.True(t, p.Permissions.Triage)
+		require.True(t, p.Permissions.UploadReports)
 
 		created := request[apiKeyResponse](t, http.MethodPost, "/api/v1/auth/apikeys", userToken,
 			map[string]string{"project": slug, "name": "ci-by-manager"}, http.StatusCreated)

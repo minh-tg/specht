@@ -4004,7 +4004,7 @@ components:
       description: |
         What the caller may do on the project, for showing and hiding controls.
         The server checks the role again on every request.
-      required: [request_waiver, manage_waivers, approve_waivers, manage_members, manage_ci, triage]
+      required: [request_waiver, manage_waivers, approve_waivers, manage_members, manage_ci, triage, upload_reports]
       properties:
         request_waiver: { type: boolean, description: Ask for a waiver. Every project member. }
         manage_waivers: { type: boolean, description: Create, edit, delete and toggle waivers. }
@@ -4012,6 +4012,7 @@ components:
         manage_members: { type: boolean, description: Add and remove members, up to the caller's own role. }
         manage_ci: { type: boolean, description: Create, list and revoke the project's API keys. }
         triage: { type: boolean, description: Change analysis state and reachability. }
+        upload_reports: { type: boolean, description: Upload scan reports by hand. The same roles CI ingest admits (admin and manager). }
 
     CreateProjectRequest:
       type: object

@@ -14,7 +14,7 @@ func TestPermissionsForRole(t *testing.T) {
 	member := ProjectPermissions{RequestWaiver: true}
 	manager := ProjectPermissions{
 		RequestWaiver: true, ManageWaivers: true, ApproveWaivers: true,
-		ManageMembers: true, ManageCI: true, Triage: true,
+		ManageMembers: true, ManageCI: true, Triage: true, UploadReports: true,
 	}
 	for role, want := range map[string]ProjectPermissions{
 		auth.RoleAdmin:   manager,
@@ -38,6 +38,16 @@ func TestPermissionsMatchTheWritePathPredicates(t *testing.T) {
 		assert.Equal(t, waiverApproverRole(role), p.ApproveWaivers, role)
 		assert.Equal(t, auth.RoleRank(normalizeMemberRole(role)) >= auth.RoleRank(auth.RoleManager), p.ManageMembers,
 			"%q: members are added by managers and above, as AddProjectMember allows", role)
+	}
+}
+
+// Upload is offered exactly to the roles the ingest check admits, so a member
+// is never shown a form the server answers with 403.
+func TestUploadReportsMatchesTheIngestCheck(t *testing.T) {
+	for _, role := range []string{auth.RoleAdmin, auth.RoleManager, "editor", auth.RoleMember, "viewer", "guest"} {
+		uc := permissionsUsecase(role, true)
+		allowed := uc.requireProjectIngest(sessionCtx("u1", auth.RoleMember), makeProject(true).ID) == nil
+		assert.Equal(t, allowed, permissionsForRole(role).UploadReports, role)
 	}
 }
 

@@ -59,7 +59,9 @@ function Crumbs(
   );
 }
 
-function NoReport({ slug, commit }: { slug: string; commit: string; }) {
+function NoReport(
+  { slug, commit, canUpload }: { slug: string; commit: string; canUpload: boolean; },
+) {
   return (
     <div className="mt-8">
       <h1 className="text-title leading-tight font-bold">
@@ -70,7 +72,9 @@ function NoReport({ slug, commit }: { slug: string; commit: string; }) {
       </p>
       <div className="mt-4 flex flex-wrap gap-4 text-body">
         <Link to={`/${slug}/reports`} className={INLINE_LINK}>Reports</Link>
-        <Link to={`/${slug}/reports/upload`} className={INLINE_LINK}>Upload a report</Link>
+        {canUpload && (
+          <Link to={`/${slug}/reports/upload`} className={INLINE_LINK}>Upload a report</Link>
+        )}
       </div>
     </div>
   );
@@ -192,7 +196,11 @@ export function ChangeView() {
     return (
       <Page>
         {crumbs}
-        <NoReport slug={slug} commit={commit} />
+        <NoReport
+          slug={slug}
+          commit={commit}
+          canUpload={projectQuery.data?.permissions?.upload_reports === true}
+        />
       </Page>
     );
   }

@@ -305,6 +305,7 @@ describe("ChangeView", () => {
 
   it("offers a neutral no-report page with the reports and upload links", async () => {
     reports = [];
+    permissions = { request_waiver: true, upload_reports: true };
     renderPage();
 
     expect(await screen.findByText("No scan found for commit abcdef1")).toBeInTheDocument();
@@ -312,10 +313,20 @@ describe("ChangeView", () => {
       screen.getByText("The pipeline may still be running, or this commit was never scanned."),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Reports" })).toHaveAttribute("href", "/acme/reports");
-    expect(screen.getByRole("link", { name: "Upload a report" })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: "Upload a report" })).toHaveAttribute(
       "href",
       "/acme/reports/upload",
     );
+  });
+
+  it("leaves the upload link out for someone who may not upload", async () => {
+    reports = [];
+    permissions = { request_waiver: true, upload_reports: false };
+    renderPage();
+
+    expect(await screen.findByText("No scan found for commit abcdef1")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Reports" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Upload a report" })).not.toBeInTheDocument();
   });
 
   it("does not claim a verdict while a scan is processing", async () => {

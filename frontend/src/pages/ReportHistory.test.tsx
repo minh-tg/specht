@@ -241,6 +241,36 @@ describe("ReportHistory", () => {
     );
   });
 
+  it.each([
+    { state: "populated", reports: REPORTS },
+    { state: "empty", reports: [] },
+  ])("offers no upload to a member who may not upload, on a $state list", async ({ reports }) => {
+    globalThis.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const body = url.endsWith("/api/v1/me")
+        ? { id: "u1", email: "m@acme.io", role: "member" }
+        : url.endsWith("/api/v1/projects/test-project")
+        ? {
+          slug: "test-project",
+          role: "member",
+          permissions: { request_waiver: true, triage: false, upload_reports: false },
+        }
+        : reports;
+      return { ok: true, json: () => Promise.resolve(body) } as Response;
+    });
+    renderWithProviders(<ReportHistory />);
+
+    if (reports.length) expect(await screen.findByText("trivy")).toBeInTheDocument();
+    else expect(await screen.findByText("No reports yet.")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "/api/v1/projects/test-project",
+        expect.anything(),
+      )
+    );
+    expect(screen.queryByRole("link", { name: /^Upload (a )?report$/ })).not.toBeInTheDocument();
+  });
+
   it("shows the error state with a retry", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,

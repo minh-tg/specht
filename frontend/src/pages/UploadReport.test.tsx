@@ -80,7 +80,7 @@ function postCall() {
   return fetchCalls.find((c) => c.url === "/api/v1/reports" && c.method === "POST");
 }
 
-function installFetch(postResponse: () => Response) {
+function installFetch(postResponse: () => Response, project: object = PROJECT) {
   fetchCalls = [];
   globalThis.fetch = vi.fn().mockImplementation(async (url, opts) => {
     const u = String(url);
@@ -91,7 +91,7 @@ function installFetch(postResponse: () => Response) {
       return { ok: true, json: () => Promise.resolve(SCANNERS) } as Response;
     }
     if (u === "/api/v1/projects/test-project" && method === "GET") {
-      return { ok: true, json: () => Promise.resolve(PROJECT) } as Response;
+      return { ok: true, json: () => Promise.resolve(project) } as Response;
     }
     if (u === "/api/v1/reports" && method === "POST") {
       return postResponse();
@@ -111,6 +111,23 @@ async function fillValidForm() {
 }
 
 describe("UploadReport", () => {
+  it("says who can upload instead of offering a member a form the server refuses", async () => {
+    installFetch(() => ({ ok: true, json: () => Promise.resolve({}) } as Response), {
+      ...PROJECT,
+      role: "member",
+      permissions: { request_waiver: true, upload_reports: false },
+    });
+    renderUpload();
+
+    expect(
+      await screen.findByText(
+        "Only project managers and administrators can upload reports to Test Project.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /scanner/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/scan file/i)).not.toBeInTheDocument();
+  });
+
   it("shows the project context and back link", async () => {
     installFetch(() => ({ ok: true, json: () => Promise.resolve({}) } as Response));
     renderUpload();
@@ -354,7 +371,7 @@ describe("UploadReport scanner loading and error states", () => {
         return { ok: true, json: () => Promise.resolve([]) } as Response;
       }
       if (u === "/api/v1/projects/test-project") {
-        return { ok: true, json: () => Promise.resolve(PROJECT) } as Response;
+        return { ok: true, json: () => Promise.resolve(project) } as Response;
       }
       return { ok: true, json: () => Promise.resolve([]) } as Response;
     });

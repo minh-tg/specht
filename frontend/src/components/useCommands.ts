@@ -11,6 +11,8 @@ const PROJECT_PAGES: readonly {
   label: string;
   keywords?: string;
   adminOnly?: boolean;
+  /** Shown only to people who may upload reports. */
+  uploadOnly?: boolean;
 }[] = [
   { path: "findings", label: "Findings", keywords: "vulnerabilities issues" },
   { path: "reports", label: "Reports", keywords: "scans history" },
@@ -20,7 +22,12 @@ const PROJECT_PAGES: readonly {
   { path: "insights", label: "Insights", keywords: "charts age overdue" },
   { path: "watcher", label: "Watcher", keywords: "cve feed" },
   { path: "setup", label: "CI setup", keywords: "pipeline github action key" },
-  { path: "reports/upload", label: "Upload a report", keywords: "ingest scan file" },
+  {
+    path: "reports/upload",
+    label: "Upload a report",
+    keywords: "ingest scan file",
+    uploadOnly: true,
+  },
   {
     path: "settings",
     label: "Project settings",
@@ -43,7 +50,7 @@ export function useCommands(): Command[] {
   const { data: projects } = useProjects();
   const isAdmin = me?.role === "admin";
   const slug = currentProjectSlug(pathname);
-  const { isAdmin: isProjectAdmin } = useProjectRole(slug ?? "");
+  const { isAdmin: isProjectAdmin, canUploadReports } = useProjectRole(slug ?? "");
 
   return useMemo(() => {
     const go = (to: string) => () => navigate(to);
@@ -52,6 +59,7 @@ export function useCommands(): Command[] {
     if (slug) {
       for (const page of PROJECT_PAGES) {
         if (page.adminOnly && !isProjectAdmin) continue;
+        if (page.uploadOnly && !canUploadReports) continue;
         list.push({
           id: `project:${page.path}`,
           group: "This project",
@@ -123,5 +131,15 @@ export function useCommands(): Command[] {
       run: logout,
     });
     return list;
-  }, [slug, isProjectAdmin, projects, isAdmin, theme, setTheme, logout, navigate]);
+  }, [
+    slug,
+    isProjectAdmin,
+    canUploadReports,
+    projects,
+    isAdmin,
+    theme,
+    setTheme,
+    logout,
+    navigate,
+  ]);
 }

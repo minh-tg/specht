@@ -1,4 +1,4 @@
-import { POLL_MS, useGateStatus, useMe, useProjectStats } from "@/api/hooks";
+import { POLL_MS, useGateStatus, useMe, useProjectRole, useProjectStats } from "@/api/hooks";
 import { InfoTip } from "@/components/InfoTip";
 import { INLINE_LINK } from "@/components/inlineLink";
 import { ReportFreshness } from "@/components/ReportFreshness";
@@ -44,6 +44,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
   const gateQuery = useGateStatus(slug, undefined, { refetchInterval: POLL_MS });
   const statsQuery = useProjectStats(slug, { refetchInterval: POLL_MS });
   const { data: me } = useMe();
+  const { canUploadReports, isLoading: roleLoading } = useProjectRole(slug);
 
   const gate = gateQuery.data;
   const stats = statsQuery.data;
@@ -168,7 +169,12 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
         latestCompleted={stats?.latest_completed_report}
       />
 
-      {verdict === "no_scans" && (
+      {verdict === "no_scans" && !roleLoading && !canUploadReports && (
+        <p className="text-muted-foreground mt-2 text-body">
+          A project manager or admin can upload a report or connect CI.
+        </p>
+      )}
+      {verdict === "no_scans" && canUploadReports && (
         <p className="text-muted-foreground mt-2 text-body">
           Upload a report or send one from CI.{" "}
           <Link

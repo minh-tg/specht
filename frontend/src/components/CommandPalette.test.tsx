@@ -10,6 +10,7 @@ import { CommandPalette } from "./CommandPalette";
 import { ThemeToggle } from "./ThemeToggle";
 
 let role: "admin" | "member";
+let projectRead: object | undefined;
 let logout: ReturnType<typeof vi.fn>;
 
 function Where() {
@@ -52,6 +53,7 @@ const labels = () => screen.getAllByRole("option").map((o) => o.textContent);
 describe("CommandPalette", () => {
   beforeEach(() => {
     role = "admin";
+    projectRead = undefined;
     logout = vi.fn();
     resetThemeStore();
     window.localStorage.clear();
@@ -65,6 +67,9 @@ describe("CommandPalette", () => {
         ]);
       }
       if (url.endsWith("/payments/members")) return jsonResponse([]);
+      if (url.endsWith("/api/v1/projects/payments") && projectRead) {
+        return jsonResponse(projectRead);
+      }
       throw new Error(`unexpected request ${url}`);
     });
   });
@@ -98,6 +103,25 @@ describe("CommandPalette", () => {
       expect(screen.getByRole("group", { name: "This project" })).toBeInTheDocument()
     );
     expect(screen.queryByRole("option", { name: "Project settings" })).not.toBeInTheDocument();
+  });
+
+  it("offers report upload only to someone the server lets upload", async () => {
+    const user = userEvent.setup();
+    role = "member";
+    projectRead = { slug: "payments", role: "manager", permissions: { upload_reports: true } };
+    const { unmount } = renderPalette("/payments/findings");
+    await openWithShortcut(user);
+    expect(await screen.findByRole("option", { name: "Upload a report" })).toBeInTheDocument();
+    unmount();
+
+    projectRead = { slug: "payments", role: "member", permissions: { upload_reports: false } };
+    renderPalette("/payments/findings");
+    await openWithShortcut(user);
+    await waitFor(() =>
+      expect(screen.getByRole("group", { name: "This project" })).toBeInTheDocument()
+    );
+    expect(screen.getByRole("option", { name: "Findings" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Upload a report" })).not.toBeInTheDocument();
   });
 
   it("opens from the keyboard anywhere and closes with Escape", async () => {

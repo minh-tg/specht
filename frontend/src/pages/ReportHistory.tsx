@@ -63,7 +63,7 @@ export function ReportHistory({ uploadAction }: { readonly uploadAction?: ReactN
     slug ?? "",
     limit,
   );
-  const { isAdmin } = useProjectRole(slug ?? "");
+  const { isAdmin, canUploadReports } = useProjectRole(slug ?? "");
   const deleteMutation = useDeleteReport(slug ?? "");
   const [pendingDelete, setPendingDelete] = useState<Report | null>(null);
   const deletionPreview = useReportDeletionPreview(slug ?? "", pendingDelete?.id ?? null);
@@ -96,12 +96,15 @@ export function ReportHistory({ uploadAction }: { readonly uploadAction?: ReactN
     return (
       <EmptyState
         title="No reports yet."
-        description="Upload a scanner report and its findings appear here."
-        action={uploadAction ?? (
-          <Link to={`/${slug}/reports/upload`} className={buttonVariants()}>
-            Upload a report
-          </Link>
-        )}
+        description={canUploadReports
+          ? "Upload a scanner report and its findings appear here."
+          : "Reports appear here once a project manager uploads one or CI sends one."}
+        action={uploadAction
+          ?? (canUploadReports && (
+            <Link to={`/${slug}/reports/upload`} className={buttonVariants()}>
+              Upload a report
+            </Link>
+          ))}
       />
     );
   }
@@ -109,11 +112,12 @@ export function ReportHistory({ uploadAction }: { readonly uploadAction?: ReactN
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
-        {uploadAction ?? (
-          <Link to={`/${slug}/reports/upload`} className={buttonVariants()}>
-            Upload report
-          </Link>
-        )}
+        {uploadAction
+          ?? (canUploadReports && (
+            <Link to={`/${slug}/reports/upload`} className={buttonVariants()}>
+              Upload report
+            </Link>
+          ))}
       </div>
 
       {reports.map((r) => {

@@ -59,6 +59,8 @@ export interface ProjectPermissions {
   manage_members: boolean;
   manage_ci: boolean;
   triage: boolean;
+  /** Upload a scan report; the same roles CI ingest admits. */
+  upload_reports: boolean;
 }
 
 export type WaiverStatus = "pending" | "approved" | "rejected" | "withdrawn";

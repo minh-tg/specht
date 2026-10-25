@@ -12,15 +12,44 @@ interface Fixtures {
   gate?: unknown;
   stats?: unknown;
   me?: unknown;
+  project?: unknown;
+}
+
+const PERMISSIONS = {
+  request_waiver: true,
+  manage_waivers: false,
+  approve_waivers: false,
+  manage_members: false,
+  manage_ci: false,
+  triage: false,
+  upload_reports: false,
+};
+
+/** A project read as the server answers it for the given role. */
+function projectAs(role: "admin" | "manager" | "member") {
+  const manager = role !== "member";
+  return {
+    id: "p1",
+    slug: "alpha",
+    name: "Alpha",
+    description: null,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+    role,
+    permissions: manager
+      ? Object.fromEntries(Object.keys(PERMISSIONS).map((k) => [k, true]))
+      : PERMISSIONS,
+  };
 }
 
 /** Routes the three VerdictBand queries by path, like the other page tests. */
-function mockApi({ gate = {}, stats = {}, me = { role: "member" } }: Fixtures = {}) {
+function mockApi({ gate = {}, stats = {}, me = { role: "member" }, project }: Fixtures = {}) {
   globalThis.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.endsWith("/gate")) return jsonResponse(gate);
     if (url.endsWith("/stats")) return jsonResponse(stats);
     if (url.endsWith("/me")) return jsonResponse(me);
+    if (project && url.endsWith("/projects/alpha")) return jsonResponse(project);
     return jsonResponse([]);
   });
 }
@@ -50,6 +79,7 @@ function renderBand(fixtures: Fixtures = {}, slug = "alpha") {
   client.setQueryData(queryKeys.gate(slug), fixtures.gate ?? {});
   client.setQueryData(queryKeys.projectStats(slug), fixtures.stats ?? {});
   client.setQueryData(queryKeys.me(), fixtures.me ?? { role: "member" });
+  if (fixtures.project) client.setQueryData(queryKeys.project(slug), fixtures.project);
   return renderBandIn(client, slug);
 }
 
@@ -118,11 +148,27 @@ describe("VerdictBand", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Nothing blocks this project");
   });
 
-  it("shows the upload hint without admin links for members", () => {
+  it("offers a plain member no upload the server would refuse", () => {
     renderBand({
       gate: { threshold_breached: false, blocking_count: 0, blocked_by: [] },
       stats: { report_count: 0, total_findings: 0, by_severity: [] },
-      me: { role: "member" },
+      me: { id: "u1", email: "m@acme.io", role: "member" },
+      project: projectAs("member"),
+    });
+
+    expect(screen.getByText("No scans yet")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Upload a report" })).not.toBeInTheDocument();
+    expect(screen.getByText("A project manager or admin can upload a report or connect CI."))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Set up CI" })).not.toBeInTheDocument();
+  });
+
+  it("shows the upload hint without admin links for project managers", () => {
+    renderBand({
+      gate: { threshold_breached: false, blocking_count: 0, blocked_by: [] },
+      stats: { report_count: 0, total_findings: 0, by_severity: [] },
+      me: { id: "u1", email: "m@acme.io", role: "member" },
+      project: projectAs("manager"),
     });
 
     expect(screen.getByText("No scans yet")).toBeInTheDocument();
@@ -138,7 +184,8 @@ describe("VerdictBand", () => {
     renderBand({
       gate: { threshold_breached: false, blocking_count: 0, blocked_by: [] },
       stats: { report_count: 0, total_findings: 0, by_severity: [] },
-      me: { role: "admin" },
+      me: { id: "u0", email: "root@acme.io", role: "admin" },
+      project: projectAs("admin"),
     });
 
     expect(screen.getByRole("link", { name: "Set up CI" })).toHaveAttribute(

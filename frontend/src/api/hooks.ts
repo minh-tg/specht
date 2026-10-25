@@ -846,6 +846,8 @@ export function useProjectRole(slug: string): {
   isLoading: boolean;
   canManageMembers: boolean;
   canTriage: boolean;
+  /** Whether to offer report upload; the server admits the same roles to ingest. */
+  canUploadReports: boolean;
   isAdmin: boolean;
 } {
   const me = useMe();
@@ -857,6 +859,7 @@ export function useProjectRole(slug: string): {
       isLoading: true,
       canManageMembers: false,
       canTriage: true,
+      canUploadReports: false,
       isAdmin: false,
     };
   }
@@ -867,6 +870,7 @@ export function useProjectRole(slug: string): {
       isLoading: false,
       canManageMembers: true,
       canTriage: true,
+      canUploadReports: true,
       isAdmin: true,
     };
   }
@@ -879,6 +883,7 @@ export function useProjectRole(slug: string): {
       isLoading: false,
       canManageMembers: false,
       canTriage: true,
+      canUploadReports: true,
       isAdmin: false,
     };
   }
@@ -892,6 +897,7 @@ export function useProjectRole(slug: string): {
     isLoading: false,
     canManageMembers: permissions?.manage_members ?? rank >= 2,
     canTriage: permissions?.triage ?? rank >= 2,
+    canUploadReports: permissions?.upload_reports ?? rank >= 2,
     isAdmin: rank >= 3,
   };
 }

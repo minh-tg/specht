@@ -26,6 +26,9 @@ type ProjectPermissions struct {
 	ManageCI bool `json:"manage_ci"`
 	// Triage covers analysis state, assignment and reachability changes.
 	Triage bool `json:"triage"`
+	// UploadReports covers uploading scan reports by hand, which goes
+	// through the same ingest check as CI.
+	UploadReports bool `json:"upload_reports"`
 }
 
 // isManagerRole reports whether a project role carries manager rights.
@@ -45,6 +48,7 @@ func permissionsForRole(role string) ProjectPermissions {
 		ManageMembers:  manager,
 		ManageCI:       manager,
 		Triage:         manager,
+		UploadReports:  manager,
 	}
 }
 
