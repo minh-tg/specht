@@ -106,24 +106,42 @@ func TestCheckFindingRowsProjectAccess_NoIdentityDenied(t *testing.T) {
 func TestRequireProjectManager_UsesEffectiveProjectRole(t *testing.T) {
 	pr := &mockProjectRepo{}
 	pr.effectiveRoleFn = func(ctx context.Context, projectID, userID string) (string, error) {
-		return auth.RoleViewer, nil
+		return auth.RoleMember, nil
 	}
 	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
 	assert.ErrorIs(t, uc.requireProjectManager(sessionCtx("u1", auth.RoleViewer), findingFixtureProjectID), ErrProjectAccessDenied)
 
 	pr.effectiveRoleFn = func(ctx context.Context, projectID, userID string) (string, error) {
-		return auth.RoleEditor, nil
+		return auth.RoleManager, nil
 	}
 	assert.NoError(t, uc.requireProjectManager(sessionCtx("u1", auth.RoleViewer), findingFixtureProjectID))
 }
 
-func TestRequireProjectIngest_RequiresEditorRoleOrIngestScope(t *testing.T) {
+// Report upload is a manager action: a clean report can close findings and
+// turn the gate green. The project role is the effective one from
+// project_members and project_teams, whose CHECK constraints allow only
+// admin, manager and member.
+func TestRequireProjectIngest_RequiresManagerRoleOrIngestScope(t *testing.T) {
+	role := auth.RoleMember
 	pr := &mockProjectRepo{}
 	pr.effectiveRoleFn = func(ctx context.Context, projectID, userID string) (string, error) {
-		return auth.RoleViewer, nil
+		return role, nil
 	}
 	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
-	assert.ErrorIs(t, uc.requireProjectIngest(sessionCtx("u1", auth.RoleViewer), findingFixtureProjectID), ErrProjectAccessDenied)
+	for projectRole, allowed := range map[string]bool{
+		auth.RoleAdmin:   true,
+		auth.RoleManager: true,
+		auth.RoleMember:  false,
+	} {
+		role = projectRole
+		err := uc.requireProjectIngest(sessionCtx("u1", auth.RoleViewer), findingFixtureProjectID)
+		if allowed {
+			assert.NoError(t, err, "project %s may ingest", projectRole)
+		} else {
+			assert.ErrorIs(t, err, ErrProjectAccessDenied, "project %s may not ingest", projectRole)
+		}
+	}
+	role = auth.RoleMember
 
 	ingestKey := auth.ContextWithIdentity(context.Background(), &auth.Identity{
 		UserID: "key-1", ProjectID: findingFixtureProjectID, IsAPIKey: true,

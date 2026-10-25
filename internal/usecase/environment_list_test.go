@@ -14,7 +14,7 @@ import (
 func TestListEnvironments_ReportsExposureAndSensitivity(t *testing.T) {
 	pr := projectUpdateRepos()
 	pr.listMembersFn = func(ctx context.Context, projectID string) ([]port.ProjectMember, error) {
-		return []port.ProjectMember{{ProjectID: projectID, UserID: "u1", Role: auth.RoleViewer}}, nil
+		return []port.ProjectMember{{ProjectID: projectID, UserID: "u1", Role: auth.RoleMember}}, nil
 	}
 	envs := &mockEnvironmentRepo{}
 	envs.listFn = func(ctx context.Context, projectID string) ([]port.Environment, error) {

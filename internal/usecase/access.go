@@ -211,16 +211,24 @@ func (u *Usecases) requireDirectGrantCeiling(ctx context.Context, projectID, rol
 	return nil
 }
 
+// The project role lists below name only admin, manager and member: those are
+// the only values the project_members and project_teams CHECK constraints
+// accept, and every writer normalizes the legacy editor and viewer spellings
+// before the insert. API keys never reach the list, they are checked by scope.
+
 func (u *Usecases) requireProjectManager(ctx context.Context, projectID string) error {
-	return u.requireProjectRole(ctx, projectID, "", auth.RoleAdmin, auth.RoleManager, auth.RoleEditor)
+	return u.requireProjectRole(ctx, projectID, "", auth.RoleAdmin, auth.RoleManager)
 }
 
 func (u *Usecases) requireProjectMember(ctx context.Context, projectID string) error {
-	return u.requireProjectRole(ctx, projectID, auth.ScopeRead, auth.RoleAdmin, auth.RoleManager, auth.RoleMember, auth.RoleEditor, auth.RoleViewer)
+	return u.requireProjectRole(ctx, projectID, auth.ScopeRead, auth.RoleAdmin, auth.RoleManager, auth.RoleMember)
 }
 
+// requireProjectIngest gates report upload. A member is refused: a clean report
+// can close findings and turn the gate green, so uploading one is a manager
+// action. CI uploads through an API key holding the ingest scope.
 func (u *Usecases) requireProjectIngest(ctx context.Context, projectID string) error {
-	return u.requireProjectRole(ctx, projectID, auth.ScopeIngest, auth.RoleAdmin, auth.RoleManager, auth.RoleEditor)
+	return u.requireProjectRole(ctx, projectID, auth.ScopeIngest, auth.RoleAdmin, auth.RoleManager)
 }
 
 // requireProjectAdminForWaiver gates direct waiver management (create,

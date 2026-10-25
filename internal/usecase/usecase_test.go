@@ -232,7 +232,7 @@ func (m *mockProjectRepo) EffectiveRole(ctx context.Context, projectID, userID s
 		if !member {
 			return "", port.ErrNotFound
 		}
-		return auth.RoleEditor, nil
+		return auth.RoleManager, nil
 	}
 	if m.isMemberFn != nil {
 		member, err := m.isMemberFn(ctx, projectID, userID)
@@ -242,7 +242,7 @@ func (m *mockProjectRepo) EffectiveRole(ctx context.Context, projectID, userID s
 		if !member {
 			return "", port.ErrNotFound
 		}
-		return auth.RoleEditor, nil
+		return auth.RoleManager, nil
 	}
 	return "", fmt.Errorf("unexpected call to EffectiveRole")
 }

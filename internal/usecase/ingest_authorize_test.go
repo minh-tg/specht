@@ -14,7 +14,7 @@ import (
 // AuthorizeIngest answers whether the caller may ingest into a project before
 // any of the report is read.
 func TestAuthorizeIngest(t *testing.T) {
-	role := auth.RoleViewer
+	role := auth.RoleMember
 	pr := &mockProjectRepo{}
 	pr.getBySlugFn = func(_ context.Context, slug string) (port.Project, error) {
 		if slug != "my-app" {
@@ -28,11 +28,9 @@ func TestAuthorizeIngest(t *testing.T) {
 		return auth.ContextWithIdentity(context.Background(), &auth.Identity{UserID: "creator", ProjectID: projectID, IsAPIKey: true, Scopes: scopes})
 	}
 
-	assert.ErrorIs(t, uc.AuthorizeIngest(sessionCtx("u1", auth.RoleViewer), "my-app"), ErrProjectAccessDenied, "a viewer cannot ingest")
-	role = auth.RoleMember
 	assert.ErrorIs(t, uc.AuthorizeIngest(sessionCtx("u1", auth.RoleViewer), "my-app"), ErrProjectAccessDenied, "a member cannot ingest")
-	role = auth.RoleEditor
-	assert.NoError(t, uc.AuthorizeIngest(sessionCtx("u1", auth.RoleViewer), "my-app"), "an editor can")
+	role = auth.RoleManager
+	assert.NoError(t, uc.AuthorizeIngest(sessionCtx("u1", auth.RoleViewer), "my-app"), "a manager can")
 
 	assert.NoError(t, uc.AuthorizeIngest(ingestKey(findingFixtureProjectID, auth.ScopeIngest), "my-app"))
 	assert.ErrorIs(t, uc.AuthorizeIngest(ingestKey(findingFixtureProjectID, auth.ScopeRead), "my-app"), ErrProjectAccessDenied, "a read key cannot")
