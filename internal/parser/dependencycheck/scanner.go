@@ -67,7 +67,7 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 		},
 		Version:               "2",
 		ContractVersion:       1,
-		FingerprintVersion:    1,
+		FingerprintVersion:    fingerprintVersion,
 		FindingKinds:          []scanner.FindingKind{"sca"},
 		ScanTypes:             []domain.ScanType{domain.ScanTypeFilesystem},
 		ProvidesPackages:      true,
@@ -170,7 +170,7 @@ func convertDCVulnerability(dep dcDependency, v dcVulnerability, purl string) do
 		}
 	}
 	return domain.NormalizedFinding{
-		Fingerprint: createFingerprint(v.Name, purl),
+		Fingerprint: createFingerprint(v.Name, purl, filePath, parseutil.SanitizeText(dep.FileName, parseutil.MaxPathLength)),
 		FindingKind: "sca",
 		Title:       v.Name,
 		Description: v.Description,
@@ -215,7 +215,7 @@ func appendDCPackages(budget *parseutil.Budget, nr *domain.NormalizedReport, dep
 func convert(budget *parseutil.Budget, report dcReport) (*domain.NormalizedReport, error) {
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
-		FingerprintVersion: 1,
+		FingerprintVersion: fingerprintVersion,
 		Completeness:       domain.CompletenessUnknown,
 		ScanType:           domain.ScanTypeFilesystem,
 		Findings:           nil,
@@ -269,11 +269,22 @@ func extractCVSS(v dcVulnerability) (score float64, vector string, version strin
 	return 0, "", ""
 }
 
-func createFingerprint(vulnID, purl string) string {
+// fingerprintVersion is the version of this scanner's identity formula.
+// Version 2 keys a dependency without a purl on its file, so two such files
+// with one CVE are two findings. Version 1 gave them all "CVE:".
+const fingerprintVersion = 2
+
+// createFingerprint is the vulnerability and the purl. A dependency with no
+// purl (a .dll or .exe found by hash) has nothing but its file to name it, so
+// the cleaned file path stands in, then the file name.
+func createFingerprint(vulnID, purl, filePath, fileName string) string {
 	if purl != "" {
 		return string(domain.SCAFingerprint(vulnID, purl))
 	}
-	return vulnID + ":"
+	if filePath != "" {
+		return vulnID + ":" + filePath
+	}
+	return vulnID + ":" + fileName
 }
 
 func normalizeDCSeverity(s string) domain.Severity {

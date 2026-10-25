@@ -124,12 +124,14 @@ func TestDCCVSSAll(t *testing.T) {
 
 func TestCreateFingerprint(t *testing.T) {
 	t.Run("with purl uses sca fingerprint format", func(t *testing.T) {
-		fp := createFingerprint("CVE-2021-44228", "pkg:maven/log4j@2.0")
+		fp := createFingerprint("CVE-2021-44228", "pkg:maven/log4j@2.0", "lib/log4j.jar", "log4j.jar")
 		assert.Equal(t, "CVE-2021-44228:pkg:maven/log4j@2.0", fp)
 	})
 
-	t.Run("without purl uses vuln id with trailing colon", func(t *testing.T) {
-		fp := createFingerprint("CVE-2021-44228", "")
+	t.Run("without purl falls back to the file path, then the file name", func(t *testing.T) {
+		assert.Equal(t, "CVE-2021-44228:lib/app.dll", createFingerprint("CVE-2021-44228", "", "lib/app.dll", "app.dll"))
+		assert.Equal(t, "CVE-2021-44228:app.dll", createFingerprint("CVE-2021-44228", "", "", "app.dll"))
+		fp := createFingerprint("CVE-2021-44228", "", "", "")
 		assert.Equal(t, "CVE-2021-44228:", fp)
 	})
 }
@@ -158,7 +160,7 @@ func TestConvertEdgeCases(t *testing.T) {
 		nr := mustConvert(t, report)
 		require := assert.New(t)
 		require.Len(nr.Findings, 1)
-		assert.Equal(t, "CVE-2024-0001:", nr.Findings[0].Fingerprint)
+		assert.Equal(t, "CVE-2024-0001:/path/to/orphan.jar", nr.Findings[0].Fingerprint)
 	})
 
 	t.Run("dependency with no vulnerabilities", func(t *testing.T) {
