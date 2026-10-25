@@ -251,6 +251,12 @@ func (u *Usecases) ingestParsedReport(ctx context.Context, project port.Project,
 	if err != nil {
 		return nil, err
 	}
+	if input.ScanMode == ScanModeIncremental && effectiveMode != ScanModeIncremental {
+		// The fallback changes how findings are classified, not what the
+		// scanner looked at. The caller said the scan covered part of the
+		// target, so the report is partial and closes nothing by absence.
+		nr.Completeness = domain.CompletenessPartial
+	}
 	input.ScanMode = effectiveMode
 	baselineID, err = u.resolveBaseRevision(ctx, project, input, baselineID)
 	if err != nil {
