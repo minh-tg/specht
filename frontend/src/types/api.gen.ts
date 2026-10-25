@@ -3082,10 +3082,27 @@ export interface components {
     WaiverCondition: {
       /** Format: uuid */
       id: string;
-      /** @example component.purl */
+      /** @example severity_rank */
       field: string;
-      /** @example equals */
+      /** @example lte */
       operator: string;
+      /** @example 2 */
+      value: string;
+    };
+    /**
+     * @description A finding the waiver covers must match every condition. Supported
+     *     operators per field: `severity_rank` takes `eq`, `neq`, `lt`, `lte`,
+     *     `gt`, `gte` with a whole number (1 low to 4 critical);
+     *     `finding_kind` and `fingerprint` take `eq`, `neq`; `title_pattern`
+     *     takes `contains`, `matches` (exact title); `cve_id` takes `eq`,
+     *     `contains`. Any other combination, an empty value or a non-numeric
+     *     rank is refused with 400 `invalid_body`.
+     */
+    WaiverConditionInput: {
+      /** @enum {string} */
+      field: "severity_rank" | "finding_kind" | "fingerprint" | "title_pattern" | "cve_id";
+      /** @enum {string} */
+      operator: "eq" | "neq" | "lt" | "lte" | "gt" | "gte" | "contains" | "matches";
       value: string;
     };
     WaiverContext: {
@@ -3119,11 +3136,7 @@ export interface components {
        * @example 2026-12-31T00:00:00Z
        */
       expires_at?: string;
-      conditions?: {
-        field: string;
-        operator: string;
-        value: string;
-      }[];
+      conditions?: components["schemas"]["WaiverConditionInput"][];
       contexts?: {
         /** Format: uuid */
         environment_id?: string;
@@ -3148,11 +3161,7 @@ export interface components {
        *     send an RFC 3339 value to set it.
        */
       expires_at?: string | null;
-      conditions?: {
-        field: string;
-        operator: string;
-        value: string;
-      }[];
+      conditions?: components["schemas"]["WaiverConditionInput"][];
       contexts?: {
         /** Format: uuid */
         environment_id?: string;

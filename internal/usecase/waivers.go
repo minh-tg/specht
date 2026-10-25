@@ -238,6 +238,20 @@ func toWaiverDetail(w port.Waiver, conditions []port.WaiverCondition, contexts [
 	return resp
 }
 
+// waiverConditionInputs converts request conditions to store rows, refusing
+// any the gate could never match. Such a waiver used to be stored and then
+// silently cover nothing, so the gate kept failing with no hint why.
+func waiverConditionInputs(in []CreateWaiverConditionInput) ([]port.WaiverCondition, error) {
+	out := make([]port.WaiverCondition, len(in))
+	for i, c := range in {
+		if err := gate.ValidateCondition(gate.WaiverCondition{Field: c.Field, Operator: c.Operator, Value: c.Value}); err != nil {
+			return nil, invalidWaiverRequest("%s", err.Error())
+		}
+		out[i] = port.WaiverCondition{Field: c.Field, Operator: c.Operator, Value: c.Value}
+	}
+	return out, nil
+}
+
 var waiverCreatedEvent = []byte("{}")
 
 func (u *Usecases) CreateWaiver(ctx context.Context, input CreateWaiverInput) (*WaiverResponse, error) {
@@ -253,13 +267,9 @@ func (u *Usecases) CreateWaiver(ctx context.Context, input CreateWaiverInput) (*
 		return nil, err
 	}
 
-	conditions := make([]port.WaiverCondition, len(input.Conditions))
-	for i, c := range input.Conditions {
-		conditions[i] = port.WaiverCondition{
-			Field:    c.Field,
-			Operator: c.Operator,
-			Value:    c.Value,
-		}
+	conditions, err := waiverConditionInputs(input.Conditions)
+	if err != nil {
+		return nil, err
 	}
 
 	contexts, err := waiverContextInputs(input.Contexts)
@@ -437,9 +447,9 @@ func (u *Usecases) UpdateWaiver(ctx context.Context, input UpdateWaiverInput) (*
 
 	var conditions *[]port.WaiverCondition
 	if input.Conditions != nil {
-		conds := make([]port.WaiverCondition, len(input.Conditions))
-		for i, c := range input.Conditions {
-			conds[i] = port.WaiverCondition{Field: c.Field, Operator: c.Operator, Value: c.Value}
+		conds, err := waiverConditionInputs(input.Conditions)
+		if err != nil {
+			return nil, err
 		}
 		conditions = &conds
 	}

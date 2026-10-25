@@ -169,8 +169,10 @@ func newWaiversCreateCmd(d Deps, s *settings) *cobra.Command {
 		Use:   "create",
 		Short: "Create an approved waiver (project manager or admin)",
 		Long: "Create an approved waiver. It covers the findings named with --finding, the findings that match\n" +
-			"every --condition (field:operator:value, for example severity:eq:low), or every finding of the\n" +
-			"project with --scope all.",
+			"every --condition (field:operator:value, for example severity_rank:lte:2), or every finding of the\n" +
+			"project with --scope all.\n\n" +
+			"Condition fields and operators: severity_rank (eq, neq, lt, lte, gt, gte; 1 low to 4 critical),\n" +
+			"finding_kind and fingerprint (eq, neq), title_pattern (contains, matches), cve_id (eq, contains).",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := requireFlag(project, "--project", "waivers create"); err != nil {
@@ -373,7 +375,7 @@ func writeWaiver(d Deps, s *settings, wv *client.Waiver) error {
 func parseCondition(raw string) (client.CreateWaiverCondition, error) {
 	parts := strings.SplitN(raw, ":", 3)
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
-		return client.CreateWaiverCondition{}, fmt.Errorf("--condition %q is not field:operator:value, for example severity:eq:low", raw)
+		return client.CreateWaiverCondition{}, fmt.Errorf("--condition %q is not field:operator:value, for example severity_rank:lte:2", raw)
 	}
 	return client.CreateWaiverCondition{Field: parts[0], Operator: parts[1], Value: parts[2]}, nil
 }

@@ -65,7 +65,7 @@ func TestWaiversCreate(t *testing.T) {
 	d, out, _ := testDeps(t, mux)
 
 	err := runCmd(t, d, "waivers", "create", "--project", "demo", "--name", "Dev only", "--description", "test fixtures",
-		"--finding", "f1,f2", "--condition", "severity:eq:low", "--expires", "2026-12-31")
+		"--finding", "f1,f2", "--condition", "severity_rank:lte:2", "--expires", "2026-12-31")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestWaiversCreate(t *testing.T) {
 		t.Fatalf("target_ids = %v", got["target_ids"])
 	}
 	conds, _ := got["conditions"].([]any)
-	if len(conds) != 1 || conds[0].(map[string]any)["field"] != "severity" || conds[0].(map[string]any)["operator"] != "eq" || conds[0].(map[string]any)["value"] != "low" {
+	if len(conds) != 1 || conds[0].(map[string]any)["field"] != "severity_rank" || conds[0].(map[string]any)["operator"] != "lte" || conds[0].(map[string]any)["value"] != "2" {
 		t.Fatalf("conditions = %v", got["conditions"])
 	}
 	if out.String() != "w1\tapproved\tDev only\n" {
