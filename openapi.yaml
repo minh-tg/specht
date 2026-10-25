@@ -4915,7 +4915,7 @@ components:
         id: { type: string, format: uuid }
         project_id: { type: string, format: uuid }
         name: { type: string }
-        kind: { type: string, example: container-image }
+        kind: { type: string, enum: [repo, service, container_image, filesystem, iac_stack, package] }
         locator: { type: string }
         created_at: { type: string, format: date-time }
 

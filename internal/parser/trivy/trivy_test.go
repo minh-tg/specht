@@ -130,6 +130,18 @@ func TestParse_TargetIsStableAcrossResultOrder(t *testing.T) {
 	}
 }
 
+func TestParse_CleanScanKeepsTheKindOfAScanWithResults(t *testing.T) {
+	s := trivy.NewScanner()
+	clean, err := s.Parse(context.Background(), []byte(`{"SchemaVersion":2,"ArtifactName":"https://github.com/acme/app","ArtifactType":"repository"}`))
+	require.NoError(t, err)
+	dirty, err := s.Parse(context.Background(), []byte(`{"SchemaVersion":2,"ArtifactName":"https://github.com/acme/app","ArtifactType":"repository","Results":[{"Target":"go.mod","Class":"lang-pkgs","Type":"gomod"}]}`))
+	require.NoError(t, err)
+	require.NotNil(t, clean.Target)
+	require.NotNil(t, dirty.Target)
+	assert.Equal(t, dirty.Target.Kind, clean.Target.Kind)
+	assert.Equal(t, "filesystem", clean.Target.Kind)
+}
+
 func TestParse_TargetFallsBackToFirstResultWithoutArtifactName(t *testing.T) {
 	report, err := trivy.NewScanner().Parse(context.Background(), []byte(`{"SchemaVersion":2,"Results":[{"Target":"go.mod","Class":"lang-pkgs","Type":"gomod"}]}`))
 	require.NoError(t, err)

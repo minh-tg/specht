@@ -534,6 +534,23 @@ func TestE2E_ContextTablesReads(t *testing.T) {
 		"the artifact hangs off the scanned target")
 }
 
+// A clean Trivy scan of an SBOM carries Trivy's own artifact type
+// ("cyclonedx"), which the targets CHECK rejects. The stored kind is mapped
+// onto the vocabulary, so the target row is written.
+func TestE2E_CleanScanTargetKindIsStored(t *testing.T) {
+	slug := newProject(t, "clean-target-kind")
+	request[ingestResponse](t, http.MethodPost, "/api/v1/reports", adminToken, map[string]any{
+		"project": slug, "scanner": "trivy",
+		"raw_data": json.RawMessage(`{"SchemaVersion":2,"ArtifactName":"sbom.cdx.json","ArtifactType":"cyclonedx"}`),
+	}, http.StatusCreated)
+
+	targets := request[[]targetRow](t, http.MethodGet,
+		"/api/v1/projects/"+slug+"/targets", adminToken, nil, http.StatusOK)
+	require.Len(t, targets, 1, "the target row is written, not dropped by the CHECK")
+	require.Equal(t, "sbom.cdx.json", targets[0].Name)
+	require.Equal(t, "package", targets[0].Kind)
+}
+
 // An artifact named without a type takes its type from the scan, mapped onto
 // the stored vocabulary, and a type outside that vocabulary is refused before
 // anything is written.

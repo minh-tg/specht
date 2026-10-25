@@ -289,7 +289,13 @@ func reportTarget(report trivyReport) *domain.TargetInfo {
 		if report.ArtifactName == "" {
 			return nil
 		}
-		return &domain.TargetInfo{Identifier: report.ArtifactName, Kind: report.ArtifactType}
+		// The same mapping as a scan with results, so a clean scan does not
+		// flip the stored kind of a target an earlier scan created.
+		kind := artifactKind(report.ArtifactType)
+		if kind == "" {
+			kind = report.ArtifactType
+		}
+		return &domain.TargetInfo{Identifier: report.ArtifactName, Kind: kind}
 	}
 	target := resultTarget(report.Results[0])
 	if report.ArtifactName != "" {
