@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+
+	"github.com/minh-tg/specht/internal/domain"
 )
 
 // Limits on the metadata of an ingest request. They are far above anything a
@@ -58,6 +60,11 @@ func (r ingestRequest) invalidField() (field, problem string) {
 	}
 	if i := strings.IndexFunc(r.CommitSha, func(c rune) bool { return !commitShaRune(c) }); i >= 0 {
 		return "commit_sha", msgCommitShaCharacter
+	}
+	if r.ArtifactType != "" {
+		if _, ok := domain.NormalizeArtifactType(r.ArtifactType); !ok {
+			return "artifact_type", "must be one of " + strings.Join(domain.ArtifactTypes, ", ")
+		}
 	}
 	if len(r.ChangedFiles) > maxChangedFiles {
 		return "changed_files", fmt.Sprintf("may list at most %d files", maxChangedFiles)
