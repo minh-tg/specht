@@ -243,22 +243,62 @@ func parseGroupAllowlist(v string) []string {
 	return out
 }
 
-// loadSSO reads the SSO/OIDC environment block; omitted means disabled.
-func loadSSO() SSOConfig {
-	return SSOConfig{
-		Enabled:           os.Getenv("SSO_ENABLE") == "true",
-		ClientID:          os.Getenv("SSO_CLIENT_ID"),
-		ClientSecret:      os.Getenv("SSO_CLIENT_SECRET"),
-		PublicClient:      os.Getenv("SSO_PUBLIC_CLIENT") == "true",
-		IssuerURL:         os.Getenv("SSO_ISSUER_URL"),
-		RedirectURI:       os.Getenv("SSO_REDIRECT_URI"),
-		AllowedDomains:    parseDomainAllowlist(os.Getenv("SSO_ALLOWED_DOMAINS")),
-		GroupsClaim:       strings.TrimSpace(os.Getenv("SSO_GROUPS_CLAIM")),
-		AdminGroups:       parseGroupAllowlist(os.Getenv("SSO_ADMIN_GROUPS")),
-		AllowUserInfoOnly: os.Getenv("SSO_ALLOW_USERINFO_ONLY") == "true",
-
-		AllowUnverifiedEmail: os.Getenv("SSO_ALLOW_UNVERIFIED_EMAIL") == "true",
+// envBool reads a boolean switch. Empty means def; anything else must be a
+// value strconv.ParseBool accepts (1, t, true, TRUE, 0, f, false, ...). A typo
+// fails startup instead of silently leaving the switch at false, which used to
+// turn RATE_LIMIT_ENABLED=1 or SSO_ENABLE=True into "off".
+func envBool(name string, def bool) (bool, error) {
+	v := os.Getenv(name)
+	if v == "" {
+		return def, nil
 	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, fmt.Errorf("%s is invalid: %q (want true or false)", name, v)
+	}
+	return b, nil
+}
+
+// envExactBool reads a switch that weakens a security default. Only the exact
+// words true and false are accepted, so neither a typo nor a loose spelling
+// such as 1 or yes can turn it on; anything else fails startup.
+func envExactBool(name string) (bool, error) {
+	switch v := os.Getenv(name); v {
+	case "", "false":
+		return false, nil
+	case "true":
+		return true, nil
+	default:
+		return false, fmt.Errorf("%s is invalid: %q (want exactly true or false)", name, v)
+	}
+}
+
+// loadSSO reads the SSO/OIDC environment block; omitted means disabled.
+func loadSSO() (SSOConfig, error) {
+	cfg := SSOConfig{
+		ClientID:       os.Getenv("SSO_CLIENT_ID"),
+		ClientSecret:   os.Getenv("SSO_CLIENT_SECRET"),
+		IssuerURL:      os.Getenv("SSO_ISSUER_URL"),
+		RedirectURI:    os.Getenv("SSO_REDIRECT_URI"),
+		AllowedDomains: parseDomainAllowlist(os.Getenv("SSO_ALLOWED_DOMAINS")),
+		GroupsClaim:    strings.TrimSpace(os.Getenv("SSO_GROUPS_CLAIM")),
+		AdminGroups:    parseGroupAllowlist(os.Getenv("SSO_ADMIN_GROUPS")),
+	}
+	var err error
+	if cfg.Enabled, err = envBool("SSO_ENABLE", false); err != nil {
+		return SSOConfig{}, err
+	}
+	if cfg.PublicClient, err = envBool("SSO_PUBLIC_CLIENT", false); err != nil {
+		return SSOConfig{}, err
+	}
+	// Both downgrades stay off unless spelled exactly true.
+	if cfg.AllowUserInfoOnly, err = envExactBool("SSO_ALLOW_USERINFO_ONLY"); err != nil {
+		return SSOConfig{}, err
+	}
+	if cfg.AllowUnverifiedEmail, err = envExactBool("SSO_ALLOW_UNVERIFIED_EMAIL"); err != nil {
+		return SSOConfig{}, err
+	}
+	return cfg, nil
 }
 
 // parseTrustedProxies parses comma/space-separated CIDRs. A malformed CIDR
@@ -330,8 +370,12 @@ func parseByteSize(label, v string) (int64, error) {
 // loadRateLimit reads limiter settings. Values are validated only when
 // enabled so a stray invalid var cannot crash a dev server.
 func loadRateLimit(s *Server) error {
+	enable, err := envBool("RATE_LIMIT_ENABLED", false)
+	if err != nil {
+		return err
+	}
 	s.RateLimit = RateLimit{
-		Enable:         os.Getenv("RATE_LIMIT_ENABLED") == "true",
+		Enable:         enable,
 		RPS:            DefaultRateLimitRPS,
 		Burst:          DefaultRateLimitBurst,
 		AuthRPS:        DefaultRateLimitAuthRPS,
@@ -371,7 +415,11 @@ func loadRateLimit(s *Server) error {
 // watcher is enabled (a malformed optional must not crash a server that
 // never runs the watcher).
 func loadWatcher(s *Server) error {
-	s.Watcher.Enable = os.Getenv("WATCHER_ENABLE") == "true"
+	enable, err := envBool("WATCHER_ENABLE", false)
+	if err != nil {
+		return err
+	}
+	s.Watcher.Enable = enable
 	s.Watcher.PollInterval = DefaultWatcherPoll
 	s.Watcher.OSVEndpoint = strOr(os.Getenv("WATCHER_OSV_ENDPOINT"), DefaultOSVEndpoint)
 	s.Watcher.OSVVulnEndpoint = strOr(os.Getenv("WATCHER_OSV_VULN_ENDPOINT"), DefaultOSVVulnEndpoint)
@@ -418,7 +466,6 @@ func Load() (*Server, error) {
 	s := &Server{
 		Addr:                 strOr(os.Getenv("SERVER_ADDR"), DefaultServerAddr),
 		DBURL:                os.Getenv("DATABASE_URL"),
-		DBMigrate:            strOr(os.Getenv("DB_MIGRATE"), "true") == "true",
 		DBConnectTimeout:     DefaultDBConnectTimeout,
 		DBMaxConns:           DefaultDBMaxConns,
 		DBMinConns:           DefaultDBMinConns,
@@ -430,8 +477,14 @@ func Load() (*Server, error) {
 		SweepInterval:        DefaultSweepInterval,
 		SessionMaxAge:        DefaultSessionMaxAge,
 		RawRetentionDays:     DefaultRawRetentionDays,
-		SSO:                  loadSSO(),
 		RegistrationDisabled: true,
+	}
+	var err error
+	if s.DBMigrate, err = envBool("DB_MIGRATE", true); err != nil {
+		return nil, err
+	}
+	if s.SSO, err = loadSSO(); err != nil {
+		return nil, err
 	}
 
 	if v := os.Getenv("TRUSTED_PROXIES"); v != "" {

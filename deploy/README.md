@@ -65,6 +65,11 @@ variable below from `deploy/.env.prod`; for a bare-metal run, export them or
 use your service manager. Defaults are the server's own, except where the
 compose defaults differ, which is noted.
 
+On/off switches take `true` or `false` (also `1`, `0`, `t`, `f` and their
+capitalized forms); empty keeps the default and any other value stops the
+server at startup. The two SSO downgrades, `SSO_ALLOW_USERINFO_ONLY` and
+`SSO_ALLOW_UNVERIFIED_EMAIL`, accept only the exact words `true` and `false`.
+
 ### Core
 
 | Variable | Default | Purpose |
