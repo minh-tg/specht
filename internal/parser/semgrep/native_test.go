@@ -70,6 +70,8 @@ func TestNativeFindingFields(t *testing.T) {
 func TestNativeSeverities(t *testing.T) {
 	for level, want := range map[string]domain.Severity{
 		"ERROR": domain.SeverityHigh, "WARNING": domain.SeverityMedium, "INFO": domain.SeverityLow,
+		// Semgrep 1.172 rules may declare the current levels instead.
+		"CRITICAL": domain.SeverityCritical, "HIGH": domain.SeverityHigh, "MEDIUM": domain.SeverityMedium, "LOW": domain.SeverityLow,
 		"INVENTORY": domain.SeverityUnknown, "EXPERIMENT": domain.SeverityUnknown, "": domain.SeverityUnknown,
 	} {
 		t.Run(level, func(t *testing.T) {

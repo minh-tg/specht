@@ -473,13 +473,18 @@ func parseNative(budget *parseutil.Budget, data []byte) (*domain.NormalizedRepor
 	return nr, nil
 }
 
+// mapNativeSeverity maps a rule's severity in --json output. Rules use the
+// current CRITICAL, HIGH, MEDIUM and LOW levels or the legacy ERROR, WARNING
+// and INFO ones, and Semgrep reports whichever the rule declares.
 func mapNativeSeverity(level string) domain.Severity {
 	switch strings.ToUpper(level) {
-	case "ERROR":
+	case "CRITICAL":
+		return domain.SeverityCritical
+	case "ERROR", "HIGH":
 		return domain.SeverityHigh
-	case "WARNING":
+	case "WARNING", "MEDIUM":
 		return domain.SeverityMedium
-	case "INFO":
+	case "INFO", "LOW":
 		return domain.SeverityLow
 	default:
 		return domain.SeverityUnknown
