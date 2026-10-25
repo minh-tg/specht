@@ -1,3 +1,28 @@
+-- The older checks below allow neither the report_deleted event nor the
+-- archived state, so both have to go before they are restored. They are
+-- copied out first, because this file used to discard them for good:
+--   migration_000049_report_deleted_events  the deleted event rows
+--   migration_000049_archived_findings      ids of findings rewritten to fixed
+-- Re-applying the up migration does not read them back. After it, restore by
+-- hand:
+--   INSERT INTO finding_events SELECT * FROM migration_000049_report_deleted_events
+--       ON CONFLICT (id) DO NOTHING;
+--   UPDATE findings SET state = 'archived'
+--       WHERE id IN (SELECT finding_id FROM migration_000049_archived_findings)
+--       AND state = 'fixed';
+-- then drop both tables.
+CREATE TABLE IF NOT EXISTS migration_000049_report_deleted_events (LIKE finding_events);
+INSERT INTO migration_000049_report_deleted_events
+SELECT * FROM finding_events WHERE event_type = 'report_deleted';
+
+CREATE TABLE IF NOT EXISTS migration_000049_archived_findings (
+    finding_id UUID PRIMARY KEY,
+    saved_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO migration_000049_archived_findings (finding_id)
+SELECT id FROM findings WHERE state = 'archived'
+ON CONFLICT (finding_id) DO NOTHING;
+
 DELETE FROM finding_events WHERE event_type = 'report_deleted';
 UPDATE findings SET state = 'fixed' WHERE state = 'archived';
 
