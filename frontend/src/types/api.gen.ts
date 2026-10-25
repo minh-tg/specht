@@ -1016,10 +1016,13 @@ export interface paths {
     put?: never;
     /**
      * Ask whether the finding is still present
-     * @description Compares the finding against the latest **complete** scan of the same
-     *     scope. Returns `still_present`, `inconclusive` when the newest evidence
-     *     cannot vouch for completeness, or `verified_fixed`, which also moves the
-     *     scan-derived state to `fixed` while leaving any analyst decision intact.
+     * @description Compares the finding against the latest full scan of the same scope. The
+     *     scan settles the question when it is **complete**, or when its own output
+     *     shows it looked for this finding (a listed SARIF rule that found nothing,
+     *     a passed Checkov check). Returns `still_present`, `inconclusive` when the
+     *     newest scan cannot show it looked for the finding, or `verified_fixed`,
+     *     which also moves the scan-derived state to `fixed` while leaving any
+     *     analyst decision intact.
      */
     post: operations["verifyFix"];
     delete?: never;

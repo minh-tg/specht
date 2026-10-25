@@ -594,13 +594,15 @@ WITH latest_observation AS (
     SELECT r.scan_scope_hash
     FROM finding_occurrences fo
     JOIN reports r ON r.id = fo.report_id
-    WHERE fo.finding_id = $2
+    WHERE fo.finding_id = $1
     ORDER BY fo.observed_at DESC, r.id DESC
     LIMIT 1
 )
-SELECT r.id, r.tool_name, r.branch, r.commit_sha, r.base_revision, r.scan_mode, r.scan_completeness, r.created_at
+SELECT r.id, r.tool_name, r.branch, r.commit_sha, r.base_revision, r.scan_mode, r.scan_completeness, r.created_at,
+       report_examined_finding(r.scan_completeness, r.covered_finding_kinds, r.examined_keys, f.id, f.finding_kind, f.fingerprint) AS examined
 FROM reports r
-WHERE r.project_id = $1
+JOIN findings f ON f.id = $1
+WHERE r.project_id = $2
   AND r.scan_scope_hash = (SELECT lo.scan_scope_hash FROM latest_observation lo)
   AND r.status = 'completed'
   AND r.scan_mode = 'full'
@@ -609,8 +611,8 @@ LIMIT 1
 `
 
 type LatestCompletedFullReportInFindingScopeParams struct {
-	ProjectID pgtype.UUID `json:"project_id"`
 	FindingID pgtype.UUID `json:"finding_id"`
+	ProjectID pgtype.UUID `json:"project_id"`
 }
 
 type LatestCompletedFullReportInFindingScopeRow struct {
@@ -622,6 +624,7 @@ type LatestCompletedFullReportInFindingScopeRow struct {
 	ScanMode         string             `json:"scan_mode"`
 	ScanCompleteness string             `json:"scan_completeness"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	Examined         bool               `json:"examined"`
 }
 
 // Verification basis for one finding: the newest completed full report that
@@ -630,9 +633,11 @@ type LatestCompletedFullReportInFindingScopeRow struct {
 // observes the finding must be seen, and the caller decides what a partial
 // report can prove. Reports from other images, targets, or branches never
 // qualify. pgx.ErrNoRows means the finding has no observation in a report, or
-// no completed full report exists in that scope.
+// no completed full report exists in that scope. examined says whether the
+// report proves it looked for this finding (report_examined_finding), the same
+// test auto-fix uses.
 func (q *Queries) LatestCompletedFullReportInFindingScope(ctx context.Context, arg LatestCompletedFullReportInFindingScopeParams) (LatestCompletedFullReportInFindingScopeRow, error) {
-	row := q.db.QueryRow(ctx, latestCompletedFullReportInFindingScope, arg.ProjectID, arg.FindingID)
+	row := q.db.QueryRow(ctx, latestCompletedFullReportInFindingScope, arg.FindingID, arg.ProjectID)
 	var i LatestCompletedFullReportInFindingScopeRow
 	err := row.Scan(
 		&i.ID,
@@ -643,6 +648,7 @@ func (q *Queries) LatestCompletedFullReportInFindingScope(ctx context.Context, a
 		&i.ScanMode,
 		&i.ScanCompleteness,
 		&i.CreatedAt,
+		&i.Examined,
 	)
 	return i, err
 }

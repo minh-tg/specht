@@ -95,18 +95,22 @@ LIMIT 1;
 -- observes the finding must be seen, and the caller decides what a partial
 -- report can prove. Reports from other images, targets, or branches never
 -- qualify. pgx.ErrNoRows means the finding has no observation in a report, or
--- no completed full report exists in that scope.
+-- no completed full report exists in that scope. examined says whether the
+-- report proves it looked for this finding (report_examined_finding), the same
+-- test auto-fix uses.
 WITH latest_observation AS (
     SELECT r.scan_scope_hash
     FROM finding_occurrences fo
     JOIN reports r ON r.id = fo.report_id
-    WHERE fo.finding_id = $2
+    WHERE fo.finding_id = sqlc.arg(finding_id)
     ORDER BY fo.observed_at DESC, r.id DESC
     LIMIT 1
 )
-SELECT r.id, r.tool_name, r.branch, r.commit_sha, r.base_revision, r.scan_mode, r.scan_completeness, r.created_at
+SELECT r.id, r.tool_name, r.branch, r.commit_sha, r.base_revision, r.scan_mode, r.scan_completeness, r.created_at,
+       report_examined_finding(r.scan_completeness, r.covered_finding_kinds, r.examined_keys, f.id, f.finding_kind, f.fingerprint) AS examined
 FROM reports r
-WHERE r.project_id = $1
+JOIN findings f ON f.id = sqlc.arg(finding_id)
+WHERE r.project_id = sqlc.arg(project_id)
   AND r.scan_scope_hash = (SELECT lo.scan_scope_hash FROM latest_observation lo)
   AND r.status = 'completed'
   AND r.scan_mode = 'full'

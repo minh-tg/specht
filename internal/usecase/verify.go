@@ -36,10 +36,11 @@ type VerifyResponse struct {
 
 // VerifyFix checks a finding against the newest completed full rescan that
 // shares the scan scope (scanner, target, artifact, branch, environment) of
-// the report that last observed it. Only a complete, newer, same-scope
-// full report that lacks the finding verifies the fix — incremental scans
-// never qualify as a basis (their absence proves nothing); anything else
-// is an explicit still_present or inconclusive verdict with the reason.
+// the report that last observed it. A newer, same-scope full report that
+// lacks the finding verifies the fix when it is complete, or when its own
+// output proves it examined this finding (examined keys, see
+// report_examined_finding). Incremental scans never qualify as a basis
+// (their absence proves nothing); anything else is an explicit still_present or inconclusive verdict with the reason.
 //
 // Verification moves the scan-derived technical state to fixed and logs a
 // verified_fixed event carrying the verifying report, branch, and commit.
@@ -93,10 +94,14 @@ func (u *Usecases) VerifyFix(ctx context.Context, findingID string) (*VerifyResp
 			Detail: "latest completed report predates the last observation",
 		}, nil
 	}
-	if report.Completeness != "complete" {
+	// A complete report vouches for everything it covers. A report that is not
+	// complete (SARIF and Checkov stay unknown) still settles a finding its
+	// own output proves it looked for: a listed rule that found nothing, or a
+	// passed check. The proof test is the one auto-fix uses.
+	if report.Completeness != "complete" && !report.ExaminedFinding {
 		return &VerifyResponse{
 			FindingID: fid.String(), Outcome: VerifyInconclusive, ReportID: &reportID,
-			Detail: fmt.Sprintf("latest report scope is %q, not complete", report.Completeness),
+			Detail: fmt.Sprintf("latest report scope is %q, not complete, and it does not show it examined this finding", report.Completeness),
 		}, nil
 	}
 

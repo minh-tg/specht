@@ -170,14 +170,15 @@ func (r *pgReportPort) LatestCompletedInFindingScope(ctx context.Context, projec
 		return port.CompletedReport{}, mappingErr(err)
 	}
 	return port.CompletedReport{
-		ID:           toUUID(row.ID),
-		ToolName:     row.ToolName,
-		Branch:       stringFromTextPtr(row.Branch),
-		CommitSha:    stringFromTextPtr(row.CommitSha),
-		BaseRevision: stringFromTextPtr(row.BaseRevision),
-		ScanMode:     row.ScanMode,
-		Completeness: row.ScanCompleteness,
-		CreatedAt:    row.CreatedAt.Time,
+		ID:              toUUID(row.ID),
+		ToolName:        row.ToolName,
+		Branch:          stringFromTextPtr(row.Branch),
+		CommitSha:       stringFromTextPtr(row.CommitSha),
+		BaseRevision:    stringFromTextPtr(row.BaseRevision),
+		ScanMode:        row.ScanMode,
+		Completeness:    row.ScanCompleteness,
+		CreatedAt:       row.CreatedAt.Time,
+		ExaminedFinding: row.Examined,
 	}, nil
 }
 

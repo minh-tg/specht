@@ -64,6 +64,26 @@ func TestVerifyFix_Verified(t *testing.T) {
 	assert.Equal(t, "verified_fixed", eventType)
 }
 
+func TestVerifyFix_VerifiesAnIncompleteReportThatExaminedTheFinding(t *testing.T) {
+	now := time.Now()
+	uc, fr, rr, f := verifyHarness(now)
+	rr.findingScopeFn = func(ctx context.Context, projectID, findingID string) (port.CompletedReport, error) {
+		return port.CompletedReport{
+			ID: "11111111-1111-1111-1111-111111111111", ToolName: "sarif",
+			Completeness: "unknown", ExaminedFinding: true, CreatedAt: now,
+		}, nil
+	}
+	fr.hasOccurrenceFn = func(context.Context, string, string) (bool, error) { return false, nil }
+	fr.markFixedFn = func(context.Context, string) (port.Finding, error) { return f, nil }
+	fr.createEventFn = func(context.Context, port.FindingEventInput) (port.FindingEvent, error) {
+		return port.FindingEvent{}, nil
+	}
+
+	resp, err := uc.VerifyFix(findingScopeCtx(findingFixtureProjectID), f.ID)
+	require.NoError(t, err)
+	assert.Equal(t, VerifyFixed, resp.Outcome)
+}
+
 func TestVerifyFix_EventFailureDoesNotChangeState(t *testing.T) {
 	now := time.Now()
 	uc, fr, rr, f := verifyHarness(now)

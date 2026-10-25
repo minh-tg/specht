@@ -1320,6 +1320,10 @@ type CompletedReport struct {
 	ScanMode     string
 	Completeness string
 	CreatedAt    time.Time
+	// ExaminedFinding is set only by LatestCompletedInFindingScope: the report
+	// proves it looked for that finding (a complete report covering its kind,
+	// or examined keys that name it).
+	ExaminedFinding bool
 }
 
 // ---------- Inventory ----------
