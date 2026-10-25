@@ -101,3 +101,61 @@ func dimValue(f domain.NormalizedFinding, key string) string {
 	}
 	return ""
 }
+
+func TestSeverity_SecuritySeverityWinsOverLevel(t *testing.T) {
+	doc := func(props, defaultLevel, resultLevel string) string {
+		rule := `{"id":"r"` + props
+		if defaultLevel != "" {
+			rule += `,"defaultConfiguration":{"level":"` + defaultLevel + `"}`
+		}
+		rule += `}`
+		res := `{"ruleId":"r","message":{"text":"m"}`
+		if resultLevel != "" {
+			res += `,"level":"` + resultLevel + `"`
+		}
+		res += `}`
+		return `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"CodeQL","rules":[` + rule + `]}},"results":[` + res + `]}]}`
+	}
+	score := func(v string) string { return `,"properties":{"security-severity":` + v + `}` }
+	cases := []struct {
+		name   string
+		data   string
+		expect domain.Severity
+	}{
+		{"9.8 over error", doc(score(`"9.8"`), "error", "error"), domain.SeverityCritical},
+		{"9.0 boundary", doc(score(`"9.0"`), "", "note"), domain.SeverityCritical},
+		{"7.5 over warning", doc(score(`"7.5"`), "", "warning"), domain.SeverityHigh},
+		{"7.0 boundary", doc(score(`7`), "", ""), domain.SeverityHigh},
+		{"6.1 over error", doc(score(`"6.1"`), "error", "error"), domain.SeverityMedium},
+		{"4.0 boundary", doc(score(`"4.0"`), "", ""), domain.SeverityMedium},
+		{"3.9 over error", doc(score(`"3.9"`), "", "error"), domain.SeverityLow},
+		{"zero falls back to result level", doc(score(`"0"`), "note", "error"), domain.SeverityHigh},
+		{"out of range falls back", doc(score(`"42"`), "", "warning"), domain.SeverityMedium},
+		{"non-numeric falls back", doc(score(`"high"`), "", "note"), domain.SeverityLow},
+		{"no score uses result level", doc("", "note", "error"), domain.SeverityHigh},
+		{"no score no result level uses default", doc("", "warning", ""), domain.SeverityMedium},
+		{"nothing is unknown", doc("", "", ""), domain.SeverityUnknown},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rep, err := NewScanner().Parse(context.Background(), []byte(tc.data))
+			require.NoError(t, err)
+			require.Len(t, rep.Findings, 1)
+			assert.Equal(t, tc.expect, rep.Findings[0].Severity)
+		})
+	}
+}
+
+func TestSeverity_CapturedCodeQL(t *testing.T) {
+	data, err := os.ReadFile("../testdata/captured/codeql.json")
+	require.NoError(t, err)
+	rep, err := NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+	got := map[string]domain.Severity{}
+	for _, f := range rep.Findings {
+		got[dimValue(f, domain.DimRuleID)] = f.Severity
+	}
+	// Both rules default to level "error"; the score splits them.
+	assert.Equal(t, domain.SeverityHigh, got["go/clear-text-logging"], "security-severity 7.5")
+	assert.Equal(t, domain.SeverityMedium, got["go/log-injection"], "security-severity 6.1")
+}

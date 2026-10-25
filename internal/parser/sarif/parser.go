@@ -10,8 +10,10 @@
 //   - Identity prefers producer partialFingerprints (stable across line
 //     shifts), falling back to rule + file. Lines never enter the
 //     fingerprint; SAST correlation keys match on rule + file.
-//   - Severity: result level, then the rule's defaultConfiguration level,
-//     then a numeric security-severity property, else unknown.
+//   - Severity: the rule's numeric security-severity property (CVSS-style
+//     bands: 9.0 and up critical, 7.0 high, 4.0 medium, above 0 low), then
+//     the result level, then the rule's defaultConfiguration level, else
+//     unknown.
 //   - Results with an accepted suppression are skipped (triaged in the
 //     producing tool); other suppressions and the baseline state are kept
 //     as extensions. Skipped results are counted, never silent.
@@ -426,17 +428,22 @@ func suppressedAccepted(result sarifResult) bool {
 	return false
 }
 
+// severityFor ranks a result. A rule's numeric security-severity wins over
+// any level: CodeQL marks nearly every security query "error", so the level
+// alone would rank a 6.1 log injection the same as a 9.8 SQL injection. A
+// score outside 0-10 or one that is not a number is ignored. Without a
+// score the result level applies, then the rule's default level.
 func severityFor(result sarifResult, rule sarifRule) domain.Severity {
+	if v, ok := rule.Properties["security-severity"]; ok {
+		if f, ok := numeric(v); ok && f > 0 && f <= 10 {
+			return securitySeverityRank(f)
+		}
+	}
 	if s, ok := mapLevel(result.Level); ok {
 		return s
 	}
 	if s, ok := mapLevel(rule.DefaultConfiguration.Level); ok {
 		return s
-	}
-	if v, ok := rule.Properties["security-severity"]; ok {
-		if f, ok := numeric(v); ok {
-			return securitySeverityRank(f)
-		}
 	}
 	return domain.SeverityUnknown
 }
