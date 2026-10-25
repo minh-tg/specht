@@ -196,6 +196,7 @@ func convertAll(budget *parseutil.Budget, reports []checkovReport) (*domain.Norm
 				return nil, err
 			}
 			nr.Findings = append(nr.Findings, converted.Findings...)
+			nr.ExaminedKeys = append(nr.ExaminedKeys, converted.ExaminedKeys...)
 			if !seen[report.CheckType] {
 				seen[report.CheckType] = true
 				frameworks = append(frameworks, report.CheckType)
@@ -240,6 +241,7 @@ func convert(budget *parseutil.Budget, report checkovReport) (*domain.Normalized
 		}
 		nr.Findings = append(nr.Findings, parseutil.HardenFinding(convertCheck(f, report.CheckType)))
 	}
+	nr.ExaminedKeys = passedCheckKeys(report)
 
 	return nr, nil
 }

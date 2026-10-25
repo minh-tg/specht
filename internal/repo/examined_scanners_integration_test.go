@@ -263,3 +263,61 @@ func TestGrypeClosesOnlyWhenNoFilterHidMatches(t *testing.T) {
 		})
 	}
 }
+
+// checkovDoc builds a Checkov report. failed and passed are (check id,
+// resource, file) triples; quiet leaves passed_checks out the way --quiet does.
+func checkovDoc(t *testing.T, failed, passed [][3]string, quiet bool) []byte {
+	t.Helper()
+	check := func(c [3]string, result string) map[string]any {
+		return map[string]any{
+			"check_id": c[0], "check_name": c[0] + " name", "resource": c[1], "file_path": c[2],
+			"file_line_range": []int{1, 5}, "check_result": map[string]any{"result": result},
+		}
+	}
+	failedChecks, passedChecks := []map[string]any{}, []map[string]any{}
+	for _, c := range failed {
+		failedChecks = append(failedChecks, check(c, "FAILED"))
+	}
+	for _, c := range passed {
+		passedChecks = append(passedChecks, check(c, "PASSED"))
+	}
+	results := map[string]any{"failed_checks": failedChecks}
+	if !quiet {
+		results["passed_checks"] = passedChecks
+		results["skipped_checks"] = []any{}
+	}
+	raw, err := json.Marshal(map[string]any{
+		"check_type": "terraform", "results": results,
+		"summary": map[string]any{"passed": len(passed), "failed": len(failed), "checkov_version": "3.3.26"},
+	})
+	require.NoError(t, err)
+	return raw
+}
+
+func TestCheckovClosesOnlyOnAPassedCheck(t *testing.T) {
+	h, cleanup := newEvidenceHarness(t)
+	defer cleanup()
+	bad := [][3]string{{"CKV_AWS_18", "aws_s3_bucket.a", "/main.tf"}}
+	cases := []struct {
+		name   string
+		passed [][3]string
+		quiet  bool
+		want   string
+	}{
+		{"same check, resource and file passed", [][3]string{{"CKV_AWS_18", "aws_s3_bucket.a", "/main.tf"}}, false, "fixed"},
+		{"report without passed checks", nil, true, "open"},
+		{"passed_checks present but empty", nil, false, "open"},
+		{"another resource passed", [][3]string{{"CKV_AWS_18", "aws_s3_bucket.b", "/main.tf"}}, false, "open"},
+		{"another check passed", [][3]string{{"CKV_AWS_19", "aws_s3_bucket.a", "/main.tf"}}, false, "open"},
+		{"same check and resource in another file", [][3]string{{"CKV_AWS_18", "aws_s3_bucket.a", "/other.tf"}}, false, "open"},
+	}
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			slug := h.project()
+			h.ingest(slug, "checkov", fmt.Sprintf("aaaa%04d", i), checkovDoc(t, bad, nil, false))
+			require.Equal(t, "open", h.onlyState(slug))
+			h.ingest(slug, "checkov", fmt.Sprintf("bbbb%04d", i), checkovDoc(t, nil, tc.passed, tc.quiet))
+			require.Equal(t, tc.want, h.onlyState(slug))
+		})
+	}
+}
