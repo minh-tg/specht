@@ -15,6 +15,13 @@ export interface ScannerFormat {
   note?: string;
 }
 
+export interface FindingScanner {
+  name: string;
+  display_name: string;
+  /** False when this scanner's report cannot prove a fix, so a later scan leaves the finding open. */
+  supports_auto_close: boolean;
+}
+
 export interface ScannerDescriptor {
   /** The identifier to send as `scanner`. */
   name: string;
@@ -26,6 +33,8 @@ export interface ScannerDescriptor {
   scan_types: string[];
   provides_packages: boolean;
   supports_auto_detection: boolean;
+  /** True when a report from this scanner can prove a finding is gone. */
+  supports_auto_close: boolean;
 }
 
 export interface Project {
@@ -196,6 +205,8 @@ export interface Finding {
   /** Deployment context of the finding's latest observation. Absent when
    * the finding has no linked scan occurrence. */
   context?: FindingContext;
+  /** The scanner of the latest observation. Detail view only; absent when it is not registered. */
+  scanner?: FindingScanner;
   raw_data_expired?: boolean;
   raw_data_expires_at?: string;
   /** Source-aware fix guidance from the latest observation. */

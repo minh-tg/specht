@@ -19,6 +19,7 @@ import { useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { WaiverRequestDialog } from "./change-view/WaiverRequestDialog";
 import { AnalysisNote } from "./finding-detail/AnalysisNote";
+import { AutoCloseNote } from "./finding-detail/AutoCloseNote";
 import { ContextGrid } from "./finding-detail/ContextGrid";
 import { CveDetails } from "./finding-detail/CveDetails";
 import { EvidenceSection } from "./finding-detail/EvidenceSection";
@@ -169,6 +170,7 @@ export function FindingDetail() {
               projectSlug={slug}
               currentState={finding.analysis_state}
             />
+            <AutoCloseNote finding={finding} />
             <VerifyFixSection findingId={finding.id} projectSlug={slug} />
             <ReachabilitySection
               findingId={finding.id}
