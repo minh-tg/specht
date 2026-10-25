@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -270,8 +271,10 @@ func (h *Handler) respondIngestAuthError(w http.ResponseWriter, r *http.Request,
 	h.respondProjectAccessError(w, r, err)
 }
 
-// respondIngestBodyError answers a failure to read the body. A caller that went
-// away gets no answer.
+// respondIngestBodyError answers a failure to read the body. It always writes:
+// a handler that returns without writing makes net/http send an empty 200,
+// which a CI client reads as an accepted report. When the caller has gone
+// away the answer is simply lost.
 func (h *Handler) respondIngestBodyError(w http.ResponseWriter, err error, invalidCode, invalidMsg string) {
 	var tooLarge *http.MaxBytesError
 	var syntax *json.SyntaxError
@@ -281,9 +284,15 @@ func (h *Handler) respondIngestBodyError(w http.ResponseWriter, err error, inval
 		respondError(w, http.StatusRequestEntityTooLarge, "body_too_large", "request body too large")
 	case errors.Is(err, errProjectNotInHead):
 		respondError(w, http.StatusBadRequest, "missing_field", fmt.Sprintf("project must be named in the first %d bytes of the body, before raw_data", ingestHeadBytes))
-	case errors.As(err, &syntax), errors.As(err, &typed), errors.Is(err, errNotAnObject), errors.Is(err, io.ErrUnexpectedEOF):
+	case errors.As(err, &syntax), errors.As(err, &typed), errors.Is(err, errNotAnObject),
+		errors.Is(err, io.ErrUnexpectedEOF), errors.Is(err, io.EOF):
+		// The JSON decoder reports a body that ends right after an object
+		// key as io.EOF, not io.ErrUnexpectedEOF.
 		respondError(w, http.StatusBadRequest, invalidCode, invalidMsg)
-	case errors.Is(err, os.ErrDeadlineExceeded):
+	case errors.Is(err, os.ErrDeadlineExceeded), errors.Is(err, context.DeadlineExceeded):
 		respondError(w, http.StatusRequestTimeout, "request_timeout", "the request body did not arrive in time")
+	default:
+		slog.Warn("read ingest body", "error", err)
+		respondError(w, http.StatusBadRequest, "body_read_failed", "the request body could not be read")
 	}
 }
