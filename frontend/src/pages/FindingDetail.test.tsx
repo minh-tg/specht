@@ -223,7 +223,7 @@ describe("FindingDetail triage validation", () => {
     expect(JSON.parse(triageCalls[0].body)).toEqual({
       analysis_state: "accepted_risk",
       reason: "risk accepted for Q3",
-      analysis_expires_at: "2099-06-01T23:59:59.999Z",
+      analysis_expires_at: new Date(2099, 5, 1, 23, 59, 59, 999).toISOString(),
     });
   });
 

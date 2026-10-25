@@ -33,8 +33,14 @@ describe("parseSourceLink", () => {
 });
 
 describe("toExpiryTimestamp", () => {
-  it("anchors a bare date to the end of that day in UTC", () => {
-    expect(toExpiryTimestamp("2026-10-01")).toBe("2026-10-01T23:59:59.999Z");
+  it("anchors a bare date to the end of that day on the local clock", () => {
+    expect(toExpiryTimestamp("2026-10-01")).toBe(
+      new Date(2026, 9, 1, 23, 59, 59, 999).toISOString(),
+    );
+  });
+
+  it("rejects a calendar day that does not exist", () => {
+    expect(toExpiryTimestamp("2026-02-31")).toBeUndefined();
   });
 
   it("normalizes a full timestamp to ISO", () => {

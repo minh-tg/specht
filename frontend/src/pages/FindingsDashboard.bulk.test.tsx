@@ -214,7 +214,7 @@ describe("the findings list's selection and bulk actions", () => {
     const body = JSON.parse(post?.body ?? "{}");
     expect(body.analysis_state).toBe("accepted_risk");
     expect(body.reason).toBe("Behind the VPN until the migration");
-    expect(body.analysis_expires_at).toBe("2026-12-31T23:59:59.999Z");
+    expect(body.analysis_expires_at).toBe(new Date(2026, 11, 31, 23, 59, 59, 999).toISOString());
   });
 
   it("keeps the selection and says why when the server refuses the whole batch", async () => {
