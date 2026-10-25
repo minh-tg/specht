@@ -6,15 +6,15 @@ import { useParams } from "react-router-dom";
 import { OutcomeRegions } from "./OutcomeRegions";
 
 function verdictText(outcome: string): string | null {
-  if (outcome === "still_present") return "Still present in the latest complete scan.";
+  if (outcome === "still_present") return "Still present in the latest scan.";
   if (outcome === "verified_fixed") return "Verified fixed. The finding is now marked fixed.";
   if (outcome === "inconclusive") {
-    return "Not conclusive: the newest scan cannot vouch for completeness.";
+    return "Not conclusive: the newest scan cannot show it looked for this finding.";
   }
   return null;
 }
 
-/** Asks the server whether a finding is still present in the latest complete scan. */
+/** Asks the server whether a finding is still present in the latest scan of its scope. */
 export function VerifyFixSection({
   findingId,
   projectSlug,
