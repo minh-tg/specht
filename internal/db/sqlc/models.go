@@ -583,6 +583,8 @@ type WaiverFindingTarget struct {
 type WatcherProjectState struct {
 	ProjectID            pgtype.UUID        `json:"project_id"`
 	LastSuccessfulPollAt pgtype.Timestamptz `json:"last_successful_poll_at"`
+	ConsecutiveFailures  int32              `json:"consecutive_failures"`
+	LastError            pgtype.Text        `json:"last_error"`
 }
 
 type WatcherState struct {

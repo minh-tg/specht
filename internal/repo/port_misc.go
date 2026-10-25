@@ -298,7 +298,17 @@ func (r *pgWatcherPort) GetProjectState(ctx context.Context, projectID string) (
 	return port.WatcherProjectState{
 		ProjectID:            toUUID(row.ProjectID),
 		LastSuccessfulPollAt: timePtrFromTimestamptz(row.LastSuccessfulPollAt),
+		ConsecutiveFailures:  row.ConsecutiveFailures,
+		LastError:            stringFromTextPtr(row.LastError),
 	}, nil
+}
+
+func (r *pgWatcherPort) RecordProjectFailure(ctx context.Context, projectID, errText string) error {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return err
+	}
+	return r.inner.RecordProjectFailure(ctx, pid, errText)
 }
 
 func (r *pgWatcherPort) UpsertProjectState(ctx context.Context, projectID string, ts time.Time) error {

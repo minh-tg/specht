@@ -240,6 +240,44 @@ func TestPollOnce_WatermarkUntouchedOnFailure(t *testing.T) {
 	assert.False(t, watermarked, "watermark must NOT advance on a failed poll")
 }
 
+func TestPollOnce_RecordsFailureOnTheFailingProject(t *testing.T) {
+	deps := baseDeps()
+	deps.Projects = []string{"healthy", "broken"}
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		if pid == "broken" {
+			return nil, errors.New("inventory unavailable")
+		}
+		return nil, nil
+	}
+	var failed []string
+	var failedErr string
+	deps.RecordProjectFailure = func(ctx context.Context, pid, errText string) error {
+		failed = append(failed, pid)
+		failedErr = errText
+		return nil
+	}
+
+	_, err := PollOnce(context.Background(), deps)
+	require.Error(t, err)
+	assert.Equal(t, []string{"broken"}, failed, "only the failing project records a failure")
+	assert.Contains(t, failedErr, "inventory unavailable")
+}
+
+func TestPollOnce_CanceledPollRecordsNoProjectFailure(t *testing.T) {
+	deps := baseDeps()
+	ctx, cancel := context.WithCancel(context.Background())
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		cancel()
+		return nil, ctx.Err()
+	}
+	recorded := false
+	deps.RecordProjectFailure = func(context.Context, string, string) error { recorded = true; return nil }
+
+	_, err := PollOnce(ctx, deps)
+	require.Error(t, err)
+	assert.False(t, recorded, "shutdown is not a project failure")
+}
+
 func TestPollOnce_WarmPollFiltersAdvisoriesBeforeWatermark(t *testing.T) {
 	deps := baseDeps()
 	deps.ResweepInterval = 365 * 24 * time.Hour

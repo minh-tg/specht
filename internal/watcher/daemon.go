@@ -97,6 +97,11 @@ type PollDeps struct {
 	// RecordFailure is an optional health hook called after a failed poll
 	// with the error text. A nil hook disables failure recording.
 	RecordFailure func(ctx context.Context, errText string, ts time.Time) error
+	// RecordProjectFailure is an optional hook called when one project's
+	// poll fails, so each project's status reflects its own polls rather
+	// than the global counter. A successful SetWatermark clears it. A nil
+	// hook disables per-project failure recording.
+	RecordProjectFailure func(ctx context.Context, projectID, errText string) error
 	// RecordSuccess is an optional health hook called after a successful poll
 	// with its completion timestamp. A nil hook disables success recording.
 	RecordSuccess func(ctx context.Context, ts time.Time) error
@@ -147,6 +152,7 @@ func PollOnce(ctx context.Context, deps PollDeps) (PollOutcome, error) {
 	var created []Decision
 	for _, projectID := range deps.Projects {
 		if err := pollProject(ctx, deps, projectID, now, &outcome, &created); err != nil {
+			recordProjectFailure(ctx, deps, projectID, err)
 			var perr *pollDepsError
 			if errors.As(err, &perr) {
 				return outcome, fmt.Errorf("%s for project %s: %w", perr.op, projectID, perr.err)
@@ -158,6 +164,18 @@ func PollOnce(ctx context.Context, deps PollDeps) (PollOutcome, error) {
 	notifyCreated(ctx, deps, created)
 	deps.Logger.Info(msgPollComplete, "projects", outcome.Projects, "queried", outcome.Queried, "created", outcome.Created, "skipped", outcome.Skipped, "unchanged", outcome.Unchanged)
 	return outcome, nil
+}
+
+// recordProjectFailure runs the per-project failure hook. A poll cut short
+// by cancellation (shutdown) is not the project's failure and is not
+// recorded; hook errors are logged and never mask the poll error.
+func recordProjectFailure(ctx context.Context, deps PollDeps, projectID string, pollErr error) {
+	if deps.RecordProjectFailure == nil || ctx.Err() != nil {
+		return
+	}
+	if err := deps.RecordProjectFailure(ctx, projectID, pollErr.Error()); err != nil {
+		deps.Logger.Warn("cve watcher record project failure", "project", projectID, "error", err)
+	}
 }
 
 // pollDepsError tags a per-project failure with the operation that failed
