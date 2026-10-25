@@ -159,13 +159,13 @@ describe("the finding page's fix check", () => {
     expect(requests).toContainEqual({ path: "/api/v1/findings/f1/verify", method: "POST" });
   });
 
-  it("reports a finding that is still present in the latest complete scan", async () => {
+  it("reports a finding that is still present in the latest scan", async () => {
     verifyBody = { finding_id: "f1", outcome: "still_present", detail: "" };
     renderDetail();
     await clickCheck();
 
     const status = await findVerdictStatus();
-    expect(status).toHaveTextContent("Still present in the latest complete scan.");
+    expect(status).toHaveTextContent("Still present in the latest scan.");
   });
 
   it("reports an inconclusive check with the server detail", async () => {
@@ -179,7 +179,7 @@ describe("the finding page's fix check", () => {
 
     const status = await findVerdictStatus();
     expect(status).toHaveTextContent(
-      "Not conclusive: the newest scan cannot vouch for completeness.",
+      "Not conclusive: the newest scan cannot show it looked for this finding.",
     );
     expect(within(status).getByText("The newest scan of payments-api is partial."))
       .toBeInTheDocument();
@@ -192,10 +192,10 @@ describe("the finding page's fix check", () => {
 
     const status = await findVerdictStatus();
     expect(status).toHaveTextContent(
-      "Not conclusive: the newest scan cannot vouch for completeness.",
+      "Not conclusive: the newest scan cannot show it looked for this finding.",
     );
     expect(status.textContent).toBe(
-      "Not conclusive: the newest scan cannot vouch for completeness.",
+      "Not conclusive: the newest scan cannot show it looked for this finding.",
     );
   });
 

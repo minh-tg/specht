@@ -4,7 +4,7 @@ import { apiFetch } from "./client";
 import { queryKeys } from "./hooks";
 
 /**
- * Asks the server whether a finding is still present in the latest complete scan.
+ * Asks the server whether a finding is still present in the latest scan of its scope.
  * A verified fix moves the finding to `fixed`, so its page data is refetched.
  */
 export function useVerifyFinding(findingId: string) {
