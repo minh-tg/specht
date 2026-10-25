@@ -14,9 +14,10 @@
 //	  non-applicable (IsCVE). KEV absence is not a negative assertion:
 //	  risk.HasKnownExploit is set only on positive membership.
 //
-// The cache is in-memory. Intel is cheap to re-fetch and every record
-// carries its own timestamp, so no migration or persistence adapter is
-// needed; a restart simply refetches on demand.
+// The cache is in-memory and holds at most DefaultMaxRecords CVEs; past that
+// the least recently looked-up record is dropped. Intel is cheap to re-fetch
+// and every record carries its own timestamp, so no migration or persistence
+// adapter is needed; a restart or an eviction simply refetches on demand.
 package intel
 
 import (
@@ -63,13 +64,22 @@ func IsCVE(id string) bool {
 	return strings.HasPrefix(id, "CVE-")
 }
 
+// DefaultMaxRecords caps how many CVE records a Store keeps. Every distinct
+// CVE read through a finding detail adds one, so without a cap a long-running
+// server grows the map for its whole lifetime.
+const DefaultMaxRecords = 10000
+
 // Store caches merged records with a TTL refresh policy.
 type Store struct {
-	mu        sync.Mutex
-	ttl       time.Duration
-	now       func() time.Time
-	providers []Provider
-	cached    map[string]Record
+	mu         sync.Mutex
+	ttl        time.Duration
+	now        func() time.Time
+	providers  []Provider
+	maxRecords int
+	cached     map[string]Record
+	// lastUsed is when each cached CVE was last looked up or stored; the
+	// oldest goes first when the cache is full.
+	lastUsed map[string]time.Time
 }
 
 // NewStore builds a store over the given providers. A nil now uses time.Now.
@@ -77,7 +87,14 @@ func NewStore(ttl time.Duration, now func() time.Time, providers ...Provider) *S
 	if now == nil {
 		now = time.Now
 	}
-	return &Store{ttl: ttl, now: now, providers: providers, cached: map[string]Record{}}
+	return &Store{
+		ttl:        ttl,
+		now:        now,
+		providers:  providers,
+		maxRecords: DefaultMaxRecords,
+		cached:     map[string]Record{},
+		lastUsed:   map[string]time.Time{},
+	}
 }
 
 // Lookup returns the cached record and whether it is stale. Absent records
@@ -89,6 +106,7 @@ func (s *Store) Lookup(cveID string) (rec Record, stale, ok bool) {
 	if !ok {
 		return Record{}, false, false
 	}
+	s.lastUsed[cveID] = s.now()
 	if s.now().Sub(rec.FetchedAt) > s.ttl {
 		rec.Stale = true
 	}
@@ -152,8 +170,10 @@ func (s *Store) mergeCached(merged map[string]Record) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for id, rec := range merged {
+		s.lastUsed[id] = s.now()
 		existing, exists := s.cached[id]
 		if !exists {
+			s.evictForNewLocked()
 			s.cached[id] = rec
 			continue
 		}
@@ -172,6 +192,29 @@ func (s *Store) mergeCached(merged map[string]Record) {
 		existing.FetchedAt = rec.FetchedAt
 		existing.Stale = false
 		s.cached[id] = existing
+	}
+}
+
+// evictForNewLocked makes room for one new record by dropping least recently
+// used records until the cache is below its cap. The scan is linear, which
+// only runs once the cache is full and costs far less than the feed fetch
+// that produced the new record. Callers hold mu.
+func (s *Store) evictForNewLocked() {
+	if s.maxRecords <= 0 {
+		return
+	}
+	for len(s.cached) >= s.maxRecords {
+		var oldestID string
+		var oldest time.Time
+		first := true
+		for id := range s.cached {
+			used := s.lastUsed[id]
+			if first || used.Before(oldest) || (used.Equal(oldest) && id < oldestID) {
+				oldestID, oldest, first = id, used, false
+			}
+		}
+		delete(s.cached, oldestID)
+		delete(s.lastUsed, oldestID)
 	}
 }
 

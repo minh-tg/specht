@@ -210,6 +210,54 @@ func TestStore_RefreshMergesAndServes(t *testing.T) {
 	assert.Contains(t, exp.Missing, "cvss")
 }
 
+// echoProvider returns a record for every CVE it is asked about.
+type echoProvider struct{}
+
+func (echoProvider) Name() string { return "echo" }
+
+func (echoProvider) Fetch(_ context.Context, ids []string) (map[string]Record, error) {
+	out := make(map[string]Record, len(ids))
+	for _, id := range ids {
+		score := 0.1
+		out[id] = Record{CVEID: id, EPSS: &score}
+	}
+	return out, nil
+}
+
+func TestStore_EvictsLeastRecentlyUsedPastTheCap(t *testing.T) {
+	current := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	s := NewStore(time.Hour, func() time.Time { return current }, echoProvider{})
+	s.maxRecords = 2
+	ctx := context.Background()
+	tick := func() { current = current.Add(time.Second) }
+
+	require.NoError(t, s.Refresh(ctx, []string{"CVE-2024-0001"}))
+	tick()
+	require.NoError(t, s.Refresh(ctx, []string{"CVE-2024-0002"}))
+	tick()
+	// Reading 0001 makes 0002 the least recently used.
+	_, _, ok := s.Lookup("CVE-2024-0001")
+	require.True(t, ok)
+	tick()
+	require.NoError(t, s.Refresh(ctx, []string{"CVE-2024-0003"}))
+
+	assert.Len(t, s.cached, 2)
+	assert.Len(t, s.lastUsed, 2)
+	_, _, ok = s.Lookup("CVE-2024-0002")
+	assert.False(t, ok, "the least recently used record is evicted")
+	_, _, ok = s.Lookup("CVE-2024-0001")
+	assert.True(t, ok)
+	_, _, ok = s.Lookup("CVE-2024-0003")
+	assert.True(t, ok)
+
+	// Refreshing a record already cached never evicts another.
+	tick()
+	require.NoError(t, s.Refresh(ctx, []string{"CVE-2024-0001"}))
+	assert.Len(t, s.cached, 2)
+	_, _, ok = s.Lookup("CVE-2024-0003")
+	assert.True(t, ok)
+}
+
 func TestStore_FailedRefreshKeepsLastKnown(t *testing.T) {
 	var fail bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
