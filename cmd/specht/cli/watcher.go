@@ -175,17 +175,26 @@ func runWatcherBackfill(options WatcherBackfillOptions) (WatcherBackfillResult, 
 	return WatcherBackfillResult{Outcome: outcome}, nil
 }
 
-// projectIDList loads every project ID for the backfill sweep.
+// projectIDList loads the IDs of the projects the backfill sweep polls.
 func projectIDList(ctx context.Context, stores *port.Stores) ([]string, error) {
 	projects, err := stores.Projects.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list projects: %w", err)
 	}
-	projectIDs := make([]string, len(projects))
-	for i, project := range projects {
-		projectIDs[i] = project.ID
+	return watchedProjectIDs(projects), nil
+}
+
+// watchedProjectIDs keeps the projects with cve_watcher_enabled set, the same
+// filter the server daemon applies. A project that opted out of the watcher
+// must not get watcher findings or a watermark from a manual backfill.
+func watchedProjectIDs(projects []port.Project) []string {
+	ids := make([]string, 0, len(projects))
+	for _, project := range projects {
+		if project.CveWatcherEnabled {
+			ids = append(ids, project.ID)
+		}
 	}
-	return projectIDs, nil
+	return ids
 }
 
 // resolveInventoryTTL reads the optional INVENTORY_TTL override.
