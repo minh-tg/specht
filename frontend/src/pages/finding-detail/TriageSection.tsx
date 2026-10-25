@@ -6,7 +6,7 @@ import { type AnalysisState, isAnalysisState } from "@/lib/enums";
 import { GLOSSARY } from "@/lib/glossary";
 import { useState } from "react";
 import { useParams } from "react-router-dom";
-import { toExpiryTimestamp } from "./format";
+import { localDateValue, toExpiryTimestamp } from "./format";
 import { TRIAGE_GLOSSARY, TRIAGE_OPTIONS } from "./options";
 import { OutcomeRegions } from "./OutcomeRegions";
 
@@ -51,7 +51,7 @@ export function TriageSection({
     } catch {}
   }
 
-  const minExpiryDate = new Date().toISOString().slice(0, 10);
+  const minExpiryDate = localDateValue();
   const triageReady = canTriage
     && selectedState !== ""
     && (!selectedOption?.requiresExpiry || expiresAt >= minExpiryDate)

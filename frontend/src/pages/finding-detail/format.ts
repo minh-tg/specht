@@ -74,6 +74,12 @@ export function eventValueLabel(eventType: string | undefined, value: string): s
   }
 }
 
+/** The user's local calendar day as a date-input value, e.g. the earliest expiry they may pick. */
+export function localDateValue(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
 /**
  * Normalizes a date-input value to a server-accepted RFC3339 expiry. A bare date means the end of
  * that day on the user's own clock, the same local day the expiry is later shown and edited as.

@@ -13,13 +13,23 @@ afterEach(() => {
 async function inZone(tz: string) {
   process.env.TZ = tz;
   vi.resetModules();
-  const [{ toExpiryTimestamp }, { expiryDateValue }, { formatDate }] = await Promise.all([
-    import("./format"),
-    import("../project-waivers/waiverEdit"),
-    import("@/lib/format"),
-  ]);
-  return { toExpiryTimestamp, expiryDateValue, formatDate };
+  const [{ localDateValue, toExpiryTimestamp }, { expiryDateValue }, { formatDate }] = await Promise
+    .all([import("./format"), import("../project-waivers/waiverEdit"), import("@/lib/format")]);
+  return { localDateValue, toExpiryTimestamp, expiryDateValue, formatDate };
 }
+
+describe("earliest pickable expiry", () => {
+  it.each([
+    // 18:00 on 24 Oct in Los Angeles is already 25 Oct in UTC.
+    ["America/Los_Angeles", "2026-10-25T01:00:00Z", "2026-10-24"],
+    // 06:30 on 25 Oct in Bangkok is still 24 Oct in UTC.
+    ["Asia/Bangkok", "2026-10-24T23:30:00Z", "2026-10-25"],
+    ["UTC", "2026-10-24T23:30:00Z", "2026-10-24"],
+  ])("is the local calendar day in %s", async (tz, instant, expected) => {
+    const { localDateValue } = await inZone(tz);
+    expect(localDateValue(new Date(instant))).toBe(expected);
+  });
+});
 
 describe("date-only expiry across time zones", () => {
   it.each([
