@@ -191,7 +191,7 @@ func (r *pgFindingRepo) MarkFixedWithEvent(ctx context.Context, findingID, repor
 	if err != nil {
 		return sqlc.Finding{}, err
 	}
-	if basis.ID != reportID || basis.ScanCompleteness != "complete" || !basis.CreatedAt.Time.After(current.LastSeenAt.Time) {
+	if basis.ID != reportID || (basis.ScanCompleteness != "complete" && !basis.Examined) || !basis.CreatedAt.Time.After(current.LastSeenAt.Time) {
 		return sqlc.Finding{}, port.ErrFindingStillObserved
 	}
 	present, err := q.OccurrenceExists(ctx, sqlc.OccurrenceExistsParams{FindingID: findingID, ReportID: reportID})
