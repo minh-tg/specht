@@ -104,3 +104,69 @@ func TestArtifactIdentityMigration_MergesDigestlessDuplicates(t *testing.T) {
 	require.NoError(t, m.Up(), "up, down, up must be repeatable")
 	assert.Equal(t, []string{newest, digested, other}, artifactIDs())
 }
+
+// The cleanup migration drops the 000062 backups. Its down must recreate them
+// (empty) so the 000062 down still runs, and the merge itself must stay.
+func TestArtifactIdentityBackupsMigration_DropsAndRecreatesBackups(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	pool := repos.pool
+
+	m, err := migrate.New("file://../../migrations", pool.Config().ConnString())
+	require.NoError(t, err)
+	defer func() { _, _ = m.Close() }()
+	require.NoError(t, m.Migrate(61))
+
+	var projectID string
+	require.NoError(t, pool.QueryRow(ctx, `
+		INSERT INTO projects (slug, name, deployment_threshold, settings)
+		VALUES ('dup-backups', 'Dup', 'high', '{}') RETURNING id`).Scan(&projectID))
+	for _, createdAt := range []string{"2026-01-01T00:00:00Z", "2026-02-01T00:00:00Z"} {
+		_, err := pool.Exec(ctx, `
+			INSERT INTO artifacts (project_id, artifact_type, name, created_at)
+			VALUES ($1, 'container_image', 'myapp', $2)`, projectID, createdAt)
+		require.NoError(t, err)
+	}
+
+	exists := func(table string) bool {
+		t.Helper()
+		var ok bool
+		require.NoError(t, pool.QueryRow(ctx, `SELECT to_regclass($1) IS NOT NULL`, table).Scan(&ok))
+		return ok
+	}
+	count := func(table string) int {
+		t.Helper()
+		var n int
+		require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM `+table).Scan(&n))
+		return n
+	}
+	artifacts := func() int {
+		t.Helper()
+		var n int
+		require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM artifacts WHERE project_id = $1`, projectID).Scan(&n))
+		return n
+	}
+
+	require.NoError(t, m.Migrate(62))
+	assert.Equal(t, 1, count("migration_000062_artifacts"), "the merged-away row is backed up")
+	assert.Equal(t, 1, artifacts())
+
+	require.NoError(t, m.Up())
+	assert.False(t, exists("migration_000062_artifacts"))
+	assert.False(t, exists("migration_000062_artifact_refs"))
+	assert.Equal(t, 1, artifacts(), "dropping the backups leaves the merge in place")
+	_, err = pool.Exec(ctx, `INSERT INTO artifacts (project_id, artifact_type, name) VALUES ($1, 'container_image', 'myapp')`, projectID)
+	require.Error(t, err, "the unique key still refuses a second digest-less row")
+
+	require.NoError(t, m.Migrate(62), "the down recreates the backups")
+	assert.Equal(t, 0, count("migration_000062_artifacts"))
+	assert.Equal(t, 0, count("migration_000062_artifact_refs"))
+
+	require.NoError(t, m.Migrate(61), "the 000062 down runs against the empty backups")
+	assert.Equal(t, 1, artifacts(), "nothing to restore from the empty backups")
+	_, err = pool.Exec(ctx, `INSERT INTO artifacts (project_id, artifact_type, name) VALUES ($1, 'container_image', 'myapp')`, projectID)
+	require.NoError(t, err, "NULL digests are distinct again after the 000062 down")
+
+	require.NoError(t, m.Up(), "up must be repeatable")
+}
