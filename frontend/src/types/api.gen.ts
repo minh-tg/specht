@@ -2421,6 +2421,8 @@ export interface components {
       manage_ci: boolean;
       /** @description Change analysis state and reachability. */
       triage: boolean;
+      /** @description Upload scan reports by hand. The same roles CI ingest admits (admin and manager). */
+      upload_reports: boolean;
     };
     CreateProjectRequest: {
       name: string;

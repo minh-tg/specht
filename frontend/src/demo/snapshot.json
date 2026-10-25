@@ -135,7 +135,8 @@
           "approve_waivers": false,
           "manage_members": false,
           "manage_ci": false,
-          "triage": false
+          "triage": false,
+          "upload_reports": false
         }
       },
       "total": null

@@ -226,6 +226,7 @@ type ProjectPermissions struct {
 	ManageMembers  bool `json:"manage_members"`
 	ManageCI       bool `json:"manage_ci"`
 	Triage         bool `json:"triage"`
+	UploadReports  bool `json:"upload_reports"`
 }
 
 // CreateProjectRequest is the request body for creating a project.

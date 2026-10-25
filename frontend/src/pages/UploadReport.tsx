@@ -17,6 +17,23 @@ export function UploadReport() {
 
   const projectName = project?.name ?? slug;
 
+  if (project?.permissions?.upload_reports === false) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-8">
+        <Link
+          to={`/${slug}/reports`}
+          className="text-muted-foreground hover:text-foreground mb-6 inline-block text-sm"
+        >
+          &larr; {projectName}
+        </Link>
+        <h1 className="mb-2 text-2xl font-bold">Upload a report</h1>
+        <p className="text-muted-foreground text-sm">
+          Only project managers and administrators can upload reports to {projectName}.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-lg px-4 py-8">
       <Link
