@@ -60,3 +60,20 @@ func TestSeverityRank(t *testing.T) {
 	assert.Equal(t, int16(1), SeverityRank("low"))
 	assert.Equal(t, int16(3), SeverityRank("bogus"), "unknown floors fail closed toward blocking")
 }
+
+func TestLowestListedRank(t *testing.T) {
+	cases := []struct {
+		labels []string
+		want   int16
+	}{
+		{nil, 0},
+		{[]string{"bogus"}, 0},
+		{[]string{"critical"}, 4},
+		{[]string{"critical", " high", " medium"}, 2},
+		{[]string{"HIGH", "Low "}, 1},
+		{[]string{"", "critical"}, 4},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, LowestListedRank(tc.labels), "%q", tc.labels)
+	}
+}

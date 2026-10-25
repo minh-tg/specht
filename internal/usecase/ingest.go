@@ -17,6 +17,7 @@ import (
 	"github.com/minh-tg/specht/internal/domain"
 	"github.com/minh-tg/specht/internal/finding"
 	"github.com/minh-tg/specht/internal/gate"
+	"github.com/minh-tg/specht/internal/policy"
 	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/scanner"
 	"github.com/minh-tg/specht/internal/tracker"
@@ -1502,38 +1503,16 @@ func (u *Usecases) deleteDuplicateReport(ctx context.Context, projectID, reportI
 	}
 }
 
-// gateSeverityRank resolves the ingest gate overrides into the severity-rank
-// floor the gate service consumes. GateStatus is not part of the gate
-// service's candidate prefilter (the candidate SQL already scopes to
-// open/reopened state); the rank floor maps the severity strings, defaulting
-// to high (rank 3) like parseMinSeverityRank.
 // gateSeverityRank maps the caller's severity list to the blocking floor:
-// the LOWEST severity named, so every listed severity blocks (parity with
-// parseMinSeverityRank). Unknown labels are skipped; an empty or wholly
+// the LOWEST severity named, so every listed severity blocks. It shares its
+// parser with the gate route's parseMinSeverityRank, so "critical, High"
+// means the same on both. Unknown labels are skipped; an empty or wholly
 // unknown list floors at high (rank 3), failing closed toward blocking.
-func gateSeverityRank(severities, _ []string) int16 {
-	minRank := int16(0)
-	for _, s := range severities {
-		r, ok := severityLabelRank[s]
-		if !ok || r == 0 {
-			continue
-		}
-		if minRank == 0 || r < minRank {
-			minRank = r
-		}
+func gateSeverityRank(severities []string) int16 {
+	if rank := policy.LowestListedRank(severities); rank != 0 {
+		return rank
 	}
-	if minRank == 0 {
-		return 3
-	}
-	return minRank
-}
-
-// severityLabelRank maps known severity labels to their rank.
-var severityLabelRank = map[string]int16{
-	"critical": 4,
-	"high":     3,
-	"medium":   2,
-	"low":      1,
+	return 3
 }
 
 // reportHash identifies the content of a report for the replay and duplicate checks.

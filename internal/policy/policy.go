@@ -123,6 +123,33 @@ func SeverityRank(floor string) int16 {
 	}
 }
 
+// LowestListedRank resolves a list of severity labels, as a gate request
+// names them, to the LOWEST rank named, so every listed severity blocks.
+// Labels are trimmed and lowercased; unknown labels are skipped. It returns 0
+// when no label is known, and the caller picks its own default.
+func LowestListedRank(labels []string) int16 {
+	minRank := int16(0)
+	for _, label := range labels {
+		var rank int16
+		switch strings.ToLower(strings.TrimSpace(label)) {
+		case "critical":
+			rank = 4
+		case "high":
+			rank = 3
+		case "medium":
+			rank = 2
+		case "low":
+			rank = 1
+		default:
+			continue
+		}
+		if minRank == 0 || rank < minRank {
+			minRank = rank
+		}
+	}
+	return minRank
+}
+
 // Keys returns the sorted definition keys, for stable error messages and
 // documentation.
 func Keys() []string {
