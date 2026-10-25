@@ -30,6 +30,8 @@
 # release tag as "v1.2.3".
 #
 # The step exit code is the adapter's: 0 pass, 1 blocked (findings), 2 error.
+# A failure before the adapter runs (missing api-key, unsupported runner,
+# download, signature or checksum failure) also exits 2.
 # A non-zero exit fails the job, so use continue-on-error when the gate should
 # report without blocking.
 #

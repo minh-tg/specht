@@ -38,9 +38,23 @@ RELEASE_BASE_URL_DEFAULT="https://github.com/minh-tg/specht/releases/download"
 IDENTITY_PREFIX_DEFAULT="https://github.com/minh-tg/specht/.github/workflows/release.yml"
 OIDC_ISSUER_DEFAULT="https://token.actions.githubusercontent.com"
 
+# Every failure of the script itself exits 2, the adapter's runtime-error
+# code, so a caller never reads a failed download or signature check as 1,
+# the code for a gate blocked by findings.
 error() {
   echo "::error::$*" >&2
-  exit 1
+  exit 2
+}
+
+# require fails when any of the named variables is empty. It stands in for
+# ${NAME:?}, which exits 1.
+require() {
+  local name
+  for name in "$@"; do
+    if [[ -z "${!name:-}" ]]; then
+      error "${name} is required"
+    fi
+  done
 }
 
 selftest=0
@@ -163,7 +177,8 @@ download_release() {
     echo "downloading ${base}/${tag}/${f}"
     curl --fail --location --retry 3 --retry-delay 2 --silent --show-error \
       --proto "$proto" --proto-redir "$proto" \
-      --output "$tmp/$f" "${base}/${tag}/${f}"
+      --output "$tmp/$f" "${base}/${tag}/${f}" ||
+      error "could not download ${base}/${tag}/${f}"
   done
 }
 
@@ -180,7 +195,8 @@ verify_release() {
     cosign verify-blob \
       --key "$key" \
       --signature "$tmp/SHA256SUMS.sig" \
-      "$tmp/SHA256SUMS"
+      "$tmp/SHA256SUMS" ||
+      error "the SHA256SUMS signature does not verify with the given public key"
   else
     identity="$(certificate_identity "$tag")"
     cosign verify-blob \
@@ -188,7 +204,8 @@ verify_release() {
       --signature "$tmp/SHA256SUMS.sig" \
       --certificate-identity "$identity" \
       --certificate-oidc-issuer "$OIDC_ISSUER_DEFAULT" \
-      "$tmp/SHA256SUMS"
+      "$tmp/SHA256SUMS" ||
+      error "the SHA256SUMS signature does not verify for ${identity}"
   fi
 
   local line
@@ -203,7 +220,7 @@ verify_release() {
     else
       printf '%s\n' "$line" | sha256sum -c -
     fi
-  )
+  ) || error "${asset} does not match its SHA256SUMS entry"
 }
 
 # Prints the gate scope the adapter gets, always as true or false. An empty
@@ -233,18 +250,19 @@ introduced_only() {
 # Extracts the verified archive and runs the adapter. The adapter's exit code
 # is the step's: 0 pass, 1 blocked (findings), 2 error.
 run_adapter() {
+  require SPECHT_INPUT_FILE SPECHT_INPUT_TOOL SPECHT_INPUT_API_URL
   mkdir -p "$tmp/adapter"
   case "$os" in
-    windows) unzip -q -o "$tmp/$asset" -d "$tmp/adapter" ;;
-    *) tar -xzf "$tmp/$asset" -C "$tmp/adapter" ;;
+    windows) unzip -q -o "$tmp/$asset" -d "$tmp/adapter" || error "could not extract ${asset}" ;;
+    *) tar -xzf "$tmp/$asset" -C "$tmp/adapter" || error "could not extract ${asset}" ;;
   esac
   local bin="$tmp/adapter/specht-adapter"
   if [[ "$os" == windows ]]; then
     bin="${bin}.exe"
   fi
-  chmod +x "$bin"
+  chmod +x "$bin" || error "${asset} holds no adapter binary"
 
-  local args=(-file "${SPECHT_INPUT_FILE:?SPECHT_INPUT_FILE is required}" -tool "${SPECHT_INPUT_TOOL:?SPECHT_INPUT_TOOL is required}")
+  local args=(-file "$SPECHT_INPUT_FILE" -tool "$SPECHT_INPUT_TOOL")
   if [[ -n "${SPECHT_INPUT_PROJECT:-}" ]]; then
     args+=(-project "$SPECHT_INPUT_PROJECT")
   fi
@@ -263,7 +281,7 @@ run_adapter() {
 
   # The adapter reads API_URL and API_KEY; the SPECHT_* names are kept for
   # older releases. The key is never echoed.
-  export SPECHT_API_URL="${SPECHT_INPUT_API_URL:?SPECHT_INPUT_API_URL is required}"
+  export SPECHT_API_URL="$SPECHT_INPUT_API_URL"
   export SPECHT_API_KEY="${SPECHT_INPUT_API_KEY:-}"
   export API_URL="$SPECHT_API_URL"
   export API_KEY="$SPECHT_API_KEY"
@@ -276,7 +294,8 @@ main() {
   local mode="${1:-run}"
   case "$mode" in
     identity)
-      certificate_identity "${2:?usage: specht-gate.sh identity TAG}"
+      [[ -n "${2:-}" ]] || error "usage: specht-gate.sh identity TAG"
+      certificate_identity "$2"
       ;;
     prepare)
       resolve_release
