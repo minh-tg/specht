@@ -1,4 +1,4 @@
-// Package gitleaks adapts Gitleaks JSON output to the normalized domain
+// Package gitleaks adapts Gitleaks JSON and SARIF output to the normalized domain
 // model. Gitleaks reports have no severity: every leak ingests as high —
 // an exposed credential is actionable until rotated regardless of type.
 //
@@ -46,6 +46,13 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 				TestedWith: "Gitleaks 8.30.1",
 				Note:       "Reports written with `--redact` are accepted.",
 			},
+			{
+				Name:       "SARIF",
+				Extensions: []string{".sarif", ".json"},
+				Command:    `gitleaks detect --report-format sarif --report-path gitleaks.sarif`,
+				TestedWith: "Gitleaks 8.30.1",
+				Note:       "Read as secrets, with the same identity as the JSON report. Upload it as Gitleaks, not as generic SARIF.",
+			},
 		},
 		Version:               "8",
 		ContractVersion:       1,
@@ -77,6 +84,9 @@ func (s *Scanner) Recognize(data []byte) scanner.Recognition {
 	if shape.IsNull() {
 		return scanner.Possible
 	}
+	if shape.IsObject() && shape.Has("runs") {
+		return recognizeSARIF(data)
+	}
 	if !shape.IsArray() {
 		return scanner.NotRecognized
 	}
@@ -91,7 +101,7 @@ func (s *Scanner) Recognize(data []byte) scanner.Recognition {
 
 // findingArrays names the arrays of a document that carry findings and
 // packages (see scanner.CheckDocument).
-var findingArrays = []string{""}
+var findingArrays = []string{"", "results", "runs", "rules"}
 
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
 	budget, err := parseutil.NewBudget(ctx, data, findingArrays...)
@@ -101,10 +111,9 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	if s.Recognize(data) == scanner.NotRecognized {
 		return nil, scanner.Unrecognized("gitleaks")
 	}
-	var findings []gitleaksFinding
-	dec := json.NewDecoder(bytes.NewReader(data))
-	if err := dec.Decode(&findings); err != nil {
-		return nil, scanner.Malformed("gitleaks", err)
+	findings, err := readFindings(data)
+	if err != nil {
+		return nil, err
 	}
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
@@ -129,6 +138,19 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	return parseutil.HardenReport(nr), nil
 }
 
+// readFindings reads the leaks of either report format: the JSON list or a SARIF log.
+func readFindings(data []byte) ([]gitleaksFinding, error) {
+	if shape, ok := parseutil.ReadShape(data); ok && shape.IsObject() && shape.Has("runs") {
+		return readSARIF(data)
+	}
+	var findings []gitleaksFinding
+	dec := json.NewDecoder(bytes.NewReader(data))
+	if err := dec.Decode(&findings); err != nil {
+		return nil, scanner.Malformed("gitleaks", err)
+	}
+	return findings, nil
+}
+
 // RedactRaw scrubs secret material from raw Gitleaks evidence, preserving
 // every provenance field. Keys are matched without regard to case and at any
 // depth, because the parser reads them the same way. Keys marshal in sorted
@@ -138,6 +160,9 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 // out-of-range number, data after the array, nesting past the decoder's limit),
 // is an error and never comes back unchanged: it may still hold a Secret.
 func (s *Scanner) RedactRaw(data []byte) ([]byte, error) {
+	if shape, ok := parseutil.ReadShape(data); ok && shape.IsObject() && shape.Has("runs") {
+		return redactSARIF(data)
+	}
 	var findings []map[string]any
 	if err := parseutil.DecodeJSON(data, &findings); err != nil {
 		return nil, fmt.Errorf("%w: gitleaks evidence: %w", scanner.ErrRedactionFailed, err)

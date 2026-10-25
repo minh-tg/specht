@@ -91,3 +91,20 @@ func TestParseCallsAnUnreadableReportMalformed(t *testing.T) {
 	require.ErrorIs(t, err, scanner.ErrMalformedReport)
 	assert.NotErrorIs(t, err, scanner.ErrUnrecognizedFormat)
 }
+
+func TestGitleaksLogsBelongToTheGitleaksAdapter(t *testing.T) {
+	s := sarif.NewScanner()
+	data, err := os.ReadFile("../gitleaks/testdata/gitleaks-two-secrets.sarif")
+	require.NoError(t, err)
+	assert.Equal(t, scanner.NotRecognized, s.Recognize(data),
+		"read here the two secrets of one rule in one file were one SAST finding")
+
+	mixed := []byte(`{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"gitleaks"}},"results":[]},` +
+		`{"tool":{"driver":{"name":"codeql"}},"results":[]}]}`)
+	assert.Equal(t, scanner.Definite, s.Recognize(mixed))
+	_, err = s.Parse(context.Background(), mixed)
+	require.Error(t, err, "a Gitleaks run in a mixed log is refused, not read as SAST")
+	detail, ok := scanner.MalformedDetail(err)
+	require.True(t, ok)
+	assert.Contains(t, detail, "as gitleaks")
+}

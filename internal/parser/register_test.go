@@ -130,6 +130,11 @@ func TestBuiltinsDetectFormats(t *testing.T) {
 			want: "sarif",
 		},
 		{
+			name: "gitleaks detects its sarif format",
+			data: []byte(`{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"gitleaks"}},"results":[]}]}`),
+			want: "gitleaks",
+		},
+		{
 			name: "checkov detects checkov json format",
 			data: []byte(`{"check_type":"terraform","results":{"passed_checks":[],"failed_checks":[],"skipped_checks":[],"parsing_errors":[]},"summary":{"passed":0,"failed":0,"skipped":0,"parsing_errors":0}}`),
 			want: "checkov",
