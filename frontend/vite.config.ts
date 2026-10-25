@@ -16,7 +16,22 @@ export default defineConfig({
     // Unit/component tests live under src/; browser specs under e2e/ are
     // Playwright's, not vitest's (vitest's default include would pick up
     // *.spec.ts and fail on the Playwright API).
-    include: ["src/**/*.test.{ts,tsx}", "src/**/*.spec.{ts,tsx}"],
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "unit",
+          include: ["src/**/*.test.{ts,tsx}", "src/**/*.spec.{ts,tsx}"],
+          exclude: ["src/**/*.tz.test.{ts,tsx}"],
+        },
+      },
+      // A worker thread keeps the time zone it started with, whatever the test sets
+      // process.env.TZ to. Tests that switch zones run in forked processes, where it sticks.
+      {
+        extends: true,
+        test: { name: "tz", pool: "forks", include: ["src/**/*.tz.test.{ts,tsx}"] },
+      },
+    ],
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],

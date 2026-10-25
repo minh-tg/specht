@@ -516,7 +516,7 @@ describe("ProjectWaivers", () => {
     await user.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
     const body = calls.find((c) => c.method === "PUT")!.body as { expires_at: string; };
-    expect(body).toEqual({ expires_at: "2027-03-01T23:59:59.999Z" });
+    expect(body).toEqual({ expires_at: new Date(2027, 2, 1, 23, 59, 59, 999).toISOString() });
   });
 
   it("sends an empty expiry when No expiry is ticked", async () => {

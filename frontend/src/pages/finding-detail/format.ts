@@ -74,12 +74,19 @@ export function eventValueLabel(eventType: string | undefined, value: string): s
   }
 }
 
-/** Normalizes a date-input value to a server-accepted RFC3339 expiry. */
+/**
+ * Normalizes a date-input value to a server-accepted RFC3339 expiry. A bare date means the end of
+ * that day on the user's own clock, the same local day the expiry is later shown and edited as.
+ */
 export function toExpiryTimestamp(value: string): string | undefined {
   if (!value) return undefined;
-  const iso = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value;
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const date = day
+    ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3]), 23, 59, 59, 999)
+    : new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  if (day && date.getDate() !== Number(day[3])) return undefined;
+  return date.toISOString();
 }
 
 /** ":start" or ":start–end" when lines are known; empty otherwise. */
