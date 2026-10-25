@@ -80,13 +80,16 @@ type AdvisoryRef struct {
 // when grouping), so the matcher compares it against the advisory's canonical
 // affected[].ecosystem under one mapping; the watcher still normalizes the
 // stored dimension value to lowercase — watcher code is the single
-// normalization point, not each parser.
+// normalization point, not each parser. Package is the package name the
+// pair was queried under; an advisory can list several packages in
+// affected[], and only the entry for this package may decide the finding.
 type DecideInput struct {
 	ProjectID string
 	Advisory  Advisory
 	Purl      string
 	Version   string
 	Ecosystem string
+	Package   string
 }
 
 // GapCheck reports whether a scan-derived finding already covers the
@@ -317,10 +320,11 @@ func DecideFinding(ctx context.Context, input DecideInput, gapCheck GapCheck) (D
 		return skipDecision("inventory version is empty"), nil
 	}
 
-	// 3. Affected-entry selection. OSV querybatch responses are already
-	// filtered to the queried package, so matching is ecosystem +
+	// 3. Affected-entry selection. OSV querybatch returns every advisory
+	// that names the queried package, but the full record also lists the
+	// other packages it affects, so matching is package name + ecosystem +
 	// version; the matcher never reports unparseable versions affected.
-	aff, ok := matchAffected(input.Advisory, input.Ecosystem, input.Version)
+	aff, ok := matchAffected(input.Advisory, input.Ecosystem, input.Package, input.Version)
 	if !ok {
 		return skipDecision("no affected entry matches the inventory version"), nil
 	}
@@ -363,7 +367,13 @@ func fingerprint(purl, primary string) string {
 // is also skipped — a same-named package in another ecosystem must never
 // match an inventory row whose own ecosystem is unknown. Only an affected
 // entry with no ecosystem can match an ecosystem-less inventory row.
-func matchAffected(ad Advisory, ecosystem, version string) (Affected, bool) {
+//
+// When both the queried name and the entry's package name are known, they
+// must match under the ecosystem's naming rules (see samePackageName). One
+// advisory often covers several packages: GHSA-67hx-6x53-jw92 lists
+// @babel/traverse (fixed in 7.23.2) and babel-traverse (no fix), and
+// taking the wrong entry would flag a fixed @babel/traverse.
+func matchAffected(ad Advisory, ecosystem, name, version string) (Affected, bool) {
 	eco := strings.ToLower(strings.TrimSpace(ecosystem))
 	for _, aff := range ad.Affected {
 		// Real OSV records nest the ecosystem inside affected[].package;
@@ -385,11 +395,57 @@ func matchAffected(ad Advisory, ecosystem, version string) (Affected, bool) {
 			// in another ecosystem match.
 			continue
 		}
+		if !samePackageName(eco, name, aff.Package.Name) {
+			continue
+		}
 		if VersionAffected(aff, version) {
 			return aff, true
 		}
 	}
 	return Affected{}, false
+}
+
+// samePackageName reports whether the queried package name and an affected
+// entry's package name identify the same package in ecosystem (lowercase).
+// An empty name on either side carries no identity and matches. PyPI names
+// compare per PEP 503 (case-insensitive, runs of '-', '_' and '.' are equal);
+// npm and Go names are case-sensitive and compare exactly, npm scope
+// included; Maven compares group:artifact exactly, accepting '/' as the
+// separator; other ecosystems compare case-insensitively.
+func samePackageName(ecosystem, queried, affected string) bool {
+	queried, affected = strings.TrimSpace(queried), strings.TrimSpace(affected)
+	if queried == "" || affected == "" {
+		return true
+	}
+	switch ecosystem {
+	case "pypi":
+		return pep503Name(queried) == pep503Name(affected)
+	case "npm", "go":
+		return queried == affected
+	case "maven":
+		return strings.ReplaceAll(queried, "/", ":") == strings.ReplaceAll(affected, "/", ":")
+	default:
+		return strings.EqualFold(queried, affected)
+	}
+}
+
+// pep503Name normalizes a Python package name per PEP 503: lowercase, with
+// every run of '-', '_' and '.' collapsed to a single '-'.
+func pep503Name(name string) string {
+	var b strings.Builder
+	sep := false
+	for _, r := range strings.ToLower(name) {
+		if r == '-' || r == '_' || r == '.' {
+			sep = true
+			continue
+		}
+		if sep && b.Len() > 0 {
+			b.WriteByte('-')
+		}
+		sep = false
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // purlNameLevel strips the version from a purl, producing the name-level

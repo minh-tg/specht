@@ -477,6 +477,7 @@ func decidePair(ctx context.Context, deps PollDeps, projectID string, g invGroup
 		// compare "golang" against the advisory's "go" and silently skip
 		// every matching vulnerability.
 		Ecosystem: g.ecosystem,
+		Package:   g.name,
 	}
 	decision, err := DecideFinding(ctx, input, gap)
 	if err != nil {
