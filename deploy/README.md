@@ -314,7 +314,11 @@ The adapter also reads the CI provider's own variables when its flags are not
 set: `GITHUB_REPOSITORY`, `GITHUB_SHA`, `GITHUB_REF_NAME`, `GITHUB_BASE_REF`,
 `GITHUB_STEP_SUMMARY`, `GITHUB_EVENT_NAME` and `GITHUB_EVENT_PATH` on GitHub
 Actions, and `CI_PROJECT_PATH`, `CI_COMMIT_SHA`, `CI_COMMIT_REF_NAME` and
-`CI_MERGE_REQUEST_TARGET_BRANCH_NAME` on GitLab CI. A pull request from a fork
+`CI_MERGE_REQUEST_TARGET_BRANCH_NAME` on GitLab CI. On `pull_request` and
+`pull_request_target` events the commit and branch come from the pull request
+head in the event payload, not from `GITHUB_SHA` and `GITHUB_REF_NAME`, which
+name the temporary merge commit there. The report and the check run then name
+the commit the pull request lists. A pull request from a fork
 has no secrets, so with an empty API key the adapter logs a notice and exits 0.
 
 ### CVE details from external providers
