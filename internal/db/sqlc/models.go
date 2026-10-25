@@ -277,26 +277,6 @@ type Migration000037UserEmailOriginal struct {
 	Email string      `json:"email"`
 }
 
-type Migration000062Artifact struct {
-	ID           pgtype.UUID        `json:"id"`
-	ProjectID    pgtype.UUID        `json:"project_id"`
-	TargetID     pgtype.UUID        `json:"target_id"`
-	ArtifactType string             `json:"artifact_type"`
-	Name         string             `json:"name"`
-	Version      pgtype.Text        `json:"version"`
-	Digest       pgtype.Text        `json:"digest"`
-	Locator      pgtype.Text        `json:"locator"`
-	Metadata     []byte             `json:"metadata"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	SurvivorID   interface{}        `json:"survivor_id"`
-}
-
-type Migration000062ArtifactRef struct {
-	TableName  string      `json:"table_name"`
-	RowID      pgtype.UUID `json:"row_id"`
-	ArtifactID pgtype.UUID `json:"artifact_id"`
-}
-
 type OpenFinding struct {
 	ID                   pgtype.UUID        `json:"id"`
 	ProjectID            pgtype.UUID        `json:"project_id"`
