@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { type AnalysisState, isAnalysisState } from "@/lib/enums";
 import { GLOSSARY } from "@/lib/glossary";
-import { toExpiryTimestamp } from "@/pages/finding-detail/format";
+import { localDateValue, toExpiryTimestamp } from "@/pages/finding-detail/format";
 import { TRIAGE_GLOSSARY, TRIAGE_OPTIONS } from "@/pages/finding-detail/options";
 import { type FormEvent, useState } from "react";
 
@@ -37,7 +37,7 @@ export function BulkTriageDialog({ findingIds, open, onOpenChange, onApplied }: 
   const option = TRIAGE_OPTIONS.find((o) => o.value === state);
   const hintKey = state ? TRIAGE_GLOSSARY[state] : undefined;
   const hint = hintKey ? GLOSSARY[hintKey].short : null;
-  const minExpiryDate = new Date().toISOString().slice(0, 10);
+  const minExpiryDate = localDateValue();
   const ready = state !== ""
     && (!option?.requiresReason || reason.trim() !== "")
     && (!option?.requiresExpiry || expiresAt >= minExpiryDate);
