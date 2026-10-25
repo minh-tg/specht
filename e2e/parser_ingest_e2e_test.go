@@ -551,6 +551,20 @@ func TestE2E_CleanScanTargetKindIsStored(t *testing.T) {
 	require.Equal(t, "package", targets[0].Kind)
 }
 
+// Two scans naming one artifact without a digest resolve to one artifact row,
+// so an artifact-scoped waiver context keeps matching on the next scan.
+func TestE2E_DigestlessArtifactIsOneRowAcrossScans(t *testing.T) {
+	slug := newProject(t, "digestless-artifact")
+	for _, fixture := range []string{"trivy-alpine-scan.json", "trivy-empty-scan.json"} {
+		ingestRaw(t, slug, "trivy", fixture, map[string]any{
+			"artifact_name": "myapp", "artifact_type": "container_image",
+		})
+	}
+	artifacts := request[[]artifactRow](t, http.MethodGet,
+		"/api/v1/projects/"+slug+"/artifacts", adminToken, nil, http.StatusOK)
+	require.Len(t, artifacts, 1)
+}
+
 // An artifact named without a type takes its type from the scan, mapped onto
 // the stored vocabulary, and a type outside that vocabulary is refused before
 // anything is written.

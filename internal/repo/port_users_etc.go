@@ -871,7 +871,7 @@ func (r *pgArtifactPort) Upsert(ctx context.Context, input port.ArtifactInput) (
 	if err != nil {
 		return port.Artifact{}, err
 	}
-	row, err := r.q.UpsertArtifact(ctx, sqlc.UpsertArtifactParams{
+	params := sqlc.UpsertArtifactParams{
 		ProjectID:    pid,
 		TargetID:     uuidPtrFromString(&input.TargetID),
 		ArtifactType: input.ArtifactType,
@@ -880,7 +880,16 @@ func (r *pgArtifactPort) Upsert(ctx context.Context, input port.ArtifactInput) (
 		Digest:       textPtrFromString(input.Digest),
 		Locator:      textPtrFromString(input.Locator),
 		Metadata:     input.Metadata,
-	})
+	}
+	// With a digest the digest index is the identity, so it must be the
+	// conflict target: a second tag of one digest would otherwise raise
+	// 23505 there instead of updating the row.
+	var row sqlc.Artifact
+	if params.Digest.Valid {
+		row, err = r.q.UpsertArtifactByDigest(ctx, sqlc.UpsertArtifactByDigestParams(params))
+	} else {
+		row, err = r.q.UpsertArtifact(ctx, params)
+	}
 	if err != nil {
 		return port.Artifact{}, err
 	}

@@ -192,3 +192,55 @@ func (q *Queries) UpsertArtifact(ctx context.Context, arg UpsertArtifactParams) 
 	)
 	return i, err
 }
+
+const upsertArtifactByDigest = `-- name: UpsertArtifactByDigest :one
+INSERT INTO artifacts (project_id, target_id, artifact_type, name, version, digest, locator, metadata)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (project_id, artifact_type, digest) WHERE digest IS NOT NULL
+DO UPDATE SET
+    target_id = EXCLUDED.target_id,
+    version = EXCLUDED.version,
+    locator = EXCLUDED.locator,
+    metadata = EXCLUDED.metadata
+RETURNING id, project_id, target_id, artifact_type, name, version, digest, locator, metadata, created_at
+`
+
+type UpsertArtifactByDigestParams struct {
+	ProjectID    pgtype.UUID `json:"project_id"`
+	TargetID     pgtype.UUID `json:"target_id"`
+	ArtifactType string      `json:"artifact_type"`
+	Name         string      `json:"name"`
+	Version      pgtype.Text `json:"version"`
+	Digest       pgtype.Text `json:"digest"`
+	Locator      pgtype.Text `json:"locator"`
+	Metadata     []byte      `json:"metadata"`
+}
+
+// A digest identifies the content, so a second tag of one image is the same
+// artifact: the row keeps its first name and takes the newest scan's fields.
+func (q *Queries) UpsertArtifactByDigest(ctx context.Context, arg UpsertArtifactByDigestParams) (Artifact, error) {
+	row := q.db.QueryRow(ctx, upsertArtifactByDigest,
+		arg.ProjectID,
+		arg.TargetID,
+		arg.ArtifactType,
+		arg.Name,
+		arg.Version,
+		arg.Digest,
+		arg.Locator,
+		arg.Metadata,
+	)
+	var i Artifact
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.TargetID,
+		&i.ArtifactType,
+		&i.Name,
+		&i.Version,
+		&i.Digest,
+		&i.Locator,
+		&i.Metadata,
+		&i.CreatedAt,
+	)
+	return i, err
+}
