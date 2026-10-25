@@ -18,6 +18,7 @@ import (
 
 	"github.com/minh-tg/specht/internal/cvss"
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/parser/parseutil"
 )
 
 const (
@@ -285,13 +286,31 @@ func assembleCreatedDecision(input DecideInput, primary string, aliases []string
 
 	return Decision{
 		Created: true,
-		Finding: finding,
+		Finding: hardenPayload(finding),
 		Event: &Event{
 			EventType: EventAutoRuleApplied,
 			Changes:   eventChanges(input.Advisory.ID, ""),
 		},
 		Evidence: evidence,
 	}
+}
+
+// hardenPayload applies the bounds scanner findings get from
+// parseutil.HardenFinding to a watcher finding. Title, description,
+// remediation, dimensions and display all come from the OSV record, which
+// is as untrusted as a scanner report: an oversized or hostile advisory
+// must not produce oversized rows or notification payloads.
+func hardenPayload(f FindingPayload) FindingPayload {
+	f.Title = parseutil.SanitizeText(f.Title, parseutil.MaxTitleLength)
+	f.Description = parseutil.SanitizeText(f.Description, parseutil.MaxDescriptionLength)
+	f.Remediation = parseutil.SanitizeText(f.Remediation, parseutil.MaxDescriptionLength)
+	for i := range f.Dimensions {
+		f.Dimensions[i].Key = parseutil.SanitizeText(f.Dimensions[i].Key, 64)
+		f.Dimensions[i].Value = parseutil.SanitizeText(f.Dimensions[i].Value, parseutil.MaxDimensionValueLength)
+	}
+	f.Display = parseutil.HardenExtensions(f.Display)
+	f.Metadata = parseutil.HardenExtensions(f.Metadata)
+	return f
 }
 
 func DecideFinding(ctx context.Context, input DecideInput, gapCheck GapCheck) (Decision, error) {

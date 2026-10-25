@@ -1,11 +1,19 @@
 package watcher
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/minh-tg/specht/internal/parser/parseutil"
 )
 
 // Test fixtures reuse the matcher's real-advisory shapes (see matcher_test.go)
@@ -536,6 +544,54 @@ func TestDecideFinding_IgnoresAffectedEntryForOtherPackage(t *testing.T) {
 	if !dec.Created {
 		t.Fatalf("babel-traverse 6.26.0 skipped: %s", dec.SkipReason)
 	}
+}
+
+func TestDecideFinding_BoundsOversizedAdvisoryText(t *testing.T) {
+	ad := log4jAdvisory
+	ad.Summary = strings.Repeat("s", 10_000) + "\x00"
+	ad.Details = strings.Repeat("d", 200_000)
+	ad.Aliases = append([]string{strings.Repeat("A", 5000)}, ad.Aliases...)
+	ad.Refs = nil
+	for i := range 2000 {
+		ad.Refs = append(ad.Refs, AdvisoryRef{URL: fmt.Sprintf("https://example.com/advisory/%04d", i)})
+	}
+	input := log4jInput
+	input.Advisory = ad
+
+	dec, err := DecideFinding(context.Background(), input, stubGapCheck(false, nil))
+	require.NoError(t, err)
+	require.True(t, dec.Created, dec.SkipReason)
+	f := dec.Finding
+	assert.LessOrEqual(t, len(f.Title), parseutil.MaxTitleLength)
+	assert.NotContains(t, f.Title, "\x00")
+	assert.LessOrEqual(t, len(f.Description), parseutil.MaxDescriptionLength)
+	for _, d := range f.Dimensions {
+		assert.LessOrEqual(t, len(d.Value), parseutil.MaxDimensionValueLength, d.Key)
+	}
+	for name, m := range map[string]map[string]any{"display": f.Display, "metadata": f.Metadata} {
+		b, err := json.Marshal(m)
+		require.NoError(t, err)
+		assert.LessOrEqual(t, len(b), parseutil.MaxExtensionsBytes, name)
+		assert.Equal(t, true, m["_truncated"], name)
+	}
+}
+
+func TestBuildOccurrence_OmitsOversizedRawAdvisory(t *testing.T) {
+	small := Decision{Finding: FindingPayload{Title: "t"}, Evidence: []byte(`{"id":"GHSA-1"}`)}
+	occ, err := buildOccurrence(small, time.Unix(0, 0))
+	require.NoError(t, err)
+	var meta map[string]any
+	require.NoError(t, json.Unmarshal(occ.Metadata, &meta))
+	assert.NotEmpty(t, meta[MetadataRawAdvisoryKey], "a normal advisory is kept byte-exact")
+
+	big := Decision{Finding: FindingPayload{Title: "t"}, Evidence: bytes.Repeat([]byte("x"), MaxRawAdvisoryBytes+1)}
+	occ, err = buildOccurrence(big, time.Unix(0, 0))
+	require.NoError(t, err)
+	meta = nil
+	require.NoError(t, json.Unmarshal(occ.Metadata, &meta))
+	assert.NotContains(t, meta, MetadataRawAdvisoryKey)
+	assert.Equal(t, true, meta[MetadataRawAdvisoryOmittedKey])
+	assert.Less(t, len(occ.Metadata), 1024)
 }
 
 func TestSamePackageName(t *testing.T) {

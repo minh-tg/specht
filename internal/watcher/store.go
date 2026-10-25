@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/minh-tg/specht/internal/parser/parseutil"
 	"github.com/minh-tg/specht/internal/port"
 )
 
@@ -30,6 +31,14 @@ const (
 	// MetadataRawAdvisoryKey is the occurrence.metadata key holding the
 	// base64-encoded raw querybatch bytes for the advisory.
 	MetadataRawAdvisoryKey = "raw_advisory"
+	// MetadataRawAdvisoryOmittedKey marks an occurrence whose raw advisory
+	// was larger than MaxRawAdvisoryBytes and was not stored. The bytes are
+	// provenance and only useful whole, so they are dropped, not cut.
+	MetadataRawAdvisoryOmittedKey = "raw_advisory_omitted"
+	// MaxRawAdvisoryBytes caps the raw advisory copied into an occurrence.
+	// Real OSV records are a few to a few tens of KiB; the HTTP client
+	// accepts up to 32 MiB, which must not land in one metadata row.
+	MaxRawAdvisoryBytes = 256 << 10
 )
 
 // pgPollStore persists through the port finding store inside one transaction
@@ -138,7 +147,10 @@ func buildOccurrence(d Decision, now time.Time) (port.OccurrenceInput, error) {
 	for k, v := range fp.Metadata {
 		metadata[k] = v
 	}
-	if len(d.Evidence) > 0 {
+	switch {
+	case len(d.Evidence) > MaxRawAdvisoryBytes:
+		metadata[MetadataRawAdvisoryOmittedKey] = true
+	case len(d.Evidence) > 0:
 		metadata[MetadataRawAdvisoryKey] = base64.StdEncoding.EncodeToString(d.Evidence)
 	}
 	metadataJSON, err := json.Marshal(metadata)
@@ -163,17 +175,17 @@ func buildOccurrence(d Decision, now time.Time) (port.OccurrenceInput, error) {
 
 // evidencePayload derives the evidence artifact fields for a created decision:
 // url = first advisory reference ("" when none), description = advisory
-// summary. Best-effort decode of the raw bytes; any failure yields empty
-// values rather than a failed poll.
+// summary, both bounded like scanner text. Best-effort decode of the raw
+// bytes; any failure yields empty values rather than a failed poll.
 func evidencePayload(d Decision) (url, description string) {
 	var advisory Advisory
 	if err := json.Unmarshal(d.Evidence, &advisory); err != nil {
 		return "", ""
 	}
 	if urls := advisoryURLs(advisory.Refs); len(urls) > 0 {
-		url = urls[0]
+		url = parseutil.SanitizeText(urls[0], parseutil.MaxPathLength)
 	}
-	return url, advisory.Summary
+	return url, parseutil.SanitizeText(advisory.Summary, parseutil.MaxTitleLength)
 }
 
 // emptyToNil maps an empty string to nil.
