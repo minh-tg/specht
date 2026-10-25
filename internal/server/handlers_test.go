@@ -1628,6 +1628,31 @@ func TestCORS_CustomOrigins(t *testing.T) {
 	assert.Equal(t, "https://app.example.com", w.Header().Get("Access-Control-Allow-Origin"))
 }
 
+// A separately hosted UI triages with PATCH and reads Retry-After and
+// X-Archived-Findings. The preflight refused PATCH and the browser hid both
+// headers from the page.
+func TestCORS_AllowsTriageAndExposesTheHeadersTheUIReads(t *testing.T) {
+	router := NewRouter(RouterConfig{Usecases: corsMock, CORSOrigins: "https://app.example.com", JWTAuth: testJWTAuth})
+
+	req := httptest.NewRequest("OPTIONS", "/api/v1/findings/00000000-0000-0000-0000-000000000021", nil)
+	req.Header.Set("Origin", "https://app.example.com")
+	req.Header.Set("Access-Control-Request-Method", "PATCH")
+	req.Header.Set("Access-Control-Request-Headers", "authorization,content-type")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, "https://app.example.com", w.Header().Get("Access-Control-Allow-Origin"))
+	assert.Contains(t, w.Header().Get("Access-Control-Allow-Methods"), "PATCH")
+
+	req = httptest.NewRequest("GET", "/api/v1/health", nil)
+	req.Header.Set("Origin", "https://app.example.com")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	exposed := strings.ToLower(w.Header().Get("Access-Control-Expose-Headers"))
+	for _, h := range []string{"x-total-count", "retry-after", "x-archived-findings", "x-request-id"} {
+		assert.Contains(t, exposed, h)
+	}
+}
+
 func TestCORS_DisallowedOrigin(t *testing.T) {
 	router := NewRouter(RouterConfig{Usecases: corsMock, CORSOrigins: "http://localhost:5173", JWTAuth: testJWTAuth})
 	req := httptest.NewRequest("OPTIONS", "/api/v1/health", nil)
