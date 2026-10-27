@@ -42,8 +42,18 @@ release, so this builds the server from source.
 
 Podman works too, with `podman compose` in place of `docker compose`. Rootless Podman
 also needs subordinate ID ranges for your user, or the build fails while unpacking the
-base images with `insufficient UIDs or GIDs available in user namespace`. Add the ranges
-once, then run `podman system migrate`:
+base images with `insufficient UIDs or GIDs available in user namespace`. Check the
+mapping first:
+
+```bash
+podman unshare cat /proc/self/uid_map
+```
+
+A second line with a size of 65536 means the ranges are in place. A single line means
+Podman maps only your own UID. If `grep "^$USER:" /etc/subuid /etc/subgid` already
+lists your user, the ranges were added after Podman started, and
+`podman system migrate` picks them up. Otherwise add a range that no other user in
+`/etc/subuid` owns, then migrate:
 
 ```bash
 sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 "$USER"
