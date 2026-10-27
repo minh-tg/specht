@@ -58,6 +58,10 @@ Without the override file, compose only pulls the image and never builds it.
 Until the first release is published there is no image to pull, so use the
 override for a first start.
 
+With Podman, run the same commands through `podman compose`. Rootless Podman
+needs subordinate ID ranges for your user before the build can unpack the base
+images. The [Quick start](../README.md#quick-start) gives the commands.
+
 ## 3. Configuration reference
 
 The server reads its settings from the environment. Compose forwards every

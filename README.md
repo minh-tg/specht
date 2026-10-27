@@ -40,6 +40,22 @@ The page a CI link opens: what the change introduced, where, and what to do abou
 You need Docker with the compose plugin. There is no published image until the first
 release, so this builds the server from source.
 
+Podman works too, with `podman compose` in place of `docker compose`. Rootless Podman
+also needs subordinate ID ranges for your user, or the build fails while unpacking the
+base images with `insufficient UIDs or GIDs available in user namespace`. Add the ranges
+once, then run `podman system migrate`:
+
+```bash
+sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 "$USER"
+podman system migrate
+```
+
+On NixOS, users with `isNormalUser = true` get a range by default
+(`autoSubUidGidRange`), and `nixos-rebuild switch` writes it to `/etc/subuid`. If
+your user is still missing there, set `users.users.<name>.subUidRanges` and
+`subGidRanges` in the system configuration instead of running `usermod`, because
+`usermod` changes do not survive a rebuild.
+
 ```bash
 git clone https://github.com/minh-tg/specht.git
 cd specht
