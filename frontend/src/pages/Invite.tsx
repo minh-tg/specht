@@ -31,14 +31,14 @@ function RoleSummary({ role }: { readonly role: InviteRole; }) {
   return (
     <>
       <div className="mt-3 flex flex-wrap items-baseline gap-2.5">
-        <span className="font-label border-border rounded border px-2 py-0.5 text-[0.6875rem]">
+        <span className="font-label border-border rounded border px-2 py-0.5 text-label">
           {role}
         </span>
-        <span className="text-muted-foreground text-sm">Your role in this project</span>
+        <span className="text-muted-foreground text-body">Your role in this project</span>
       </div>
       <ul
         aria-label={`What a ${role} can do`}
-        className="text-muted-foreground mt-3.5 grid gap-1.5 text-[0.8125rem]"
+        className="text-muted-foreground mt-3.5 grid gap-1.5 text-meta"
       >
         {ROLE_CAN[role].map((line) => (
           <li key={line} className="grid grid-cols-[1rem_1fr] gap-2">
@@ -58,7 +58,7 @@ function DeadLink() {
       title="This invite link does not work"
       subtitle="It may have been used, revoked or have expired. Ask the person who sent it for a new one."
     >
-      <Link to="/login" className="text-action text-sm underline underline-offset-4">
+      <Link to="/login" className="text-action text-body underline underline-offset-4">
         Go to sign in
       </Link>
     </AuthLayout>
@@ -183,7 +183,7 @@ export function Invite() {
       {formError && (
         <p
           role="alert"
-          className="bg-destructive/10 text-destructive mt-6 rounded-md px-3 py-2 text-sm"
+          className="bg-destructive/10 text-destructive mt-6 rounded-md px-3 py-2 text-body"
         >
           {formError}
         </p>
@@ -191,7 +191,7 @@ export function Invite() {
       {auth.token
         ? (
           <div className="mt-6 grid gap-4">
-            <p className="bg-muted text-muted-foreground rounded-md px-3.5 py-3 text-[0.8125rem]">
+            <p className="bg-muted text-muted-foreground rounded-md px-3.5 py-3 text-meta">
               {auth.email
                 ? (
                   <>
@@ -202,13 +202,13 @@ export function Invite() {
             </p>
             <Button
               size="lg"
-              className="h-10 w-full text-base"
+              className="h-10 w-full text-control"
               disabled={submitting}
               onClick={() => void handleJoin()}
             >
               {submitting ? "Joining…" : `Join ${invite.project_name}`}
             </Button>
-            <p className="text-muted-foreground text-[0.8125rem]">
+            <p className="text-muted-foreground text-meta">
               Not you?{" "}
               <button
                 type="button"
@@ -223,7 +223,7 @@ export function Invite() {
         : (
           <form onSubmit={handleCreate} noValidate className="mt-6 grid gap-4">
             {bound && (
-              <p className="bg-muted text-muted-foreground rounded-md px-3.5 py-3 text-[0.8125rem]">
+              <p className="bg-muted text-muted-foreground rounded-md px-3.5 py-3 text-meta">
                 This invitation is for one address. You can only join with <b>{invite.email}</b>.
               </p>
             )}
@@ -259,10 +259,15 @@ export function Invite() {
               required
               error={passwordError}
             />
-            <Button type="submit" size="lg" disabled={submitting} className="h-10 w-full text-base">
+            <Button
+              type="submit"
+              size="lg"
+              disabled={submitting}
+              className="h-10 w-full text-control"
+            >
               {submitting ? "Creating…" : "Create account and join"}
             </Button>
-            <p className="text-muted-foreground text-[0.8125rem]">
+            <p className="text-muted-foreground text-meta">
               Already have an account?{" "}
               <Link to={signInHref} className="text-action underline underline-offset-4">
                 Sign in to join

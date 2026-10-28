@@ -68,7 +68,7 @@ export function Register() {
         {error && (
           <p
             role="alert"
-            className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm"
+            className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-body"
           >
             {error}
           </p>
@@ -95,10 +95,10 @@ export function Register() {
           }}
           error={passwordError}
         />
-        <Button type="submit" size="lg" disabled={submitting} className="h-10 w-full text-base">
+        <Button type="submit" size="lg" disabled={submitting} className="h-10 w-full text-control">
           {submitting ? "Creating account..." : "Create account"}
         </Button>
-        <p className="text-muted-foreground text-[0.8125rem]">
+        <p className="text-muted-foreground text-meta">
           Already have an account?{" "}
           <Link to="/login" className="text-action underline underline-offset-4">Sign in</Link>
         </p>

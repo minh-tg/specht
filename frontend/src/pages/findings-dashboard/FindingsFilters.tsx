@@ -140,7 +140,7 @@ export function ClearFiltersButton({ onClear }: { onClear: () => void; }) {
   return (
     <button
       type="button"
-      className={`${INLINE_LINK} text-sm`}
+      className={`${INLINE_LINK} text-body`}
       onClick={onClear}
     >
       Clear filters

@@ -46,7 +46,7 @@ import { InvitesSection } from "./project-access/InvitesSection";
 /** The role as a word in an outline. The word carries the meaning; nothing relies on colour. */
 function RoleBadge({ role }: { role: ProjectRole; }) {
   return (
-    <span className="font-label border-border justify-self-start rounded border px-2 py-0.5 text-[0.6875rem]">
+    <span className="font-label border-border justify-self-start rounded border px-2 py-0.5 text-label">
       {role}
     </span>
   );
@@ -166,7 +166,7 @@ export function ProjectAccess() {
   return (
     <div className="space-y-8">
       {currentRole === "manager" && (
-        <div className="border border-ring/40 bg-ring/5 text-foreground rounded-lg p-3 text-sm flex items-center gap-2">
+        <div className="border border-ring/40 bg-ring/5 text-foreground rounded-lg p-3 text-body flex items-center gap-2">
           <ShieldCheckIcon aria-hidden="true" className="size-4 shrink-0" />
           <div>
             <strong>Manager Authority:</strong>{" "}
@@ -177,7 +177,7 @@ export function ProjectAccess() {
       )}
 
       {currentRole === "member" && (
-        <div className="border border-border bg-muted/50 text-muted-foreground rounded-lg p-3 text-sm flex items-center gap-2">
+        <div className="border border-border bg-muted/50 text-muted-foreground rounded-lg p-3 text-body flex items-center gap-2">
           <LockIcon aria-hidden="true" className="size-4 shrink-0" />
           <div>
             <strong>Read-Only Member View:</strong>{" "}
@@ -192,11 +192,11 @@ export function ProjectAccess() {
           <div>
             <h2 id="members-heading" className="flex items-center gap-2 text-section font-semibold">
               Direct Members
-              <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-normal tabular-nums">
+              <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-meta font-normal tabular-nums">
                 {members?.length ?? 0}
               </span>
             </h2>
-            <p className="text-muted-foreground mt-0.5 max-w-[60ch] text-sm">
+            <p className="text-muted-foreground mt-0.5 max-w-[60ch] text-body">
               Individual contributors with explicit access grants on this project.
             </p>
           </div>
@@ -244,13 +244,13 @@ export function ProjectAccess() {
                         <div className="min-w-0">
                           <p className="truncate font-semibold">{name}</p>
                           {email && email !== name && (
-                            <p className="text-muted-foreground truncate text-[0.8125rem]">
+                            <p className="text-muted-foreground truncate text-meta">
                               {email}
                             </p>
                           )}
                         </div>
                         <RoleBadge role={member.role} />
-                        <span className="text-muted-foreground text-[0.8125rem]">
+                        <span className="text-muted-foreground text-meta">
                           Added {new Date(member.created_at).toLocaleDateString()}
                         </span>
                         <div className="sm:text-right">
@@ -270,21 +270,21 @@ export function ProjectAccess() {
                                 </Button>
                               </DisabledReason>
                             )
-                            : <span className="text-muted-foreground text-xs">View only</span>}
+                            : <span className="text-muted-foreground text-meta">View only</span>}
                         </div>
                       </li>
                     );
                   })
                 )
                 : (
-                  <li className="text-muted-foreground border-border border-b py-5 text-sm">
+                  <li className="text-muted-foreground border-border border-b py-5 text-body">
                     No direct members granted yet.
                   </li>
                 )}
             </ul>
           )}
         {removeMemberMutation.isError && (
-          <p role="alert" className="text-destructive mt-2 text-xs">
+          <p role="alert" className="text-destructive mt-2 text-meta">
             {removeMemberMutation.error?.message ?? "Failed to remove member"}
           </p>
         )}
@@ -297,11 +297,11 @@ export function ProjectAccess() {
           <div>
             <h2 id="teams-heading" className="flex items-center gap-2 text-section font-semibold">
               Linked Teams
-              <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-normal tabular-nums">
+              <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-meta font-normal tabular-nums">
                 {teams?.length ?? 0}
               </span>
             </h2>
-            <p className="text-muted-foreground mt-0.5 max-w-[60ch] text-sm">
+            <p className="text-muted-foreground mt-0.5 max-w-[60ch] text-body">
               Company-wide teams linked to delegate blanket role access.
             </p>
           </div>
@@ -356,21 +356,21 @@ export function ProjectAccess() {
                                 </Button>
                               </DisabledReason>
                             )
-                            : <span className="text-muted-foreground text-xs">View only</span>}
+                            : <span className="text-muted-foreground text-meta">View only</span>}
                         </div>
                       </li>
                     );
                   })
                 )
                 : (
-                  <li className="text-muted-foreground border-border border-b py-5 text-sm">
+                  <li className="text-muted-foreground border-border border-b py-5 text-body">
                     No company teams linked to this project.
                   </li>
                 )}
             </ul>
           )}
         {unlinkTeamMutation.isError && (
-          <p role="alert" className="text-destructive mt-2 text-xs">
+          <p role="alert" className="text-destructive mt-2 text-meta">
             {unlinkTeamMutation.error?.message ?? "Failed to unlink team"}
           </p>
         )}
@@ -389,7 +389,7 @@ export function ProjectAccess() {
             <div>
               <label
                 htmlFor="member-email-input"
-                className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
+                className="block text-meta font-semibold uppercase tracking-wider text-muted-foreground mb-1"
               >
                 Email address
               </label>
@@ -414,7 +414,7 @@ export function ProjectAccess() {
             <div>
               <label
                 htmlFor="member-role-select"
-                className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
+                className="block text-meta font-semibold uppercase tracking-wider text-muted-foreground mb-1"
               >
                 Project Role
               </label>
@@ -426,15 +426,15 @@ export function ProjectAccess() {
                 options={roleOptions(isAdmin)}
               />
               {!isAdmin && (
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-meta text-muted-foreground mt-1">
                   * Only Project Admins can grant the Admin role.
                 </p>
               )}
             </div>
 
-            {memberInputError && <p className="text-destructive text-xs">{memberInputError}</p>}
+            {memberInputError && <p className="text-destructive text-meta">{memberInputError}</p>}
             {addMemberMutation.isError && (
-              <p className="text-destructive text-xs">
+              <p className="text-destructive text-meta">
                 {addMemberMutation.error?.message ?? "Failed to add member"}
               </p>
             )}
@@ -463,7 +463,7 @@ export function ProjectAccess() {
             <div>
               <label
                 htmlFor="link-team-select"
-                className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
+                className="block text-meta font-semibold uppercase tracking-wider text-muted-foreground mb-1"
               >
                 Company Team
               </label>
@@ -483,7 +483,7 @@ export function ProjectAccess() {
             <div>
               <label
                 htmlFor="link-team-role-select"
-                className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
+                className="block text-meta font-semibold uppercase tracking-wider text-muted-foreground mb-1"
               >
                 Granted Role
               </label>
@@ -497,7 +497,7 @@ export function ProjectAccess() {
             </div>
 
             {linkTeamMutation.isError && (
-              <p className="text-destructive text-xs">
+              <p className="text-destructive text-meta">
                 {linkTeamMutation.error?.message ?? "Failed to link team"}
               </p>
             )}

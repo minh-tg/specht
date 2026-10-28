@@ -116,7 +116,7 @@ export function ProjectList() {
               : `${blockedRows.length} projects are blocked.`} Start with{" "}
             <span className="font-semibold">{startWith.name}</span>.
           </p>
-          <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+          <p className="text-muted-foreground text-meta font-semibold tracking-wide uppercase">
             Do this
           </p>
           <PrefetchLink
@@ -138,7 +138,7 @@ export function ProjectList() {
           </Link>
         </div>
       )}
-      <p className="text-muted-foreground text-xs sm:hidden">
+      <p className="text-muted-foreground text-meta sm:hidden">
         Swipe the table sideways to see every column.
       </p>
       {/* Wider than a phone, so the table scrolls inside this region, which the keyboard can focus. */}
@@ -148,7 +148,7 @@ export function ProjectList() {
         tabIndex={0}
         className="focus-visible:ring-ring/50 overflow-x-auto outline-none focus-visible:ring-3"
       >
-        <table className="w-full text-sm">
+        <table className="w-full text-body">
           <caption className="sr-only">Projects</caption>
           <ProjectTableHead />
           <tbody>
@@ -195,7 +195,7 @@ function ProjectTableHead() {
 function ProjectTableSkeleton() {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="w-full text-body">
         <caption className="sr-only">Projects</caption>
         <ProjectTableHead />
         <tbody>
@@ -243,10 +243,10 @@ function ProjectTableRow({ row }: { readonly row: ProjectRowData; }) {
           {project.name}
         </PrefetchLink>
         {project.description && (
-          <p className="text-muted-foreground text-xs">{project.description}</p>
+          <p className="text-muted-foreground text-meta">{project.description}</p>
         )}
         {degraded && (
-          <p className="bg-sev-high-bg text-sev-high-fg mt-1 inline-block rounded px-2 py-0.5 text-xs">
+          <p className="bg-sev-high-bg text-sev-high-fg mt-1 inline-block rounded px-2 py-0.5 text-meta">
             {degraded}
           </p>
         )}

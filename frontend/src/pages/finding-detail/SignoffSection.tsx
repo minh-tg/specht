@@ -65,20 +65,20 @@ export function SignoffSection({
   } else if (isError) {
     body = <ErrorState title="Could not load the sign-off." onRetry={() => void refetch()} />;
   } else if (!signoff) {
-    body = <p className="text-muted-foreground text-sm">Not signed off yet.</p>;
+    body = <p className="text-muted-foreground text-body">Not signed off yet.</p>;
   } else {
     body = (
-      <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
-        <dt className="text-muted-foreground text-xs">Decision</dt>
+      <dl className="grid gap-x-6 gap-y-2 text-body sm:grid-cols-[auto_1fr]">
+        <dt className="text-muted-foreground text-meta">Decision</dt>
         <dd className="font-medium">{decisionLabel(signoff.status)}</dd>
         {signoff.comment && (
           <>
-            <dt className="text-muted-foreground text-xs">Note</dt>
+            <dt className="text-muted-foreground text-meta">Note</dt>
             <dd className="break-words">{signoff.comment}</dd>
           </>
         )}
-        <dt className="text-muted-foreground text-xs">Recorded</dt>
-        <dd className="text-muted-foreground text-xs">
+        <dt className="text-muted-foreground text-meta">Recorded</dt>
+        <dd className="text-muted-foreground text-meta">
           <span>by {actorLabel({ user_id: signoff.reviewed_by }, { me, directory })}</span>
           {" · "}
           <span className="tabular-nums">{formatDateTime(signoff.updated_at)}</span>
@@ -110,7 +110,7 @@ export function SignoffSection({
             />
           </div>
           <div>
-            <label htmlFor="signoff-note" className="text-muted-foreground mb-1 block text-xs">
+            <label htmlFor="signoff-note" className="text-muted-foreground mb-1 block text-meta">
               Note
             </label>
             <Textarea

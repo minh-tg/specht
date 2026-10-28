@@ -18,7 +18,7 @@ export function SettingLine({ title, help, children }: {
     >
       <div>
         <h3 id={headingId} className="text-body font-semibold">{title}</h3>
-        <p className="text-muted-foreground mt-0.5 max-w-[62ch] text-[0.8125rem]">{help}</p>
+        <p className="text-muted-foreground mt-0.5 max-w-[62ch] text-meta">{help}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2.5">{children}</div>
     </div>

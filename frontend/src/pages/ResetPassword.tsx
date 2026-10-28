@@ -10,7 +10,7 @@ import { Link, useParams } from "react-router-dom";
 
 function SignInLink() {
   return (
-    <Link to="/login" className="text-action text-sm underline underline-offset-4">
+    <Link to="/login" className="text-action text-body underline underline-offset-4">
       Go to sign in
     </Link>
   );
@@ -92,7 +92,7 @@ export function ResetPassword() {
         {formError && (
           <p
             role="alert"
-            className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm"
+            className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-body"
           >
             {formError}
           </p>
@@ -124,7 +124,7 @@ export function ResetPassword() {
           type="submit"
           size="lg"
           disabled={reset.isPending}
-          className="h-10 w-full text-base"
+          className="h-10 w-full text-control"
         >
           {reset.isPending ? "Saving…" : "Set password"}
         </Button>

@@ -9,7 +9,7 @@ export function OutcomeRegions({ label, error }: {
   readonly error: string | null;
 }) {
   return (
-    <div role="alert" aria-label={`${label} error`} className="text-destructive text-xs">
+    <div role="alert" aria-label={`${label} error`} className="text-destructive text-meta">
       {error && <p className="mt-2">{error}</p>}
     </div>
   );

@@ -9,7 +9,7 @@ export function OpenRegistrationNote() {
   const capabilities = useCapabilities();
   if (capabilities.data?.registration?.enabled !== true) return null;
   return (
-    <p className="text-muted-foreground mt-1 text-xs">
+    <p className="text-muted-foreground mt-1 text-meta">
       Sign-up is open on this server, so anyone could have created an account with this address.
       Make sure it belongs to the person you mean.
     </p>

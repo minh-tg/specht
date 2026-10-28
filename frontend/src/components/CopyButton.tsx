@@ -24,7 +24,7 @@ export function CopyButton({ text, label, className }: {
         aria-label={`${word} ${label}`}
         onClick={() => void copy(text)}
         className={cn(
-          "text-action hover:text-action/80 inline-flex min-h-6 shrink-0 items-center rounded-md px-2 py-1 text-xs font-medium",
+          "text-action hover:text-action/80 inline-flex min-h-6 shrink-0 items-center rounded-md px-2 py-1 text-meta font-medium",
           className,
         )}
       >
@@ -32,7 +32,7 @@ export function CopyButton({ text, label, className }: {
       </button>
       <span
         role="status"
-        className={status === "failed" ? "text-destructive text-xs" : "sr-only"}
+        className={status === "failed" ? "text-destructive text-meta" : "sr-only"}
       >
         {status === "copied" ? `${label} copied` : ""}
         {status === "failed"

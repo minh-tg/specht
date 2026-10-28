@@ -26,13 +26,13 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     return (
       <div role="alert" className="mx-auto max-w-5xl px-4 py-8">
         <h1 className="text-title font-bold">Something went wrong</h1>
-        <p className="text-muted-foreground mt-2 text-sm">
+        <p className="text-muted-foreground mt-2 text-body">
           Reload the page to try again. If it keeps happening, check the server logs.
         </p>
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 mt-4 rounded-md px-4 py-2 text-sm font-medium"
+          className="bg-primary text-primary-foreground hover:bg-primary/90 mt-4 rounded-md px-4 py-2 text-body font-medium"
         >
           Reload
         </button>

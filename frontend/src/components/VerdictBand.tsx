@@ -68,7 +68,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
           <p role="alert">{"Couldn't load the verdict."}</p>
           <button
             type="button"
-            className={`${INLINE_LINK} text-sm`}
+            className={`${INLINE_LINK} text-body`}
             onClick={() => {
               if (gateQuery.isError) void gateQuery.refetch();
               if (statsQuery.isError) void statsQuery.refetch();
@@ -119,14 +119,14 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
       {isDegraded(stats) && (
         <p
           role="alert"
-          className="border-destructive text-destructive mb-3 rounded border px-3 py-2 text-sm"
+          className="border-destructive text-destructive mb-3 rounded border px-3 py-2 text-body"
         >
           {degradedMessage(stats)}
         </p>
       )}
 
       {(gateQuery.isRefetchError || statsQuery.isRefetchError) && (
-        <p role="alert" className="text-destructive mb-3 text-sm">
+        <p role="alert" className="text-destructive mb-3 text-body">
           Could not refresh project data. Showing the last fetched data.{" "}
           <button
             type="button"
@@ -145,12 +145,12 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
         <VerdictBadge verdict={verdict} />
         <p role="status" className="tabular-nums">{verdictSentence(verdict, blockers)}</p>
         {waived > 0 && (
-          <span className="text-muted-foreground text-sm tabular-nums">· {waived} waived</span>
+          <span className="text-muted-foreground text-body tabular-nums">· {waived} waived</span>
         )}
         {isAdmin && (
           <Link
             to={`/${slug}/setup`}
-            className="text-muted-foreground hover:text-foreground ml-auto text-xs"
+            className="text-muted-foreground hover:text-foreground ml-auto text-meta"
           >
             CI setup
           </Link>
@@ -158,7 +158,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
       </div>
 
       {policy && (
-        <p className="text-muted-foreground mt-1 text-sm">
+        <p className="text-muted-foreground mt-1 text-body">
           Floor: {policy.severity_floor} ({policy.severity_source})
           <InfoTip term="severityFloor" className="ml-1" />
         </p>
@@ -169,7 +169,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
       />
 
       {verdict === "no_scans" && (
-        <p className="text-muted-foreground mt-2 text-sm">
+        <p className="text-muted-foreground mt-2 text-body">
           Upload a report or send one from CI.{" "}
           <Link
             to={`/${slug}/reports/upload`}
@@ -201,7 +201,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
               className="inline-flex items-center gap-1"
             >
               <SeverityBadge severity={severity} />
-              <span className="text-sm">{count}</span>
+              <span className="text-body">{count}</span>
             </Link>
           ))}
           {triageCounts.map(({ label, count }) =>
@@ -210,13 +210,13 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
                 <Link
                   key={label}
                   to={`/${slug}/findings?${NEEDS_TRIAGE_QUERY}`}
-                  className={`${INLINE_LINK} inline-flex min-h-8 items-center text-sm`}
+                  className={`${INLINE_LINK} inline-flex min-h-8 items-center text-body`}
                 >
                   {label} {count}
                 </Link>
               )
               : (
-                <span key={label} className="text-muted-foreground text-sm">
+                <span key={label} className="text-muted-foreground text-body">
                   {label} {count}
                 </span>
               )

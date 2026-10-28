@@ -107,12 +107,12 @@ export function FindingsTable(
             {f.current_title}
           </PrefetchLink>
           {blocksGate(f, gate)?.blocks && (
-            <span className="text-destructive ml-2 text-xs font-medium">Blocks gate</span>
+            <span className="text-destructive ml-2 text-meta font-medium">Blocks gate</span>
           )}
-          <p className="text-muted-foreground mt-0.5 hidden font-mono text-xs md:block">
+          <p className="text-muted-foreground mt-0.5 hidden font-mono text-code md:block">
             {findingKindLabel(f.finding_kind) ?? EMPTY_VALUE}
           </p>
-          <p className="text-muted-foreground mt-0.5 text-xs md:hidden">{compactMeta(f)}</p>
+          <p className="text-muted-foreground mt-0.5 text-meta md:hidden">{compactMeta(f)}</p>
         </>
       ),
     },
@@ -120,7 +120,7 @@ export function FindingsTable(
       id: "where",
       header: "Where",
       hideBelow: "md",
-      cellClassName: "max-w-[22rem] font-mono text-xs",
+      cellClassName: "max-w-[22rem] font-mono text-code",
       cell: (f) => <span title={locationText(f.location)}>{locationText(f.location)}</span>,
     },
     {

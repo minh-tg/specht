@@ -11,7 +11,7 @@ export function SourceTag({ source }: { readonly source: PolicySource; }) {
     <span
       data-source={source}
       className={cn(
-        "font-label rounded border px-2 py-0.5 text-[0.6875rem]",
+        "font-label rounded border px-2 py-0.5 text-label",
         source === "override"
           ? "border-foreground bg-foreground text-background"
           : "border-border text-muted-foreground",
@@ -93,7 +93,7 @@ export function PolicyRow({
         )
         : (
           <>
-            <b className="text-[0.9375rem]">{optionLabel(options, value)}</b>
+            <b className="text-body">{optionLabel(options, value)}</b>
             {editable && (
               <Button
                 size="sm"

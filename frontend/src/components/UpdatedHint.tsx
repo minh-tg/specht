@@ -93,7 +93,7 @@ export function UpdatedHint({ updatedAt, watch, isFetching, onRefresh, className
 
   if (updatedAt === 0) return null;
   return (
-    <div className={className ?? "text-muted-foreground flex items-center gap-2 text-xs"}>
+    <div className={className ?? "text-muted-foreground flex items-center gap-2 text-meta"}>
       <span>Page data fetched {updatedAgo(now - updatedAt)}</span>
       {/* aria-disabled, not disabled: a disabled button drops the focus the person just put on it. */}
       <Button

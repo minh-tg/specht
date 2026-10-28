@@ -129,14 +129,16 @@ export function ReportHistory({ uploadAction }: { readonly uploadAction?: ReactN
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="bg-muted text-muted-foreground inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium">
+                <span className="bg-muted text-muted-foreground inline-flex items-center rounded-md px-2 py-0.5 text-meta font-medium">
                   {r.tool_name}
                 </span>
-                {r.scan_target && <p className="text-muted-foreground text-xs">{r.scan_target}</p>}
+                {r.scan_target && (
+                  <p className="text-muted-foreground text-meta">{r.scan_target}</p>
+                )}
               </div>
               <span
                 className={cn(
-                  "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
+                  "inline-flex items-center rounded-full px-2.5 py-0.5 text-meta font-medium",
                   status.style,
                 )}
               >
@@ -147,10 +149,10 @@ export function ReportHistory({ uploadAction }: { readonly uploadAction?: ReactN
               </span>
             </div>
             {r.status === "failed" && r.error_message && (
-              <p className="text-muted-foreground mt-1 text-xs break-words">{r.error_message}</p>
+              <p className="text-muted-foreground mt-1 text-meta break-words">{r.error_message}</p>
             )}
             {(r.branch || r.commit_sha) && (
-              <p className="text-muted-foreground mt-1 font-mono text-xs">
+              <p className="text-muted-foreground mt-1 font-mono text-code">
                 {r.branch && <span>{r.branch}</span>}
                 {r.branch && r.commit_sha && " · "}
                 {r.commit_sha && (
@@ -166,7 +168,7 @@ export function ReportHistory({ uploadAction }: { readonly uploadAction?: ReactN
               </p>
             )}
             <div className="mt-2 flex items-center justify-between">
-              <div className="text-muted-foreground text-xs tabular-nums">
+              <div className="text-muted-foreground text-meta tabular-nums">
                 {formatDateTime(r.created_at)}
                 {r.total_findings != null && (
                   <span className="ml-3 tabular-nums">
@@ -182,7 +184,7 @@ export function ReportHistory({ uploadAction }: { readonly uploadAction?: ReactN
                     deleteMutation.reset();
                     setPendingDelete(r);
                   }}
-                  className="text-destructive hover:text-destructive/80 text-xs font-medium"
+                  className="text-destructive hover:text-destructive/80 text-meta font-medium"
                 >
                   Delete
                 </button>
@@ -229,7 +231,7 @@ export function ReportHistory({ uploadAction }: { readonly uploadAction?: ReactN
                 )}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {deleteError && <p role="alert" className="text-destructive text-sm">{deleteError}</p>}
+          {deleteError && <p role="alert" className="text-destructive text-body">{deleteError}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
             <AlertDialogAction

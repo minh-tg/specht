@@ -99,7 +99,7 @@ export function FindingsDashboard() {
     <div className="space-y-4">
       <nav
         aria-label="Finding quick views"
-        className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm"
+        className="flex flex-wrap items-center gap-x-4 gap-y-1 text-body"
       >
         <span className="text-muted-foreground">Quick views</span>
         <Link
@@ -124,7 +124,7 @@ export function FindingsDashboard() {
       />
 
       <UpdatedHint
-        className="text-muted-foreground flex items-center justify-end gap-2 text-xs"
+        className="text-muted-foreground flex items-center justify-end gap-2 text-meta"
         updatedAt={dataUpdatedAt}
         watch={[data]}
         isFetching={isFetching || gateQuery.isFetching || statsQuery.isFetching}
@@ -152,11 +152,11 @@ export function FindingsDashboard() {
 
         {!isLoading && isError && (
           <div className="flex flex-col items-center gap-2 py-16">
-            <p className="text-destructive text-sm">
+            <p className="text-destructive text-body">
               {error?.message ?? "Failed to load findings"}
             </p>
             <button
-              className={`${INLINE_LINK} text-sm`}
+              className={`${INLINE_LINK} text-body`}
               onClick={() => refetch()}
             >
               Retry
@@ -169,14 +169,16 @@ export function FindingsDashboard() {
             {hasFilters
               ? (
                 <>
-                  <p className="text-muted-foreground text-sm">No findings match these filters.</p>
+                  <p className="text-muted-foreground text-body">
+                    No findings match these filters.
+                  </p>
                   <ClearFiltersButton onClear={clearFilters} />
                 </>
               )
               : (
                 <>
-                  <p className="text-muted-foreground text-sm">No findings found</p>
-                  <p className="text-muted-foreground text-xs">
+                  <p className="text-muted-foreground text-body">No findings found</p>
+                  <p className="text-muted-foreground text-meta">
                     Findings appear here once a report is uploaded or sent from CI.
                   </p>
                 </>

@@ -51,8 +51,8 @@ export function WhyItBlocks({ severity, gateResult, floor }: {
       style={{ borderLeftColor: edge }}
       className="bg-muted mt-5 grid gap-1 rounded-md border-l-4 py-3 pr-4 pl-4"
     >
-      <h2 className="font-label text-muted-foreground text-[0.6875rem]">{heading}</h2>
-      <p className="text-sm">{text}</p>
+      <h2 className="font-label text-muted-foreground text-label">{heading}</h2>
+      <p className="text-body">{text}</p>
     </section>
   );
 }

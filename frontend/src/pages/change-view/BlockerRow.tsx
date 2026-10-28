@@ -46,11 +46,11 @@ export function BlockerRowView(
   if (isError || !finding) {
     return (
       <Row>
-        <p className="text-sm">
+        <p className="text-body">
           Could not load this finding{" "}
-          <span className="text-muted-foreground font-mono text-xs">{findingId}</span>
+          <span className="text-muted-foreground font-mono text-code">{findingId}</span>
         </p>
-        <button type="button" className={`${INLINE_LINK} mt-1 text-sm`} onClick={onRetry}>
+        <button type="button" className={`${INLINE_LINK} mt-1 text-body`} onClick={onRetry}>
           Retry
         </button>
       </Row>
@@ -71,19 +71,19 @@ export function BlockerRowView(
         <Link to={target} className="font-medium hover:underline">
           {finding.current_title}
         </Link>
-        <Link to={target} className={`${INLINE_LINK} ml-auto text-sm`}>
+        <Link to={target} className={`${INLINE_LINK} ml-auto text-body`}>
           Decide
         </Link>
       </div>
-      {location && <p className="text-muted-foreground mt-1 font-mono text-xs">{location}</p>}
+      {location && <p className="text-muted-foreground mt-1 font-mono text-code">{location}</p>}
       <div className="mt-2 rounded-md border px-3 py-2">
-        <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+        <p className="text-muted-foreground text-meta font-semibold tracking-wide uppercase">
           Do this
         </p>
         {action
-          ? <p className="text-sm font-semibold">{action}</p>
+          ? <p className="text-body font-semibold">{action}</p>
           : (
-            <p className="text-sm">
+            <p className="text-body">
               <span className="font-semibold">No automated fix is known.</span>{" "}
               Open it to decide what to do.
             </p>

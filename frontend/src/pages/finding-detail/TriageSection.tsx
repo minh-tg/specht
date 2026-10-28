@@ -104,11 +104,11 @@ export function TriageSection({
         </Button>
       </div>
       {!canTriage && !roleLoading && (
-        <p className="text-muted-foreground mt-2 text-xs">
+        <p className="text-muted-foreground mt-2 text-meta">
           Requires Project Manager role to triage findings or request waivers.
         </p>
       )}
-      {hint && <p id="triage-hint" className="text-muted-foreground mt-2 text-sm">{hint}</p>}
+      {hint && <p id="triage-hint" className="text-muted-foreground mt-2 text-body">{hint}</p>}
       <OutcomeRegions
         label="Triage result"
         error={triageMutation.isError ? triageMutation.error.message : null}

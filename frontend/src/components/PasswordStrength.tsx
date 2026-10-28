@@ -53,7 +53,7 @@ export function PasswordStrength({ value, active, userInputs = [] }: {
   const advice = result.feedback.warning ?? result.feedback.suggestions[0] ?? null;
 
   return (
-    <div className="grid gap-1 text-[0.8125rem]">
+    <div className="grid gap-1 text-meta">
       <Meter.Root
         value={levelIndex + 1}
         min={0}

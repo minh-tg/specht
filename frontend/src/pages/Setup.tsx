@@ -108,7 +108,7 @@ export function Setup() {
         {formError && (
           <p
             role="alert"
-            className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm"
+            className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-body"
           >
             {formError}
           </p>
@@ -116,7 +116,7 @@ export function Setup() {
         <fieldset className="grid gap-4 border-t-2 border-foreground pt-5">
           <legend className="sr-only">Prove you run this server</legend>
           <h2 className="text-section font-semibold" aria-hidden="true">
-            <span className="text-muted-foreground mr-3 font-mono text-sm font-normal">01</span>
+            <span className="text-muted-foreground mr-3 font-mono text-body font-normal">01</span>
             Prove you run this server
           </h2>
           <FormField
@@ -140,7 +140,7 @@ export function Setup() {
         <fieldset className="grid gap-4 border-t border-border pt-5">
           <legend className="sr-only">Create the administrator</legend>
           <h2 className="text-section font-semibold" aria-hidden="true">
-            <span className="text-muted-foreground mr-3 font-mono text-sm font-normal">02</span>
+            <span className="text-muted-foreground mr-3 font-mono text-body font-normal">02</span>
             Create the administrator
           </h2>
           <FormField
@@ -174,10 +174,10 @@ export function Setup() {
             error={passwordError}
           />
         </fieldset>
-        <Button type="submit" size="lg" disabled={submitting} className="h-10 w-full text-base">
+        <Button type="submit" size="lg" disabled={submitting} className="h-10 w-full text-control">
           {submitting ? "Creating…" : "Create administrator"}
         </Button>
-        <p className="text-muted-foreground text-[0.8125rem]">
+        <p className="text-muted-foreground text-meta">
           Later, bring people in from a project's Access page with invite links. No email server is
           needed.
         </p>

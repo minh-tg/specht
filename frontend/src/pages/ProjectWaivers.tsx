@@ -101,7 +101,7 @@ export function ProjectWaivers() {
     <section aria-labelledby="waivers-heading" className="grid gap-5">
       <div>
         <h2 id="waivers-heading" className="text-section font-semibold">Waivers</h2>
-        <p className="text-muted-foreground mt-0.5 text-sm">
+        <p className="text-muted-foreground mt-0.5 text-body">
           <span className="tabular-nums">{counts.pending}</span> waiting for a decision ·{" "}
           <span className="tabular-nums">{counts.in_force}</span> in force
         </p>
@@ -127,7 +127,7 @@ export function ProjectWaivers() {
             tabIndex={tab === bucket ? 0 : -1}
             onClick={() => select(bucket)}
             className={cn(
-              "-mb-px h-10 border-b-2 px-3 text-sm font-medium",
+              "-mb-px h-10 border-b-2 px-3 text-body font-medium",
               tab === bucket
                 ? "border-foreground text-foreground"
                 : "text-muted-foreground hover:text-foreground border-transparent",
@@ -147,7 +147,7 @@ export function ProjectWaivers() {
       >
         {shown.length === 0
           ? (
-            <p className="text-muted-foreground border-foreground border-t-2 py-6 text-sm">
+            <p className="text-muted-foreground border-foreground border-t-2 py-6 text-body">
               {EMPTY_TEXT[tab]}
             </p>
           )
@@ -187,7 +187,10 @@ export function ProjectWaivers() {
       </div>
 
       {failure && (
-        <p role="alert" className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm">
+        <p
+          role="alert"
+          className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-body"
+        >
           {failure.message || "Could not change the waiver."}
         </p>
       )}

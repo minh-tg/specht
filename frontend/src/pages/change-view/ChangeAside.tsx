@@ -39,14 +39,14 @@ export function ChangeAside(
       className="border-border grid content-start gap-3.5 lg:border-l lg:pl-6"
     >
       <h2 className="text-section leading-tight font-semibold">Smallest safe actions</h2>
-      <p className="text-muted-foreground text-[13px]">
+      <p className="text-muted-foreground text-meta">
         {done} of {items.length} handled
       </p>
       <HoleTracker total={items.length} filled={done} />
       <ul className="m-0 grid list-none gap-1 p-0">
         {items.map((item) => (
           <li key={item.id}>
-            <label className="-mx-2 flex min-h-[40px] cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-muted/60">
+            <label className="-mx-2 flex min-h-[40px] cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-body hover:bg-muted/60">
               <input
                 type="checkbox"
                 checked={item.handled}
@@ -67,7 +67,7 @@ export function ChangeAside(
           {status === "copied" ? "Copied" : status === "failed" ? "Copy failed" : "Copy all fixes"}
         </Button>
       )}
-      <div className="border-border border-t pt-3.5 text-[13px]">
+      <div className="border-border border-t pt-3.5 text-meta">
         <p className="font-semibold">After a fix</p>
         <p className="text-muted-foreground mt-1">
           Run your CI scan again, or upload a report through the API with matching scan metadata. If

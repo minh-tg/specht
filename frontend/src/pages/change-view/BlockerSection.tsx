@@ -100,7 +100,7 @@ export function BlockerSection(
         >
           <div className="mb-2.5 flex items-baseline justify-between">
             <h2 className="text-section leading-tight font-semibold">What is in the way</h2>
-            <span className="text-muted-foreground text-[13px]">Worst first</span>
+            <span className="text-muted-foreground text-meta">Worst first</span>
           </div>
           <Ledger label="Blocking findings">
             {shown.map((id, index) => {
@@ -131,7 +131,7 @@ export function BlockerSection(
           {shown.length < ids.length && (
             <button
               type="button"
-              className={`${INLINE_LINK} mt-2 text-sm`}
+              className={`${INLINE_LINK} mt-2 text-body`}
               onClick={() => setShowAll(true)}
             >
               Show all {ids.length}

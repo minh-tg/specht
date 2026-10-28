@@ -23,10 +23,10 @@ export function WaiverHistory({ id, slug, waiverId, who }: {
   } else if (isError) {
     body = <ErrorState title="Could not load history." onRetry={() => void refetch()} />;
   } else if (!Array.isArray(events) || events.length === 0) {
-    body = <p className="text-muted-foreground text-sm">No history yet.</p>;
+    body = <p className="text-muted-foreground text-body">No history yet.</p>;
   } else {
     body = (
-      <ol className="border-border m-0 list-none space-y-2 border-l p-0 pl-3 text-[0.8125rem]">
+      <ol className="border-border m-0 list-none space-y-2 border-l p-0 pl-3 text-meta">
         {events.map((event) => (
           <li key={event.id} className="flex flex-wrap items-baseline gap-x-2">
             <span className="font-medium">{waiverEventLabel(event.event_type)}</span>

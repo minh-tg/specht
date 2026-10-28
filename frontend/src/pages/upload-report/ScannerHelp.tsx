@@ -16,15 +16,15 @@ export function ScannerHelp({ scanner }: { readonly scanner: ScannerDescriptor |
       <ul className="m-0 list-none space-y-3 p-0">
         {scanner.formats.map((format) => (
           <li key={format.name} className="space-y-1">
-            <p className="text-sm">
+            <p className="text-body">
               <span className="font-medium">{format.name}</span>
               <span className="text-muted-foreground">{` (${format.extensions.join(", ")})`}</span>
             </p>
-            <code className="bg-muted block rounded px-2 py-1 font-mono text-xs break-all">
+            <code className="bg-muted block rounded px-2 py-1 font-mono text-code break-all">
               {format.command}
             </code>
-            <p className="text-muted-foreground text-xs">Checked with {format.tested_with}</p>
-            {format.note && <p className="text-muted-foreground text-xs">{format.note}</p>}
+            <p className="text-muted-foreground text-meta">Checked with {format.tested_with}</p>
+            {format.note && <p className="text-muted-foreground text-meta">{format.note}</p>}
           </li>
         ))}
       </ul>

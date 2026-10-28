@@ -15,20 +15,20 @@ export function UploadResultCard({ result, slug, onReset }: UploadResultCardProp
   return (
     <div role="status" className="bg-card mb-6 rounded-lg border p-4">
       <div className="flex items-center gap-3">
-        <span className="text-sm font-medium tabular-nums">
+        <span className="text-body font-medium tabular-nums">
           {pluralize(result.total_findings, "finding")} found
         </span>
         <VerdictBadge verdict={result.threshold_breached ? "blocked" : "passing"} />
       </div>
-      <p className="text-muted-foreground mt-2 text-sm">
+      <p className="text-muted-foreground mt-2 text-body">
         {result.threshold_breached ? "The gate would block this project." : "The gate passes."}
       </p>
       {result.replayed && (
-        <p className="text-muted-foreground mt-2 text-sm">
+        <p className="text-muted-foreground mt-2 text-body">
           This exact report was already ingested for this commit; showing its result.
         </p>
       )}
-      <div className="mt-3 flex items-center gap-4 text-sm">
+      <div className="mt-3 flex items-center gap-4 text-body">
         <Link to={`/${slug}/findings`} className={INLINE_LINK}>
           View findings
         </Link>

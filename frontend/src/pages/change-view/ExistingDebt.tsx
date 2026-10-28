@@ -30,7 +30,7 @@ export function ExistingDebt({ slug, ids }: ExistingDebtProps) {
       className="bg-card mt-6 rounded-lg border"
       onToggle={(event: SyntheticEvent<HTMLDetailsElement>) => setOpen(event.currentTarget.open)}
     >
-      <summary className="cursor-pointer px-3 py-3 text-sm font-medium">
+      <summary className="cursor-pointer px-3 py-3 text-body font-medium">
         {pluralize(ids.length, "other finding")} {ids.length === 1 ? "blocks" : "block"}{" "}
         this project (not introduced by this change)
       </summary>
@@ -42,7 +42,7 @@ export function ExistingDebt({ slug, ids }: ExistingDebtProps) {
       <div className="border-t px-3 py-2">
         <Link
           to={`/${slug}/findings`}
-          className={`${INLINE_LINK} text-sm`}
+          className={`${INLINE_LINK} text-body`}
         >
           See all in Findings
         </Link>

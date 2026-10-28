@@ -61,7 +61,7 @@ function InventoryList<T>({
         <span className="text-muted-foreground font-normal tabular-nums">{items.length}</span>
       </h4>
       {items.length === 0
-        ? <p className="text-muted-foreground mt-2 text-[0.8125rem]">{emptyText}</p>
+        ? <p className="text-muted-foreground mt-2 text-meta">{emptyText}</p>
         : (
           <>
             <ul
@@ -69,7 +69,7 @@ function InventoryList<T>({
               className="border-foreground m-0 mt-2 list-none border-t-2 p-0"
             >
               {shown.map((item) => (
-                <li key={rowKey(item)} className="border-border border-b py-2.5 text-sm">
+                <li key={rowKey(item)} className="border-border border-b py-2.5 text-body">
                   {renderRow(item)}
                 </li>
               ))}
@@ -90,7 +90,7 @@ function InventoryList<T>({
 }
 
 function Meta({ children }: { readonly children: ReactNode; }) {
-  return <p className="text-muted-foreground mt-0.5 text-[0.8125rem]">{children}</p>;
+  return <p className="text-muted-foreground mt-0.5 text-meta">{children}</p>;
 }
 
 function EnvironmentRow({ environment, onEdit }: {
@@ -131,7 +131,7 @@ function TargetRow({ target }: { readonly target: Target; }) {
       <p className="font-semibold">{target.name}</p>
       <Meta>{target.kind || EMPTY_VALUE}</Meta>
       {target.locator && (
-        <p className="text-muted-foreground mt-1 text-xs break-all">{target.locator}</p>
+        <p className="text-muted-foreground mt-1 text-meta break-all">{target.locator}</p>
       )}
     </>
   );
@@ -151,7 +151,7 @@ function ArtifactRow({ artifact }: { readonly artifact: Artifact; }) {
         <span>{" · "}</span>
         {artifact.digest
           ? (
-            <code title={artifact.digest} className="font-mono text-xs">
+            <code title={artifact.digest} className="font-mono text-code">
               {shortDigest(artifact.digest)}
             </code>
           )
@@ -176,7 +176,7 @@ export function Inventory({ slug }: { readonly slug: string; }) {
   return (
     <section aria-labelledby="inventory-heading" className="min-w-0">
       <h3 id="inventory-heading" className="text-body font-semibold">Where it runs</h3>
-      <p className="text-muted-foreground mt-0.5 mb-4 text-[0.8125rem]">
+      <p className="text-muted-foreground mt-0.5 mb-4 text-meta">
         What the project's scans said about where the code runs and what was scanned.
       </p>
       <div className="grid gap-x-10 gap-y-8 md:grid-cols-2">

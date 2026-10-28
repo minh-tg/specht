@@ -10,8 +10,8 @@ import { watcherHealthState } from "./watcherHealth";
 function Row({ label, children }: { readonly label: string; readonly children: ReactNode; }) {
   return (
     <div className="border-border grid gap-x-6 gap-y-1 border-b px-0.5 py-3 sm:grid-cols-[12rem_minmax(0,1fr)]">
-      <dt className="text-muted-foreground text-[0.8125rem]">{label}</dt>
-      <dd className="m-0 text-[0.9375rem] tabular-nums">{children}</dd>
+      <dt className="text-muted-foreground text-meta">{label}</dt>
+      <dd className="m-0 text-body tabular-nums">{children}</dd>
     </div>
   );
 }
@@ -26,7 +26,7 @@ export function WatcherHealthSection() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h3 id="watcher-health-heading" className="text-body font-semibold">CVE watcher</h3>
-          <p className="text-muted-foreground mt-0.5 text-[0.8125rem]">
+          <p className="text-muted-foreground mt-0.5 text-meta">
             One watcher serves every project. Each project switches it on and sets its own interval.
           </p>
         </div>
@@ -55,7 +55,7 @@ export function WatcherHealthSection() {
             <Row label="Failures in a row">{data.consecutive_failures}</Row>
             {data.last_error && (
               <Row label="Last error">
-                <code className="font-mono text-[0.8125rem] break-words">{data.last_error}</code>
+                <code className="font-mono text-code break-words">{data.last_error}</code>
               </Row>
             )}
             {data.stale && data.staleness_window && (
@@ -64,7 +64,7 @@ export function WatcherHealthSection() {
           </dl>
         )}
       {data && data.consecutive_failures > 0 && (
-        <p className="text-muted-foreground text-[0.8125rem]">
+        <p className="text-muted-foreground text-meta">
           {pluralize(data.consecutive_failures, "poll")}{" "}
           in a row failed, so new CVEs are not being checked until one succeeds.
         </p>

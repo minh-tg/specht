@@ -21,7 +21,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-const PRE_CLASS = "bg-muted rounded-md p-3 text-xs break-words whitespace-pre-wrap";
+const PRE_CLASS = "bg-muted rounded-md p-3 text-meta break-words whitespace-pre-wrap";
 
 type FirstReport = "waiting" | "processing" | "failed" | "received";
 
@@ -139,7 +139,7 @@ export function ProjectSetup() {
           detail="There is no project with this address, or you don't have access to it."
           onRetry={() => void refetchProject()}
         />
-        <Link to="/" className={`${INLINE_LINK} inline-block text-sm`}>Back to projects</Link>
+        <Link to="/" className={`${INLINE_LINK} inline-block text-body`}>Back to projects</Link>
       </div>
     );
   }
@@ -148,10 +148,12 @@ export function ProjectSetup() {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
         <h1 className="mb-6 text-title font-bold">CI setup</h1>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground text-body">
           Only project managers and administrators can set up CI for this project.
         </p>
-        <Link to="/" className={`${INLINE_LINK} mt-2 inline-block text-sm`}>Back to projects</Link>
+        <Link to="/" className={`${INLINE_LINK} mt-2 inline-block text-body`}>
+          Back to projects
+        </Link>
       </div>
     );
   }
@@ -186,24 +188,24 @@ export function ProjectSetup() {
       <ol className="list-decimal space-y-8 pl-5">
         <li>
           <h2 className="text-section font-semibold">Create an API key</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
+          <p className="text-muted-foreground mt-1 text-body">
             Create a key for your pipeline. It is shown only once.
           </p>
           {keyCount !== undefined && (
-            <p role="status" className="text-muted-foreground mt-2 text-sm">
+            <p role="status" className="text-muted-foreground mt-2 text-body">
               {keyCount === 0
                 ? "This project has no keys yet."
                 : `This project has ${pluralize(keyCount, "key")}.`}{" "}
-              <Link to="/api-keys" className={`${INLINE_LINK} text-sm`}>Manage API keys</Link>
+              <Link to="/api-keys" className={`${INLINE_LINK} text-body`}>Manage API keys</Link>
             </p>
           )}
           {keysFailed && (
-            <p role="alert" className="text-destructive mt-2 text-xs">
+            <p role="alert" className="text-destructive mt-2 text-meta">
               Could not check the project's existing keys.
             </p>
           )}
           <div className="mt-3">
-            <label htmlFor="ci-key-name" className="text-sm font-medium">Key name</label>
+            <label htmlFor="ci-key-name" className="text-body font-medium">Key name</label>
             <Input
               id="ci-key-name"
               className="mt-1 sm:w-72"
@@ -212,7 +214,7 @@ export function ProjectSetup() {
             />
           </div>
           <div className="mt-3 w-40">
-            <label htmlFor="ci-key-expiry" className="text-sm font-medium">Expires</label>
+            <label htmlFor="ci-key-expiry" className="text-body font-medium">Expires</label>
             <SelectField
               id="ci-key-expiry"
               className="mt-1 w-full"
@@ -229,17 +231,17 @@ export function ProjectSetup() {
           >
             {createKey.isPending ? "Creating..." : "Create a key for this pipeline"}
           </Button>
-          {keyError && <p role="alert" className="text-destructive mt-2 text-xs">{keyError}</p>}
+          {keyError && <p role="alert" className="text-destructive mt-2 text-meta">{keyError}</p>}
           {rawKey && (
             <div className="mt-3">
               <div className="flex items-center gap-2">
                 <code className={`${PRE_CLASS} flex-1 break-all`}>{rawKey}</code>
                 <CopyButton text={rawKey} label="API key" />
               </div>
-              <p className="text-destructive mt-2 text-xs">
+              <p className="text-destructive mt-2 text-meta">
                 Copy it now. It will not be shown again.
               </p>
-              <p className="text-muted-foreground mt-1 text-xs">
+              <p className="text-muted-foreground mt-1 text-meta">
                 This key can upload reports and read results. It cannot change findings, waivers or
                 policies.
               </p>
@@ -249,12 +251,12 @@ export function ProjectSetup() {
 
         <li>
           <h2 className="text-section font-semibold">Add it to your pipeline</h2>
-          <p className="text-muted-foreground mt-1 text-sm">
+          <p className="text-muted-foreground mt-1 text-body">
             Store the key you just created as the SPECHT_API_KEY secret, then commit one of these
             pipelines. The snippets only reference the secret; they never contain the key itself.
           </p>
           {versionNote && (
-            <p className="text-muted-foreground mt-2 text-xs">
+            <p className="text-muted-foreground mt-2 text-meta">
               {versionNote}
             </p>
           )}
@@ -279,15 +281,15 @@ export function ProjectSetup() {
             </pre>
           </div>
 
-          <p className="text-muted-foreground mt-2 text-xs">
+          <p className="text-muted-foreground mt-2 text-meta">
             More examples: examples/ci/ in the repository.
           </p>
         </li>
 
         <li>
           <h2 className="text-section font-semibold">Or upload a report by hand</h2>
-          <p className="mt-1 text-sm">
-            <Link to={`/${slug}/reports/upload`} className={`${INLINE_LINK} text-sm`}>
+          <p className="mt-1 text-body">
+            <Link to={`/${slug}/reports/upload`} className={`${INLINE_LINK} text-body`}>
               Upload a report
             </Link>
           </p>
@@ -302,12 +304,12 @@ export function ProjectSetup() {
           {statsFailed
             ? (
               <div className="mt-1 flex items-center gap-3">
-                <p role="alert" className="text-destructive text-sm">
+                <p role="alert" className="text-destructive text-body">
                   Could not check for the first report.
                 </p>
                 <button
                   type="button"
-                  className={`${INLINE_LINK} text-sm`}
+                  className={`${INLINE_LINK} text-body`}
                   onClick={() => stats.refetch()}
                 >
                   Retry
@@ -315,7 +317,7 @@ export function ProjectSetup() {
               </div>
             )
             : (
-              <p role="status" className="text-muted-foreground mt-1 text-sm">
+              <p role="status" className="text-muted-foreground mt-1 text-body">
                 {firstReport === "received"
                   ? `First report received: ${pluralize(totalFindings, "finding")}.`
                   : FIRST_REPORT_COPY[firstReport].message}
@@ -323,17 +325,17 @@ export function ProjectSetup() {
             )}
           {!statsFailed && firstReport === "failed" && (
             <div className="mt-2">
-              <Link to={`/${project.slug}/reports`} className={`${INLINE_LINK} text-sm`}>
+              <Link to={`/${project.slug}/reports`} className={`${INLINE_LINK} text-body`}>
                 View reports
               </Link>
             </div>
           )}
           {!statsFailed && firstReport === "received" && (
             <div className="mt-2 flex gap-4">
-              <Link to={`/${project.slug}/findings`} className={`${INLINE_LINK} text-sm`}>
+              <Link to={`/${project.slug}/findings`} className={`${INLINE_LINK} text-body`}>
                 View findings
               </Link>
-              <Link to="/" className={`${INLINE_LINK} text-sm`}>Back to projects</Link>
+              <Link to="/" className={`${INLINE_LINK} text-body`}>Back to projects</Link>
             </div>
           )}
         </li>

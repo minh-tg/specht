@@ -10,12 +10,12 @@ export function WhereItOccurs({ finding }: { readonly finding: Finding; }) {
       {finding.location
           && (finding.location.file || finding.location.resource || finding.location.summary)
         ? (
-          <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 text-body sm:grid-cols-2">
             <div>
               <span className="text-muted-foreground">
                 {locationSubjectLabel(finding.finding_kind)}
               </span>
-              <p className="font-mono text-xs break-all select-all">
+              <p className="font-mono text-code break-all select-all">
                 {finding.location.file ?? finding.location.resource ?? finding.location.summary}
                 {locationLineRange(finding.location)}
               </p>
@@ -29,7 +29,7 @@ export function WhereItOccurs({ finding }: { readonly finding: Finding; }) {
           </div>
         )
         : (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-body">
             No location reported. The scanner gave no file, resource, or URL.
           </p>
         )}

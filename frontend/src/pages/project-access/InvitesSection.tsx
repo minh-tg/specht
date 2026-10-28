@@ -75,7 +75,7 @@ export function InvitesSection({ slug }: { readonly slug: string; }) {
       <div className="flex items-end justify-between gap-4">
         <div>
           <h2 id="invites-heading" className="text-section font-semibold">Invite links</h2>
-          <p className="text-muted-foreground mt-0.5 max-w-[60ch] text-sm">
+          <p className="text-muted-foreground mt-0.5 max-w-[60ch] text-body">
             Each link works once and expires. Only a hash is stored, so a link cannot be shown
             again.
           </p>
@@ -101,11 +101,11 @@ export function InvitesSection({ slug }: { readonly slug: string; }) {
                 >
                   <div>
                     <b className="block font-semibold">{invite.email ?? "Anyone with the link"}</b>
-                    <span className="text-muted-foreground text-[0.8125rem]">
+                    <span className="text-muted-foreground text-meta">
                       {invite.created_by ? `Created by ${invite.created_by}` : "Created by someone"}
                     </span>
                   </div>
-                  <div className="text-muted-foreground order-3 col-span-full text-[0.8125rem] sm:order-none sm:col-span-1">
+                  <div className="text-muted-foreground order-3 col-span-full text-meta sm:order-none sm:col-span-1">
                     {capitalise(invite.role)} · expires in{" "}
                     <span className="text-foreground tabular-nums">
                       {expiresIn(invite.expires_at)}
@@ -123,14 +123,14 @@ export function InvitesSection({ slug }: { readonly slug: string; }) {
                 </li>
               ))
               : (
-                <li className="text-muted-foreground border-border border-b px-0.5 py-5 text-sm">
+                <li className="text-muted-foreground border-border border-b px-0.5 py-5 text-body">
                   No open invites.
                 </li>
               )}
           </ul>
         )}
       {revoke.isError && (
-        <p role="alert" className="text-destructive mt-2 text-xs">
+        <p role="alert" className="text-destructive mt-2 text-meta">
           {revoke.error?.message ?? "Failed to revoke the invite"}
         </p>
       )}
@@ -149,13 +149,13 @@ export function InvitesSection({ slug }: { readonly slug: string; }) {
                 <div className="bg-muted flex items-center gap-3 rounded-md py-2.5 pr-2.5 pl-3.5">
                   <code
                     data-testid="invite-link"
-                    className="min-w-0 flex-1 text-[0.8125rem] break-all"
+                    className="min-w-0 flex-1 text-meta break-all"
                   >
                     {link}
                   </code>
                   <CopyButton text={link} label="invite link" />
                 </div>
-                <p className="text-muted-foreground flex items-start gap-2 text-[0.8125rem]">
+                <p className="text-muted-foreground flex items-start gap-2 text-meta">
                   <TriangleAlertIcon
                     aria-hidden="true"
                     className="mt-0.5 size-4 shrink-0 text-sev-high-fg"
@@ -178,7 +178,7 @@ export function InvitesSection({ slug }: { readonly slug: string; }) {
                 </DialogHeader>
                 <form onSubmit={handleCreate} className="grid gap-4">
                   <div className="grid gap-1.5">
-                    <label htmlFor="invite-role" className="text-sm font-medium">Role</label>
+                    <label htmlFor="invite-role" className="text-body font-medium">Role</label>
                     <SelectField
                       id="invite-role"
                       className="w-full"
@@ -187,13 +187,13 @@ export function InvitesSection({ slug }: { readonly slug: string; }) {
                       options={ROLE_OPTIONS}
                       aria-describedby="invite-role-hint"
                     />
-                    <p id="invite-role-hint" className="text-muted-foreground text-[0.8125rem]">
+                    <p id="invite-role-hint" className="text-muted-foreground text-meta">
                       Members read findings and request waivers. Admins are added from the people
                       list.
                     </p>
                   </div>
                   <div className="grid gap-1.5">
-                    <label htmlFor="invite-email" className="text-sm font-medium">
+                    <label htmlFor="invite-email" className="text-body font-medium">
                       Email <span className="text-muted-foreground font-normal">(optional)</span>
                     </label>
                     <Input
@@ -203,12 +203,12 @@ export function InvitesSection({ slug }: { readonly slug: string; }) {
                       onChange={(e) => setEmail(e.target.value)}
                       aria-describedby="invite-email-hint"
                     />
-                    <p id="invite-email-hint" className="text-muted-foreground text-[0.8125rem]">
+                    <p id="invite-email-hint" className="text-muted-foreground text-meta">
                       Only this address can accept. Leave it empty to let anyone with the link join.
                     </p>
                   </div>
                   <div className="grid gap-1.5">
-                    <label htmlFor="invite-days" className="text-sm font-medium">Expires</label>
+                    <label htmlFor="invite-days" className="text-body font-medium">Expires</label>
                     <SelectField
                       id="invite-days"
                       className="w-full"
@@ -218,7 +218,7 @@ export function InvitesSection({ slug }: { readonly slug: string; }) {
                     />
                   </div>
                   {create.isError && (
-                    <p role="alert" className="text-destructive text-sm">
+                    <p role="alert" className="text-destructive text-body">
                       {create.error?.message ?? "Failed to create the invite"}
                     </p>
                   )}

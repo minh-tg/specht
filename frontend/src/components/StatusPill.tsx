@@ -21,7 +21,7 @@ export function StatusPill({ tone, children }: {
     <span
       data-tone={tone}
       className={cn(
-        "border-border inline-flex h-[26px] items-center gap-[7px] rounded border px-2.5 text-[0.8125rem] font-semibold whitespace-nowrap",
+        "border-border inline-flex h-[26px] items-center gap-[7px] rounded border px-2.5 text-meta font-semibold whitespace-nowrap",
         TONE_CLASS[tone],
       )}
     >

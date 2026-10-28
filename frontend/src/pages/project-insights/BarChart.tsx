@@ -28,7 +28,7 @@ export function BarChart({ label, rows, className }: {
         return (
           <li
             key={row.key}
-            className="grid grid-cols-[7rem_minmax(0,1fr)_2.75rem] items-center gap-3 py-1.5 text-[0.8125rem]"
+            className="grid grid-cols-[7rem_minmax(0,1fr)_2.75rem] items-center gap-3 py-1.5 text-meta"
           >
             <span>{row.label}</span>
             <span
@@ -88,7 +88,7 @@ export function Sparkline({ label, values, startLabel, endLabel }: {
           />
         ))}
       </div>
-      <div className="text-muted-foreground mt-1.5 flex justify-between text-xs">
+      <div className="text-muted-foreground mt-1.5 flex justify-between text-meta">
         <span>{startLabel}</span>
         <span>{endLabel}</span>
       </div>

@@ -41,12 +41,12 @@ export function ApiKeys() {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
         <h1 className="mb-6 text-title font-bold">API keys</h1>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground text-body">
           You do not manage any project's CI. Ask a project manager or an admin.
         </p>
         <Link
           to="/"
-          className={`${INLINE_LINK} mt-2 inline-block text-sm`}
+          className={`${INLINE_LINK} mt-2 inline-block text-body`}
         >
           Back to projects
         </Link>
@@ -138,12 +138,12 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
             <div key={k.id} className="bg-card rounded-lg border p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium">{k.name}</p>
-                  <p className="text-muted-foreground text-xs">
+                  <p className="text-body font-medium">{k.name}</p>
+                  <p className="text-muted-foreground text-meta">
                     {k.key_prefix}...{k.last_four ?? ""} &middot; created{" "}
                     {new Date(k.created_at).toLocaleDateString()}
                   </p>
-                  <p className="text-xs">
+                  <p className="text-meta">
                     <span className="text-muted-foreground">Ends</span>
                     <span className={end.expired ? "text-destructive font-medium" : undefined}>
                       {end.label}
@@ -154,14 +154,14 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
                   ? (
                     <div className="flex items-center gap-2">
                       <button
-                        className="text-destructive hover:text-destructive/80 text-xs font-medium"
+                        className="text-destructive hover:text-destructive/80 text-meta font-medium"
                         onClick={() => handleRevoke(k.id)}
                         disabled={revoke.isPending && revoke.variables === k.id}
                       >
                         {revoke.isPending && revoke.variables === k.id ? "Revoking..." : "Confirm"}
                       </button>
                       <button
-                        className="text-muted-foreground hover:text-foreground text-xs"
+                        className="text-muted-foreground hover:text-foreground text-meta"
                         onClick={() => {
                           setConfirmRevoke(null);
                           setRevokeError(null);
@@ -173,7 +173,7 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
                   )
                   : (
                     <button
-                      className="text-destructive hover:text-destructive/80 text-xs font-medium"
+                      className="text-destructive hover:text-destructive/80 text-meta font-medium"
                       onClick={() => {
                         setConfirmRevoke(k.id);
                         setRevokeError(null);
@@ -184,7 +184,7 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
                   )}
               </div>
               {confirmRevoke === k.id && revokeError && (
-                <p role="alert" className="text-destructive mt-2 text-xs">{revokeError}</p>
+                <p role="alert" className="text-destructive mt-2 text-meta">{revokeError}</p>
               )}
             </div>
           );
@@ -198,7 +198,7 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
       <h1 className="mb-6 text-title font-bold">API keys</h1>
 
       <div className="mb-6">
-        <label htmlFor="apikeys-project" className="text-sm font-medium">Project</label>
+        <label htmlFor="apikeys-project" className="text-body font-medium">Project</label>
         <SelectField
           id="apikeys-project"
           className="mt-1 w-full"
@@ -240,20 +240,20 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
                 {createKey.isPending ? "Creating..." : "Create"}
               </Button>
             </form>
-            {createError && <p className="text-destructive mt-1 text-xs">{createError}</p>}
+            {createError && <p className="text-destructive mt-1 text-meta">{createError}</p>}
           </section>
 
           {createdKey && (
             <div className="bg-card mb-8 rounded-lg border p-4">
-              <p className="text-destructive mb-2 text-xs font-medium">
+              <p className="text-destructive mb-2 text-meta font-medium">
                 This key will not be shown again
               </p>
               <div className="flex items-center gap-2">
-                <code className="bg-muted flex-1 rounded px-2 py-1 text-xs">{createdKey}</code>
+                <code className="bg-muted flex-1 rounded px-2 py-1 text-meta">{createdKey}</code>
                 <CopyButton text={createdKey} label="API key" />
               </div>
               <button
-                className="text-muted-foreground hover:text-foreground mt-2 text-xs"
+                className="text-muted-foreground hover:text-foreground mt-2 text-meta"
                 onClick={() => setCreatedKey(null)}
               >
                 Dismiss

@@ -73,7 +73,7 @@ function EditFields({ slug, waiver, onClose }: {
           onChange={(e) => setDraft({ ...draft, name: e.target.value })}
         />
         <div className="grid gap-1.5">
-          <label htmlFor="waiver-edit-description" className="text-sm font-medium">
+          <label htmlFor="waiver-edit-description" className="text-body font-medium">
             Description
           </label>
           <Textarea
@@ -90,7 +90,7 @@ function EditFields({ slug, waiver, onClose }: {
             disabled={draft.noExpiry}
             onChange={(e) => setDraft({ ...draft, expiry: e.target.value })}
           />
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-body">
             <input
               type="checkbox"
               className="size-4"
@@ -101,7 +101,7 @@ function EditFields({ slug, waiver, onClose }: {
           </label>
         </div>
         {mutation.isError && (
-          <p role="alert" className="text-destructive text-sm">
+          <p role="alert" className="text-destructive text-body">
             {mutation.error.message || "Could not save the waiver."}
           </p>
         )}

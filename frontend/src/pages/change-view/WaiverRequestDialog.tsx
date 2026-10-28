@@ -88,7 +88,7 @@ export function WaiverRequestDialog(
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-1.5">
-            <label htmlFor="waiver-reason" className="text-sm font-medium">
+            <label htmlFor="waiver-reason" className="text-body font-medium">
               Why is this safe to ship?
             </label>
             <Textarea
@@ -101,7 +101,7 @@ export function WaiverRequestDialog(
             />
           </div>
           <div className="grid gap-1.5">
-            <label htmlFor="waiver-expiry" className="text-sm font-medium">Waive it for</label>
+            <label htmlFor="waiver-expiry" className="text-body font-medium">Waive it for</label>
             <SelectField
               id="waiver-expiry"
               value={days}
@@ -109,11 +109,11 @@ export function WaiverRequestDialog(
               options={EXPIRY_OPTIONS}
               className="w-full"
             />
-            <p className="text-muted-foreground text-[13px]">
+            <p className="text-muted-foreground text-meta">
               It expires on its own. After that the finding blocks again.
             </p>
           </div>
-          {error && <p role="alert" className="text-destructive text-sm">{error}</p>}
+          {error && <p role="alert" className="text-destructive text-body">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel

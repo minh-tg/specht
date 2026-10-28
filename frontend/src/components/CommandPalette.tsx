@@ -94,7 +94,7 @@ export function CommandPalette() {
         className="shrink-0"
       >
         <SearchIcon aria-hidden="true" />
-        <kbd className="bg-muted text-muted-foreground rounded px-1 font-mono text-[0.6875rem] max-sm:hidden">
+        <kbd className="bg-muted text-muted-foreground rounded px-1 font-mono text-label max-sm:hidden">
           {visibleShortcut}
         </kbd>
       </Button>
@@ -125,7 +125,7 @@ export function CommandPalette() {
                 setActive(0);
               }}
               onKeyDown={onKeyDown}
-              className="placeholder:text-muted-foreground h-12 w-full bg-transparent text-[0.9375rem] outline-none"
+              className="placeholder:text-muted-foreground h-12 w-full bg-transparent text-control outline-none"
             />
           </div>
 
@@ -142,7 +142,7 @@ export function CommandPalette() {
                   <div key={section.group} role="group" aria-label={section.group} className="py-1">
                     <div
                       aria-hidden="true"
-                      className="text-muted-foreground px-2.5 py-1 text-[0.6875rem] font-medium tracking-wider uppercase"
+                      className="text-muted-foreground px-2.5 py-1 text-label font-medium tracking-wider uppercase"
                     >
                       {section.group}
                     </div>
@@ -157,13 +157,13 @@ export function CommandPalette() {
                           onMouseMove={() => setActive(flat.indexOf(command))}
                           onClick={() =>
                             run(command)}
-                          className={`flex cursor-pointer items-baseline justify-between gap-3 rounded-md px-2.5 py-2 text-sm ${
+                          className={`flex cursor-pointer items-baseline justify-between gap-3 rounded-md px-2.5 py-2 text-body ${
                             selected ? "bg-muted text-foreground" : "text-foreground"
                           }`}
                         >
                           <span className="truncate">{command.label}</span>
                           {command.hint && command.hint !== command.label && (
-                            <span className="text-muted-foreground truncate font-mono text-xs">
+                            <span className="text-muted-foreground truncate font-mono text-code">
                               {command.hint}
                             </span>
                           )}
@@ -175,12 +175,12 @@ export function CommandPalette() {
               </div>
             )
             : (
-              <p role="status" className="text-muted-foreground px-3 py-6 text-center text-sm">
+              <p role="status" className="text-muted-foreground px-3 py-6 text-center text-body">
                 Nothing matches “{query.trim()}”.
               </p>
             )}
 
-          <p className="text-muted-foreground border-border border-t px-3.5 py-2 text-xs max-sm:hidden">
+          <p className="text-muted-foreground border-border border-t px-3.5 py-2 text-meta max-sm:hidden">
             ↑ ↓ to move · Enter to go · Esc to close
           </p>
         </DialogContent>

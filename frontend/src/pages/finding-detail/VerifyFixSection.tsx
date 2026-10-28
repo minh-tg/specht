@@ -53,7 +53,7 @@ export function VerifyFixSection({
         )}
         {verifyMutation.isPending ? "Checking..." : "Check if it is fixed"}
       </Button>
-      <p role="status" className="text-muted-foreground mt-2 text-sm">
+      <p role="status" className="text-muted-foreground mt-2 text-body">
         {message}
         {detail && <span className="block">{detail}</span>}
       </p>

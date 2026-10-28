@@ -91,7 +91,7 @@ export function PersonCombobox({
       <Autocomplete.Portal>
         <Autocomplete.Positioner sideOffset={4} className="isolate z-50">
           <Autocomplete.Popup className="bg-popover text-popover-foreground ring-foreground/10 max-h-(--available-height) w-(--anchor-width) overflow-y-auto rounded-lg p-1 shadow-md ring-1">
-            <Autocomplete.Empty className="text-muted-foreground px-2 py-1.5 text-xs empty:hidden">
+            <Autocomplete.Empty className="text-muted-foreground px-2 py-1.5 text-meta empty:hidden">
               {active && !searching ? (unavailable ? UNAVAILABLE_TEXT : EMPTY_TEXT) : null}
             </Autocomplete.Empty>
             <Autocomplete.List>
@@ -99,11 +99,11 @@ export function PersonCombobox({
                 <Autocomplete.Item
                   key={person.user_id}
                   value={person}
-                  className="data-highlighted:bg-accent data-highlighted:text-accent-foreground flex cursor-default flex-col rounded-md px-2 py-1.5 text-sm outline-hidden select-none"
+                  className="data-highlighted:bg-accent data-highlighted:text-accent-foreground flex cursor-default flex-col rounded-md px-2 py-1.5 text-body outline-hidden select-none"
                 >
                   <span className="truncate">{person.email}</span>
                   {person.display_name && (
-                    <span className="text-muted-foreground truncate text-xs">
+                    <span className="text-muted-foreground truncate text-meta">
                       {person.display_name}
                     </span>
                   )}

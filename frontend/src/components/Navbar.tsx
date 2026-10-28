@@ -114,7 +114,7 @@ export function Navbar() {
           aria-label="Main"
           className="mx-auto flex min-h-12 max-w-5xl flex-wrap items-center max-sm:items-start justify-between gap-x-2 gap-y-0 px-4 py-1"
         >
-          <Link to="/" className="inline-flex items-center gap-2 py-1.5 text-sm font-semibold">
+          <Link to="/" className="inline-flex items-center gap-2 py-1.5 text-body font-semibold">
             <BrandMark className="text-action h-5 w-5" />
             Specht
           </Link>

@@ -77,7 +77,7 @@ export function LedgerEntry(
             "hover:bg-muted/60",
           )}
         >
-          <span className="text-muted-foreground w-[22px] flex-none font-mono text-[13px] max-sm:hidden">
+          <span className="text-muted-foreground w-[22px] flex-none font-mono text-code max-sm:hidden">
             {String(index).padStart(2, "0")}
           </span>
           {summary}

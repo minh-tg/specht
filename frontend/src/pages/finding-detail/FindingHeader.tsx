@@ -29,7 +29,7 @@ export function FindingHeader({
 }) {
   return (
     <header>
-      <p className="font-label text-muted-foreground mb-3 flex flex-wrap items-center gap-x-2.5 text-xs">
+      <p className="font-label text-muted-foreground mb-3 flex flex-wrap items-center gap-x-2.5 text-label">
         <span>{findingKindLabel(finding.finding_kind) ?? EMPTY_VALUE}</span>
         <span aria-hidden="true">·</span>
         <span title={`First seen ${formatAge(finding.first_seen_at)} ago`}>{openFor(finding)}</span>
