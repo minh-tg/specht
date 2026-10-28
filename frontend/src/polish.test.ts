@@ -95,7 +95,7 @@ describe("tabular figures", () => {
     ["pages/ProjectList.tsx", /tabular-nums">\{blocking\}/],
     ["pages/ProjectList.tsx", /tabular-nums">\{findings\}/],
     ["pages/ReportHistory.tsx", /tabular-nums">\s*\{formatDateTime\(r\.created_at\)/],
-    ["pages/finding-detail/MetadataGrid.tsx", /font-medium tabular-nums/],
+    ["components/DetailList.tsx", /font-medium tabular-nums/],
     ["pages/finding-detail/HistorySection.tsx", /tabular-nums">\s*\{formatDateTime/],
     ["pages/project-waivers/WaiverHistory.tsx", /tabular-nums">\s*\{formatDateTime/],
     ["pages/finding-detail/SignoffSection.tsx", /tabular-nums">\{formatDateTime/],
