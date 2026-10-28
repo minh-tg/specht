@@ -22,6 +22,14 @@ type projectWatcher struct {
 	Healthy                  bool   `json:"healthy"`
 }
 
+// settings is the stored configuration alone. Status and Healthy describe the
+// watcher's last run, which the e2e server's one-second watcher can change
+// between two reads, so a "nothing changed" check compares settings only.
+func (w projectWatcher) settings() projectWatcher {
+	w.Status, w.Healthy = "", false
+	return w
+}
+
 // TestE2E_ProjectWatcherSettings walks the watcher screen's contract: any
 // member reads the settings and what they amount to, a project admin changes
 // them within the accepted range, and a bad request writes nothing.
@@ -69,7 +77,8 @@ func TestE2E_ProjectWatcherSettings(t *testing.T) {
 			require.Equal(t, http.StatusBadRequest, status, name+": "+string(raw))
 			require.Equal(t, "invalid_watcher_settings", errorCode(t, raw), name)
 		}
-		require.Equal(t, before, request[projectWatcher](t, http.MethodGet, path, adminToken, nil, http.StatusOK))
+		after := request[projectWatcher](t, http.MethodGet, path, adminToken, nil, http.StatusOK)
+		require.Equal(t, before.settings(), after.settings())
 	})
 
 	t.Run("the admin switches it off, retunes it and resets it", func(t *testing.T) {
@@ -90,6 +99,6 @@ func TestE2E_ProjectWatcherSettings(t *testing.T) {
 		require.True(t, reset.Enabled, "the switch is untouched")
 
 		stored := request[projectWatcher](t, http.MethodGet, path, adminToken, nil, http.StatusOK)
-		require.Equal(t, reset, stored)
+		require.Equal(t, reset.settings(), stored.settings())
 	})
 }
