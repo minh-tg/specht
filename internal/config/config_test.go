@@ -853,26 +853,33 @@ func TestIngestSlotsLeaveAConnectionFree(t *testing.T) {
 	}
 }
 
-func TestLoad_SSOAllowPrivateIssuer(t *testing.T) {
-	for value, want := range map[string]bool{"": false, "false": false, "true": true, "1": true, "TRUE": true} {
-		t.Run("value="+value, func(t *testing.T) {
+func TestLoad_SSOAllowPrivateIssuerIsOffUnlessExplicitlyTrue(t *testing.T) {
+	tests := []struct {
+		value   string
+		want    bool
+		invalid bool
+	}{
+		{"", false, false},
+		{"true", true, false},
+		{"false", false, false},
+		{"1", false, true},
+		{"yes", false, true},
+		{"TRUE", false, true},
+	}
+	for _, tc := range tests {
+		t.Run("value="+tc.value, func(t *testing.T) {
 			t.Setenv("WATCHER_ENABLE", "")
-			t.Setenv("SSO_ALLOW_PRIVATE_ISSUER", value)
+			t.Setenv("SSO_ALLOW_PRIVATE_ISSUER", tc.value)
 
 			cfg, err := Load()
 
+			if tc.invalid {
+				require.Error(t, err, "only the exact value true opts in; anything else stops startup")
+				assert.Contains(t, err.Error(), "SSO_ALLOW_PRIVATE_ISSUER")
+				return
+			}
 			require.NoError(t, err)
-			assert.Equal(t, want, cfg.SSO.AllowPrivateIssuer)
+			assert.Equal(t, tc.want, cfg.SSO.AllowPrivateIssuer)
 		})
 	}
-}
-
-func TestLoad_SSOAllowPrivateIssuerRejectsATypo(t *testing.T) {
-	t.Setenv("WATCHER_ENABLE", "")
-	t.Setenv("SSO_ALLOW_PRIVATE_ISSUER", "yes")
-
-	_, err := Load()
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "SSO_ALLOW_PRIVATE_ISSUER")
 }

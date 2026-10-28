@@ -296,11 +296,14 @@ func loadSSO() (SSOConfig, error) {
 	if cfg.PublicClient, err = envBool("SSO_PUBLIC_CLIENT", false); err != nil {
 		return SSOConfig{}, err
 	}
-	// Both downgrades stay off unless spelled exactly true.
+	// These downgrades stay off unless spelled exactly true.
 	if cfg.AllowUserInfoOnly, err = envExactBool("SSO_ALLOW_USERINFO_ONLY"); err != nil {
 		return SSOConfig{}, err
 	}
 	if cfg.AllowUnverifiedEmail, err = envExactBool("SSO_ALLOW_UNVERIFIED_EMAIL"); err != nil {
+		return SSOConfig{}, err
+	}
+	if cfg.AllowPrivateIssuer, err = envExactBool("SSO_ALLOW_PRIVATE_ISSUER"); err != nil {
 		return SSOConfig{}, err
 	}
 	return cfg, nil
@@ -571,14 +574,6 @@ func Load() (*Server, error) {
 			return nil, fmt.Errorf("SHUTDOWN_TIMEOUT must be a duration such as 150s: %w", err)
 		}
 		s.ShutdownTimeout = d
-	}
-
-	if v := os.Getenv("SSO_ALLOW_PRIVATE_ISSUER"); v != "" {
-		allow, err := strconv.ParseBool(v)
-		if err != nil {
-			return nil, fmt.Errorf("SSO_ALLOW_PRIVATE_ISSUER is invalid: %q (want true or false)", v)
-		}
-		s.SSO.AllowPrivateIssuer = allow
 	}
 
 	if v := os.Getenv("REGISTRATION_ENABLED"); v != "" {
