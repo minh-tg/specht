@@ -96,6 +96,7 @@ Finding identity is partitioned into two distinct layers:
   - A Terraform address is unique only inside its module. The same `aws_s3_bucket.logs` in two modules is two resources, and without the module location both would collapse into one finding. The relative path stands in for the module location.
   - Moving a resource within its file keeps the finding. Moving it to another file, or a module to another directory, is a new finding and the old one closes on the next complete scan. The path is the file, not the directory, so two files of one directory that declare the same address stay apart.
   - A result that names no resource (a Dockerfile instruction, say) falls back to the line it failed on.
+  - tfsec, and Dependency-Check for a file without a purl, write absolute paths. The adapter drops the first known checkout root in front of the path (`/github/workspace/`, `/home/runner/work/<repo>/<repo>/`, `/__w/<repo>/<repo>/`, `/builds/<a>/<b>/`, the CircleCI, Bitbucket, Azure and Drone directories, and the `/src/`, `/workspace/`, `/code/` container mounts), failing that the user's home directory (`/home/<user>/`, `/Users/<user>/`, `/root/`). A path under neither stays absolute. On a GitLab runner with concurrent jobs the path keeps `<namespace>/<project>/`, which does not change between runs.
 * **Example**:
   `iac:CKV_AWS_18:aws_s3_bucket.access_logs:infra/s3.tf`
 
@@ -104,7 +105,9 @@ Finding identity is partitioned into two distinct layers:
 * **Format**: `secret:<rule_id>:<relative_path>:<anchor_hash>`
 * **Rules**:
   - Plaintext secrets MUST NEVER appear in fingerprints.
-  - `anchor_hash` is a truncated non-reversible hash (e.g., SHA256 truncated to 16 hex chars) of the secret's contextual surrounding lines or entropy key.
+  - `anchor_hash` is a truncated non-reversible hash that tells secrets of one rule in one file apart without the line:
+    - Trivy: the first 16 hex chars of the SHA-256 of `Match`, the matched line with the credential masked by asterisks, whitespace runs collapsed. A `Match` with no asterisk is not masked and is never hashed; `line<N>` stands in. Identical masked matches in one file get `#1`, `#2`... in line order.
+    - Gitleaks: the first 32 hex chars of an HMAC-SHA-256, keyed with the instance key, of the rule, the file and the credential.
 * **Example**:
   `secret:aws-access-key-id:deploy/.env.prod:b3d1f890`
 
