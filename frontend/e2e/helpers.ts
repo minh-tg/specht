@@ -53,13 +53,25 @@ export function uniq(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+/**
+ * Signs the journey admin in over the API. The server counts every sign-in as a failure until the
+ * password checks out, so parallel workers signing in as the same account at the same moment can
+ * get a 429 with Retry-After. A real client waits that long and tries again, and so does this.
+ */
 export async function apiToken(request: APIRequestContext): Promise<string> {
-  const res = await request.post("/api/v1/auth/login", {
-    data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-  });
-  expect(res.ok(), await res.text()).toBeTruthy();
-  const body = await res.json();
-  return body.token as string;
+  for (let attempt = 1;; attempt++) {
+    const res = await request.post("/api/v1/auth/login", {
+      data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
+    });
+    if (res.status() === 429 && attempt < 6) {
+      const wait = Math.min(Number(res.headers()["retry-after"] ?? "1") || 1, 15);
+      await new Promise((resolve) => setTimeout(resolve, wait * 1000));
+      continue;
+    }
+    expect(res.ok(), await res.text()).toBeTruthy();
+    const body = await res.json();
+    return body.token as string;
+  }
 }
 
 export async function seedProject(
