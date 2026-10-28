@@ -92,11 +92,11 @@ export function ChangeHero(
     <section aria-label="Change verdict" aria-live="polite">
       <p className="font-label text-muted-foreground mb-3.5 flex flex-wrap items-center gap-x-2.5 text-label">
         <span>Change</span>
-        <code className="text-foreground text-meta">{shortCommit(commit)}</code>
+        <code className="text-foreground text-code">{shortCommit(commit)}</code>
         {branch && (
           <>
             <span aria-hidden="true">·</span>
-            <code className="text-foreground text-meta">{branch}</code>
+            <code className="text-foreground text-code">{branch}</code>
           </>
         )}
       </p>
@@ -156,7 +156,7 @@ export function ChangeHeroSkeleton({ commit }: { readonly commit: string; }) {
   return (
     <section aria-label="Change verdict" aria-busy="true">
       <p className="font-label text-muted-foreground mb-3.5 text-label">
-        Change <code className="text-foreground text-meta">{shortCommit(commit)}</code>
+        Change <code className="text-foreground text-code">{shortCommit(commit)}</code>
       </p>
       <div className="flex items-center gap-6">
         <Skeleton className="h-10 w-28 rounded-lg" />

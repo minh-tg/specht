@@ -29,7 +29,7 @@ const SCRIM_FILES = new Set(["components/ui/dialog.tsx", "components/ui/alert-di
 /** Tailwind size utilities, which bypass the type roles and drift page by page. */
 const RAW_TEXT_SIZE = /\b(?:[a-z0-9-]+:)?text-(?:xs|sm|base|lg|xl|[2-9]xl|\[\d[^\]]*\])(?![\w-])/g;
 
-/** Vendored shadcn sets its own sizes, and the verdict stamp picks a size per variant. */
+/** The verdict stamp picks its size per variant; components/ui is vendored and skipped separately. */
 const SIZE_EXEMPT = new Set(["components/VerdictBadge.tsx"]);
 
 const TYPE_ROLE_HINT =
@@ -47,7 +47,6 @@ export function findHardCodedColours(fileName: string, text: string): string[] {
 
 /** Every raw size utility in a page or component; sizes belong in index.css as the type roles. */
 export function findRawTextSizes(fileName: string, text: string): string[] {
-  // Vendored shadcn and the verdict stamp keep their own sizes.
   const name = relative(SRC, fileName).split(sep).join("/");
   if (name.startsWith("components/ui/") || SIZE_EXEMPT.has(name)) return [];
   return text.split("\n").flatMap((line, index) =>

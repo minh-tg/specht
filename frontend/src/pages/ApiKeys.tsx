@@ -249,7 +249,7 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
                 This key will not be shown again
               </p>
               <div className="flex items-center gap-2">
-                <code className="bg-muted flex-1 rounded px-2 py-1 text-meta">{createdKey}</code>
+                <code className="bg-muted flex-1 rounded px-2 py-1 text-code">{createdKey}</code>
                 <CopyButton text={createdKey} label="API key" />
               </div>
               <button

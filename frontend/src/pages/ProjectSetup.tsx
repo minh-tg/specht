@@ -21,7 +21,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-const PRE_CLASS = "bg-muted rounded-md p-3 text-meta break-words whitespace-pre-wrap";
+const PRE_CLASS = "bg-muted rounded-md p-3 text-code break-words whitespace-pre-wrap";
 
 type FirstReport = "waiting" | "processing" | "failed" | "received";
 
