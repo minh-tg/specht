@@ -417,7 +417,7 @@ test("the project header gives an honest verdict and links severity counts to th
   await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
   await expect(page.getByText("1 finding blocks this project")).toBeVisible();
   await expect(page.getByText(/Floor: /)).toBeVisible();
-  await page.getByRole("link", { name: "1 high finding" }).click();
+  await page.getByRole("link", { name: "High 1 finding" }).click();
   await expect(page).toHaveURL(/severity=high/);
   await expect(page.getByRole("button", { name: /^High/ })).toHaveAttribute("aria-pressed", "true");
 

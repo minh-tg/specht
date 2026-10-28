@@ -273,12 +273,12 @@ describe("VerdictBand", () => {
       },
     });
 
-    const critical = screen.getByRole("link", { name: "2 critical findings" });
+    const critical = screen.getByRole("link", { name: "Critical 2 findings" });
     expect(critical).toHaveAttribute("href", "/alpha/findings?severity=critical");
-    const low = screen.getByRole("link", { name: "1 low finding" });
+    const low = screen.getByRole("link", { name: "Low 1 finding" });
     expect(low).toHaveAttribute("href", "/alpha/findings?severity=low");
     expect(low).toHaveTextContent("Low");
-    expect(screen.queryByRole("link", { name: /high finding/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^High \d/ })).not.toBeInTheDocument();
   });
 
   it("counts findings the scanner did not rate and links them to the unknown filter", () => {
@@ -296,7 +296,7 @@ describe("VerdictBand", () => {
       },
     });
 
-    const unrated = screen.getByRole("link", { name: "2 unrated findings" });
+    const unrated = screen.getByRole("link", { name: "Unrated 2 findings" });
     expect(unrated).toHaveAttribute("href", "/alpha/findings?severity=unknown");
     expect(unrated).toHaveTextContent("Unrated");
   });

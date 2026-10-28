@@ -204,7 +204,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
             <Link
               key={severity}
               to={`/${slug}/findings?severity=${severity}`}
-              aria-label={pluralize(count, `${severityLabel(severity)?.toLowerCase()} finding`)}
+              aria-label={`${severityLabel(severity)} ${pluralize(count, "finding")}`}
               className="inline-flex items-center gap-1"
             >
               <SeverityBadge severity={severity} />
