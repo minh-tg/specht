@@ -22,7 +22,7 @@ type NormalizedReport struct {
 	// closes it. Empty means the report vouches for no kind.
 	CoveredFindingKinds []string
 	// ExaminedKeys proves, finding by finding, what the scanner's own output
-	// shows it looked for (see ExaminedRule and ExaminedFingerprint). Auto-fix
+	// shows it looked for (see ExaminedRunRule and ExaminedFingerprint). Auto-fix
 	// closes an absent finding only when a key names it, whatever
 	// Completeness says. Empty means the report proves no single finding.
 	ExaminedKeys []string

@@ -16,7 +16,7 @@ func TestNormalizeExaminedKeys(t *testing.T) {
 func TestNormalizeExaminedKeysOverTheLimitProvesNothing(t *testing.T) {
 	keys := make([]string, 0, MaxExaminedKeys+1)
 	for i := 0; i <= MaxExaminedKeys; i++ {
-		keys = append(keys, ExaminedFile(strconv.Itoa(i)))
+		keys = append(keys, ExaminedRunFile(0, strconv.Itoa(i)))
 	}
 	assert.Nil(t, NormalizeExaminedKeys(keys))
 }

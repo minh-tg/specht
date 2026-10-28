@@ -2,6 +2,7 @@ package domain
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -12,12 +13,6 @@ import (
 // (report_examined_finding), so the spelling here is a storage format.
 
 const (
-	// ExaminedFilesScope asks the matcher to require the finding's file to be
-	// named by an ExaminedFile key as well as its rule. A run that lists the
-	// files it scanned sets it, so a rule that ran elsewhere proves nothing
-	// about a file the run never listed.
-	ExaminedFilesScope = "scope:files"
-
 	// MaxExaminedKeys bounds the keys one report may carry. A report with more
 	// proves nothing, because a hostile document must not grow a row without
 	// limit.
@@ -30,11 +25,18 @@ const (
 // fingerprint, as a passed check does.
 func ExaminedFingerprint(fingerprint string) string { return "fp:" + fingerprint }
 
-// ExaminedRule proves the report ran a rule over the finding kind.
-func ExaminedRule(kind, ruleID string) string { return "rule:" + kind + ":" + ruleID }
+// ExaminedRunRule says run number run of the report ran a rule over the
+// finding kind. It proves nothing alone: the matcher also needs an
+// ExaminedRunFile key of the same run for the finding's file, so a rule only
+// vouches for the files its own run scanned.
+func ExaminedRunRule(run int, kind, ruleID string) string {
+	return "run:" + strconv.Itoa(run) + ":rule:" + kind + ":" + ruleID
+}
 
-// ExaminedFile proves the report scanned a file.
-func ExaminedFile(path string) string { return "file:" + path }
+// ExaminedRunFile says run number run of the report scanned a file.
+func ExaminedRunFile(run int, path string) string {
+	return "run:" + strconv.Itoa(run) + ":file:" + path
+}
 
 // NormalizeExaminedKeys sorts and de-duplicates keys and drops empty or
 // oversized ones. More than MaxExaminedKeys returns nil: a report whose proof

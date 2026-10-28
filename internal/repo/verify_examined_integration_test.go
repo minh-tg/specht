@@ -38,7 +38,7 @@ func TestVerifyFixHonoursExaminedKeys(t *testing.T) {
 	hit := [][2]string{{"go/sql-injection", "pkg/db.go"}}
 	suppressed := func() []byte {
 		var doc map[string]any
-		require.NoError(t, json.Unmarshal(sarifDoc(t, "CodeQL", []string{"go/sql-injection"}, hit, nil, nil), &doc))
+		require.NoError(t, json.Unmarshal(sarifDoc(t, "CodeQL", []string{"go/sql-injection"}, hit, []string{"pkg/db.go"}, nil), &doc))
 		run := doc["runs"].([]any)[0].(map[string]any)
 		for _, r := range run["results"].([]any) {
 			r.(map[string]any)["suppressions"] = []map[string]any{{"kind": "inSource", "status": "accepted"}}
@@ -56,9 +56,15 @@ func TestVerifyFixHonoursExaminedKeys(t *testing.T) {
 		state   string
 	}{
 		{
-			"semgrep rule listed and absent", "semgrep",
+			"semgrep rule listed, no file list", "semgrep",
 			sarifDoc(t, "Semgrep OSS", []string{"go/sql-injection"}, hit, nil, nil),
 			sarifDoc(t, "Semgrep OSS", []string{"go/sql-injection", "go/xss"}, nil, nil, nil),
+			usecase.VerifyInconclusive, "open",
+		},
+		{
+			"semgrep rule listed and file scanned", "semgrep",
+			sarifDoc(t, "Semgrep OSS", []string{"go/sql-injection"}, hit, nil, nil),
+			sarifDoc(t, "Semgrep OSS", []string{"go/sql-injection", "go/xss"}, nil, []string{"pkg/db.go"}, nil),
 			usecase.VerifyFixed, "fixed",
 		},
 		{
@@ -80,9 +86,17 @@ func TestVerifyFixHonoursExaminedKeys(t *testing.T) {
 			usecase.VerifyInconclusive, "open",
 		},
 		{
+			"sarif rule listed by a run that never scanned the file", "sarif",
+			sarifDoc(t, "CodeQL", []string{"go/sql-injection"}, hit, nil, nil),
+			mergeRuns(t,
+				sarifDoc(t, "CodeQL", []string{"go/sql-injection"}, nil, []string{"pkg/other.go"}, nil),
+				sarifDoc(t, "CodeQL", []string{"go/xss"}, nil, []string{"pkg/db.go"}, nil)),
+			usecase.VerifyInconclusive, "open",
+		},
+		{
 			"sarif run failed", "sarif",
 			sarifDoc(t, "CodeQL", []string{"go/sql-injection"}, hit, nil, nil),
-			sarifDoc(t, "CodeQL", []string{"go/sql-injection"}, nil, nil,
+			sarifDoc(t, "CodeQL", []string{"go/sql-injection"}, nil, []string{"pkg/db.go"},
 				map[string]any{"invocations": []map[string]any{{"executionSuccessful": false}}}),
 			usecase.VerifyInconclusive, "open",
 		},

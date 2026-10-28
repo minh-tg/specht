@@ -198,9 +198,9 @@ func TestAutoFixAbsentFindings_ExaminedKeysGate(t *testing.T) {
 		keys         []string
 		wantWriter   bool
 	}{
-		{"unknown with keys", domain.CompletenessUnknown, []string{domain.ExaminedRule("sast", "r1")}, true},
+		{"unknown with keys", domain.CompletenessUnknown, []string{domain.ExaminedRunRule(0, "sast", "r1")}, true},
 		{"unknown without keys", domain.CompletenessUnknown, nil, false},
-		{"partial with keys", domain.CompletenessPartial, []string{domain.ExaminedRule("sast", "r1")}, false},
+		{"partial with keys", domain.CompletenessPartial, []string{domain.ExaminedRunRule(0, "sast", "r1")}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

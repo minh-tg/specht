@@ -35,25 +35,55 @@ func (s *scopeSeverityScenario) keyedReport(t *testing.T, scope, hash, completen
 	return r.ID
 }
 
+// examined asks report_examined_finding about the scenario finding, kind sca
+// and fingerprint shared.
+func (s *scopeSeverityScenario) examined(t *testing.T, completeness string, kinds, keys []string) bool {
+	t.Helper()
+	var k, ks any
+	if kinds != nil {
+		k = kinds
+	}
+	if keys != nil {
+		ks = keys
+	}
+	var got bool
+	require.NoError(t, s.pool.QueryRow(s.ctx,
+		`SELECT report_examined_finding($1, $2::text[], $3::text[], $4::uuid, 'sca', 'shared')`,
+		completeness, k, ks, s.findingID).Scan(&got))
+	return got
+}
+
 func TestReportExaminedFindingMatchesPerFinding(t *testing.T) {
 	s, cleanup := examinedScenario(t)
 	defer cleanup()
-	rule := domain.ExaminedRule("sca", "go/sql-injection")
+	rule := domain.ExaminedRunRule(0, "sca", "go/sql-injection")
+	file := domain.ExaminedRunFile(0, "a/b.go")
 	cases := []struct {
 		name         string
 		completeness string
 		kinds, keys  []string
 		want         bool
 	}{
-		{"rule listed", "unknown", nil, []string{rule}, true},
-		{"other rule listed", "unknown", nil, []string{domain.ExaminedRule("sca", "go/xss")}, false},
-		{"rule of another kind", "unknown", nil, []string{domain.ExaminedRule("iac", "go/sql-injection")}, false},
+		{"rule and file of one run", "unknown", nil, []string{rule, file}, true},
+		{"rule without a file", "unknown", nil, []string{rule}, false},
+		{"file without a rule", "unknown", nil, []string{file}, false},
+		{"other rule listed", "unknown", nil, []string{domain.ExaminedRunRule(0, "sca", "go/xss"), file}, false},
+		{"rule of another kind", "unknown", nil, []string{domain.ExaminedRunRule(0, "iac", "go/sql-injection"), file}, false},
+		{"rule listed, file not scanned", "unknown", nil, []string{rule, domain.ExaminedRunFile(0, "c/d.go")}, false},
+		{"rule and file of different runs", "unknown", nil, []string{
+			rule, domain.ExaminedRunFile(0, "c/d.go"),
+			domain.ExaminedRunRule(1, "sca", "go/xss"), domain.ExaminedRunFile(1, "a/b.go"),
+		}, false},
+		{"run 1 and run 10 are different runs", "unknown", nil, []string{
+			domain.ExaminedRunRule(1, "sca", "go/sql-injection"), domain.ExaminedRunFile(10, "a/b.go"),
+		}, false},
+		{"rule and file of the second run", "unknown", nil, []string{
+			domain.ExaminedRunRule(0, "sca", "go/xss"), domain.ExaminedRunFile(0, "c/d.go"),
+			domain.ExaminedRunRule(1, "sca", "go/sql-injection"), domain.ExaminedRunFile(1, "a/b.go"),
+		}, true},
 		{"fingerprint listed", "unknown", nil, []string{domain.ExaminedFingerprint("shared")}, true},
 		{"other fingerprint listed", "unknown", nil, []string{domain.ExaminedFingerprint("other")}, false},
-		{"rule and file listed", "unknown", nil, []string{rule, domain.ExaminedFilesScope, domain.ExaminedFile("a/b.go")}, true},
-		{"rule listed, file not scanned", "unknown", nil, []string{rule, domain.ExaminedFilesScope, domain.ExaminedFile("c/d.go")}, false},
-		{"file listed without a rule", "unknown", nil, []string{domain.ExaminedFilesScope, domain.ExaminedFile("a/b.go")}, false},
-		{"partial report proves nothing", "partial", nil, []string{rule}, false},
+		{"partial report proves nothing", "partial", nil, []string{rule, file}, false},
 		{"no keys", "unknown", nil, nil, false},
 		{"complete report covering the kind", "complete", []string{"sca"}, nil, true},
 		{"unknown report covering the kind", "unknown", []string{"sca"}, nil, false},
@@ -61,20 +91,29 @@ func TestReportExaminedFindingMatchesPerFinding(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			var kinds, keys any
-			if tc.kinds != nil {
-				kinds = tc.kinds
-			}
-			if tc.keys != nil {
-				keys = tc.keys
-			}
-			var got bool
-			require.NoError(t, s.pool.QueryRow(s.ctx,
-				`SELECT report_examined_finding($1, $2::text[], $3::text[], $4::uuid, 'sca', 'shared')`,
-				tc.completeness, kinds, keys, s.findingID).Scan(&got))
-			require.Equal(t, tc.want, got)
+			require.Equal(t, tc.want, s.examined(t, tc.completeness, tc.kinds, tc.keys))
 		})
 	}
+}
+
+// A colon in a rule id or a path must not shift the run number the matcher
+// reads, and a finding with no file is never proven by run keys.
+func TestReportExaminedFindingRunKeyEdges(t *testing.T) {
+	s, cleanup := examinedScenario(t)
+	defer cleanup()
+	_, err := s.pool.Exec(s.ctx, `UPDATE finding_dimensions SET dim_value = CASE dim_key WHEN 'rule_id' THEN 'a:b' ELSE 'c:/src/x.go' END WHERE finding_id = $1`, s.findingID)
+	require.NoError(t, err)
+	rule := domain.ExaminedRunRule(0, "sca", "a:b")
+	file := domain.ExaminedRunFile(0, "c:/src/x.go")
+
+	require.True(t, s.examined(t, "unknown", nil, []string{rule, file}))
+	require.False(t, s.examined(t, "unknown", nil, []string{rule, domain.ExaminedRunFile(1, "c:/src/x.go")}))
+	require.False(t, s.examined(t, "unknown", nil, []string{domain.ExaminedRunRule(0, "sca", "a"), file}))
+
+	_, err = s.pool.Exec(s.ctx, `DELETE FROM finding_dimensions WHERE finding_id = $1 AND dim_key = 'file'`, s.findingID)
+	require.NoError(t, err)
+	require.False(t, s.examined(t, "unknown", nil, []string{rule, file}), "a finding with no file")
+	require.True(t, s.examined(t, "unknown", nil, []string{domain.ExaminedFingerprint("shared")}))
 }
 
 func TestExaminedKeysCloseOnlyTheFindingsTheyName(t *testing.T) {
@@ -83,8 +122,12 @@ func TestExaminedKeysCloseOnlyTheFindingsTheyName(t *testing.T) {
 		keys []string
 		want string
 	}{
-		{"rule listed", []string{domain.ExaminedRule("sca", "go/sql-injection")}, "fixed"},
-		{"other rule listed", []string{domain.ExaminedRule("sca", "go/xss")}, "open"},
+		{"rule and file listed", []string{domain.ExaminedRunRule(0, "sca", "go/sql-injection"), domain.ExaminedRunFile(0, "a/b.go")}, "fixed"},
+		{"rule listed by a run that never scanned the file", []string{
+			domain.ExaminedRunRule(0, "sca", "go/sql-injection"), domain.ExaminedRunFile(0, "c/d.go"),
+			domain.ExaminedRunRule(1, "sca", "go/xss"), domain.ExaminedRunFile(1, "a/b.go"),
+		}, "open"},
+		{"other rule listed", []string{domain.ExaminedRunRule(0, "sca", "go/xss"), domain.ExaminedRunFile(0, "a/b.go")}, "open"},
 		{"no proof", nil, "open"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -115,7 +158,7 @@ func TestReportDeleteHonoursExaminedKeysAsACleanScan(t *testing.T) {
 		keys       []string
 		wantScopes int
 	}{
-		{"clean scan proved the finding", []string{domain.ExaminedRule("sca", "go/sql-injection")}, 0},
+		{"clean scan proved the finding", []string{domain.ExaminedRunRule(0, "sca", "go/sql-injection"), domain.ExaminedRunFile(0, "a/b.go")}, 0},
 		{"clean scan proved nothing", nil, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
