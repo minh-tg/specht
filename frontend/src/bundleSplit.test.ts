@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
-import ts from "typescript";
+import { type Expression, parseSync, Visitor } from "oxc-parser";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -23,31 +23,39 @@ function sourceFiles(dir: string, relative = ""): string[] {
   });
 }
 
+/** The value of a string literal or a template without substitutions, otherwise null. */
+function stringValue(node: Expression | null | undefined): string | null {
+  if (node?.type === "Literal" && typeof node.value === "string") return node.value;
+  if (node?.type === "TemplateLiteral" && node.expressions.length === 0) {
+    return node.quasis[0]?.value.cooked ?? null;
+  }
+  return null;
+}
+
 /** What in `source` loads an estimator package at runtime; empty when the file is clean. */
 function estimatorImports(source: string, fileName = "file.ts"): string[] {
+  const { program, errors } = parseSync(fileName, source);
+  if (errors.length > 0) throw new Error(`${fileName}: ${errors[0]?.message}`);
+
   const found: string[] = [];
-  const visit = (node: ts.Node) => {
-    if (
-      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node))
-      && node.moduleSpecifier
-      && ts.isStringLiteral(node.moduleSpecifier)
-      && node.moduleSpecifier.text.startsWith(PACKAGE_PREFIX)
-    ) {
-      const typeOnly = ts.isImportDeclaration(node)
-        ? node.importClause?.isTypeOnly === true
-        : node.isTypeOnly;
-      if (!typeOnly) found.push(node.getText());
-    } else if (
-      ts.isCallExpression(node)
-      && node.expression.kind === ts.SyntaxKind.ImportKeyword
-      && ts.isStringLiteralLike(node.arguments[0] ?? node)
-      && (node.arguments[0] as ts.StringLiteralLike).text.startsWith(PACKAGE_PREFIX)
-    ) {
-      found.push(node.getText());
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX));
+  const text = (node: { start: number; end: number; }) => source.slice(node.start, node.end);
+  const isEstimator = (specifier: string | null) => specifier?.startsWith(PACKAGE_PREFIX) === true;
+  new Visitor({
+    ImportDeclaration(node) {
+      if (node.importKind !== "type" && isEstimator(node.source.value)) found.push(text(node));
+    },
+    ExportNamedDeclaration(node) {
+      if (node.exportKind !== "type" && isEstimator(node.source?.value ?? null)) {
+        found.push(text(node));
+      }
+    },
+    ExportAllDeclaration(node) {
+      if (node.exportKind !== "type" && isEstimator(node.source.value)) found.push(text(node));
+    },
+    ImportExpression(node) {
+      if (isEstimator(stringValue(node.source))) found.push(text(node));
+    },
+  }).visit(program);
   return found;
 }
 
