@@ -263,6 +263,54 @@ func TestPollOnce_RecordsFailureOnTheFailingProject(t *testing.T) {
 	assert.Contains(t, failedErr, "inventory unavailable")
 }
 
+// TestPollOnce_FirstProjectFailureDoesNotSkipTheRest pins the round's
+// isolation: a failing project must not cost the projects behind it their
+// poll or the round's notification work.
+func TestPollOnce_FirstProjectFailureDoesNotSkipTheRest(t *testing.T) {
+	deps := baseDeps()
+	deps.Projects = []string{"broken", "healthy-one", "healthy-two"}
+	client := deps.Client.(*fakeClient)
+	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
+	var polled []string
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		if pid == "broken" {
+			return nil, errors.New("inventory unavailable")
+		}
+		polled = append(polled, pid)
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	}
+	// ProjectName stays nil, so the notification carries the project id and
+	// the batch shows which projects reached the round's notification work.
+	nf := &fakeNotifier{}
+	deps.Notifier = nf
+	var wg sync.WaitGroup
+	deps.WG = &wg
+	var failed []string
+	deps.RecordProjectFailure = func(ctx context.Context, pid, errText string) error {
+		failed = append(failed, pid)
+		return nil
+	}
+
+	outcome, err := PollOnce(context.Background(), deps)
+	require.Error(t, err)
+	wg.Wait() // notification dispatch is async
+
+	assert.Equal(t, []string{"healthy-one", "healthy-two"}, polled,
+		"the projects behind the failing one are still polled")
+	assert.Equal(t, []string{"broken"}, failed, "only the failing project records a failure")
+	assert.Equal(t, 2, outcome.Created, "the healthy projects still create their findings")
+	assert.Contains(t, err.Error(), "broken", "the returned error names the failing project")
+	assert.Contains(t, err.Error(), "inventory unavailable")
+
+	require.Len(t, nf.batches(), 1, "one batched notification for the round")
+	var notified []string
+	for _, n := range nf.batches()[0] {
+		notified = append(notified, n.Project)
+	}
+	assert.Equal(t, []string{"healthy-one", "healthy-two"}, notified,
+		"the round's notification work runs for the projects that succeeded")
+}
+
 func TestPollOnce_CanceledPollRecordsNoProjectFailure(t *testing.T) {
 	deps := baseDeps()
 	ctx, cancel := context.WithCancel(context.Background())

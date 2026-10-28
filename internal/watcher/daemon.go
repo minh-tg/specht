@@ -131,9 +131,11 @@ type PollOutcome struct {
 }
 
 // PollOnce runs one full poll: every project's inventory is queried against
-// OSV, each (advisory, inventory row) pair is decided, and the watermark
-// advances only when the entire poll succeeded. Any error aborts the poll and
-// leaves the watermark untouched.
+// OSV and each (advisory, inventory row) pair is decided. A project's
+// watermark advances only when that project's own poll succeeded. A failing
+// project does not stop the round: the remaining projects are still polled,
+// their findings are still notified, and the collected per-project errors are
+// returned together (errors.Join, nil when every project succeeded).
 func PollOnce(ctx context.Context, deps PollDeps) (PollOutcome, error) {
 	if err := validatePollDeps(deps); err != nil {
 		return PollOutcome{}, err
@@ -150,20 +152,24 @@ func PollOnce(ctx context.Context, deps PollDeps) (PollOutcome, error) {
 	now := deps.Now().UTC()
 	outcome := PollOutcome{}
 	var created []Decision
+	var projectErrs []error
 	for _, projectID := range deps.Projects {
 		if err := pollProject(ctx, deps, projectID, now, &outcome, &created); err != nil {
 			recordProjectFailure(ctx, deps, projectID, err)
 			var perr *pollDepsError
 			if errors.As(err, &perr) {
-				return outcome, fmt.Errorf("%s for project %s: %w", perr.op, projectID, perr.err)
+				projectErrs = append(projectErrs, fmt.Errorf("%s for project %s: %w", perr.op, projectID, perr.err))
+				continue
 			}
-			return outcome, err
+			projectErrs = append(projectErrs, fmt.Errorf("poll project %s: %w", projectID, err))
 		}
 	}
 
+	// The round's notification pass runs for every finding the successful
+	// projects created; a failed project only costs itself.
 	notifyCreated(ctx, deps, created)
 	deps.Logger.Info(msgPollComplete, "projects", outcome.Projects, "queried", outcome.Queried, "created", outcome.Created, "skipped", outcome.Skipped, "unchanged", outcome.Unchanged)
-	return outcome, nil
+	return outcome, errors.Join(projectErrs...)
 }
 
 // recordProjectFailure runs the per-project failure hook. A poll cut short
