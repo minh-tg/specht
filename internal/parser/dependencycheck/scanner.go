@@ -162,7 +162,7 @@ func convertDCVulnerability(dep dcDependency, v dcVulnerability, purl string) do
 		[]domain.Dimension{{Key: domain.DimVulnerabilityID, Value: v.Name}},
 		dcComponentDims(purl, dep.FileName)...,
 	)
-	filePath := parseutil.CleanFilePath(dep.FilePath)
+	filePath := parseutil.RepoPath(dep.FilePath)
 	location := filePath
 	if purl != "" {
 		if _, name, version := domain.SplitPURL(purl); name != "" {
@@ -191,7 +191,7 @@ func convertDCVulnerability(dep dcDependency, v dcVulnerability, purl string) do
 
 // appendDCPackages records the full package inventory of one dependency.
 func appendDCPackages(budget *parseutil.Budget, nr *domain.NormalizedReport, dep dcDependency) error {
-	filePath := parseutil.CleanFilePath(dep.FilePath)
+	filePath := parseutil.RepoPath(dep.FilePath)
 	for _, p := range dep.Packages {
 		purl := domain.NormalizePURL(p.ID)
 		if purl == "" {
@@ -276,7 +276,9 @@ const fingerprintVersion = 2
 
 // createFingerprint is the vulnerability and the purl. A dependency with no
 // purl (a .dll or .exe found by hash) has nothing but its file to name it, so
-// the cleaned file path stands in, then the file name.
+// the file's path stands in, then the file name. The path is repo-relative
+// (parseutil.RepoPath): Dependency-Check writes it absolute, and the checkout
+// directory changes from runner to runner.
 func createFingerprint(vulnID, purl, filePath, fileName string) string {
 	if purl != "" {
 		return string(domain.SCAFingerprint(vulnID, purl))

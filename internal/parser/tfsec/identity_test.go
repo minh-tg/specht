@@ -3,6 +3,7 @@ package tfsec
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -22,8 +23,30 @@ func TestOneResourceAddressInTwoModulesIsTwoFindings(t *testing.T) {
 		seen[f.Fingerprint] = true
 	}
 	assert.Len(t, seen, 18, "a check failing in two modules is two findings")
-	assert.True(t, seen["iac:AVD-AWS-0086:aws_s3_bucket.this:/src/infra/a/main.tf"])
-	assert.True(t, seen["iac:AVD-AWS-0086:aws_s3_bucket.this:/src/infra/b/main.tf"])
+	assert.True(t, seen["iac:AVD-AWS-0086:aws_s3_bucket.this:infra/a/main.tf"])
+	assert.True(t, seen["iac:AVD-AWS-0086:aws_s3_bucket.this:infra/b/main.tf"])
+}
+
+func TestAFindingKeepsItsIdentityFromAnotherCheckout(t *testing.T) {
+	// tfsec writes absolute paths, so the checkout directory is in every
+	// filename. The same files from a container mount, a GitHub Docker action
+	// and a GitLab runner are the same findings.
+	data, err := os.ReadFile("testdata/tfsec-two-modules.json")
+	require.NoError(t, err)
+	fingerprints := func(root string) []string {
+		doc := strings.ReplaceAll(string(data), `"/src/infra/`, `"`+root+`infra/`)
+		rep, err := NewScanner().Parse(context.Background(), []byte(doc))
+		require.NoError(t, err)
+		var out []string
+		for _, f := range rep.Findings {
+			out = append(out, f.Fingerprint)
+			assert.NotContains(t, f.CodeLocation.File, root, "the checkout directory is not part of the file")
+		}
+		return out
+	}
+	want := fingerprints("/src/")
+	assert.Equal(t, want, fingerprints("/github/workspace/"))
+	assert.Equal(t, want, fingerprints("/builds/x/1/"))
 }
 
 func TestAFindingKeepsItsIdentityWhenItsResourceMoves(t *testing.T) {

@@ -140,7 +140,7 @@ type tfsecResult struct {
 
 // tfsecFileLocation resolves the display file and location strings.
 func tfsecFileLocation(r tfsecResult) (string, string) {
-	file := parseutil.CleanFilePath(r.Location.Filename)
+	file := parseutil.RepoPath(r.Location.Filename)
 	if file == "" {
 		file = unknownFile
 	}
@@ -241,6 +241,8 @@ const fingerprintVersion = 2
 // fingerprint is the rule, the resource and the file, the IaC identity
 // Checkov findings use, so a finding stays put when its resource moves
 // within the file. A result that names no resource falls back to the line.
+// tfsec writes absolute paths, so file is repo-relative (parseutil.RepoPath):
+// the checkout directory changes from runner to runner.
 func fingerprint(r tfsecResult, file string) string {
 	fp := "iac:" + r.RuleID + ":" + r.Resource + ":" + file
 	if line := parseutil.SafeLine(r.Location.StartLine); r.Resource == "" && line > 0 {
