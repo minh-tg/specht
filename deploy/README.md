@@ -67,8 +67,8 @@ compose defaults differ, which is noted.
 
 On/off switches take `true` or `false` (also `1`, `0`, `t`, `f` and their
 capitalized forms); empty keeps the default and any other value stops the
-server at startup. The two SSO downgrades, `SSO_ALLOW_USERINFO_ONLY` and
-`SSO_ALLOW_UNVERIFIED_EMAIL`, accept only the exact words `true` and `false`.
+server at startup. `SSO_ALLOW_USERINFO_ONLY`, `SSO_ALLOW_UNVERIFIED_EMAIL`
+and `SSO_ALLOW_PRIVATE_ISSUER` accept only the exact words `true` and `false`.
 
 ### Core
 
@@ -282,7 +282,7 @@ the last document it fetched.
 | `SSO_CLIENT_SECRET` | *(empty)* | **Secret.** OAuth client secret. Required unless `SSO_PUBLIC_CLIENT=true`. |
 | `SSO_PUBLIC_CLIENT` | `false` | Allows an empty `SSO_CLIENT_SECRET`, for an identity provider client registered as public. PKCE protects the code exchange in that case. Leave it off for a confidential client: an empty secret then stops the server from starting instead of silently weakening the login. |
 | `SSO_ISSUER_URL` | *(empty)* | Must be `https`; plain `http` is accepted only for a loopback host, for a local IdP. |
-| `SSO_ALLOW_PRIVATE_ISSUER` | `false` | Lets the host of `SSO_ISSUER_URL` resolve to a private, loopback or link-local address, for an identity provider on an internal network. Any other host stays refused. Parsed as a boolean; an invalid value stops the server from starting. |
+| `SSO_ALLOW_PRIVATE_ISSUER` | `false` | Lets the host of `SSO_ISSUER_URL` resolve to a private, loopback or link-local address, for an identity provider on an internal network. Any other host stays refused. Only the exact values `true` and `false` are accepted; anything else stops the server from starting. |
 | `SSO_REDIRECT_URI` | *(empty)* | Must match the IdP's registered redirect URI. |
 | `SSO_GROUPS_CLAIM` | `groups` | Claim carrying IdP group membership. |
 | `SSO_ALLOWED_DOMAINS` | *(empty)* | Comma/space-separated email domains that may auto-provision. Empty refuses every unknown subject. |

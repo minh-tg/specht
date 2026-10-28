@@ -58,6 +58,14 @@ func discoveryURL(issuer string) string {
 	return strings.TrimSuffix(issuer, "/") + discoveryPath
 }
 
+// discoveryFetchBudget is the deadline for one shared discovery fetch: every
+// attempt may use the HTTP client's per-attempt timeout, and the pauses
+// between the attempts come on top. A one-attempt deadline would be spent by a
+// slow first attempt, leaving discover no time for its retries.
+func discoveryFetchBudget(perAttempt time.Duration) time.Duration {
+	return time.Duration(discoveryAttempts)*perAttempt + time.Duration(discoveryAttempts-1)*discoveryRetryDelay
+}
+
 // provider returns the discovered endpoints. Metadata is fetched on first use,
 // not at startup, so an IdP that is down while the server boots does not stop
 // it; concurrent callers share one fetch. Fresh metadata is served from the
@@ -76,8 +84,8 @@ func (a *OIDCAuthenticator) provider(ctx context.Context) (providerMetadata, err
 		// The fetch is shared, so it must not run on the context of the
 		// caller that happened to start it: that browser hanging up would
 		// fail every login waiting on the same fetch. Its own deadline
-		// matches the HTTP client's per-attempt budget.
-		fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), a.httpClient.Timeout)
+		// covers every attempt discover makes.
+		fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), discoveryFetchBudget(a.httpClient.Timeout))
 		defer cancel()
 		return a.discover(fetchCtx)
 	})
