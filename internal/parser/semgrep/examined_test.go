@@ -9,15 +9,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSARIFExaminedKeysAreTheRuleList(t *testing.T) {
+// Semgrep SARIF lists its rules but not the files it scanned, so it cannot
+// show a rule ran over a file and proves nothing.
+func TestSARIFRuleListWithoutFilesExaminesNothing(t *testing.T) {
 	doc := `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"Semgrep OSS","rules":[{"id":"a.b"},{"id":"c.d"}]}},"results":[]}]}`
 	nr, err := NewScanner().Parse(context.Background(), []byte(doc))
 	require.NoError(t, err)
-	assert.Equal(t, []string{"rule:sast:a.b", "rule:sast:c.d"}, nr.ExaminedKeys)
+	assert.Empty(t, nr.ExaminedKeys)
+}
+
+func TestSARIFExaminedKeysPairRulesWithListedFiles(t *testing.T) {
+	doc := `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"Semgrep OSS","rules":[{"id":"a.b"},{"id":"c.d"}]}},"artifacts":[{"location":{"uri":"src/x.py"}}],"results":[]}]}`
+	nr, err := NewScanner().Parse(context.Background(), []byte(doc))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"run:0:file:src/x.py", "run:0:rule:sast:a.b", "run:0:rule:sast:c.d"}, nr.ExaminedKeys)
 }
 
 func TestSARIFFailedRunExaminesNothing(t *testing.T) {
-	doc := `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"Semgrep OSS","rules":[{"id":"a.b"}]}},"invocations":[{"executionSuccessful":false}],"results":[]}]}`
+	doc := `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"Semgrep OSS","rules":[{"id":"a.b"}]}},"artifacts":[{"location":{"uri":"src/x.py"}}],"invocations":[{"executionSuccessful":false}],"results":[]}]}`
 	nr, err := NewScanner().Parse(context.Background(), []byte(doc))
 	require.NoError(t, err)
 	assert.Empty(t, nr.ExaminedKeys)

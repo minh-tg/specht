@@ -124,6 +124,21 @@ func sarifDoc(t *testing.T, driver string, rules []string, hits [][2]string, fil
 	return raw
 }
 
+// mergeRuns joins the runs of several SARIF documents into one, as CodeQL
+// over several languages or a merge of several tools' output does.
+func mergeRuns(t *testing.T, docs ...[]byte) []byte {
+	t.Helper()
+	var runs []any
+	for _, raw := range docs {
+		var doc map[string]any
+		require.NoError(t, json.Unmarshal(raw, &doc))
+		runs = append(runs, doc["runs"].([]any)...)
+	}
+	out, err := json.Marshal(map[string]any{"version": "2.1.0", "runs": runs})
+	require.NoError(t, err)
+	return out
+}
+
 func TestSARIFRuleListClosesAbsentFindings(t *testing.T) {
 	h, cleanup := newEvidenceHarness(t)
 	defer cleanup()
@@ -136,25 +151,47 @@ func TestSARIFRuleListClosesAbsentFindings(t *testing.T) {
 		want    string
 	}{
 		{
-			"semgrep, rule listed", "semgrep", "Semgrep OSS",
+			"semgrep, rule listed, no file list", "semgrep", "Semgrep OSS",
 			func() []byte {
 				return sarifDoc(t, "Semgrep OSS", []string{"go/sql-injection", "go/xss"}, nil, nil, nil)
+			}, "open",
+		},
+		{
+			"semgrep, rule listed, file scanned", "semgrep", "Semgrep OSS",
+			func() []byte {
+				return sarifDoc(t, "Semgrep OSS", []string{"go/sql-injection", "go/xss"}, nil, []string{"pkg/db.go"}, nil)
 			}, "fixed",
 		},
 		{
 			"semgrep, rule not listed", "semgrep", "Semgrep OSS",
-			func() []byte { return sarifDoc(t, "Semgrep OSS", []string{"go/xss"}, nil, nil, nil) }, "open",
+			func() []byte { return sarifDoc(t, "Semgrep OSS", []string{"go/xss"}, nil, []string{"pkg/db.go"}, nil) }, "open",
 		},
 		{
 			"semgrep, run failed", "semgrep", "Semgrep OSS",
 			func() []byte {
-				return sarifDoc(t, "Semgrep OSS", []string{"go/sql-injection"}, nil, nil,
+				return sarifDoc(t, "Semgrep OSS", []string{"go/sql-injection"}, nil, []string{"pkg/db.go"},
 					map[string]any{"invocations": []map[string]any{{"executionSuccessful": false}}})
 			}, "open",
 		},
 		{
 			"sarif, rule listed, no file list", "sarif", "CodeQL",
-			func() []byte { return sarifDoc(t, "CodeQL", []string{"go/sql-injection"}, nil, nil, nil) }, "fixed",
+			func() []byte { return sarifDoc(t, "CodeQL", []string{"go/sql-injection"}, nil, nil, nil) }, "open",
+		},
+		{
+			"sarif, rule listed by a run that never scanned the file", "sarif", "CodeQL",
+			func() []byte {
+				return mergeRuns(t,
+					sarifDoc(t, "CodeQL", []string{"go/sql-injection"}, nil, []string{"pkg/other.go"}, nil),
+					sarifDoc(t, "CodeQL", []string{"go/xss"}, nil, []string{"pkg/db.go"}, nil))
+			}, "open",
+		},
+		{
+			"sarif, second run lists the rule and the file", "sarif", "CodeQL",
+			func() []byte {
+				return mergeRuns(t,
+					sarifDoc(t, "CodeQL", []string{"go/xss"}, nil, []string{"pkg/other.go"}, nil),
+					sarifDoc(t, "CodeQL", []string{"go/sql-injection"}, nil, []string{"pkg/db.go"}, nil))
+			}, "fixed",
 		},
 		{
 			"sarif, rule listed, file scanned", "sarif", "CodeQL",
@@ -182,7 +219,7 @@ func TestSARIFRuleListClosesAbsentFindings(t *testing.T) {
 		{
 			"sarif, finding suppressed in the producer", "sarif", "CodeQL",
 			func() []byte {
-				raw := sarifDoc(t, "CodeQL", []string{"go/sql-injection"}, hit, nil, nil)
+				raw := sarifDoc(t, "CodeQL", []string{"go/sql-injection"}, hit, []string{"pkg/db.go"}, nil)
 				var doc map[string]any
 				require.NoError(t, json.Unmarshal(raw, &doc))
 				run := doc["runs"].([]any)[0].(map[string]any)
