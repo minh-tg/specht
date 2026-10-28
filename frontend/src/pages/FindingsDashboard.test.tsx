@@ -245,9 +245,9 @@ describe("FindingsDashboard", () => {
     });
     renderWithProviders(<FindingsDashboard />);
 
-    expect(await screen.findByRole("button", { name: "Critical, 2 open" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "High, 5 open" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Low, 7 open" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Critical 2 open" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "High 5 open" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Low 7 open" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Medium" })).toBeInTheDocument();
   });
   it("offers Unrated as a severity filter when something is unrated, and requests severity=unknown", async () => {

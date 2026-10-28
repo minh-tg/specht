@@ -41,7 +41,7 @@ export function SeverityChips({ value, counts, onChange }: {
             aria-pressed={pressed}
             aria-label={count === undefined
               ? undefined
-              : `${severityLabel(severity)}, ${count} open`}
+              : `${severityLabel(severity)} ${count} open`}
             onClick={() => toggle(severity)}
             className={`inline-flex h-8 items-center gap-1.5 rounded border px-2.5 text-meta font-semibold transition-[background-color,color,scale] duration-(--dur-instant) active:scale-[0.97] pointer-coarse:min-h-11 ${
               pressed
