@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"slices"
 	"strconv"
@@ -285,6 +287,7 @@ func convert(budget *parseutil.Budget, report trivyReport) (*domain.NormalizedRe
 			}
 		}
 	}
+	numberSecrets(nr.Findings)
 	// A result class is the only evidence Trivy gives that a category was
 	// scanned. Without one, an empty report proves no category is clean.
 	nr.CoveredFindingKinds = trivyCoveredKinds(covered)
@@ -520,8 +523,9 @@ func addSecrets(budget *parseutil.Budget, nr *domain.NormalizedReport, result tr
 		if start > 0 {
 			dims = append(dims, domain.Dimension{Key: domain.DimLine, Value: strconv.Itoa(start)})
 		}
+		anchor, basis := secretAnchor(s.Match, start)
 		nr.Findings = append(nr.Findings, parseutil.HardenFinding(domain.NormalizedFinding{
-			Fingerprint:  secretFingerprint(s.RuleID, cleanTarget, start),
+			Fingerprint:  secretFingerprint(s.RuleID, cleanTarget, anchor),
 			FindingKind:  kindSecret,
 			Title:        s.Title,
 			Severity:     normalizeSeverity(s.Severity),
@@ -529,7 +533,8 @@ func addSecrets(budget *parseutil.Budget, nr *domain.NormalizedReport, result tr
 			CodeLocation: codeLocation(cleanTarget, start, end),
 			Dimensions:   dims,
 			Extensions: map[string]any{
-				"category": s.Category,
+				"category":       s.Category,
+				"identity_basis": basis,
 			},
 		}))
 	}
@@ -579,15 +584,61 @@ func addMisconfigs(budget *parseutil.Budget, nr *domain.NormalizedReport, result
 // 1 merged each pair into one finding.
 const fingerprintVersion = 2
 
-// secretFingerprint is the rule, the file and the line of the match. Trivy
-// masks the credential in its own output, so the line is the only thing that
-// tells two secrets of one rule in one file apart.
-func secretFingerprint(ruleID, file string, line int) string {
+// secretFingerprint is the rule, the file and an anchor that says which match
+// in the file this is (see secretAnchor). The line is left out, so a secret
+// keeps its identity, and its triage, when lines above it change.
+func secretFingerprint(ruleID, file, anchor string) string {
 	fp := "secret:" + ruleID + ":" + file
-	if line > 0 {
-		fp += ":" + strconv.Itoa(line)
+	if anchor != "" {
+		fp += ":" + anchor
 	}
 	return fp
+}
+
+// secretAnchor is the first 16 hex digits of the SHA-256 of Trivy's Match, the
+// matched line with the credential replaced by asterisks, whitespace runs
+// collapsed. A Match with no asterisk is not masked (or not there), so it is
+// never hashed: the line stands in, and basis says which was used.
+func secretAnchor(match string, line int) (anchor, basis string) {
+	if m := strings.Join(strings.Fields(match), " "); strings.Contains(m, "*") {
+		sum := sha256.Sum256([]byte(m))
+		return hex.EncodeToString(sum[:])[:16], "match"
+	}
+	if line > 0 {
+		return "line" + strconv.Itoa(line), "line"
+	}
+	return "", "line"
+}
+
+// numberSecrets tells apart secrets that share a fingerprint, two tokens of one
+// length in identical lines of one file, by appending "#1", "#2"... in line
+// order. The first keeps the plain fingerprint.
+func numberSecrets(findings []domain.NormalizedFinding) {
+	var order []int
+	for i, f := range findings {
+		if f.FindingKind == kindSecret {
+			order = append(order, i)
+		}
+	}
+	slices.SortStableFunc(order, func(a, b int) int {
+		return cmp.Compare(secretLine(findings[a]), secretLine(findings[b]))
+	})
+	seen := make(map[string]int, len(order))
+	for _, i := range order {
+		fp := findings[i].Fingerprint
+		n := seen[fp]
+		seen[fp]++
+		if n > 0 {
+			findings[i].Fingerprint = parseutil.BoundFingerprint(fp + "#" + strconv.Itoa(n))
+		}
+	}
+}
+
+func secretLine(f domain.NormalizedFinding) int {
+	if f.CodeLocation == nil {
+		return 0
+	}
+	return f.CodeLocation.StartLine
 }
 
 // misconfigFingerprint is the rule, the resource and the file, the IaC

@@ -2,8 +2,11 @@ package trivy_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -87,12 +90,66 @@ func TestEverySecretOfOneRuleInOneFileIsItsOwnFinding(t *testing.T) {
 	// trivy fs on a cred.env with two GitHub tokens on lines 1 and 2.
 	nr := parseFile(t, "testdata/two-secrets.json")
 	require.Len(t, nr.Findings, 2)
-	assert.Equal(t, "secret:github-pat:cred.env:1", nr.Findings[0].Fingerprint)
-	assert.Equal(t, "secret:github-pat:cred.env:2", nr.Findings[1].Fingerprint)
+	// The anchors hash the masked lines a = "****..." and b = "****...".
+	assert.Equal(t, "secret:github-pat:cred.env:"+anchor(`a = "****************************************"`), nr.Findings[0].Fingerprint)
+	assert.Equal(t, "secret:github-pat:cred.env:"+anchor(`b = "****************************************"`), nr.Findings[1].Fingerprint)
 	assert.Equal(t, "cred.env:2", nr.Findings[1].Location)
 	assert.Contains(t, nr.Findings[1].Dimensions, domain.Dimension{Key: domain.DimLine, Value: "2"})
 	require.NotNil(t, nr.Findings[1].CodeLocation)
 	assert.Equal(t, 2, nr.Findings[1].CodeLocation.StartLine)
+}
+
+func anchor(match string) string {
+	sum := sha256.Sum256([]byte(match))
+	return hex.EncodeToString(sum[:])[:16]
+}
+
+// secretDoc is a trivy fs report with one secret per entry of lines, each a
+// masked match and its line, all of rule github-pat in file.
+func secretDoc(file string, lines ...string) string {
+	var secrets []string
+	for i := 0; i+1 < len(lines); i += 2 {
+		secrets = append(secrets, `{"RuleID":"github-pat","Severity":"CRITICAL","Title":"GitHub Personal Access Token",
+			"StartLine":`+lines[i+1]+`,"EndLine":`+lines[i+1]+`,"Match":`+strconv.Quote(lines[i])+`}`)
+	}
+	return `{"SchemaVersion":2,"ArtifactName":".","ArtifactType":"filesystem","Results":[{"Target":"` + file +
+		`","Class":"secret","Secrets":[` + strings.Join(secrets, ",") + `]}]}`
+}
+
+func TestASecretKeepsItsIdentityWhenItsLineMoves(t *testing.T) {
+	const masked = `token = "****************************************"`
+	before := parseDoc(t, secretDoc("cred.env", masked, "1"))
+	after := parseDoc(t, secretDoc("cred.env", "  "+masked, "40"))
+	require.Len(t, before.Findings, 1)
+	require.Len(t, after.Findings, 1)
+	assert.Equal(t, before.Findings[0].Fingerprint, after.Findings[0].Fingerprint)
+	assert.Equal(t, "match", before.Findings[0].Extensions["identity_basis"])
+
+	otherMatch := parseDoc(t, secretDoc("cred.env", `api = "****************************************"`, "1"))
+	assert.NotEqual(t, before.Findings[0].Fingerprint, otherMatch.Findings[0].Fingerprint)
+	otherFile := parseDoc(t, secretDoc("prod.env", masked, "1"))
+	assert.NotEqual(t, before.Findings[0].Fingerprint, otherFile.Findings[0].Fingerprint)
+}
+
+func TestAnUnmaskedMatchIsNeverHashed(t *testing.T) {
+	// A Match with no asterisk carries the credential itself.
+	const raw = `token = "ghp_abcdefghijklmnopqrstuvwxyz0123456789"`
+	nr := parseDoc(t, secretDoc("cred.env", raw, "3", "", "4"))
+	require.Len(t, nr.Findings, 2)
+	assert.Equal(t, "secret:github-pat:cred.env:line3", nr.Findings[0].Fingerprint)
+	assert.Equal(t, "secret:github-pat:cred.env:line4", nr.Findings[1].Fingerprint)
+	assert.Equal(t, "line", nr.Findings[0].Extensions["identity_basis"])
+	assert.NotContains(t, nr.Findings[0].Fingerprint, anchor(raw))
+}
+
+func TestIdenticalMaskedMatchesInOneFileAreNumbered(t *testing.T) {
+	const masked = `token = "****************************************"`
+	// Listed out of line order: the numbers follow the lines.
+	nr := parseDoc(t, secretDoc("cred.env", masked, "9", masked, "2"))
+	require.Len(t, nr.Findings, 2)
+	base := "secret:github-pat:cred.env:" + anchor(masked)
+	assert.Equal(t, base+"#1", nr.Findings[0].Fingerprint)
+	assert.Equal(t, base, nr.Findings[1].Fingerprint)
 }
 
 func TestTheScannerSaysItsIdentitiesChanged(t *testing.T) {

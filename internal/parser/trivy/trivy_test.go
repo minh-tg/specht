@@ -235,7 +235,8 @@ func TestParse_SecretFingerprintUsesCleanTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, report.Findings, 1)
 
-	assert.Equal(t, "secret:aws-access-key-id:app/.env", report.Findings[0].Fingerprint, "a report with ./ and one without name the same file")
+	assert.True(t, strings.HasPrefix(report.Findings[0].Fingerprint, "secret:aws-access-key-id:app/.env:"),
+		"a report with ./ and one without name the same file: %s", report.Findings[0].Fingerprint)
 	assert.NotContains(t, report.Findings[0].Location, "./")
 }
 
