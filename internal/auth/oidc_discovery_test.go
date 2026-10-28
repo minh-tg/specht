@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -255,8 +256,67 @@ func TestDiscovery_StaleMetadataSurvivesAFailedRefresh(t *testing.T) {
 	idp.set(func(p *keycloakIdP) { p.discoveryStatus = http.StatusInternalServerError })
 
 	again, err := a.provider(context.Background())
-	require.NoError(t, err)
+	require.NoError(t, err, "the stale copy answers while the provider is down")
 	assert.Equal(t, first, again)
+	fetched, _ := idp.hits()
+	assert.Equal(t, 1+discoveryAttempts, fetched, "the failed refresh ran its retry budget once")
+
+	idp.set(func(p *keycloakIdP) { p.discoveryStatus = 0 })
+	stillStale, err := a.provider(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, first, stillStale)
+	after, _ := idp.hits()
+	assert.Equal(t, fetched, after, "the next refresh waits discoveryRetryAfter, even for a provider that is back")
+}
+
+// A caller that hangs up while the shared discovery fetch is running must not
+// cancel it for the logins waiting behind it.
+func TestDiscovery_CanceledCallerDoesNotCancelTheSharedFetch(t *testing.T) {
+	const fetchDelay = 200 * time.Millisecond
+	var hits atomic.Int32
+	started := make(chan struct{}, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != discoveryPath {
+			http.NotFound(w, r)
+			return
+		}
+		hits.Add(1)
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+		time.Sleep(fetchDelay)
+		issuer := "http://" + r.Host
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"issuer":                 issuer,
+			"authorization_endpoint": issuer + "/oauth/authorize",
+			"token_endpoint":         issuer + "/oauth/token",
+			"jwks_uri":               issuer + "/.well-known/jwks.json",
+		})
+	}))
+	t.Cleanup(srv.Close)
+	a, err := NewOIDCAuthenticator(OIDCConfig{
+		ClientID: "test-client", ClientSecret: "secret", IssuerURL: srv.URL,
+		RedirectURI: "http://localhost:8080/api/v1/auth/sso/callback",
+	}, nil)
+	require.NoError(t, err)
+
+	callerCtx, hangUp := context.WithCancel(context.Background())
+	first := make(chan error, 1)
+	go func() {
+		_, err := a.provider(callerCtx)
+		first <- err
+	}()
+	<-started // the shared fetch is in flight
+	hangUp()
+
+	meta, err := a.provider(context.Background())
+
+	require.NoError(t, err, "the shared fetch outlives the caller that started it")
+	assert.Equal(t, srv.URL, meta.Issuer)
+	<-first
+	assert.Equal(t, int32(1), hits.Load(), "both callers share one fetch")
 }
 
 func TestDiscovery_KeepsTheQueryOfTheAuthorizationEndpoint(t *testing.T) {

@@ -25,6 +25,10 @@ const (
 	// discoveryCacheTTL is how long fetched metadata is used before a refresh
 	// is attempted. A failed refresh keeps the previous metadata.
 	discoveryCacheTTL = time.Hour
+	// discoveryRetryAfter is how long a failed refresh waits before the next
+	// attempt while the stale metadata keeps serving, so a slow or down
+	// provider costs one login the retry budget instead of every login.
+	discoveryRetryAfter = time.Minute
 	// discoveryAttempts and discoveryRetryDelay bound one fetch: an IdP that
 	// is briefly down costs a login at most this many tries before it gets a
 	// 503, and the next login tries again.
@@ -57,7 +61,8 @@ func discoveryURL(issuer string) string {
 // provider returns the discovered endpoints. Metadata is fetched on first use,
 // not at startup, so an IdP that is down while the server boots does not stop
 // it; concurrent callers share one fetch. Fresh metadata is served from the
-// cache. When a refresh of stale metadata fails, the stale copy is kept.
+// cache. When a refresh of stale metadata fails, the stale copy keeps serving
+// and the next attempt waits discoveryRetryAfter.
 func (a *OIDCAuthenticator) provider(ctx context.Context) (providerMetadata, error) {
 	a.mu.RLock()
 	cached, have := a.meta, a.metaOK
@@ -68,10 +73,17 @@ func (a *OIDCAuthenticator) provider(ctx context.Context) (providerMetadata, err
 	}
 
 	v, err, _ := a.discoveryFlight.Do("discover", func() (any, error) {
-		return a.discover(ctx)
+		// The fetch is shared, so it must not run on the context of the
+		// caller that happened to start it: that browser hanging up would
+		// fail every login waiting on the same fetch. Its own deadline
+		// matches the HTTP client's per-attempt budget.
+		fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), a.httpClient.Timeout)
+		defer cancel()
+		return a.discover(fetchCtx)
 	})
 	if err != nil {
 		if have {
+			a.backOffRefresh()
 			if a.logger != nil {
 				a.logger("oidc discovery refresh failed, keeping previous metadata", "error", err)
 			}
@@ -80,6 +92,17 @@ func (a *OIDCAuthenticator) provider(ctx context.Context) (providerMetadata, err
 		return providerMetadata{}, fmt.Errorf("%w: %w", ErrSSOProviderUnavailable, err)
 	}
 	return v.(providerMetadata), nil
+}
+
+// backOffRefresh pushes the next refresh attempt discoveryRetryAfter into the
+// future after a failed one. Metadata another caller refreshed successfully
+// meanwhile keeps its own expiry.
+func (a *OIDCAuthenticator) backOffRefresh() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if now := a.now(); !now.Before(a.metaExpiry) {
+		a.metaExpiry = now.Add(discoveryRetryAfter)
+	}
 }
 
 // discover fetches and validates the discovery document, retrying transport
