@@ -190,7 +190,7 @@ export function ProjectAccess() {
       <section aria-labelledby="members-heading">
         <div className="flex items-end justify-between gap-4">
           <div>
-            <h2 id="members-heading" className="flex items-center gap-2 text-lg font-semibold">
+            <h2 id="members-heading" className="flex items-center gap-2 text-section font-semibold">
               Direct Members
               <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-normal tabular-nums">
                 {members?.length ?? 0}
@@ -295,7 +295,7 @@ export function ProjectAccess() {
       <section aria-labelledby="teams-heading">
         <div className="flex items-end justify-between gap-4">
           <div>
-            <h2 id="teams-heading" className="flex items-center gap-2 text-lg font-semibold">
+            <h2 id="teams-heading" className="flex items-center gap-2 text-section font-semibold">
               Linked Teams
               <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-normal tabular-nums">
                 {teams?.length ?? 0}

@@ -85,7 +85,7 @@ export function PeopleSection() {
     <section aria-labelledby="people-heading" className="grid gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h3 id="people-heading" className="text-base font-semibold">People</h3>
+          <h3 id="people-heading" className="text-body font-semibold">People</h3>
           <p className="text-muted-foreground mt-0.5 max-w-[68ch] text-[0.8125rem]">
             Deactivating ends their sessions at once and keeps their history. The last admin cannot
             be demoted or deactivated, and nobody can deactivate themselves.

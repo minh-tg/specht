@@ -18,7 +18,7 @@ export function Profile() {
   return (
     <div className="mx-auto max-w-2xl space-y-8 px-4 py-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Your profile</h1>
+        <h1 className="text-title font-bold">Your profile</h1>
         <p className="text-muted-foreground mt-1 text-sm">
           How you appear to other people in Specht, and how you sign in.
         </p>
@@ -58,7 +58,7 @@ function AccountSection({ profile }: { readonly profile: UserProfile; }) {
       aria-labelledby="profile-account"
       className="grid gap-4 border-t-2 border-foreground pt-5"
     >
-      <h2 id="profile-account" className="text-base font-semibold">Account</h2>
+      <h2 id="profile-account" className="text-section font-semibold">Account</h2>
       <dl className="grid gap-3 text-sm sm:grid-cols-[8rem_1fr]">
         <dt className="text-muted-foreground">Email</dt>
         <dd className="break-all font-medium">{profile.email}</dd>
@@ -167,7 +167,7 @@ function PasswordSection({ displayName }: { readonly displayName: string | null 
         aria-labelledby="profile-password"
         className="grid gap-3 border-t border-border pt-5"
       >
-        <h2 id="profile-password" className="text-base font-semibold">Password</h2>
+        <h2 id="profile-password" className="text-section font-semibold">Password</h2>
         <p className="text-sm">
           Your account signs in through your identity provider, so there is no password to change
           here.
@@ -178,7 +178,7 @@ function PasswordSection({ displayName }: { readonly displayName: string | null 
 
   return (
     <section aria-labelledby="profile-password" className="grid gap-4 border-t border-border pt-5">
-      <h2 id="profile-password" className="text-base font-semibold">Password</h2>
+      <h2 id="profile-password" className="text-section font-semibold">Password</h2>
       <form onSubmit={handleSubmit} noValidate className="grid gap-4">
         {formError && (
           <p

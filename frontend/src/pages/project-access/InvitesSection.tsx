@@ -74,7 +74,7 @@ export function InvitesSection({ slug }: { readonly slug: string; }) {
     <section aria-labelledby="invites-heading">
       <div className="flex items-end justify-between gap-4">
         <div>
-          <h2 id="invites-heading" className="text-lg font-semibold">Invite links</h2>
+          <h2 id="invites-heading" className="text-section font-semibold">Invite links</h2>
           <p className="text-muted-foreground mt-0.5 max-w-[60ch] text-sm">
             Each link works once and expires. Only a hash is stored, so a link cannot be shown
             again.

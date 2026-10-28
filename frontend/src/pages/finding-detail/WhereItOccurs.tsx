@@ -6,7 +6,7 @@ import { RawEvidenceNote } from "./RawEvidenceNote";
 export function WhereItOccurs({ finding }: { readonly finding: Finding; }) {
   return (
     <div className="border-border mt-8 border-t pt-5">
-      <h2 className="mb-3 text-lg font-semibold">Where it occurs</h2>
+      <h2 className="mb-3 text-section font-semibold">Where it occurs</h2>
       {finding.location
           && (finding.location.file || finding.location.resource || finding.location.summary)
         ? (

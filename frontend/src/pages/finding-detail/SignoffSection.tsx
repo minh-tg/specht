@@ -89,7 +89,7 @@ export function SignoffSection({
 
   return (
     <div className="border-border mt-8 border-t pt-5">
-      <h2 className="mb-3 text-lg font-semibold">Reviewer sign-off</h2>
+      <h2 className="mb-3 text-section font-semibold">Reviewer sign-off</h2>
       {body}
 
       {canTriage && !isLoading && !isError && (

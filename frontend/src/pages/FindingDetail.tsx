@@ -92,7 +92,7 @@ export function FindingDetail() {
         >
           &larr; Back to findings
         </Link>
-        <h1 className="text-2xl font-bold">Couldn't load this finding</h1>
+        <h1 className="text-title font-bold">Couldn't load this finding</h1>
         <ErrorState
           className="mt-4"
           title={error?.message ?? "Finding not found"}
@@ -149,7 +149,7 @@ export function FindingDetail() {
           <WhereItOccurs finding={finding} />
 
           <div className="border-border mt-8 border-t pt-5">
-            <h2 className="mb-1 text-lg font-semibold">Decide</h2>
+            <h2 className="mb-1 text-section font-semibold">Decide</h2>
             <p className="text-muted-foreground mb-4 text-xs">
               Currently: {analysisStateLabel(shown.analysis_state) ?? "Not triaged"}
               {currentGate && <>{" · "}{currentGate}</>}

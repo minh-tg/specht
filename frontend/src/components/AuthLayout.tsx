@@ -13,7 +13,7 @@ export function AuthLayout({ eyebrow, title, subtitle, children }: {
   return (
     <div className="mx-auto w-full max-w-[30rem] px-4 pt-10 pb-16 sm:pt-14">
       <p className="font-label text-muted-foreground mb-2.5 text-xs">{eyebrow}</p>
-      <h1 className="text-[1.625rem] leading-[1.1] font-bold tracking-tight text-balance sm:text-3xl">
+      <h1 className="text-title font-bold text-balance">
         {title}
       </h1>
       {subtitle && <p className="text-muted-foreground mt-3 max-w-[56ch] text-pretty">{subtitle}

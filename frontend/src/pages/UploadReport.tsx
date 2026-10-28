@@ -26,7 +26,7 @@ export function UploadReport() {
         &larr; {projectName}
       </Link>
 
-      <h1 className="mb-2 text-2xl font-bold">Upload a report</h1>
+      <h1 className="mb-2 text-title font-bold">Upload a report</h1>
       <p className="text-muted-foreground mb-6 text-sm">Uploading to {projectName}</p>
 
       {upload.result && (

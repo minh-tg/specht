@@ -99,7 +99,7 @@ export function BlockerSection(
             : "Findings introduced by this change"}
         >
           <div className="mb-2.5 flex items-baseline justify-between">
-            <h2 className="text-lg leading-tight font-semibold">What is in the way</h2>
+            <h2 className="text-section leading-tight font-semibold">What is in the way</h2>
             <span className="text-muted-foreground text-[13px]">Worst first</span>
           </div>
           <Ledger label="Blocking findings">

@@ -55,7 +55,7 @@ export function ProjectPolicy() {
   return (
     <section aria-labelledby="policy-heading" className="grid gap-6">
       <div>
-        <h2 id="policy-heading" className="text-lg font-semibold">Policy</h2>
+        <h2 id="policy-heading" className="text-section font-semibold">Policy</h2>
         <p className="text-muted-foreground mt-0.5 text-sm">
           What blocks a change in this project, and where each rule comes from.
         </p>

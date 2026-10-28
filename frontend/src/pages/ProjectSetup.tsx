@@ -147,7 +147,7 @@ export function ProjectSetup() {
   if (project.permissions?.manage_ci !== true) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
-        <h1 className="mb-6 text-2xl font-bold">CI setup</h1>
+        <h1 className="mb-6 text-title font-bold">CI setup</h1>
         <p className="text-muted-foreground text-sm">
           Only project managers and administrators can set up CI for this project.
         </p>
@@ -181,11 +181,11 @@ export function ProjectSetup() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold">Set up CI for {project.name}</h1>
+      <h1 className="mb-6 text-title font-bold">Set up CI for {project.name}</h1>
 
       <ol className="list-decimal space-y-8 pl-5">
         <li>
-          <h2 className="text-lg font-semibold">Create an API key</h2>
+          <h2 className="text-section font-semibold">Create an API key</h2>
           <p className="text-muted-foreground mt-1 text-sm">
             Create a key for your pipeline. It is shown only once.
           </p>
@@ -248,7 +248,7 @@ export function ProjectSetup() {
         </li>
 
         <li>
-          <h2 className="text-lg font-semibold">Add it to your pipeline</h2>
+          <h2 className="text-section font-semibold">Add it to your pipeline</h2>
           <p className="text-muted-foreground mt-1 text-sm">
             Store the key you just created as the SPECHT_API_KEY secret, then commit one of these
             pipelines. The snippets only reference the secret; they never contain the key itself.
@@ -261,7 +261,7 @@ export function ProjectSetup() {
 
           <div className="mt-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium">GitHub Actions</h3>
+              <h3 className="text-body font-semibold">GitHub Actions</h3>
               <CopyButton text={githubSnippet} label="GitHub Actions workflow" />
             </div>
             <pre className={`${PRE_CLASS} mt-1`}>
@@ -271,7 +271,7 @@ export function ProjectSetup() {
 
           <div className="mt-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium">GitLab CI</h3>
+              <h3 className="text-body font-semibold">GitLab CI</h3>
               <CopyButton text={gitlabSnippet} label="GitLab CI pipeline" />
             </div>
             <pre className={`${PRE_CLASS} mt-1`}>
@@ -285,7 +285,7 @@ export function ProjectSetup() {
         </li>
 
         <li>
-          <h2 className="text-lg font-semibold">Or upload a report by hand</h2>
+          <h2 className="text-section font-semibold">Or upload a report by hand</h2>
           <p className="mt-1 text-sm">
             <Link to={`/${slug}/reports/upload`} className={`${INLINE_LINK} text-sm`}>
               Upload a report
@@ -294,7 +294,7 @@ export function ProjectSetup() {
         </li>
 
         <li>
-          <h2 className="text-lg font-semibold">
+          <h2 className="text-section font-semibold">
             {statsFailed
               ? "First report status unavailable"
               : FIRST_REPORT_COPY[firstReport].heading}

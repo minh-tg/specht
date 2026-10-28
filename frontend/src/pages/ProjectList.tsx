@@ -110,7 +110,7 @@ export function ProjectList() {
     <div className="space-y-4">
       {startWith && (
         <section aria-labelledby="start-here" className="space-y-2">
-          <p id="start-here" className="text-lg">
+          <p id="start-here" className="text-section font-normal">
             {blockedRows.length === 1
               ? "1 project is blocked."
               : `${blockedRows.length} projects are blocked.`} Start with{" "}

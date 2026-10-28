@@ -157,7 +157,7 @@ export function EvidenceSection({
 
   return (
     <div className="border-border mt-8 border-t pt-5">
-      <h2 className="mb-3 text-lg font-semibold">Evidence</h2>
+      <h2 className="mb-3 text-section font-semibold">Evidence</h2>
       {body}
 
       {canTriage && (

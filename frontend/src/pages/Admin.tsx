@@ -10,7 +10,7 @@ import { WatcherHealthSection } from "./admin/WatcherHealthSection";
 function Stat({ value, label }: { readonly value: number; readonly label: string; }) {
   return (
     <div className="border-border border-b py-3.5 pr-3.5">
-      <div className="text-3xl leading-none font-bold tabular-nums">
+      <div className="text-title leading-none font-bold tabular-nums">
         {value.toLocaleString("en-US")}
       </div>
       <div className="text-muted-foreground mt-1.5 text-[0.8125rem]">{label}</div>
@@ -30,7 +30,7 @@ export function Admin() {
   if (!isAdmin) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-8">
-        <h1 className="text-2xl font-bold">Admin</h1>
+        <h1 className="text-title font-bold">Admin</h1>
         <p className="text-muted-foreground mt-2 text-sm">Only global admins can see this page.</p>
       </div>
     );
@@ -39,7 +39,7 @@ export function Admin() {
   return (
     <div className="mx-auto grid max-w-5xl gap-9 px-4 py-8">
       <div>
-        <h1 className="text-2xl font-bold">Admin</h1>
+        <h1 className="text-title font-bold">Admin</h1>
         <p className="text-muted-foreground mt-1 text-sm">
           The whole server. Only global admins see this.
         </p>

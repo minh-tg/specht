@@ -36,7 +36,7 @@ export function FindingHeader({
       </p>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <SeverityBadge severity={finding.current_severity} />
-        <h1 className="text-[1.625rem] leading-[1.1] font-bold tracking-tight break-words sm:text-3xl">
+        <h1 className="text-title font-bold break-words">
           {finding.current_title}
         </h1>
       </div>

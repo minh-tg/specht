@@ -7,7 +7,7 @@ import { confidenceLabel, parseSourceLink } from "./format";
 export function HowToFix({ finding }: { readonly finding: Finding; }) {
   return (
     <div className="border-border mt-8 border-t pt-5">
-      <h2 className="mb-3 text-lg font-semibold">How to fix</h2>
+      <h2 className="mb-3 text-section font-semibold">How to fix</h2>
       {finding.remediation?.summary
         ? (
           <div className="space-y-2 text-sm">

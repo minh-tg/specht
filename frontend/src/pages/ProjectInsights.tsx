@@ -24,7 +24,7 @@ function Stat({ value, label, alert = false }: {
   return (
     <div className="border-border border-b py-3.5 pr-3.5">
       <div
-        className={`text-3xl leading-none font-bold tabular-nums ${
+        className={`text-title leading-none font-bold tabular-nums ${
           alert ? "text-sev-critical-fg" : ""
         }`}
       >
@@ -42,7 +42,7 @@ function Block({ title, note, children }: {
 }) {
   return (
     <section className="min-w-0">
-      <h3 className="text-base font-semibold">{title}</h3>
+      <h3 className="text-body font-semibold">{title}</h3>
       <p className="text-muted-foreground mt-0.5 mb-2.5 text-[0.8125rem]">{note}</p>
       {children}
     </section>
@@ -71,7 +71,7 @@ export function ProjectInsights() {
   return (
     <section aria-labelledby="insights-heading" className="grid gap-8">
       <div>
-        <h2 id="insights-heading" className="text-lg font-semibold">Insights</h2>
+        <h2 id="insights-heading" className="text-section font-semibold">Insights</h2>
         <p className="text-muted-foreground mt-0.5 text-sm">
           Open findings only. Fixed and archived ones are not counted.
         </p>
@@ -147,7 +147,7 @@ export function ProjectInsights() {
 
       {agingData && agingData.overdue.length > 0 && (
         <section aria-labelledby="overdue-heading">
-          <h3 id="overdue-heading" className="text-base font-semibold">Past their fix date</h3>
+          <h3 id="overdue-heading" className="text-body font-semibold">Past their fix date</h3>
           <ul className="border-foreground m-0 mt-2.5 list-none border-t-2 p-0">
             {agingData.overdue.map((finding) => (
               <li

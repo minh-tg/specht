@@ -103,10 +103,12 @@ export function ChangeHero(
       <div className="grid items-center gap-x-6 gap-y-2 max-md:justify-items-start md:grid-cols-[auto_minmax(0,1fr)]">
         <VerdictBadge verdict={stamp.verdict} scanning={stamp.scanning} size="lg" />
         <div className="grid min-w-0 gap-1.5">
-          <h1 className="text-[1.625rem] leading-[1.1] font-bold tracking-tight text-balance sm:text-3xl">
+          <h1 className="text-title font-bold text-balance">
             {headline(state, blockers, projectWide)}
           </h1>
-          <p className="max-w-[58ch] text-lg leading-snug">{subline(state, report, projectWide)}</p>
+          <p className="max-w-[58ch] text-section font-normal leading-snug">
+            {subline(state, report, projectWide)}
+          </p>
         </div>
       </div>
       <p className="text-muted-foreground mt-4 flex flex-wrap items-center gap-x-0 gap-y-1 text-[13px] tabular-nums max-sm:grid max-sm:gap-0.5">
