@@ -1,6 +1,7 @@
 import { useMe } from "@/api/hooks";
 import { actorLabel } from "@/api/users";
 import { ErrorState } from "@/components/ErrorState";
+import { Section } from "@/components/Section";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { EMPTY_VALUE, formatDateTime } from "@/lib/format";
 import type { FindingEvent } from "@/types/api";
@@ -63,9 +64,12 @@ export function HistorySection({
   }
 
   return (
-    <div className="border-border mt-8 border-t pt-5">
-      <h2 className="mb-3 text-section font-semibold">History</h2>
+    <Section
+      title="History"
+      isEmpty={!isLoading && !isError && (!Array.isArray(events) || events.length === 0)}
+      empty="No history yet."
+    >
       {body}
-    </div>
+    </Section>
   );
 }

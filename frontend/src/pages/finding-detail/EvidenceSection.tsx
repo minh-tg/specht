@@ -3,6 +3,7 @@ import { useMe, useProjectRole } from "@/api/hooks";
 import { actorLabel, useUserDirectory } from "@/api/users";
 import { ErrorState } from "@/components/ErrorState";
 import { INLINE_LINK } from "@/components/inlineLink";
+import { Section } from "@/components/Section";
 import { SelectField } from "@/components/SelectField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import {
@@ -56,7 +57,7 @@ export function EvidenceSection({
 }) {
   const params = useParams<{ slug: string; }>();
   const slug = projectSlug ?? params.slug ?? "";
-  const { canTriage } = useProjectRole(slug);
+  const { canTriage, isLoading: roleLoading } = useProjectRole(slug);
   const { data: me } = useMe();
   const { data: directory } = useUserDirectory();
   const { data: evidence, isLoading, isError, refetch } = useEvidence(findingId);
@@ -68,6 +69,8 @@ export function EvidenceSection({
   const [description, setDescription] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<FindingEvidence | null>(null);
+
+  const hasEvidence = Array.isArray(evidence) && evidence.length > 0;
 
   async function handleAdd(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -109,7 +112,7 @@ export function EvidenceSection({
         onRetry={() => void refetch()}
       />
     );
-  } else if (!Array.isArray(evidence) || evidence.length === 0) {
+  } else if (!hasEvidence) {
     body = <p className="text-muted-foreground text-body">No evidence attached yet.</p>;
   } else {
     body = (
@@ -158,8 +161,11 @@ export function EvidenceSection({
   }
 
   return (
-    <div className="border-border mt-8 border-t pt-5">
-      <h2 className="mb-3 text-section font-semibold">Evidence</h2>
+    <Section
+      title="Evidence"
+      isEmpty={!isLoading && !isError && !hasEvidence && !roleLoading && !canTriage}
+      empty="No evidence attached yet."
+    >
       {body}
 
       {canTriage && (
@@ -240,6 +246,6 @@ export function EvidenceSection({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </Section>
   );
 }

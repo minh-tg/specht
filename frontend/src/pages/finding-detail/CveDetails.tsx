@@ -1,6 +1,7 @@
 import { APIError } from "@/api/client";
 import { useFindingCve } from "@/api/hooks";
 import { INLINE_LINK } from "@/components/inlineLink";
+import { Section } from "@/components/Section";
 import { formatDateTime } from "@/lib/format";
 import type { CveDetail, CveProvenance } from "@/types/cve";
 import { type ReactNode, useId, useState } from "react";
@@ -290,17 +291,15 @@ export function CveDetails({ findingId }: { readonly findingId: string; }) {
   if (isError) {
     if (error instanceof APIError && error.status === 404 && error.code === "not_cve") return null;
     return (
-      <section aria-labelledby={`${bodyId}-title`} className={SECTION}>
-        <h2 id={`${bodyId}-title`} className="mb-1 text-section font-semibold">CVE details</h2>
+      <Section title="CVE details" id={`${bodyId}-title`} region headingClassName="mb-1">
         <p className="text-muted-foreground text-body">CVE details are not available right now.</p>
-      </section>
+      </Section>
     );
   }
   if (!data) return null;
 
   return (
-    <section aria-labelledby={`${bodyId}-title`} className={SECTION}>
-      <h2 id={`${bodyId}-title`} className="mb-1 text-section font-semibold">CVE details</h2>
+    <Section title="CVE details" id={`${bodyId}-title`} region headingClassName="mb-1">
       <Summary detail={data} />
       {data.pending && !open && (
         <p className="text-muted-foreground mt-1 text-meta">Looking up more details.</p>
@@ -315,6 +314,6 @@ export function CveDetails({ findingId }: { readonly findingId: string; }) {
         {open ? "Hide the full CVE breakdown" : "Show the full CVE breakdown"}
       </button>
       {open && <Breakdown detail={data} id={bodyId} />}
-    </section>
+    </Section>
   );
 }

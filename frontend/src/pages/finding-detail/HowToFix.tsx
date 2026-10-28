@@ -1,13 +1,13 @@
 import { CopyButton } from "@/components/CopyButton";
 import { INLINE_LINK } from "@/components/inlineLink";
+import { Section } from "@/components/Section";
 import type { Finding } from "@/types/api";
 import { confidenceLabel, parseSourceLink } from "./format";
 
 /** Remediation guidance and the suggested fix for one finding. */
 export function HowToFix({ finding }: { readonly finding: Finding; }) {
   return (
-    <div className="border-border mt-8 border-t pt-5">
-      <h2 className="mb-3 text-section font-semibold">How to fix</h2>
+    <Section title="How to fix">
       {finding.remediation?.summary
         ? (
           <div className="space-y-2 text-body">
@@ -52,6 +52,6 @@ export function HowToFix({ finding }: { readonly finding: Finding; }) {
             No remediation reported for this finding.
           </p>
         )}
-    </div>
+    </Section>
   );
 }
