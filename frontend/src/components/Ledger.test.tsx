@@ -13,7 +13,6 @@ function Harness(
         index={1}
         open={open}
         onOpenChange={setOpen}
-        label="openssh-server: security issue"
         summary={<span>openssh-server</span>}
         tone="critical"
         resolved={resolved}
@@ -31,10 +30,15 @@ describe("Ledger", () => {
     expect(screen.getByText("01")).toBeInTheDocument();
   });
 
+  it("names the toggle with its visible text, so a speech user can say what they see", () => {
+    render(<Harness />);
+    expect(screen.getByRole("button", { name: "01 openssh-server" })).toBeInTheDocument();
+  });
+
   it("opens and closes with the summary button, and says so to assistive technology", async () => {
     const user = userEvent.setup();
     render(<Harness />);
-    const toggle = screen.getByRole("button", { name: "openssh-server: security issue" });
+    const toggle = screen.getByRole("button", { name: "01 openssh-server" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
 
     await user.click(toggle);
@@ -50,7 +54,7 @@ describe("Ledger", () => {
     // jsdom does not apply `inert`, so the attribute itself is what is checked.
     expect(container.querySelector("[inert]")).toContainElement(screen.getByText("Copy fix"));
 
-    await user.click(screen.getByRole("button", { name: "openssh-server: security issue" }));
+    await user.click(screen.getByRole("button", { name: "01 openssh-server" }));
     expect(container.querySelector("[inert]")).toBeNull();
   });
 
@@ -76,7 +80,7 @@ describe("Ledger", () => {
 
   it("links the toggle to the region it controls", () => {
     render(<Harness initiallyOpen />);
-    const toggle = screen.getByRole("button", { name: "openssh-server: security issue" });
+    const toggle = screen.getByRole("button", { name: "01 openssh-server" });
     const controlled = toggle.getAttribute("aria-controls");
     expect(controlled).toBeTruthy();
     expect(document.getElementById(controlled ?? "")).toContainElement(
