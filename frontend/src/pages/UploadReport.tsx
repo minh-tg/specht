@@ -22,12 +22,12 @@ export function UploadReport() {
       <div className="mx-auto max-w-lg px-4 py-8">
         <Link
           to={`/${slug}/reports`}
-          className="text-muted-foreground hover:text-foreground mb-6 inline-block text-sm"
+          className="text-muted-foreground hover:text-foreground mb-6 inline-block text-body"
         >
           &larr; {projectName}
         </Link>
-        <h1 className="mb-2 text-2xl font-bold">Upload a report</h1>
-        <p className="text-muted-foreground text-sm">
+        <h1 className="mb-2 text-title font-bold">Upload a report</h1>
+        <p className="text-muted-foreground text-body">
           Only project managers and administrators can upload reports to {projectName}.
         </p>
       </div>
