@@ -1,5 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { truncateText } from "./utils";
+import { cn, truncateText } from "./utils";
+
+describe("cn", () => {
+  it("keeps a type role as a size, so a text colour survives beside it", () => {
+    expect(cn("text-primary-foreground text-sm", "text-control")).toBe(
+      "text-primary-foreground text-control",
+    );
+  });
+
+  it("lets a type role replace a raw size", () => {
+    expect(cn("text-sm", "text-body")).toBe("text-body");
+  });
+
+  it("leaves a type role and a text colour side by side", () => {
+    expect(cn("text-muted-foreground", "text-meta")).toBe("text-muted-foreground text-meta");
+  });
+});
 
 describe("truncateText", () => {
   it("returns short text unchanged", () => {
