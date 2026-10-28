@@ -27,21 +27,21 @@ export function FormField({ label, hint, error, extra, className, inputClassName
 
   return (
     <div className={className ?? "grid gap-1.5"}>
-      <label htmlFor={inputId} className="text-sm font-medium">{label}</label>
+      <label htmlFor={inputId} className="text-body font-medium">{label}</label>
       <Input
         id={inputId}
         aria-invalid={error ? true : undefined}
         aria-describedby={described || undefined}
-        className={cn("h-10 text-base", inputClassName)}
+        className={cn("h-10 text-control", inputClassName)}
         {...input}
       />
-      {hint && <p id={hintId} className="text-muted-foreground text-[0.8125rem]">{hint}</p>}
+      {hint && <p id={hintId} className="text-muted-foreground text-meta">{hint}</p>}
       {extra?.node}
       {error && (
         <p
           id={errorId}
           role="alert"
-          className="text-destructive flex items-start gap-1.5 text-[0.8125rem]"
+          className="text-destructive flex items-start gap-1.5 text-meta"
         >
           <TriangleAlertIcon aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
           {error}

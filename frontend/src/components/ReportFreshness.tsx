@@ -23,7 +23,10 @@ export function ReportFreshness({ latest, latestCompleted }: {
     : "Unknown";
 
   return (
-    <section aria-label="Report freshness" className="text-muted-foreground mt-2 space-y-1 text-sm">
+    <section
+      aria-label="Report freshness"
+      className="text-muted-foreground mt-2 space-y-1 text-body"
+    >
       {completed
         ? (
           <p>
@@ -40,7 +43,7 @@ export function ReportFreshness({ latest, latestCompleted }: {
           <RelativeTime iso={latest.created_at} />
         </p>
       )}
-      <p className="text-xs">Report times describe receipt and processing in Specht.</p>
+      <p className="text-meta">Report times describe receipt and processing in Specht.</p>
     </section>
   );
 }

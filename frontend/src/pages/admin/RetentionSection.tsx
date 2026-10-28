@@ -47,7 +47,7 @@ export function RetentionSection() {
     <section aria-labelledby="retention-heading" className="grid gap-3">
       <div>
         <h3 id="retention-heading" className="text-body font-semibold">Old reports</h3>
-        <p className="text-muted-foreground mt-0.5 max-w-[68ch] text-[0.8125rem]">
+        <p className="text-muted-foreground mt-0.5 max-w-[68ch] text-meta">
           Removes finished reports older than the window. Findings whose only evidence was in them
           are archived, not deleted.
         </p>
@@ -56,7 +56,7 @@ export function RetentionSection() {
       <div className="border-foreground border-t-2">
         <div className="border-border flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b px-0.5 py-4">
           <div className="flex items-center gap-2.5">
-            <label htmlFor="retention-window" className="text-sm">Older than</label>
+            <label htmlFor="retention-window" className="text-body">Older than</label>
             <SelectField
               id="retention-window"
               size="sm"
@@ -70,7 +70,7 @@ export function RetentionSection() {
             />
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <p role="status" className="text-muted-foreground text-[0.8125rem]">
+            <p role="status" className="text-muted-foreground text-meta">
               {preview.isError
                 ? "Could not count the reports."
                 : !settled
@@ -90,14 +90,17 @@ export function RetentionSection() {
       </div>
 
       {purge.isError && (
-        <p role="alert" className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm">
+        <p
+          role="alert"
+          className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-body"
+        >
           {purge.error.message || "Could not remove the reports."}
         </p>
       )}
       {purge.data?.truncated && (
         <p
           role="status"
-          className="bg-muted text-muted-foreground rounded-md px-3.5 py-3 text-[0.8125rem]"
+          className="bg-muted text-muted-foreground rounded-md px-3.5 py-3 text-meta"
         >
           More reports are past the window than one run removes. Run it again for the rest.
         </p>

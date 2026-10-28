@@ -13,7 +13,7 @@ function Stat({ value, label }: { readonly value: number; readonly label: string
       <div className="text-title leading-none font-bold tabular-nums">
         {value.toLocaleString("en-US")}
       </div>
-      <div className="text-muted-foreground mt-1.5 text-[0.8125rem]">{label}</div>
+      <div className="text-muted-foreground mt-1.5 text-meta">{label}</div>
     </div>
   );
 }
@@ -31,7 +31,9 @@ export function Admin() {
     return (
       <div className="mx-auto max-w-5xl px-4 py-8">
         <h1 className="text-title font-bold">Admin</h1>
-        <p className="text-muted-foreground mt-2 text-sm">Only global admins can see this page.</p>
+        <p className="text-muted-foreground mt-2 text-body">
+          Only global admins can see this page.
+        </p>
       </div>
     );
   }
@@ -40,7 +42,7 @@ export function Admin() {
     <div className="mx-auto grid max-w-5xl gap-9 px-4 py-8">
       <div>
         <h1 className="text-title font-bold">Admin</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
+        <p className="text-muted-foreground mt-1 text-body">
           The whole server. Only global admins see this.
         </p>
       </div>
@@ -67,7 +69,7 @@ export function Admin() {
               />
             </div>
             {status.data.oldest_settled_report_at && (
-              <p className="text-muted-foreground mt-2 text-[0.8125rem]">
+              <p className="text-muted-foreground mt-2 text-meta">
                 Oldest finished report: {formatDate(status.data.oldest_settled_report_at)}.
               </p>
             )}

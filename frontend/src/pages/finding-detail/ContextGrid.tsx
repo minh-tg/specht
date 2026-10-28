@@ -10,7 +10,7 @@ export function ContextGrid({ context }: { readonly context?: FindingContext; })
   return (
     <div className="border-border mt-8 border-t pt-5">
       <h2 className="mb-3 text-section font-semibold">Context</h2>
-      <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 text-body sm:grid-cols-2">
         <div>
           <span className="text-muted-foreground">Target</span>
           <p className="font-medium">
@@ -25,11 +25,11 @@ export function ContextGrid({ context }: { readonly context?: FindingContext; })
         </div>
         <div>
           <span className="text-muted-foreground">Branch</span>
-          <p className="font-mono text-xs">{context.branch || EMPTY_VALUE}</p>
+          <p className="font-mono text-code">{context.branch || EMPTY_VALUE}</p>
         </div>
         <div>
           <span className="text-muted-foreground">Commit</span>
-          <p className="font-mono text-xs">
+          <p className="font-mono text-code">
             {context.commit_sha ? context.commit_sha.slice(0, 12) : EMPTY_VALUE}
           </p>
         </div>
@@ -41,7 +41,7 @@ export function ContextGrid({ context }: { readonly context?: FindingContext; })
                 href={context.source_link}
                 target="_blank"
                 rel="noreferrer"
-                className={`${INLINE_LINK} text-sm`}
+                className={`${INLINE_LINK} text-body`}
               >
                 {parseSourceLink(context.source_link)!.hostname}
                 {parseSourceLink(context.source_link)!.pathname}

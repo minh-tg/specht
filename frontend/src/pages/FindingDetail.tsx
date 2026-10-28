@@ -88,7 +88,7 @@ export function FindingDetail() {
       <div className="mx-auto max-w-3xl px-4 py-8">
         <Link
           to={backToFindingsPath(slug ?? "", location.state)}
-          className="text-muted-foreground hover:text-foreground mb-6 inline-block text-sm"
+          className="text-muted-foreground hover:text-foreground mb-6 inline-block text-body"
         >
           &larr; Back to findings
         </Link>
@@ -121,7 +121,7 @@ export function FindingDetail() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <Link
           to={backToFindingsPath(slug ?? "", location.state)}
-          className="text-muted-foreground hover:text-foreground inline-block text-sm"
+          className="text-muted-foreground hover:text-foreground inline-block text-body"
         >
           &larr; Back to findings
         </Link>
@@ -150,7 +150,7 @@ export function FindingDetail() {
 
           <div className="border-border mt-8 border-t pt-5">
             <h2 className="mb-1 text-section font-semibold">Decide</h2>
-            <p className="text-muted-foreground mb-4 text-xs">
+            <p className="text-muted-foreground mb-4 text-meta">
               Currently: {analysisStateLabel(shown.analysis_state) ?? "Not triaged"}
               {currentGate && <>{" · "}{currentGate}</>}
             </p>
@@ -195,7 +195,7 @@ export function FindingDetail() {
           {canRequestWaiver && (
             waiverPending
               ? (
-                <p className="bg-muted text-muted-foreground rounded-md px-3.5 py-3 text-[0.8125rem]">
+                <p className="bg-muted text-muted-foreground rounded-md px-3.5 py-3 text-meta">
                   Waiver requested. A manager will decide. The verdict does not change until they
                   approve it.
                 </p>

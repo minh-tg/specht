@@ -86,7 +86,7 @@ export function PeopleSection() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h3 id="people-heading" className="text-body font-semibold">People</h3>
-          <p className="text-muted-foreground mt-0.5 max-w-[68ch] text-[0.8125rem]">
+          <p className="text-muted-foreground mt-0.5 max-w-[68ch] text-meta">
             Deactivating ends their sessions at once and keeps their history. The last admin cannot
             be demoted or deactivated, and nobody can deactivate themselves.
           </p>
@@ -114,7 +114,7 @@ export function PeopleSection() {
             className="border-foreground m-0 list-none border-t-2 p-0"
           >
             {list.length === 0 && (
-              <li className="text-muted-foreground border-border border-b py-5 text-sm">
+              <li className="text-muted-foreground border-border border-b py-5 text-body">
                 {email ? "Nobody has an email that contains that." : "No accounts yet."}
               </li>
             )}
@@ -135,7 +135,7 @@ export function PeopleSection() {
                       )}
                     </p>
                     {user.display_name && (
-                      <p className="text-muted-foreground truncate text-[0.8125rem]">
+                      <p className="text-muted-foreground truncate text-meta">
                         {user.email}
                       </p>
                     )}
@@ -160,7 +160,7 @@ export function PeopleSection() {
                   </div>
                   <div className="flex flex-wrap gap-2 sm:justify-end">
                     {isMe
-                      ? <span className="text-muted-foreground text-[0.8125rem]">That is you</span>
+                      ? <span className="text-muted-foreground text-meta">That is you</span>
                       : off
                       ? (
                         <Button
@@ -215,7 +215,10 @@ export function PeopleSection() {
       )}
 
       {failure && (
-        <p role="alert" className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm">
+        <p
+          role="alert"
+          className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-body"
+        >
           {failure.message || "Could not change the account."}
         </p>
       )}
@@ -234,7 +237,7 @@ export function PeopleSection() {
               <div className="bg-muted flex items-center gap-3 rounded-md py-2.5 pr-2.5 pl-3.5">
                 <code
                   data-testid="reset-link"
-                  className="min-w-0 flex-1 text-[0.8125rem] break-all"
+                  className="min-w-0 flex-1 text-meta break-all"
                 >
                   {`${window.location.origin}${issued.link.link}`}
                 </code>
@@ -243,7 +246,7 @@ export function PeopleSection() {
                   label="reset link"
                 />
               </div>
-              <p className="text-muted-foreground flex items-start gap-2 text-[0.8125rem]">
+              <p className="text-muted-foreground flex items-start gap-2 text-meta">
                 <TriangleAlertIcon
                   aria-hidden="true"
                   className="mt-0.5 size-4 shrink-0 text-sev-high-fg"

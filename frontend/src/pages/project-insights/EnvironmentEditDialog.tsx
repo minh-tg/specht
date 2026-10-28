@@ -88,10 +88,10 @@ function EditFields({ slug, environment, onClose }: {
       </DialogHeader>
       <form onSubmit={(e) => void submit(e)} className="grid gap-4">
         <div className="grid gap-1.5">
-          <label htmlFor="environment-tier" className="text-sm font-medium">Tier</label>
+          <label htmlFor="environment-tier" className="text-body font-medium">Tier</label>
           <SelectField id="environment-tier" value={tier} onValueChange={setTier} options={TIERS} />
         </div>
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-body">
           <input
             type="checkbox"
             className="size-4"
@@ -101,7 +101,7 @@ function EditFields({ slug, environment, onClose }: {
           Reachable from the internet
         </label>
         <div className="grid gap-1.5">
-          <label htmlFor="environment-sensitivity" className="text-sm font-medium">
+          <label htmlFor="environment-sensitivity" className="text-body font-medium">
             Data sensitivity
           </label>
           <SelectField
@@ -112,7 +112,7 @@ function EditFields({ slug, environment, onClose }: {
           />
         </div>
         {mutation.isError && (
-          <p role="alert" className="text-destructive text-sm">
+          <p role="alert" className="text-destructive text-body">
             {mutation.error.message || "Could not save the environment."}
           </p>
         )}

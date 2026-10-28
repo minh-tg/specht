@@ -11,7 +11,7 @@ function Fact({ label, children, mono = false }: {
   return (
     <>
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className={mono ? "font-mono text-xs break-all" : "font-medium tabular-nums"}>
+      <dd className={mono ? "font-mono text-code break-all" : "font-medium tabular-nums"}>
         {children}
       </dd>
     </>
@@ -22,7 +22,7 @@ function Fact({ label, children, mono = false }: {
 export function MetadataGrid({ finding }: { readonly finding: Finding; }) {
   const intel = finding.intel;
   return (
-    <dl className="border-border grid grid-cols-[auto_1fr] gap-x-5 gap-y-2.5 border-t pt-4 text-sm">
+    <dl className="border-border grid grid-cols-[auto_1fr] gap-x-5 gap-y-2.5 border-t pt-4 text-body">
       <Fact label="Status">{technicalStateLabel(finding.state) ?? EMPTY_VALUE}</Fact>
       <Fact label="Triage">{analysisStateLabel(finding.analysis_state) ?? "Not triaged"}</Fact>
       {typeof finding.current_score === "number" && (

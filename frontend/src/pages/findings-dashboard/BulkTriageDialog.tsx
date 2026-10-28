@@ -81,7 +81,7 @@ export function BulkTriageDialog({ findingIds, open, onOpenChange, onApplied }: 
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-1.5">
-            <label htmlFor="bulk-triage-state" className="text-sm font-medium">Decision</label>
+            <label htmlFor="bulk-triage-state" className="text-body font-medium">Decision</label>
             <SelectField
               id="bulk-triage-state"
               className="w-full"
@@ -98,14 +98,14 @@ export function BulkTriageDialog({ findingIds, open, onOpenChange, onApplied }: 
               ]}
             />
             {hint && (
-              <p id="bulk-triage-hint" className="text-muted-foreground text-[0.8125rem]">
+              <p id="bulk-triage-hint" className="text-muted-foreground text-meta">
                 {hint}
               </p>
             )}
           </div>
           {option?.requiresReason && (
             <div className="grid gap-1.5">
-              <label htmlFor="bulk-triage-reason" className="text-sm font-medium">Reason</label>
+              <label htmlFor="bulk-triage-reason" className="text-body font-medium">Reason</label>
               <Textarea
                 id="bulk-triage-reason"
                 value={reason}
@@ -117,7 +117,7 @@ export function BulkTriageDialog({ findingIds, open, onOpenChange, onApplied }: 
           )}
           {option?.requiresExpiry && (
             <div className="grid gap-1.5">
-              <label htmlFor="bulk-triage-expiry" className="text-sm font-medium">
+              <label htmlFor="bulk-triage-expiry" className="text-body font-medium">
                 Review again on
               </label>
               <Input
@@ -126,13 +126,13 @@ export function BulkTriageDialog({ findingIds, open, onOpenChange, onApplied }: 
                 value={expiresAt}
                 onChange={(event) => setExpiresAt(event.target.value)}
               />
-              <p className="text-muted-foreground text-[0.8125rem]">
+              <p className="text-muted-foreground text-meta">
                 After this date the findings go back to untriaged.
               </p>
             </div>
           )}
           {mutation.isError && (
-            <p role="alert" className="text-destructive text-sm">
+            <p role="alert" className="text-destructive text-body">
               {mutation.error.message || "Could not save the decision."}
             </p>
           )}

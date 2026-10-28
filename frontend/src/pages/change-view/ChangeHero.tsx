@@ -90,13 +90,13 @@ export function ChangeHero(
   const branch = report?.branch;
   return (
     <section aria-label="Change verdict" aria-live="polite">
-      <p className="font-label text-muted-foreground mb-3.5 flex flex-wrap items-center gap-x-2.5 text-xs">
+      <p className="font-label text-muted-foreground mb-3.5 flex flex-wrap items-center gap-x-2.5 text-label">
         <span>Change</span>
-        <code className="text-foreground text-[13px]">{shortCommit(commit)}</code>
+        <code className="text-foreground text-meta">{shortCommit(commit)}</code>
         {branch && (
           <>
             <span aria-hidden="true">·</span>
-            <code className="text-foreground text-[13px]">{branch}</code>
+            <code className="text-foreground text-meta">{branch}</code>
           </>
         )}
       </p>
@@ -111,7 +111,7 @@ export function ChangeHero(
           </p>
         </div>
       </div>
-      <p className="text-muted-foreground mt-4 flex flex-wrap items-center gap-x-0 gap-y-1 text-[13px] tabular-nums max-sm:grid max-sm:gap-0.5">
+      <p className="text-muted-foreground mt-4 flex flex-wrap items-center gap-x-0 gap-y-1 text-meta tabular-nums max-sm:grid max-sm:gap-0.5">
         {policy && (
           <FactItem>
             Severity floor{" "}
@@ -155,8 +155,8 @@ function FactItem({ children }: { readonly children: ReactNode; }) {
 export function ChangeHeroSkeleton({ commit }: { readonly commit: string; }) {
   return (
     <section aria-label="Change verdict" aria-busy="true">
-      <p className="font-label text-muted-foreground mb-3.5 text-xs">
-        Change <code className="text-foreground text-[13px]">{shortCommit(commit)}</code>
+      <p className="font-label text-muted-foreground mb-3.5 text-label">
+        Change <code className="text-foreground text-meta">{shortCommit(commit)}</code>
       </p>
       <div className="flex items-center gap-6">
         <Skeleton className="h-10 w-28 rounded-lg" />

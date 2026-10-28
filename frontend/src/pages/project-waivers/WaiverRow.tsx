@@ -82,7 +82,7 @@ export function WaiverRow({ slug, waiver, bucket, now, who, actions }: {
             )
             : title}
         </p>
-        <p className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.8125rem]">
+        <p className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-meta">
           {first && <FirstSeverity findingId={first} />}
           {count > 1 && <span>{pluralize(count, "finding")}</span>}
           {requester && (
@@ -101,18 +101,18 @@ export function WaiverRow({ slug, waiver, bucket, now, who, actions }: {
           )}
         </p>
         {waiver.reason && (
-          <blockquote className="border-border mt-2 max-w-[70ch] border-l-[3px] pl-3 text-[0.9375rem]">
+          <blockquote className="border-border mt-2 max-w-[70ch] border-l-[3px] pl-3 text-body">
             {waiver.reason}
           </blockquote>
         )}
-        {decision && <p className="text-muted-foreground mt-2 text-[0.8125rem]">{decision}</p>}
+        {decision && <p className="text-muted-foreground mt-2 text-meta">{decision}</p>}
         <button
           type="button"
           aria-expanded={historyOpen}
           aria-controls={historyId}
           aria-label={`History of ${title}`}
           onClick={() => setHistoryOpen((open) => !open)}
-          className="text-muted-foreground hover:text-foreground mt-2 text-[0.8125rem] underline-offset-4 hover:underline"
+          className="text-muted-foreground hover:text-foreground mt-2 text-meta underline-offset-4 hover:underline"
         >
           History
         </button>

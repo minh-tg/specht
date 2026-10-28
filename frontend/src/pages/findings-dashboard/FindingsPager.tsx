@@ -27,18 +27,18 @@ export function FindingsPager(
     <div className="flex flex-col items-center gap-2">
       <div className="flex w-full items-center justify-between">
         <button
-          className="text-muted-foreground hover:text-foreground disabled:opacity-50 text-sm"
+          className="text-muted-foreground hover:text-foreground disabled:opacity-50 text-body"
           disabled={offset === 0}
           onClick={onPrevious}
           aria-label="Previous page"
         >
           Previous
         </button>
-        <span className="text-muted-foreground text-xs" aria-live="polite">
+        <span className="text-muted-foreground text-meta" aria-live="polite">
           {rowCount === 0 ? "No more results." : total !== null ? `${range} of ${total}` : range}
         </span>
         <button
-          className="text-muted-foreground hover:text-foreground disabled:opacity-50 text-sm"
+          className="text-muted-foreground hover:text-foreground disabled:opacity-50 text-body"
           disabled={atEnd}
           onClick={onNext}
           aria-label="Next page"
@@ -48,7 +48,7 @@ export function FindingsPager(
       </div>
       {offset > 0 && rowCount === 0 && (
         <button
-          className={`${INLINE_LINK} text-sm`}
+          className={`${INLINE_LINK} text-body`}
           onClick={onFirst}
         >
           Back to the first page

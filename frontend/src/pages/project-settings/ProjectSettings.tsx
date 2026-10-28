@@ -31,7 +31,7 @@ export function ProjectSettings() {
   if (roleLoading || isLoading) return <SkeletonLines label="Loading the settings" />;
   if (!isAdmin) {
     return (
-      <p className="bg-muted text-muted-foreground rounded-md px-3.5 py-3 text-[0.8125rem]">
+      <p className="bg-muted text-muted-foreground rounded-md px-3.5 py-3 text-meta">
         Only project admins can change these settings.
       </p>
     );
@@ -81,15 +81,15 @@ function DetailsForm({ project }: { project: Project; }) {
       <h3 className="pt-4 text-body font-semibold">Details</h3>
       <form onSubmit={save} className="mt-4 grid max-w-xl gap-5" noValidate>
         <div className="grid gap-1.5">
-          <label htmlFor="settings-slug" className="text-sm font-medium">Slug</label>
+          <label htmlFor="settings-slug" className="text-body font-medium">Slug</label>
           <Input id="settings-slug" value={project.slug} readOnly className="font-mono" />
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground text-meta">
             The slug is part of the project's links and cannot change.
           </p>
         </div>
 
         <div className="grid gap-1.5">
-          <label htmlFor="settings-name" className="text-sm font-medium">Name</label>
+          <label htmlFor="settings-name" className="text-body font-medium">Name</label>
           <Input
             id="settings-name"
             value={name}
@@ -98,12 +98,12 @@ function DetailsForm({ project }: { project: Project; }) {
             onChange={(event) => setName(event.target.value)}
           />
           {nameError && (
-            <p id="settings-name-error" className="text-destructive text-xs">{nameError}</p>
+            <p id="settings-name-error" className="text-destructive text-meta">{nameError}</p>
           )}
         </div>
 
         <div className="grid gap-1.5">
-          <label htmlFor="settings-description" className="text-sm font-medium">
+          <label htmlFor="settings-description" className="text-body font-medium">
             Description
           </label>
           <Textarea
@@ -116,7 +116,7 @@ function DetailsForm({ project }: { project: Project; }) {
         {update.isError && (
           <p
             role="alert"
-            className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm"
+            className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-body"
           >
             {update.error.message || "Could not save the project."}
           </p>
@@ -167,7 +167,7 @@ function DeleteSection({ project }: { project: Project; }) {
       <h3 id="delete-heading" className="text-body font-semibold">
         Delete this project
       </h3>
-      <p className="text-muted-foreground text-sm">
+      <p className="text-muted-foreground text-body">
         Reports, findings, waivers, members and API keys of this project are deleted for good. This
         cannot be undone.
       </p>
@@ -184,7 +184,7 @@ function DeleteSection({ project }: { project: Project; }) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="grid gap-1.5">
-            <label htmlFor="delete-confirm" className="text-sm font-medium">
+            <label htmlFor="delete-confirm" className="text-body font-medium">
               Type {project.slug} to confirm
             </label>
             <Input
@@ -197,7 +197,7 @@ function DeleteSection({ project }: { project: Project; }) {
           {remove.isError && (
             <p
               role="alert"
-              className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm"
+              className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-body"
             >
               {remove.error.message || "Could not delete the project."}
             </p>

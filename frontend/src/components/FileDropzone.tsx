@@ -139,10 +139,10 @@ export function FileDropzone({
         {filled
           ? (
             <>
-              <p className="min-w-0 text-sm break-all">
+              <p className="min-w-0 text-body break-all">
                 <span className="font-medium">{fileName}</span>
                 {fileSize !== null && (
-                  <span className="text-muted-foreground ml-2 text-xs tabular-nums">
+                  <span className="text-muted-foreground ml-2 text-meta tabular-nums">
                     {formatSize(fileSize)}
                   </span>
                 )}
@@ -166,12 +166,12 @@ export function FileDropzone({
               >
                 Choose file
               </label>
-              <span className="text-muted-foreground text-sm">or drop it here</span>
+              <span className="text-muted-foreground text-body">or drop it here</span>
             </>
           )}
       </div>
       {shownError && (
-        <p id={errorId} role="alert" className="text-destructive mt-1 text-xs">{shownError}</p>
+        <p id={errorId} role="alert" className="text-destructive mt-1 text-meta">{shownError}</p>
       )}
     </div>
   );

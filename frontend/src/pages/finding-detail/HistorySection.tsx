@@ -25,16 +25,16 @@ export function HistorySection({
   } else if (isError) {
     body = <ErrorState title="Could not load history." />;
   } else if (!Array.isArray(events) || events.length === 0) {
-    body = <p className="text-muted-foreground text-sm">No history yet.</p>;
+    body = <p className="text-muted-foreground text-body">No history yet.</p>;
   } else {
     body = (
-      <ol className="border-border space-y-3 border-l pl-4 text-sm">
+      <ol className="border-border space-y-3 border-l pl-4 text-body">
         {events.map((event) => (
           <li key={event.id} className="flex flex-wrap items-baseline gap-x-2">
             <span className="font-medium">{eventTypeLabel(event.event_type)}</span>
             {event.old_value != null || event.new_value != null
               ? (
-                <span className="text-muted-foreground text-xs">
+                <span className="text-muted-foreground text-meta">
                   {event.old_value
                     ? eventValueLabel(event.event_type, event.old_value)
                     : EMPTY_VALUE}
@@ -45,14 +45,14 @@ export function HistorySection({
                 </span>
               )
               : null}
-            <span className="text-muted-foreground text-xs">
+            <span className="text-muted-foreground text-meta">
               by {actorLabel(event, { me })}
             </span>
-            <span className="text-muted-foreground text-xs tabular-nums">
+            <span className="text-muted-foreground text-meta tabular-nums">
               {formatDateTime(event.created_at)}
             </span>
             {event.comment && (
-              <p className="text-muted-foreground w-full text-xs break-words">
+              <p className="text-muted-foreground w-full text-meta break-words">
                 &ldquo;{event.comment}&rdquo;
               </p>
             )}

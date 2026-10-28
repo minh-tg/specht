@@ -82,7 +82,7 @@ export function Login() {
         {sessionRevoked && !error && (
           <p
             role="status"
-            className="bg-muted text-foreground rounded-md px-3 py-2 text-sm"
+            className="bg-muted text-foreground rounded-md px-3 py-2 text-body"
           >
             You were signed out because this session's sign-in token was used twice. If that was not
             you, change your password after you sign in again.
@@ -91,7 +91,7 @@ export function Login() {
         {error && (
           <p
             role="alert"
-            className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm"
+            className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-body"
           >
             {error}
           </p>
@@ -118,14 +118,14 @@ export function Login() {
           type="submit"
           size="lg"
           disabled={submitting || retry.waiting}
-          className="h-10 w-full text-base"
+          className="h-10 w-full text-control"
         >
           {submitting ? "Signing in..." : "Sign in"}
         </Button>
         {auth.ssoBrowserMismatch && (
           <div
             role="alert"
-            className="bg-destructive/10 text-destructive grid gap-3 rounded-md px-3 py-2 text-sm"
+            className="bg-destructive/10 text-destructive grid gap-3 rounded-md px-3 py-2 text-body"
           >
             <p>Start sign-in again from this browser.</p>
             <a
@@ -144,7 +144,7 @@ export function Login() {
           <>
             <div
               aria-hidden="true"
-              className="text-muted-foreground flex items-center gap-3 text-[0.8125rem] before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border"
+              className="text-muted-foreground flex items-center gap-3 text-meta before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border"
             >
               or
             </div>
@@ -153,7 +153,7 @@ export function Login() {
               onClick={() => markSsoAttempt()}
               className={cn(
                 buttonVariants({ variant: "outline", size: "lg" }),
-                "h-10 w-full text-base",
+                "h-10 w-full text-control",
               )}
             >
               Sign in with SSO
@@ -162,7 +162,7 @@ export function Login() {
         )}
       </form>
       {registrationOpen && (
-        <p className="text-muted-foreground mt-5 text-[0.8125rem]">
+        <p className="text-muted-foreground mt-5 text-meta">
           New here?{" "}
           <Link to="/register" className={INLINE_LINK}>
             Create an account
@@ -170,7 +170,7 @@ export function Login() {
         </p>
       )}
       {inviteOnly && (
-        <p className="bg-muted text-muted-foreground mt-5 flex items-start gap-2.5 rounded-md px-3.5 py-3 text-[0.8125rem]">
+        <p className="bg-muted text-muted-foreground mt-5 flex items-start gap-2.5 rounded-md px-3.5 py-3 text-meta">
           <InfoIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
           Registration is closed on this server. To join a project, open the invite link a project
           manager sent you.

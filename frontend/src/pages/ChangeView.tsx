@@ -30,10 +30,10 @@ function ProjectNotFound() {
   return (
     <Page>
       <h1 className="text-title font-bold">Project not found</h1>
-      <p className="text-muted-foreground mt-2 text-sm">
+      <p className="text-muted-foreground mt-2 text-body">
         There is no project with this address, or you don&apos;t have access to it.
       </p>
-      <Link to="/" className={`${INLINE_LINK} mt-4 inline-block text-sm`}>
+      <Link to="/" className={`${INLINE_LINK} mt-4 inline-block text-body`}>
         Back to projects
       </Link>
     </Page>
@@ -46,7 +46,7 @@ function Crumbs(
   return (
     <nav
       aria-label="Breadcrumb"
-      className="text-muted-foreground mb-5 flex flex-wrap items-center gap-2 text-[13px]"
+      className="text-muted-foreground mb-5 flex flex-wrap items-center gap-2 text-meta"
     >
       <Link to="/" className="text-muted-foreground hover:text-foreground">Projects</Link>
       <span aria-hidden="true">/</span>
@@ -68,7 +68,7 @@ function NoReport({ slug, commit }: { slug: string; commit: string; }) {
       <p className="mt-2 max-w-[58ch] text-section font-normal leading-snug">
         The pipeline may still be running, or this commit was never scanned.
       </p>
-      <div className="mt-4 flex flex-wrap gap-4 text-sm">
+      <div className="mt-4 flex flex-wrap gap-4 text-body">
         <Link to={`/${slug}/reports`} className={INLINE_LINK}>Reports</Link>
         <Link to={`/${slug}/reports/upload`} className={INLINE_LINK}>Upload a report</Link>
       </div>
@@ -181,7 +181,7 @@ export function ChangeView() {
           detail={requestError instanceof Error ? requestError.message : undefined}
           onRetry={() => void retryLoad()}
         />
-        <Link to={`/${slug}/findings`} className={`${INLINE_LINK} mt-4 inline-block text-sm`}>
+        <Link to={`/${slug}/findings`} className={`${INLINE_LINK} mt-4 inline-block text-body`}>
           Back to project
         </Link>
       </Page>

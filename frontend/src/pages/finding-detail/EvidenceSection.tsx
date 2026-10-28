@@ -110,10 +110,10 @@ export function EvidenceSection({
       />
     );
   } else if (!Array.isArray(evidence) || evidence.length === 0) {
-    body = <p className="text-muted-foreground text-sm">No evidence attached yet.</p>;
+    body = <p className="text-muted-foreground text-body">No evidence attached yet.</p>;
   } else {
     body = (
-      <ul className="space-y-3 text-sm">
+      <ul className="space-y-3 text-body">
         {evidence.map((item) => (
           <li
             key={item.id}
@@ -132,9 +132,11 @@ export function EvidenceSection({
                 </a>
               </div>
               {item.description && (
-                <p className="text-muted-foreground mt-1 break-words text-xs">{item.description}</p>
+                <p className="text-muted-foreground mt-1 break-words text-meta">
+                  {item.description}
+                </p>
               )}
-              <p className="text-muted-foreground mt-1 text-xs">
+              <p className="text-muted-foreground mt-1 text-meta">
                 <span>by {actorLabel({ user_id: item.uploaded_by ?? "" }, { me, directory })}</span>
                 {" · "}
                 <span className="tabular-nums">{formatDateTime(item.created_at)}</span>
@@ -188,12 +190,12 @@ export function EvidenceSection({
             </div>
           </div>
           {urlError && (
-            <p id="evidence-url-error" className="text-destructive text-xs">{urlError}</p>
+            <p id="evidence-url-error" className="text-destructive text-meta">{urlError}</p>
           )}
           <div>
             <label
               htmlFor="evidence-description"
-              className="text-muted-foreground mb-1 block text-xs"
+              className="text-muted-foreground mb-1 block text-meta"
             >
               Description
             </label>

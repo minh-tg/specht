@@ -56,7 +56,7 @@ export function ProjectPolicy() {
     <section aria-labelledby="policy-heading" className="grid gap-6">
       <div>
         <h2 id="policy-heading" className="text-section font-semibold">Policy</h2>
-        <p className="text-muted-foreground mt-0.5 text-sm">
+        <p className="text-muted-foreground mt-0.5 text-body">
           What blocks a change in this project, and where each rule comes from.
         </p>
       </div>
@@ -82,12 +82,12 @@ export function ProjectPolicy() {
               />
             )
             : (
-              <span className="text-[0.9375rem]">
+              <span className="text-body">
                 {policy.template_name ?? "No template"}
               </span>
             )}
           {policy.template_name && (
-            <span className="text-muted-foreground text-[0.8125rem]">
+            <span className="text-muted-foreground text-meta">
               v{policy.template_version}
             </span>
           )}
@@ -119,12 +119,15 @@ export function ProjectPolicy() {
       </div>
 
       {failure && (
-        <p role="alert" className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm">
+        <p
+          role="alert"
+          className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-body"
+        >
           {failure.message || "Could not save the policy."}
         </p>
       )}
 
-      <p className="bg-muted text-muted-foreground flex items-start gap-2.5 rounded-md px-3.5 py-3 text-[0.8125rem]">
+      <p className="bg-muted text-muted-foreground flex items-start gap-2.5 rounded-md px-3.5 py-3 text-meta">
         <InfoIcon aria-hidden="true" className="mt-0.5 size-4 flex-none" />
         <span>
           {isAdmin

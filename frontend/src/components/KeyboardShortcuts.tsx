@@ -71,25 +71,25 @@ export function KeyboardShortcuts() {
             <section key={scope} aria-labelledby={`shortcuts-${scope.replaceAll(" ", "-")}`}>
               <h3
                 id={`shortcuts-${scope.replaceAll(" ", "-")}`}
-                className="text-muted-foreground mb-1 text-[0.6875rem] font-medium tracking-wider uppercase"
+                className="text-muted-foreground mb-1 text-label font-medium tracking-wider uppercase"
               >
                 {scope}
               </h3>
               <dl className="m-0 grid gap-1.5">
                 {items.map((shortcut) => (
                   <div key={shortcut.id} className="flex items-baseline justify-between gap-3">
-                    <dt className="text-sm">{shortcut.description}</dt>
+                    <dt className="text-body">{shortcut.description}</dt>
                     <dd className="m-0 flex flex-wrap justify-end gap-x-2 gap-y-1">
                       {displayCombos(shortcut, undefined, singleKeys).map((combo, index) => (
                         <Fragment key={combo.join("+")}>
                           {index > 0 && shortcut.alsoCtrl && (
-                            <span className="text-muted-foreground text-xs">{" or "}</span>
+                            <span className="text-muted-foreground text-meta">{" or "}</span>
                           )}
                           <kbd
                             aria-label={combo.map((key) =>
                               keyLabel(key)
                             ).join(" ")}
-                            className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono text-xs"
+                            className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono text-code"
                           >
                             {comboLabel(combo)}
                           </kbd>

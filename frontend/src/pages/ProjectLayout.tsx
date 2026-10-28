@@ -71,7 +71,7 @@ export function ProjectLayout(
         </p>
         <Link
           to="/"
-          className={`${INLINE_LINK} mt-4 inline-block text-sm`}
+          className={`${INLINE_LINK} mt-4 inline-block text-body`}
         >
           Back to projects
         </Link>
@@ -82,7 +82,7 @@ export function ProjectLayout(
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-2">
-        <Link to="/" className="text-muted-foreground hover:text-foreground text-sm">
+        <Link to="/" className="text-muted-foreground hover:text-foreground text-body">
           Projects
         </Link>
         <span aria-hidden="true" className="text-muted-foreground">

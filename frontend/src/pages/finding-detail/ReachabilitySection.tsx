@@ -75,7 +75,7 @@ export function ReachabilitySection({
   } else if (!isSuccess) {
     body = <SkeletonLines label="Loading reachability" lines={1} className="mb-3" />;
   } else {
-    body = <p className="text-muted-foreground mb-3 text-xs">{latestAssessmentLine(latest)}</p>;
+    body = <p className="text-muted-foreground mb-3 text-meta">{latestAssessmentLine(latest)}</p>;
   }
 
   return (

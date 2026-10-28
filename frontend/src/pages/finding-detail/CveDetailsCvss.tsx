@@ -7,8 +7,8 @@ import { provenanceLabel, reporterOf } from "./cveText";
 
 /** The band as a word. The tint and bars only repeat it. */
 export function BandWord({ severity }: { readonly severity: CveCvss["severity"]; }) {
-  if (severity === null) return <span className="text-muted-foreground text-xs">Not rated</span>;
-  if (severity === "none") return <span className="text-sev-none-fg text-xs">None</span>;
+  if (severity === null) return <span className="text-muted-foreground text-meta">Not rated</span>;
+  if (severity === "none") return <span className="text-sev-none-fg text-meta">None</span>;
   return <SeverityBadge severity={severity} plain />;
 }
 
@@ -23,7 +23,7 @@ export function CvssCard({ cvss }: { readonly cvss: CveCvss; }) {
   return (
     <article aria-labelledby={headingId} className="border-border rounded-lg border p-4">
       <h4 id={headingId} className="text-body font-semibold">CVSS {cvss.version}</h4>
-      <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+      <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-body">
         <span>
           <span className="text-muted-foreground">
             {cvss.base_score === null ? "Reported score" : "Base score"}
@@ -34,15 +34,15 @@ export function CvssCard({ cvss }: { readonly cvss: CveCvss; }) {
         </span>
         <BandWord severity={cvss.severity} />
       </p>
-      <p className="text-muted-foreground mt-1 text-xs">
+      <p className="text-muted-foreground mt-1 text-meta">
         {provenanceLabel(cvss.provenance)}
         {scoredBy ? `, scored by ${scoredBy}` : ""}
       </p>
-      {mismatch && <p className="mt-2 text-sm">{mismatch}</p>}
+      {mismatch && <p className="mt-2 text-body">{mismatch}</p>}
       <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
         <code
           aria-label={`CVSS ${cvss.version} vector`}
-          className="bg-muted min-w-0 rounded px-2 py-1 font-mono text-xs break-all"
+          className="bg-muted min-w-0 rounded px-2 py-1 font-mono text-code break-all"
         >
           {cvss.vector}
         </code>
@@ -52,8 +52,8 @@ export function CvssCard({ cvss }: { readonly cvss: CveCvss; }) {
         <div className="mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-2">
           {groups.map((group) => (
             <section key={group.title} aria-label={`${group.title} metrics`}>
-              <h5 className="text-muted-foreground mb-1.5 text-xs font-medium">{group.title}</h5>
-              <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
+              <h5 className="text-muted-foreground mb-1.5 text-meta font-medium">{group.title}</h5>
+              <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-body">
                 {group.rows.map((row) => (
                   <div key={row.key} className="contents">
                     <dt className={row.known ? "" : "font-mono"}>{row.name}</dt>

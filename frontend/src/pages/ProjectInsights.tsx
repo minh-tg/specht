@@ -30,7 +30,7 @@ function Stat({ value, label, alert = false }: {
       >
         {value}
       </div>
-      <div className="text-muted-foreground mt-1.5 text-[0.8125rem]">{label}</div>
+      <div className="text-muted-foreground mt-1.5 text-meta">{label}</div>
     </div>
   );
 }
@@ -43,7 +43,7 @@ function Block({ title, note, children }: {
   return (
     <section className="min-w-0">
       <h3 className="text-body font-semibold">{title}</h3>
-      <p className="text-muted-foreground mt-0.5 mb-2.5 text-[0.8125rem]">{note}</p>
+      <p className="text-muted-foreground mt-0.5 mb-2.5 text-meta">{note}</p>
       {children}
     </section>
   );
@@ -72,7 +72,7 @@ export function ProjectInsights() {
     <section aria-labelledby="insights-heading" className="grid gap-8">
       <div>
         <h2 id="insights-heading" className="text-section font-semibold">Insights</h2>
-        <p className="text-muted-foreground mt-0.5 text-sm">
+        <p className="text-muted-foreground mt-0.5 text-body">
           Open findings only. Fixed and archived ones are not counted.
         </p>
       </div>
@@ -96,7 +96,7 @@ export function ProjectInsights() {
 
       {data.total_findings === 0
         ? (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-body">
             No open findings, so there is nothing to chart.
           </p>
         )
@@ -139,7 +139,7 @@ export function ProjectInsights() {
         )}
 
       {agingData?.truncated && (
-        <p className="bg-muted text-muted-foreground rounded-md px-3.5 py-3 text-[0.8125rem]">
+        <p className="bg-muted text-muted-foreground rounded-md px-3.5 py-3 text-meta">
           This project has more open findings than the age numbers cover. They count the oldest
           ones.
         </p>
@@ -156,7 +156,7 @@ export function ProjectInsights() {
               >
                 <div className="min-w-0">
                   <p className="font-semibold">{finding.title}</p>
-                  <p className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 text-[0.8125rem] tabular-nums">
+                  <p className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 text-meta tabular-nums">
                     <SeverityBadge severity={finding.severity} plain />
                     <span>· {pluralize(finding.age_days, "day")} old</span>
                     <span>· fix date was {pluralize(daysOverdue(finding, now), "day")} ago</span>
@@ -174,7 +174,7 @@ export function ProjectInsights() {
             ))}
           </ul>
           {agingData.overdue_total > agingData.overdue.length && (
-            <p className="text-muted-foreground mt-2 text-[0.8125rem]">
+            <p className="text-muted-foreground mt-2 text-meta">
               Showing the oldest {agingData.overdue.length} of {agingData.overdue_total}.
             </p>
           )}

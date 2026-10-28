@@ -81,10 +81,10 @@ export function NewProject() {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
         <h1 className="mb-6 text-title font-bold">New project</h1>
-        <p className="text-muted-foreground text-sm">Only administrators can create projects.</p>
+        <p className="text-muted-foreground text-body">Only administrators can create projects.</p>
         <Link
           to="/"
-          className={`${INLINE_LINK} mt-2 inline-block text-sm`}
+          className={`${INLINE_LINK} mt-2 inline-block text-body`}
         >
           Back to projects
         </Link>
@@ -98,8 +98,8 @@ export function NewProject() {
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <div>
-          <label htmlFor="new-project-name" className="text-sm font-medium">Name</label>
-          <span className="text-muted-foreground ml-1 text-xs">(required)</span>
+          <label htmlFor="new-project-name" className="text-body font-medium">Name</label>
+          <span className="text-muted-foreground ml-1 text-meta">(required)</span>
           <Input
             id="new-project-name"
             className="mt-1"
@@ -110,14 +110,14 @@ export function NewProject() {
             aria-describedby={errors.name ? "new-project-name-error" : undefined}
           />
           {errors.name && (
-            <p id="new-project-name-error" role="alert" className="text-destructive mt-1 text-xs">
+            <p id="new-project-name-error" role="alert" className="text-destructive mt-1 text-meta">
               {errors.name}
             </p>
           )}
         </div>
 
         <div>
-          <label htmlFor="new-project-slug" className="text-sm font-medium">Slug</label>
+          <label htmlFor="new-project-slug" className="text-body font-medium">Slug</label>
           <Input
             id="new-project-slug"
             className="mt-1"
@@ -128,21 +128,21 @@ export function NewProject() {
               errors.slug ? " new-project-slug-error" : ""
             }`}
           />
-          <p id="new-project-slug-help" className="text-muted-foreground mt-1 text-xs">
+          <p id="new-project-slug-help" className="text-muted-foreground mt-1 text-meta">
             Lowercase letters, numbers and hyphens, 3-48 characters. Used in URLs and by CI.
           </p>
           {errors.slug && (
-            <p id="new-project-slug-error" role="alert" className="text-destructive mt-1 text-xs">
+            <p id="new-project-slug-error" role="alert" className="text-destructive mt-1 text-meta">
               {errors.slug}
             </p>
           )}
         </div>
 
         <div>
-          <label htmlFor="new-project-description" className="text-sm font-medium">
+          <label htmlFor="new-project-description" className="text-body font-medium">
             Description
           </label>
-          <span className="text-muted-foreground ml-1 text-xs">(optional)</span>
+          <span className="text-muted-foreground ml-1 text-meta">(optional)</span>
           <Textarea
             id="new-project-description"
             className="mt-1"
@@ -152,7 +152,7 @@ export function NewProject() {
           />
         </div>
 
-        {errors.form && <p role="alert" className="text-destructive text-sm">{errors.form}</p>}
+        {errors.form && <p role="alert" className="text-destructive text-body">{errors.form}</p>}
 
         <Button
           type="submit"

@@ -65,7 +65,7 @@ export function DecideDialog({ slug, waiver, decision, onClose }: {
         </DialogHeader>
         <form onSubmit={(e) => void submit(e)} className="grid gap-4">
           <div className="grid gap-1.5">
-            <label htmlFor="decision-note" className="text-sm font-medium">
+            <label htmlFor="decision-note" className="text-body font-medium">
               Note {approving
                 ? <span className="text-muted-foreground font-normal">(optional)</span>
                 : <span className="text-muted-foreground font-normal">(required)</span>}
@@ -80,7 +80,7 @@ export function DecideDialog({ slug, waiver, decision, onClose }: {
             />
           </div>
           {mutation.isError && (
-            <p role="alert" className="text-destructive text-sm">
+            <p role="alert" className="text-destructive text-body">
               {mutation.error.message || "Could not save the decision."}
             </p>
           )}

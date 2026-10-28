@@ -10,13 +10,13 @@ export function HowToFix({ finding }: { readonly finding: Finding; }) {
       <h2 className="mb-3 text-section font-semibold">How to fix</h2>
       {finding.remediation?.summary
         ? (
-          <div className="space-y-2 text-sm">
+          <div className="space-y-2 text-body">
             <div className="bg-muted flex items-center gap-3 rounded-md py-2 pr-2 pl-3.5">
               <p className="min-w-0 flex-1 font-medium">{finding.remediation.summary}</p>
               <CopyButton text={finding.remediation.summary} label="fix" />
             </div>
             {finding.remediation.fallback && (
-              <p className="text-muted-foreground text-xs">
+              <p className="text-muted-foreground text-meta">
                 General guidance. The scanner reported no specific fix.
               </p>
             )}
@@ -26,19 +26,19 @@ export function HowToFix({ finding }: { readonly finding: Finding; }) {
                   href={finding.remediation.url}
                   target="_blank"
                   rel="noreferrer"
-                  className={`${INLINE_LINK} text-sm`}
+                  className={`${INLINE_LINK} text-body`}
                 >
                   Remediation reference
                 </a>
               </p>
             )}
             {finding.remediation.source && (
-              <p className="text-muted-foreground text-xs">
+              <p className="text-muted-foreground text-meta">
                 Source: {finding.remediation.source}
               </p>
             )}
             {finding.suggestion && (
-              <p className="text-muted-foreground text-xs">
+              <p className="text-muted-foreground text-meta">
                 Suggested: {finding.suggestion.action}
                 {finding.suggestion.target ? ` ${finding.suggestion.target}` : ""} (confidence{" "}
                 {confidenceLabel(finding.suggestion.confidence)})
@@ -48,7 +48,7 @@ export function HowToFix({ finding }: { readonly finding: Finding; }) {
           </div>
         )
         : (
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-body">
             No remediation reported for this finding.
           </p>
         )}

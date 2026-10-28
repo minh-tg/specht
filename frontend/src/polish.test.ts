@@ -101,9 +101,9 @@ describe("tabular figures", () => {
     ["pages/finding-detail/SignoffSection.tsx", /tabular-nums">\{formatDateTime/],
     ["pages/finding-detail/EvidenceSection.tsx", /tabular-nums">\{formatDateTime/],
     ["components/FileDropzone.tsx", /tabular-nums">\s*\{formatSize/],
-    ["pages/admin/WatcherHealthSection.tsx", /text-\[0\.9375rem\] tabular-nums/],
+    ["pages/admin/WatcherHealthSection.tsx", /text-body tabular-nums/],
     ["pages/upload-report/UploadResultCard.tsx", /tabular-nums">\s*\{pluralize/],
-    ["pages/change-view/ChangeHero.tsx", /text-\[13px\] tabular-nums/],
+    ["pages/change-view/ChangeHero.tsx", /text-meta tabular-nums/],
     ["components/VerdictBand.tsx", /tabular-nums">\{verdictSentence/],
   ];
   it.each(sites)("%s sets tabular figures where digits line up", (file, needle) => {

@@ -8,7 +8,7 @@ import { CheckIcon, ChevronDownIcon, UserIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const ITEM_CLASS =
-  "flex min-h-8 w-full cursor-default items-center rounded-md px-2 text-sm outline-none select-none data-highlighted:bg-muted data-highlighted:text-foreground";
+  "flex min-h-8 w-full cursor-default items-center rounded-md px-2 text-body outline-none select-none data-highlighted:bg-muted data-highlighted:text-foreground";
 
 const APPEARANCE: readonly { value: Theme; label: string; }[] = [
   { value: "system", label: "System" },
@@ -55,7 +55,7 @@ export function AccountMenu({ email, onLogout }: { email: string | null; onLogou
               value={theme}
               onValueChange={(value) => setTheme(value as Theme)}
             >
-              <Menu.GroupLabel className="text-muted-foreground px-2 pt-1 pb-0.5 text-xs">
+              <Menu.GroupLabel className="text-muted-foreground px-2 pt-1 pb-0.5 text-meta">
                 Appearance
               </Menu.GroupLabel>
               {APPEARANCE.map(({ value, label }) => (

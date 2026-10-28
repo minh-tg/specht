@@ -63,13 +63,13 @@ function TeamCard({
     <div className="bg-card border border-border rounded-lg p-5 flex flex-col justify-between shadow-xs">
       <div>
         <h3 className="font-semibold text-body text-foreground mb-1">{team.name}</h3>
-        <p className="text-muted-foreground text-xs line-clamp-2 mb-4">
+        <p className="text-muted-foreground text-meta line-clamp-2 mb-4">
           {team.description || "No description provided."}
         </p>
       </div>
 
       <div>
-        <div className="flex items-center justify-between pt-3 border-t border-border text-xs text-muted-foreground mb-3">
+        <div className="flex items-center justify-between pt-3 border-t border-border text-meta text-muted-foreground mb-3">
           {membersError
             ? (
               <span className="flex items-center gap-2">
@@ -107,7 +107,7 @@ function TeamCard({
             </Button>
           )}
         </div>
-        {deleteError && <p className="text-destructive text-xs mt-2">{deleteError}</p>}
+        {deleteError && <p className="text-destructive text-meta mt-2">{deleteError}</p>}
       </div>
     </div>
   );
@@ -196,7 +196,7 @@ export function TeamsDirectory() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-title font-bold">Company Teams</h1>
-          <p className="text-muted-foreground text-sm mt-1">
+          <p className="text-muted-foreground text-body mt-1">
             Central organization teams for managing permissions across projects.
           </p>
         </div>
@@ -204,7 +204,7 @@ export function TeamsDirectory() {
         {isGlobalAdmin
           ? <Button onClick={() => setShowCreateModal(true)}>+ Create Team</Button>
           : (
-            <div className="text-muted-foreground text-xs bg-muted px-3 py-1.5 rounded-md border border-border">
+            <div className="text-muted-foreground text-meta bg-muted px-3 py-1.5 rounded-md border border-border">
               Global Admin required to create teams
             </div>
           )}
@@ -256,7 +256,7 @@ export function TeamsDirectory() {
             <div>
               <label
                 htmlFor="team-name-input"
-                className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
+                className="block text-meta font-semibold uppercase tracking-wider text-muted-foreground mb-1"
               >
                 Team Name
               </label>
@@ -272,7 +272,7 @@ export function TeamsDirectory() {
             <div>
               <label
                 htmlFor="team-desc-input"
-                className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
+                className="block text-meta font-semibold uppercase tracking-wider text-muted-foreground mb-1"
               >
                 Description
               </label>
@@ -286,7 +286,7 @@ export function TeamsDirectory() {
             </div>
 
             {createTeamMutation.isError && (
-              <p className="text-destructive text-xs">
+              <p className="text-destructive text-meta">
                 {createTeamMutation.error?.message ?? "Failed to create team"}
               </p>
             )}
@@ -348,9 +348,9 @@ export function TeamsDirectory() {
                 </Button>
               </div>
               <OpenRegistrationNote />
-              {rosterInputError && <p className="text-destructive text-xs">{rosterInputError}</p>}
+              {rosterInputError && <p className="text-destructive text-meta">{rosterInputError}</p>}
               {addMemberMutation.isError && (
-                <p className="text-destructive text-xs">
+                <p className="text-destructive text-meta">
                   {addMemberMutation.error?.message ?? "Failed to add member"}
                 </p>
               )}
@@ -368,7 +368,7 @@ export function TeamsDirectory() {
               )
               : activeMembers && activeMembers.length > 0
               ? (
-                <ul className="divide-y divide-border text-sm">
+                <ul className="divide-y divide-border text-body">
                   {activeMembers.map((member) => (
                     <li
                       key={member.user_id}
@@ -379,7 +379,7 @@ export function TeamsDirectory() {
                           {member.display_name || member.user_email || "Unnamed account"}
                         </span>
                         {member.display_name && member.user_email && (
-                          <span className="block text-xs text-muted-foreground">
+                          <span className="block text-meta text-muted-foreground">
                             {member.user_email}
                           </span>
                         )}
@@ -400,13 +400,13 @@ export function TeamsDirectory() {
                 </ul>
               )
               : (
-                <div className="p-4 text-center text-muted-foreground text-xs">
+                <div className="p-4 text-center text-muted-foreground text-meta">
                   No members in this team yet.
                 </div>
               )}
           </div>
           {removeMemberMutation.isError && (
-            <p className="text-destructive text-xs">
+            <p className="text-destructive text-meta">
               {removeMemberMutation.error?.message ?? "Failed to remove member"}
             </p>
           )}

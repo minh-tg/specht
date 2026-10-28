@@ -13,8 +13,8 @@ export function EmptyState({ title, description, action, className }: {
 }) {
   return (
     <div className={cn("bg-card border-border rounded-lg border p-12 text-center", className)}>
-      <p className="text-foreground text-sm font-medium">{title}</p>
-      {description && <p className="text-muted-foreground mt-1 text-sm">{description}</p>}
+      <p className="text-foreground text-body font-medium">{title}</p>
+      {description && <p className="text-muted-foreground mt-1 text-body">{description}</p>}
       {action && <div className="mt-4 flex justify-center">{action}</div>}
     </div>
   );

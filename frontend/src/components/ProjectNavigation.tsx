@@ -23,7 +23,7 @@ export function ProjectNavigation({ slug, currentTab, isAdmin }: {
   const configuration = CONFIG_LINKS.filter(({ tab }) => tab !== "settings" || isAdmin);
   const active = configuration.find(({ tab }) => tab === currentTab);
   const tabClass = (current: boolean) =>
-    `pb-2 text-sm font-medium ${
+    `pb-2 text-body font-medium ${
       current
         ? "border-primary text-foreground border-b-2"
         : "text-muted-foreground hover:text-foreground"
@@ -62,7 +62,7 @@ export function ProjectNavigation({ slug, currentTab, isAdmin }: {
                   closeOnClick
                   render={<Link to={`/${slug}/${tab}`} />}
                   aria-current={tab === currentTab ? "page" : undefined}
-                  className="flex min-h-9 items-center rounded-md px-2 text-sm outline-none select-none data-highlighted:bg-muted data-highlighted:text-foreground aria-[current=page]:font-semibold"
+                  className="flex min-h-9 items-center rounded-md px-2 text-body outline-none select-none data-highlighted:bg-muted data-highlighted:text-foreground aria-[current=page]:font-semibold"
                 >
                   {label}
                 </Menu.LinkItem>

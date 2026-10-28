@@ -49,11 +49,11 @@ export function BlockerEntry(props: BlockerEntryProps) {
   if (isError || !finding) {
     return (
       <li className="border-border border-b px-[18px] py-3.5">
-        <p className="text-sm">
+        <p className="text-body">
           Could not load this finding{" "}
-          <span className="text-muted-foreground font-mono text-xs">{findingId}</span>
+          <span className="text-muted-foreground font-mono text-code">{findingId}</span>
         </p>
-        <button type="button" className={`${INLINE_LINK} mt-1 text-sm`} onClick={onRetry}>
+        <button type="button" className={`${INLINE_LINK} mt-1 text-body`} onClick={onRetry}>
           Retry
         </button>
       </li>
@@ -99,12 +99,12 @@ function LoadedEntry(
             {finding.current_title}
           </span>
           {waiverRequested && (
-            <span className="font-label text-muted-foreground text-xs">Waiver requested</span>
+            <span className="font-label text-muted-foreground text-label">Waiver requested</span>
           )}
           {fix && (
             <span
               title={fix}
-              className="text-muted-foreground ml-auto min-w-0 max-w-[40%] truncate text-[13px] max-sm:hidden"
+              className="text-muted-foreground ml-auto min-w-0 max-w-[40%] truncate text-meta max-sm:hidden"
             >
               {fix}
             </span>
@@ -113,16 +113,16 @@ function LoadedEntry(
       }
     >
       <div className="grid gap-3.5 pr-[18px] pb-4 pl-[18px] sm:pl-[52px]">
-        <dl className="m-0 grid grid-cols-[104px_minmax(0,1fr)] gap-x-3.5 gap-y-1.5 text-[15px]">
+        <dl className="m-0 grid grid-cols-[104px_minmax(0,1fr)] gap-x-3.5 gap-y-1.5 text-body">
           {where && (
             <>
-              <dt className="text-muted-foreground pt-0.5 text-[13px]">Where</dt>
-              <dd className="m-0 min-w-0 font-mono text-[13px] [overflow-wrap:anywhere]">
+              <dt className="text-muted-foreground pt-0.5 text-meta">Where</dt>
+              <dd className="m-0 min-w-0 font-mono text-code [overflow-wrap:anywhere]">
                 {where}
               </dd>
             </>
           )}
-          <dt className="text-muted-foreground pt-0.5 text-[13px]">Why it blocks</dt>
+          <dt className="text-muted-foreground pt-0.5 text-meta">Why it blocks</dt>
           <dd className="m-0 min-w-0">
             Severity {severity.toUpperCase()}
             {floor
@@ -131,11 +131,11 @@ function LoadedEntry(
           </dd>
         </dl>
         <div className="bg-muted rounded-lg px-3.5 py-2.5">
-          <p className="font-label text-muted-foreground text-xs">Do this</p>
+          <p className="font-label text-muted-foreground text-label">Do this</p>
           {fix
-            ? <p className="mt-0.5 font-mono text-[13px] [overflow-wrap:anywhere]">{fix}</p>
+            ? <p className="mt-0.5 font-mono text-code [overflow-wrap:anywhere]">{fix}</p>
             : (
-              <p className="mt-0.5 text-sm">
+              <p className="mt-0.5 text-body">
                 <strong>No automated fix is known.</strong> Open it to decide what to do.
               </p>
             )}
@@ -155,7 +155,7 @@ function LoadedEntry(
           )}
           {waiverRequested
             ? (
-              <span className="text-muted-foreground text-[13px]">
+              <span className="text-muted-foreground text-meta">
                 Waiting for a manager to decide.
               </span>
             )
@@ -164,7 +164,7 @@ function LoadedEntry(
                 Request waiver
               </Button>
             )}
-          <label className="ml-auto flex min-h-[34px] cursor-pointer items-center gap-2 px-1.5 text-[13px]">
+          <label className="ml-auto flex min-h-[34px] cursor-pointer items-center gap-2 px-1.5 text-meta">
             <input
               type="checkbox"
               checked={handled}
@@ -175,7 +175,7 @@ function LoadedEntry(
             I&apos;ve done this
           </label>
         </div>
-        <p className="text-[13px]">
+        <p className="text-meta">
           <Link to={target} className={INLINE_LINK}>Open the full finding</Link>
         </p>
       </div>

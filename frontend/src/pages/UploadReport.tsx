@@ -21,13 +21,13 @@ export function UploadReport() {
     <div className="mx-auto max-w-lg px-4 py-8">
       <Link
         to={`/${slug}/reports`}
-        className="text-muted-foreground hover:text-foreground mb-6 inline-block text-sm"
+        className="text-muted-foreground hover:text-foreground mb-6 inline-block text-body"
       >
         &larr; {projectName}
       </Link>
 
       <h1 className="mb-2 text-title font-bold">Upload a report</h1>
-      <p className="text-muted-foreground mb-6 text-sm">Uploading to {projectName}</p>
+      <p className="text-muted-foreground mb-6 text-body">Uploading to {projectName}</p>
 
       {upload.result && (
         <UploadResultCard result={upload.result} slug={slug} onReset={upload.resetForm} />
@@ -36,7 +36,7 @@ export function UploadReport() {
       {upload.uploadError && (
         <div
           role="alert"
-          className="bg-destructive/10 text-destructive mb-6 rounded-md px-4 py-3 text-sm"
+          className="bg-destructive/10 text-destructive mb-6 rounded-md px-4 py-3 text-body"
         >
           {upload.uploadError}
         </div>

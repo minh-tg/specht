@@ -9,7 +9,7 @@ export function AnalysisNote(
 ) {
   if (!reason && !expiresAt) return null;
   return (
-    <p className="text-muted-foreground -mt-3 mb-4 text-xs">
+    <p className="text-muted-foreground -mt-3 mb-4 text-meta">
       {reason && <>Reason: {reason}</>}
       {reason && expiresAt && " · "}
       {expiresAt && <>Expires {formatDate(expiresAt)}</>}

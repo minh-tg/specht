@@ -13,7 +13,7 @@ export function PasswordRequirements({ id, value }: {
 }) {
   if (value === "") return null;
   return (
-    <ul id={id} aria-label="Requirements" className="grid gap-1 text-[0.8125rem]">
+    <ul id={id} aria-label="Requirements" className="grid gap-1 text-meta">
       {passwordRules.filter((rule) => rule.shown(value)).map((rule) => {
         const met = rule.met(value);
         return (

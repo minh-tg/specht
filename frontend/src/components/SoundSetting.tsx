@@ -4,7 +4,7 @@ import { Menu } from "@base-ui/react/menu";
 import { CheckIcon } from "lucide-react";
 
 const ITEM_CLASS =
-  "flex min-h-8 w-full cursor-default items-center gap-2 rounded-md px-2 text-sm outline-none select-none data-highlighted:bg-muted data-highlighted:text-foreground";
+  "flex min-h-8 w-full cursor-default items-center gap-2 rounded-md px-2 text-body outline-none select-none data-highlighted:bg-muted data-highlighted:text-foreground";
 
 /**
  * The opt-in for sound effects, a checkable menu item. The click that switches it on is the user

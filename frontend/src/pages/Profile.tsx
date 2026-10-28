@@ -19,7 +19,7 @@ export function Profile() {
     <div className="mx-auto max-w-2xl space-y-8 px-4 py-8">
       <div>
         <h1 className="text-title font-bold">Your profile</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
+        <p className="text-muted-foreground mt-1 text-body">
           How you appear to other people in Specht, and how you sign in.
         </p>
       </div>
@@ -59,7 +59,7 @@ function AccountSection({ profile }: { readonly profile: UserProfile; }) {
       className="grid gap-4 border-t-2 border-foreground pt-5"
     >
       <h2 id="profile-account" className="text-section font-semibold">Account</h2>
-      <dl className="grid gap-3 text-sm sm:grid-cols-[8rem_1fr]">
+      <dl className="grid gap-3 text-body sm:grid-cols-[8rem_1fr]">
         <dt className="text-muted-foreground">Email</dt>
         <dd className="break-all font-medium">{profile.email}</dd>
         <dt className="text-muted-foreground">Role</dt>
@@ -168,7 +168,7 @@ function PasswordSection({ displayName }: { readonly displayName: string | null 
         className="grid gap-3 border-t border-border pt-5"
       >
         <h2 id="profile-password" className="text-section font-semibold">Password</h2>
-        <p className="text-sm">
+        <p className="text-body">
           Your account signs in through your identity provider, so there is no password to change
           here.
         </p>
@@ -183,7 +183,7 @@ function PasswordSection({ displayName }: { readonly displayName: string | null 
         {formError && (
           <p
             role="alert"
-            className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm"
+            className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-body"
           >
             {formError}
           </p>
@@ -228,9 +228,9 @@ function PasswordSection({ displayName }: { readonly displayName: string | null 
           <Button type="submit" disabled={change.isPending || retry.waiting}>
             {change.isPending ? "Changing…" : "Change password"}
           </Button>
-          <p role="status" className="text-sev-success-fg text-sm">{notice}</p>
+          <p role="status" className="text-sev-success-fg text-body">{notice}</p>
         </div>
-        <p className="text-muted-foreground text-[0.8125rem]">
+        <p className="text-muted-foreground text-meta">
           Changing your password signs you out everywhere else. This browser stays signed in.
         </p>
       </form>

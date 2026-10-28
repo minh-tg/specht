@@ -50,7 +50,7 @@ export function UploadForm({
     );
   } else if (!scanners || scanners.length === 0) {
     scannerPicker = (
-      <div className="text-muted-foreground mt-1 text-sm">No scanners available.</div>
+      <div className="text-muted-foreground mt-1 text-body">No scanners available.</div>
     );
   } else {
     scannerPicker = (
@@ -70,17 +70,17 @@ export function UploadForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label htmlFor="ingest-scanner" className="text-sm font-medium">Scanner</label>
+        <label htmlFor="ingest-scanner" className="text-body font-medium">Scanner</label>
         {scannerPicker}
         <ScannerHelp scanner={chosen} />
       </div>
 
       <div>
-        <label htmlFor="ingest-file" className="text-sm font-medium">
+        <label htmlFor="ingest-file" className="text-body font-medium">
           Scan file
         </label>
         {takes.length > 0 && (
-          <p id="ingest-file-takes" className="text-muted-foreground text-xs">
+          <p id="ingest-file-takes" className="text-muted-foreground text-meta">
             Takes {takes.join(", ")}
           </p>
         )}

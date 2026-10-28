@@ -10,7 +10,7 @@ export function RawEvidenceNote(
 ) {
   if (!expired) return null;
   return (
-    <p className="text-muted-foreground mt-3 text-xs">
+    <p className="text-muted-foreground mt-3 text-meta">
       {expiresAt
         ? <>Raw evidence expired on {formatDate(expiresAt)} under the retention policy.</>
         : <>Raw evidence expired under the retention policy.</>}
