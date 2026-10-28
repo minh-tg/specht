@@ -40,10 +40,33 @@ The page a CI link opens: what the change introduced, where, and what to do abou
 You need Docker with the compose plugin. There is no published image until the first
 release, so this builds the server from source.
 
+```bash
+git clone https://github.com/minh-tg/specht.git
+cd specht
+cp deploy/.env.prod.example deploy/.env.prod
+```
+
+Edit `deploy/.env.prod`. Set `POSTGRES_PASSWORD` and `JWT_SECRET` (at least 32 random
+bytes, for example `head -c 48 /dev/urandom | base64`), and uncomment `SETUP_TOKEN` with a
+value of your choice, at least 16 characters. Then start the stack:
+
+```bash
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml \
+  --env-file deploy/.env.prod up -d --build
+```
+
+Open <http://localhost:8080>, enter the setup token, and create the first administrator.
+Create a project, then follow its CI setup page to make an API key and connect a scanner.
+
+[`deploy/README.md`](deploy/README.md) covers TLS, backups, upgrades and every setting.
+The defaults above suit an evaluation, not an internet-facing deployment.
+
+### Rootless Podman
+
 Podman works too, with `podman compose` in place of `docker compose`. Rootless Podman
 also needs subordinate ID ranges for your user, or the build fails while unpacking the
-base images with `insufficient UIDs or GIDs available in user namespace`. Check the
-mapping first:
+base images with `potentially insufficient UIDs or GIDs available in user namespace`.
+Check the mapping first:
 
 ```bash
 podman unshare cat /proc/self/uid_map
@@ -65,27 +88,6 @@ On NixOS, users with `isNormalUser = true` get a range by default
 your user is still missing there, set `users.users.<name>.subUidRanges` and
 `subGidRanges` in the system configuration instead of running `usermod`, because
 `usermod` changes do not survive a rebuild.
-
-```bash
-git clone https://github.com/minh-tg/specht.git
-cd specht
-cp deploy/.env.prod.example deploy/.env.prod
-```
-
-Edit `deploy/.env.prod`. Set `POSTGRES_PASSWORD` and `JWT_SECRET` (at least 32 random
-bytes, for example `head -c 48 /dev/urandom | base64`), and uncomment `SETUP_TOKEN` with a
-value of your choice, at least 16 characters. Then start the stack:
-
-```bash
-docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml \
-  --env-file deploy/.env.prod up -d --build
-```
-
-Open <http://localhost:8080>, enter the setup token, and create the first administrator.
-Create a project, then follow its CI setup page to make an API key and connect a scanner.
-
-[`deploy/README.md`](deploy/README.md) covers TLS, backups, upgrades and every setting.
-The defaults above suit an evaluation, not an internet-facing deployment.
 
 ## Connect your CI
 

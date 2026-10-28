@@ -60,7 +60,8 @@ override for a first start.
 
 With Podman, run the same commands through `podman compose`. Rootless Podman
 needs subordinate ID ranges for your user before the build can unpack the base
-images. The [Quick start](../README.md#quick-start) gives the commands.
+images. [Rootless Podman](../README.md#rootless-podman) in the main README gives
+the commands.
 
 ## 3. Configuration reference
 
