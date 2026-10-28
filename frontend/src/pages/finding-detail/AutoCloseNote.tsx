@@ -9,7 +9,7 @@ export function AutoCloseNote({ finding }: { readonly finding: Finding; }) {
   if (!scanner || scanner.supports_auto_close) return null;
   if (finding.state !== "open" && finding.state !== "reopened") return null;
   return (
-    <p className="text-muted-foreground mt-4 text-sm">
+    <p className="text-muted-foreground mt-4 text-body">
       {scanner.display_name}{" "}
       reports cannot prove a fix, so a later scan will not close this finding. Once you have dealt
       with it, use a triage decision to stop it blocking.
