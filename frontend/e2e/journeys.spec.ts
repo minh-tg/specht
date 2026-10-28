@@ -1054,7 +1054,8 @@ test("the command palette jumps between pages from the keyboard", async ({ page,
   const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true });
   await expect(sheet).toBeVisible();
   await expect(sheet).toContainText("Keys marked with a place only work while focus is there.");
-  expect(await sheet.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  await expect.poll(() => sheet.evaluate((element) => element.contains(document.activeElement)))
+    .toBe(true);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(opener).toBeFocused();
