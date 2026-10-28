@@ -208,6 +208,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
               className="inline-flex items-center gap-1"
             >
               <SeverityBadge severity={severity} />
+              {/* A real space, so the visible text reads "High 2" rather than "High2". */}{" "}
               <span className="text-body">{count}</span>
             </Link>
           ))}

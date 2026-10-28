@@ -51,7 +51,10 @@ export function SeverityChips({ value, counts, onChange }: {
           >
             {severityLabel(severity)}
             {count !== undefined && (
-              <b className="font-semibold tabular-nums opacity-75">{count}</b>
+              <>
+                {/* A real space, so the visible text reads "High 2" rather than "High2". */}{" "}
+                <b className="font-semibold tabular-nums opacity-75">{count}</b>
+              </>
             )}
           </button>
         );
