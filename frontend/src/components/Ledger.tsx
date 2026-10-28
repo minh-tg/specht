@@ -35,10 +35,11 @@ export interface LedgerEntryProps {
   readonly index: number;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
-  /** The always-visible row: severity, title, the one-line fix. Must not contain interactive elements. */
+  /**
+   * The always-visible row: severity, title, the one-line fix. Must not contain interactive elements.
+   * Its text, after the number, is the toggle's accessible name, so separate the parts with spaces.
+   */
   readonly summary: ReactNode;
-  /** An accessible name for the toggle, since the summary is rich content. */
-  readonly label: string;
   readonly tone?: LedgerTone;
   /** A handled entry is dimmed and loses its edge, so progress reads at a glance. */
   readonly resolved?: boolean;
@@ -51,7 +52,7 @@ export interface LedgerEntryProps {
  * height of zero alone would not do.
  */
 export function LedgerEntry(
-  { index, open, onOpenChange, summary, label, tone = "neutral", resolved = false, children }:
+  { index, open, onOpenChange, summary, tone = "neutral", resolved = false, children }:
     LedgerEntryProps,
 ) {
   const bodyId = useId();
@@ -70,7 +71,6 @@ export function LedgerEntry(
           type="button"
           aria-expanded={open}
           aria-controls={bodyId}
-          aria-label={label}
           onClick={() => onOpenChange(!open)}
           className={cn(
             "flex min-h-[52px] w-full cursor-pointer items-center gap-3 py-3 pr-4 pl-[18px] text-left",
@@ -79,7 +79,7 @@ export function LedgerEntry(
         >
           <span className="text-muted-foreground w-[22px] flex-none font-mono text-code max-sm:hidden">
             {String(index).padStart(2, "0")}
-          </span>
+          </span>{" "}
           {summary}
           <svg
             aria-hidden="true"

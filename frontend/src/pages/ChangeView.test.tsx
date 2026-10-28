@@ -220,15 +220,22 @@ function renderPage(entry = `/acme/changes/${FULL_SHA}`) {
   );
 }
 
-/** The summary button of a ledger entry, which carries the finding's title as its name. */
+/**
+ * The name of a ledger entry's summary button. It is the row's visible text: the number, the
+ * severity, the title and the fix, so a speech user can say any of what they see.
+ */
+function entryName(title: string) {
+  return new RegExp(`^\\d{2} \\S+ ${title}( |$)`);
+}
+
 function entryButton(title: string) {
-  return screen.getByRole("button", { name: title });
+  return screen.getByRole("button", { name: entryName(title) });
 }
 
 /** Waits until both findings have loaded into the ledger. */
 async function loadedLedger() {
-  await screen.findByRole("button", { name: "Finding f1" });
-  await screen.findByRole("button", { name: "Finding f2" });
+  await screen.findByRole("button", { name: entryName("Finding f1") });
+  await screen.findByRole("button", { name: entryName("Finding f2") });
   return screen.getByRole("list", { name: "Blocking findings" });
 }
 

@@ -29,6 +29,11 @@ import {
 const NEW_TITLE = "SQL injection in user query";
 const HIGH_TITLE = "Hardcoded credentials in app config";
 
+/** A change-view ledger toggle is named by its row: the number, the severity, the title, then the fix. */
+function ledgerEntry(title: string): RegExp {
+  return new RegExp(`^\\d{2} \\S+ ${title}( |$)`);
+}
+
 test("findings dashboard filters live rows", async ({ page, request }) => {
   const token = await apiToken(request);
   const slug = uniq("findings-filter");
@@ -598,8 +603,8 @@ test("a CI link opens the change view with only what the change introduced", asy
 
   // Only the introduced finding is listed as a blocker; the baseline debt is folded away.
   const introduced = page.getByRole("region", { name: "Findings introduced by this change" });
-  await expect(introduced.getByRole("button", { name: NEW_TITLE, exact: true })).toBeVisible();
-  await expect(introduced.getByRole("button", { name: HIGH_TITLE, exact: true })).toHaveCount(0);
+  await expect(introduced.getByRole("button", { name: ledgerEntry(NEW_TITLE) })).toBeVisible();
+  await expect(introduced.getByRole("button", { name: ledgerEntry(HIGH_TITLE) })).toHaveCount(0);
 
   await page.getByText(/1 other finding blocks this project/).click();
   await expect(page.getByRole("link", { name: HIGH_TITLE })).toBeVisible();
@@ -640,8 +645,8 @@ test("a change view with long fix text keeps titles readable and does not scroll
   const entry = page.getByRole("region", { name: "Findings introduced by this change" })
     .getByRole("button").first();
   await expect(entry).toBeVisible();
-  const name = (await entry.getAttribute("aria-label")) ?? "";
-  const box = await entry.getByText(name, { exact: true }).boundingBox();
+  // The row reads number, severity, then the title.
+  const box = await entry.locator(":scope > span").nth(2).boundingBox();
   expect(box?.width ?? 0, "the title keeps room to read").toBeGreaterThan(120);
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),

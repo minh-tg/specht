@@ -83,24 +83,33 @@ function LoadedEntry(
   const fix = fixSentence(finding);
   const target = `/${slug}/findings/${findingId}`;
   const severity = normalizeSeverity(finding.current_severity);
+  // The accessible name starts with the visible text, so a speech user can say what they see.
+  const copyLabel = status === "copied"
+    ? "Copied"
+    : status === "failed"
+    ? "Copy failed"
+    : "Copy fix";
 
   return (
     <LedgerEntry
       index={index}
       open={open}
       onOpenChange={onOpenChange}
-      label={finding.current_title}
       tone={toneFor(finding.current_severity)}
       resolved={handled}
       summary={
         <>
-          <SeverityBadge severity={finding.current_severity} plain />
+          <SeverityBadge severity={finding.current_severity} plain />{" "}
           <span className="min-w-[10rem] font-semibold [overflow-wrap:anywhere] max-sm:min-w-0">
             {finding.current_title}
           </span>
           {waiverRequested && (
-            <span className="font-label text-muted-foreground text-label">Waiver requested</span>
+            <>
+              {" "}
+              <span className="font-label text-muted-foreground text-label">Waiver requested</span>
+            </>
           )}
+          {fix && " "}
           {fix && (
             <span
               title={fix}
@@ -145,12 +154,10 @@ function LoadedEntry(
             <Button
               type="button"
               variant="outline"
-              aria-label={status === "copied"
-                ? `Copied the fix for ${finding.current_title}`
-                : `Copy the fix for ${finding.current_title}`}
+              aria-label={`${copyLabel}: ${finding.current_title}`}
               onClick={() => void copy(fix)}
             >
-              {status === "copied" ? "Copied" : status === "failed" ? "Copy failed" : "Copy fix"}
+              {copyLabel}
             </Button>
           )}
           {waiverRequested
