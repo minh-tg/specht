@@ -2,6 +2,7 @@ import { useSaveSignoff, useSignoff } from "@/api/findingEvidence";
 import { useMe, useProjectRole } from "@/api/hooks";
 import { actorLabel, useUserDirectory } from "@/api/users";
 import { ErrorState } from "@/components/ErrorState";
+import { Section } from "@/components/Section";
 import { SelectField } from "@/components/SelectField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { Button } from "@/components/ui/button";
@@ -32,7 +33,7 @@ export function SignoffSection({
 }) {
   const params = useParams<{ slug: string; }>();
   const slug = projectSlug ?? params.slug ?? "";
-  const { canTriage } = useProjectRole(slug);
+  const { canTriage, isLoading: roleLoading } = useProjectRole(slug);
   const { data: me } = useMe();
   const { data: directory } = useUserDirectory();
   const { data: signoff, isLoading, isError, refetch } = useSignoff(findingId);
@@ -88,8 +89,11 @@ export function SignoffSection({
   }
 
   return (
-    <div className="border-border mt-8 border-t pt-5">
-      <h2 className="mb-3 text-section font-semibold">Reviewer sign-off</h2>
+    <Section
+      title="Reviewer sign-off"
+      isEmpty={!isLoading && !isError && !signoff && !roleLoading && !canTriage}
+      empty="Not signed off yet."
+    >
       {body}
 
       {canTriage && !isLoading && !isError && (
@@ -132,6 +136,6 @@ export function SignoffSection({
           />
         </form>
       )}
-    </div>
+    </Section>
   );
 }

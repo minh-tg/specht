@@ -9,6 +9,7 @@ import {
 } from "@/api/hooks";
 import { usePendingTriage } from "@/api/pendingTriage";
 import { ErrorState } from "@/components/ErrorState";
+import { Section } from "@/components/Section";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UpdatedHint } from "@/components/UpdatedHint";
@@ -148,12 +149,15 @@ export function FindingDetail() {
 
           <WhereItOccurs finding={finding} />
 
-          <div className="border-border mt-8 border-t pt-5">
-            <h2 className="mb-1 text-section font-semibold">Decide</h2>
-            <p className="text-muted-foreground mb-4 text-meta">
-              Currently: {analysisStateLabel(shown.analysis_state) ?? "Not triaged"}
-              {currentGate && <>{" · "}{currentGate}</>}
-            </p>
+          <Section
+            title="Decide"
+            description={
+              <>
+                Currently: {analysisStateLabel(shown.analysis_state) ?? "Not triaged"}
+                {currentGate && <>{" · "}{currentGate}</>}
+              </>
+            }
+          >
             {!pendingTriage && (
               <AnalysisNote
                 reason={finding.analysis_reason}
@@ -174,7 +178,7 @@ export function FindingDetail() {
               error={reachabilityError}
               isSuccess={reachabilityLoaded}
             />
-          </div>
+          </Section>
 
           <ContextGrid context={finding.context} />
 

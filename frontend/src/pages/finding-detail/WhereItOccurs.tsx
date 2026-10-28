@@ -1,3 +1,4 @@
+import { Section } from "@/components/Section";
 import type { Finding } from "@/types/api";
 import { locationLineRange, locationSubjectLabel } from "./format";
 import { RawEvidenceNote } from "./RawEvidenceNote";
@@ -5,8 +6,7 @@ import { RawEvidenceNote } from "./RawEvidenceNote";
 /** The file, resource or URL the scanner observed the finding at. */
 export function WhereItOccurs({ finding }: { readonly finding: Finding; }) {
   return (
-    <div className="border-border mt-8 border-t pt-5">
-      <h2 className="mb-3 text-section font-semibold">Where it occurs</h2>
+    <Section title="Where it occurs">
       {finding.location
           && (finding.location.file || finding.location.resource || finding.location.summary)
         ? (
@@ -34,6 +34,6 @@ export function WhereItOccurs({ finding }: { readonly finding: Finding; }) {
           </p>
         )}
       <RawEvidenceNote expired={finding.raw_data_expired} expiresAt={finding.raw_data_expires_at} />
-    </div>
+    </Section>
   );
 }
