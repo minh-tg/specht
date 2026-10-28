@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, sep } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
@@ -26,6 +26,15 @@ const HARD_CODED_COLOUR =
 /** The dialog scrims are black on purpose: a scrim dims whatever is behind it in either theme. */
 const SCRIM_FILES = new Set(["components/ui/dialog.tsx", "components/ui/alert-dialog.tsx"]);
 
+/** Tailwind size utilities, which bypass the type roles and drift page by page. */
+const RAW_TEXT_SIZE = /\b(?:[a-z0-9-]+:)?text-(?:xs|sm|base|lg|xl|[2-9]xl|\[\d[^\]]*\])(?![\w-])/g;
+
+/** Vendored shadcn sets its own sizes, and the verdict stamp picks a size per variant. */
+const SIZE_EXEMPT = new Set(["components/VerdictBadge.tsx"]);
+
+const TYPE_ROLE_HINT =
+  "use a type role (text-title, text-section, text-body, text-meta, text-label, text-code, text-control)";
+
 /** Every hard-coded colour in a component file; colours belong in index.css as tokens. */
 export function findHardCodedColours(fileName: string, text: string): string[] {
   const name = relative(SRC, fileName);
@@ -33,6 +42,18 @@ export function findHardCodedColours(fileName: string, text: string): string[] {
     [...line.matchAll(HARD_CODED_COLOUR)]
       .filter((match) => !(SCRIM_FILES.has(name) && match[0] === "bg-black/10"))
       .map((match) => `${name}:${index + 1}: ${match[0]}, use a theme token`)
+  );
+}
+
+/** Every raw size utility in a page or component; sizes belong in index.css as the type roles. */
+export function findRawTextSizes(fileName: string, text: string): string[] {
+  // Vendored shadcn and the verdict stamp keep their own sizes.
+  const name = relative(SRC, fileName).split(sep).join("/");
+  if (name.startsWith("components/ui/") || SIZE_EXEMPT.has(name)) return [];
+  return text.split("\n").flatMap((line, index) =>
+    [...line.matchAll(RAW_TEXT_SIZE)].map((match) =>
+      `${name}:${index + 1}: ${match[0]}, ${TYPE_ROLE_HINT}`
+    )
   );
 }
 
@@ -200,6 +221,29 @@ describe("hard-coded colours", () => {
     // lib/ is out of scope: themeColour.ts holds hex values on purpose (pinned to the tokens).
     const violations = [join(SRC, "components"), PAGES].flatMap(sourceFiles).flatMap((file) =>
       findHardCodedColours(file, readFileSync(file, "utf8"))
+    );
+
+    expect(violations, violations.join("\n")).toEqual([]);
+  });
+});
+
+describe("raw text sizes", () => {
+  it("finds a plain size and a breakpoint-prefixed one, and leaves colours and roles alone", () => {
+    const sample = [
+      "const a = <p className=\"text-sm\" />;",
+      "const b = <p className=\"md:text-[13px]\" />;",
+      "const c = <p className=\"text-muted-foreground text-body text-destructive\" />;",
+    ].join("\n");
+
+    expect(findRawTextSizes(join(SRC, "pages/Sample.tsx"), sample)).toEqual([
+      "pages/Sample.tsx:1: text-sm, use a type role (text-title, text-section, text-body, text-meta, text-label, text-code, text-control)",
+      "pages/Sample.tsx:2: md:text-[13px], use a type role (text-title, text-section, text-body, text-meta, text-label, text-code, text-control)",
+    ]);
+  });
+
+  it("keeps pages and components on the type roles", () => {
+    const violations = [join(SRC, "components"), PAGES].flatMap(sourceFiles).flatMap((file) =>
+      findRawTextSizes(file, readFileSync(file, "utf8"))
     );
 
     expect(violations, violations.join("\n")).toEqual([]);
