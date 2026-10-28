@@ -21,6 +21,23 @@ func TestTwoFilesWithoutAPurlAndOneCVEAreTwoFindings(t *testing.T) {
 	assert.Equal(t, "CVE-2011-4969:/app/openssl.dll", rep.Findings[1].Fingerprint)
 }
 
+func TestAFileWithoutAPurlKeepsItsIdentityFromAnotherCheckout(t *testing.T) {
+	// Dependency-Check writes the absolute path of each file it scanned.
+	doc := func(path string) []byte {
+		return []byte(`{"reportSchema":"1.1","dependencies":[{"fileName":"openssl.dll","filePath":"` + path + `",
+			"vulnerabilities":[{"name":"CVE-2011-4969","severity":"MEDIUM"}]}]}`)
+	}
+	fingerprint := func(path string) string {
+		rep, err := NewScanner().Parse(context.Background(), doc(path))
+		require.NoError(t, err)
+		require.Len(t, rep.Findings, 1)
+		return rep.Findings[0].Fingerprint
+	}
+	assert.Equal(t, "CVE-2011-4969:vendor/openssl.dll", fingerprint("/src/vendor/openssl.dll"))
+	assert.Equal(t, "CVE-2011-4969:vendor/openssl.dll", fingerprint("/home/runner/work/specht/specht/vendor/openssl.dll"))
+	assert.Equal(t, "CVE-2011-4969:vendor/openssl.dll", fingerprint("/builds/x/1/vendor/openssl.dll"))
+}
+
 func TestTheScannerSaysItsIdentitiesChanged(t *testing.T) {
 	assert.EqualValues(t, 2, NewScanner().Descriptor().FingerprintVersion)
 	data, err := os.ReadFile("testdata/no-purl-same-cve.json")
