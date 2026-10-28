@@ -146,7 +146,7 @@ func SupportsIncremental(s Scanner) bool {
 
 // AutoCloser is optionally implemented by scanners whose report can prove a
 // finding is gone, so a later scan that omits it closes it: a whole-kind
-// guarantee (Trivy), a rule list or passed check (SARIF, Semgrep, Checkov) or
+// guarantee (Trivy), a rule and file list or passed check (SARIF, Checkov) or
 // an unfiltered run (Grype). Whether a given report does depends on its
 // content. Scanners that do not implement it never close a finding by absence.
 type AutoCloser interface {

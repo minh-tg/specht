@@ -12,7 +12,7 @@ import (
 // by absence. The rest stay manual.
 func TestOnlyProvingScannersSupportAutoClose(t *testing.T) {
 	want := map[string]bool{
-		"trivy": true, "grype": true, "semgrep": true, "sarif": true, "checkov": true,
+		"trivy": true, "grype": true, "sarif": true, "checkov": true,
 	}
 	for _, s := range Builtins() {
 		name := s.Descriptor().Name
