@@ -115,7 +115,7 @@ runs:
     - name: Install cosign
       id: cosign
       if: steps.setup.outputs.skipped != 'true'
-      uses: sigstore/cosign-installer@053f9b74638557590800a301da1ba82351507e2c # v3.8.1
+      uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a # v3.8.1
 
     - name: Download, verify and run the Specht adapter
       id: gate
