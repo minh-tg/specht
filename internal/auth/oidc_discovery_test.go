@@ -269,6 +269,44 @@ func TestDiscovery_StaleMetadataSurvivesAFailedRefresh(t *testing.T) {
 	assert.Equal(t, fetched, after, "the next refresh waits discoveryRetryAfter, even for a provider that is back")
 }
 
+// A slow first attempt spends its own per-attempt timeout; the shared fetch
+// must still have time left for the retry discover runs after it.
+func TestDiscovery_SlowFirstAttemptStillLeavesTimeForTheRetry(t *testing.T) {
+	const perAttempt = 150 * time.Millisecond
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != discoveryPath {
+			http.NotFound(w, r)
+			return
+		}
+		if hits.Add(1) == 1 {
+			// Outlast the client timeout, the way a provider slow to answer does.
+			time.Sleep(3 * perAttempt)
+		}
+		issuer := "http://" + r.Host
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"issuer":                 issuer,
+			"authorization_endpoint": issuer + "/oauth/authorize",
+			"token_endpoint":         issuer + "/oauth/token",
+			"jwks_uri":               issuer + "/.well-known/jwks.json",
+		})
+	}))
+	t.Cleanup(srv.Close)
+	a, err := NewOIDCAuthenticator(OIDCConfig{
+		ClientID: "test-client", ClientSecret: "secret", IssuerURL: srv.URL,
+		RedirectURI: "http://localhost:8080/api/v1/auth/sso/callback",
+	}, nil)
+	require.NoError(t, err)
+	a.httpClient.Timeout = perAttempt
+
+	meta, err := a.provider(context.Background())
+
+	require.NoError(t, err, "the retry after a timed-out attempt still runs")
+	assert.Equal(t, srv.URL, meta.Issuer)
+	assert.Equal(t, int32(2), hits.Load(), "the first attempt timed out and the second fetched the document")
+}
+
 // A caller that hangs up while the shared discovery fetch is running must not
 // cancel it for the logins waiting behind it.
 func TestDiscovery_CanceledCallerDoesNotCancelTheSharedFetch(t *testing.T) {
