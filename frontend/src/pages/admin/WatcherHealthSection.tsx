@@ -25,7 +25,7 @@ export function WatcherHealthSection() {
     <section aria-labelledby="watcher-health-heading" className="grid gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h3 id="watcher-health-heading" className="text-base font-semibold">CVE watcher</h3>
+          <h3 id="watcher-health-heading" className="text-body font-semibold">CVE watcher</h3>
           <p className="text-muted-foreground mt-0.5 text-[0.8125rem]">
             One watcher serves every project. Each project switches it on and sets its own interval.
           </p>

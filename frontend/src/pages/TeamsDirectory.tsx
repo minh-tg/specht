@@ -62,7 +62,7 @@ function TeamCard({
   return (
     <div className="bg-card border border-border rounded-lg p-5 flex flex-col justify-between shadow-xs">
       <div>
-        <h3 className="font-semibold text-base text-foreground mb-1">{team.name}</h3>
+        <h3 className="font-semibold text-body text-foreground mb-1">{team.name}</h3>
         <p className="text-muted-foreground text-xs line-clamp-2 mb-4">
           {team.description || "No description provided."}
         </p>
@@ -195,7 +195,7 @@ export function TeamsDirectory() {
     <div className="mx-auto max-w-5xl px-4 py-8 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Company Teams</h1>
+          <h1 className="text-title font-bold">Company Teams</h1>
           <p className="text-muted-foreground text-sm mt-1">
             Central organization teams for managing permissions across projects.
           </p>

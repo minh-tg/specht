@@ -89,7 +89,7 @@ describe("ProjectLayout", () => {
     renderLayout();
 
     const heading = screen.getByRole("heading", { level: 1, name: "Alpha" });
-    expect(heading).toHaveClass("text-2xl", "font-bold");
+    expect(heading).toHaveClass("text-title", "font-bold");
     expect(screen.getByRole("link", { name: "Projects" })).toHaveAttribute("href", "/");
   });
 

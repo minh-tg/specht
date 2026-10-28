@@ -64,7 +64,7 @@ export function HistorySection({
 
   return (
     <div className="border-border mt-8 border-t pt-5">
-      <h2 className="mb-3 text-lg font-semibold">History</h2>
+      <h2 className="mb-3 text-section font-semibold">History</h2>
       {body}
     </div>
   );

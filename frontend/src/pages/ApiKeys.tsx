@@ -40,7 +40,7 @@ export function ApiKeys() {
   if (managed.data.length === 0) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
-        <h1 className="mb-6 text-2xl font-bold">API keys</h1>
+        <h1 className="mb-6 text-title font-bold">API keys</h1>
         <p className="text-muted-foreground text-sm">
           You do not manage any project's CI. Ask a project manager or an admin.
         </p>
@@ -195,7 +195,7 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold">API keys</h1>
+      <h1 className="mb-6 text-title font-bold">API keys</h1>
 
       <div className="mb-6">
         <label htmlFor="apikeys-project" className="text-sm font-medium">Project</label>
@@ -214,7 +214,7 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
       {selectedProject && (
         <>
           <section className="mb-8">
-            <h2 className="mb-3 text-lg font-semibold">Create Key</h2>
+            <h2 className="mb-3 text-section font-semibold">Create Key</h2>
             <form onSubmit={handleCreate} className="flex flex-wrap gap-2">
               <Input
                 id="apikeys-name"
@@ -262,7 +262,7 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
           )}
 
           <section>
-            <h2 className="mb-3 text-lg font-semibold">Active Keys</h2>
+            <h2 className="mb-3 text-section font-semibold">Active Keys</h2>
             {keysBody}
           </section>
         </>

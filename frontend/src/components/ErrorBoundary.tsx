@@ -25,7 +25,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     return (
       <div role="alert" className="mx-auto max-w-5xl px-4 py-8">
-        <h1 className="text-2xl font-bold">Something went wrong</h1>
+        <h1 className="text-title font-bold">Something went wrong</h1>
         <p className="text-muted-foreground mt-2 text-sm">
           Reload the page to try again. If it keeps happening, check the server logs.
         </p>

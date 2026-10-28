@@ -81,7 +81,7 @@ export function ReachabilitySection({
   return (
     <section aria-labelledby="reachability-heading" className="mt-6 border-t pt-4">
       <div className="mb-3 flex items-center gap-1">
-        <h3 id="reachability-heading" className="text-sm font-medium">Reachability</h3>
+        <h3 id="reachability-heading" className="text-body font-semibold">Reachability</h3>
         <InfoTip term="reachability" />
       </div>
       {body}

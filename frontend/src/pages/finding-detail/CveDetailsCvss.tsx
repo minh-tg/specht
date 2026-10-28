@@ -22,13 +22,13 @@ export function CvssCard({ cvss }: { readonly cvss: CveCvss; }) {
 
   return (
     <article aria-labelledby={headingId} className="border-border rounded-lg border p-4">
-      <h4 id={headingId} className="text-sm font-semibold">CVSS {cvss.version}</h4>
+      <h4 id={headingId} className="text-body font-semibold">CVSS {cvss.version}</h4>
       <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
         <span>
           <span className="text-muted-foreground">
             {cvss.base_score === null ? "Reported score" : "Base score"}
           </span>{" "}
-          <span className="font-mono text-lg font-semibold tabular-nums">
+          <span className="font-mono text-section font-semibold tabular-nums">
             {score === null ? "None" : score.toFixed(1)}
           </span>
         </span>

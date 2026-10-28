@@ -47,7 +47,7 @@ export function ProjectSettings() {
 
   return (
     <section aria-labelledby="settings-heading" className="grid gap-8">
-      <h2 id="settings-heading" className="text-lg font-semibold">Settings</h2>
+      <h2 id="settings-heading" className="text-section font-semibold">Settings</h2>
       <DetailsForm key={project.updated_at} project={project} />
       <DeleteSection project={project} />
     </section>
@@ -78,7 +78,7 @@ function DetailsForm({ project }: { project: Project; }) {
 
   return (
     <div className="border-foreground border-t-2">
-      <h3 className="pt-4 text-[0.9375rem] font-semibold">Details</h3>
+      <h3 className="pt-4 text-body font-semibold">Details</h3>
       <form onSubmit={save} className="mt-4 grid max-w-xl gap-5" noValidate>
         <div className="grid gap-1.5">
           <label htmlFor="settings-slug" className="text-sm font-medium">Slug</label>
@@ -164,7 +164,7 @@ function DeleteSection({ project }: { project: Project; }) {
       aria-labelledby="delete-heading"
       className="border-destructive grid max-w-xl gap-3 rounded-md border-2 p-4"
     >
-      <h3 id="delete-heading" className="text-[0.9375rem] font-semibold">
+      <h3 id="delete-heading" className="text-body font-semibold">
         Delete this project
       </h3>
       <p className="text-muted-foreground text-sm">

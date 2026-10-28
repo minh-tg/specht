@@ -80,7 +80,7 @@ export function NewProject() {
   if (me?.role !== "admin") {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
-        <h1 className="mb-6 text-2xl font-bold">New project</h1>
+        <h1 className="mb-6 text-title font-bold">New project</h1>
         <p className="text-muted-foreground text-sm">Only administrators can create projects.</p>
         <Link
           to="/"
@@ -94,7 +94,7 @@ export function NewProject() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold">New project</h1>
+      <h1 className="mb-6 text-title font-bold">New project</h1>
 
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <div>

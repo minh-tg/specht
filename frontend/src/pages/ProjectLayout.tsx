@@ -65,7 +65,7 @@ export function ProjectLayout(
   ) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-8">
-        <h1 className="text-2xl font-bold">You cannot open this project</h1>
+        <h1 className="text-title font-bold">You cannot open this project</h1>
         <p className="text-muted-foreground mt-2 max-w-[60ch]">
           The project does not exist or you are not a member. Ask a project admin to add you.
         </p>
@@ -88,7 +88,7 @@ export function ProjectLayout(
         <span aria-hidden="true" className="text-muted-foreground">
           ›
         </span>
-        <h1 className="text-2xl font-bold">{project?.name ?? slug}</h1>
+        <h1 className="text-title font-bold">{project?.name ?? slug}</h1>
       </nav>
 
       <div className="mb-6">

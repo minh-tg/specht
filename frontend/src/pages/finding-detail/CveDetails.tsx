@@ -170,7 +170,7 @@ function References({ detail }: { readonly detail: CveDetail; }) {
   if (safe.length === 0) return null;
   return (
     <div className={SECTION}>
-      <h3 className="mb-3 text-sm font-semibold">References</h3>
+      <h3 className="mb-3 text-body font-semibold">References</h3>
       <div className="space-y-3 text-sm">
         {bySource(safe).map(([source, refs]) => (
           <div key={source}>
@@ -224,7 +224,7 @@ function Breakdown({ detail, id }: { readonly detail: CveDetail; readonly id: st
           Looking up more details from external providers. This section updates when they answer.
         </p>
       )}
-      <h3 className="mb-3 text-sm font-semibold">CVSS scores</h3>
+      <h3 className="mb-3 text-body font-semibold">CVSS scores</h3>
       {detail.cvss.length === 0
         ? (
           <p className="text-muted-foreground text-sm">
@@ -244,18 +244,18 @@ function Breakdown({ detail, id }: { readonly detail: CveDetail; readonly id: st
         )}
 
       <div className={SECTION}>
-        <h3 className="mb-3 text-sm font-semibold">Exploitation</h3>
+        <h3 className="mb-3 text-body font-semibold">Exploitation</h3>
         <Exploitation detail={detail} />
       </div>
 
       <div className={SECTION}>
-        <h3 className="mb-3 text-sm font-semibold">Weaknesses</h3>
+        <h3 className="mb-3 text-body font-semibold">Weaknesses</h3>
         <Weaknesses detail={detail} />
       </div>
 
       {dates.length > 0 && (
         <div className={SECTION}>
-          <h3 className="mb-3 text-sm font-semibold">Dates</h3>
+          <h3 className="mb-3 text-body font-semibold">Dates</h3>
           <dl className="grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-x-4 gap-y-3 text-sm">
             {dates.map(({ label, value }) => (
               <Fact key={label} label={label} source={provenanceLabel(value!.provenance)}>
@@ -291,7 +291,7 @@ export function CveDetails({ findingId }: { readonly findingId: string; }) {
     if (error instanceof APIError && error.status === 404 && error.code === "not_cve") return null;
     return (
       <section aria-labelledby={`${bodyId}-title`} className={SECTION}>
-        <h2 id={`${bodyId}-title`} className="mb-1 text-lg font-semibold">CVE details</h2>
+        <h2 id={`${bodyId}-title`} className="mb-1 text-section font-semibold">CVE details</h2>
         <p className="text-muted-foreground text-sm">CVE details are not available right now.</p>
       </section>
     );
@@ -300,7 +300,7 @@ export function CveDetails({ findingId }: { readonly findingId: string; }) {
 
   return (
     <section aria-labelledby={`${bodyId}-title`} className={SECTION}>
-      <h2 id={`${bodyId}-title`} className="mb-1 text-lg font-semibold">CVE details</h2>
+      <h2 id={`${bodyId}-title`} className="mb-1 text-section font-semibold">CVE details</h2>
       <Summary detail={data} />
       {data.pending && !open && (
         <p className="text-muted-foreground mt-1 text-xs">Looking up more details.</p>

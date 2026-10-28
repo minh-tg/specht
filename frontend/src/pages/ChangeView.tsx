@@ -29,7 +29,7 @@ function Page({ children }: { children: ReactNode; }) {
 function ProjectNotFound() {
   return (
     <Page>
-      <h1 className="text-2xl font-bold">Project not found</h1>
+      <h1 className="text-title font-bold">Project not found</h1>
       <p className="text-muted-foreground mt-2 text-sm">
         There is no project with this address, or you don&apos;t have access to it.
       </p>
@@ -62,10 +62,10 @@ function Crumbs(
 function NoReport({ slug, commit }: { slug: string; commit: string; }) {
   return (
     <div className="mt-8">
-      <h1 className="text-[1.625rem] leading-tight font-bold sm:text-3xl">
+      <h1 className="text-title leading-tight font-bold">
         No scan found for commit {shortCommit(commit)}
       </h1>
-      <p className="mt-2 max-w-[58ch] text-lg leading-snug">
+      <p className="mt-2 max-w-[58ch] text-section font-normal leading-snug">
         The pipeline may still be running, or this commit was never scanned.
       </p>
       <div className="mt-4 flex flex-wrap gap-4 text-sm">

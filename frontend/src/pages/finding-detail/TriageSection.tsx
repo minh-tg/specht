@@ -58,7 +58,7 @@ export function TriageSection({
 
   return (
     <section aria-labelledby="triage-heading">
-      <h3 id="triage-heading" className="mb-3 text-sm font-medium">Triage</h3>
+      <h3 id="triage-heading" className="mb-3 text-body font-semibold">Triage</h3>
       <div className="flex flex-wrap gap-2">
         <SelectField
           aria-label="Triage action"

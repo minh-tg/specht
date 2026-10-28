@@ -115,7 +115,7 @@ export function Setup() {
         )}
         <fieldset className="grid gap-4 border-t-2 border-foreground pt-5">
           <legend className="sr-only">Prove you run this server</legend>
-          <h2 className="text-base font-semibold" aria-hidden="true">
+          <h2 className="text-section font-semibold" aria-hidden="true">
             <span className="text-muted-foreground mr-3 font-mono text-sm font-normal">01</span>
             Prove you run this server
           </h2>
@@ -139,7 +139,7 @@ export function Setup() {
         </fieldset>
         <fieldset className="grid gap-4 border-t border-border pt-5">
           <legend className="sr-only">Create the administrator</legend>
-          <h2 className="text-base font-semibold" aria-hidden="true">
+          <h2 className="text-section font-semibold" aria-hidden="true">
             <span className="text-muted-foreground mr-3 font-mono text-sm font-normal">02</span>
             Create the administrator
           </h2>

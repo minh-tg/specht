@@ -56,7 +56,7 @@ function InventoryList<T>({
 
   return (
     <div className="min-w-0">
-      <h4 className="flex items-baseline gap-2 text-sm font-semibold">
+      <h4 className="flex items-baseline gap-2 text-body font-semibold">
         {title}
         <span className="text-muted-foreground font-normal tabular-nums">{items.length}</span>
       </h4>
@@ -175,7 +175,7 @@ export function Inventory({ slug }: { readonly slug: string; }) {
 
   return (
     <section aria-labelledby="inventory-heading" className="min-w-0">
-      <h3 id="inventory-heading" className="text-base font-semibold">Where it runs</h3>
+      <h3 id="inventory-heading" className="text-body font-semibold">Where it runs</h3>
       <p className="text-muted-foreground mt-0.5 mb-4 text-[0.8125rem]">
         What the project's scans said about where the code runs and what was scanned.
       </p>

@@ -100,7 +100,7 @@ export function ProjectWaivers() {
   return (
     <section aria-labelledby="waivers-heading" className="grid gap-5">
       <div>
-        <h2 id="waivers-heading" className="text-lg font-semibold">Waivers</h2>
+        <h2 id="waivers-heading" className="text-section font-semibold">Waivers</h2>
         <p className="text-muted-foreground mt-0.5 text-sm">
           <span className="tabular-nums">{counts.pending}</span> waiting for a decision ·{" "}
           <span className="tabular-nums">{counts.in_force}</span> in force

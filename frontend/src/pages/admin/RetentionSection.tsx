@@ -46,7 +46,7 @@ export function RetentionSection() {
   return (
     <section aria-labelledby="retention-heading" className="grid gap-3">
       <div>
-        <h3 id="retention-heading" className="text-base font-semibold">Old reports</h3>
+        <h3 id="retention-heading" className="text-body font-semibold">Old reports</h3>
         <p className="text-muted-foreground mt-0.5 max-w-[68ch] text-[0.8125rem]">
           Removes finished reports older than the window. Findings whose only evidence was in them
           are archived, not deleted.

@@ -43,7 +43,7 @@ export function ProjectWatcher() {
     <section aria-labelledby="watcher-heading" className="grid gap-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 id="watcher-heading" className="text-lg font-semibold">Watcher</h2>
+          <h2 id="watcher-heading" className="text-section font-semibold">Watcher</h2>
           <p className="text-muted-foreground mt-0.5 text-sm">
             Checks your packages against new CVEs between scans.
           </p>

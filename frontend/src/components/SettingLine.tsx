@@ -17,7 +17,7 @@ export function SettingLine({ title, help, children }: {
       className="border-border grid items-center gap-x-6 gap-y-3 border-b px-0.5 py-4 sm:grid-cols-[minmax(0,1fr)_auto]"
     >
       <div>
-        <h3 id={headingId} className="text-[0.9375rem] font-semibold">{title}</h3>
+        <h3 id={headingId} className="text-body font-semibold">{title}</h3>
         <p className="text-muted-foreground mt-0.5 max-w-[62ch] text-[0.8125rem]">{help}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2.5">{children}</div>

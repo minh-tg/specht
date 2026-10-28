@@ -38,7 +38,7 @@ export function ChangeAside(
       aria-label="Your progress"
       className="border-border grid content-start gap-3.5 lg:border-l lg:pl-6"
     >
-      <h2 className="text-lg leading-tight font-semibold">Smallest safe actions</h2>
+      <h2 className="text-section leading-tight font-semibold">Smallest safe actions</h2>
       <p className="text-muted-foreground text-[13px]">
         {done} of {items.length} handled
       </p>

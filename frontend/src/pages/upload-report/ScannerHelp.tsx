@@ -12,7 +12,7 @@ export function ScannerHelp({ scanner }: { readonly scanner: ScannerDescriptor |
       aria-label={`How to produce a ${scanner.display_name} file`}
       className="border-border mt-2 space-y-3 rounded-md border p-3"
     >
-      <h3 className="text-sm font-medium">{scanner.display_name} reads</h3>
+      <h3 className="text-body font-semibold">{scanner.display_name} reads</h3>
       <ul className="m-0 list-none space-y-3 p-0">
         {scanner.formats.map((format) => (
           <li key={format.name} className="space-y-1">

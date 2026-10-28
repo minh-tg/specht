@@ -9,7 +9,7 @@ export function ContextGrid({ context }: { readonly context?: FindingContext; })
 
   return (
     <div className="border-border mt-8 border-t pt-5">
-      <h2 className="mb-3 text-lg font-semibold">Context</h2>
+      <h2 className="mb-3 text-section font-semibold">Context</h2>
       <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
         <div>
           <span className="text-muted-foreground">Target</span>
