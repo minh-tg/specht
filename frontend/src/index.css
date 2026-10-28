@@ -150,6 +150,12 @@
   html {
     @apply font-sans;
   }
+  /* Page titles step down on phones. */
+  @media (width < 40rem) {
+    :root {
+      --text-title: 1.625rem;
+    }
+  }
 }
 
 /* ============================================================================
@@ -265,6 +271,24 @@
    watching, so nothing here accelerates from rest. Exits use the same strong ease-out as
    entrances and are made faster through a shorter duration instead. */
 @theme {
+  /* Type scale: seven roles. Pages use these instead of raw sizes (see designSystem.test.ts). */
+  --text-title: 1.875rem;
+  --text-title--line-height: 1.1;
+  --text-title--letter-spacing: -0.02em;
+  --text-section: 1.125rem;
+  --text-section--line-height: 1.3;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.5;
+  --text-meta: 0.8125rem;
+  --text-meta--line-height: 1.45;
+  --text-label: 0.6875rem;
+  --text-label--line-height: 1.2;
+  --text-code: 0.8125rem;
+  --text-code--line-height: 1.45;
+  /* Form controls stay at 16px so iOS does not zoom into the field. */
+  --text-control: 1rem;
+  --text-control--line-height: 1.5;
+
   --ease-entering: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-exiting: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-moving: cubic-bezier(0.77, 0, 0.175, 1);
