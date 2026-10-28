@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import ts from "typescript";
+import { type JSXAttribute, type JSXAttributeItem, parseSync, Visitor } from "oxc-parser";
 import { describe, expect, it } from "vitest";
 
 const SRC = import.meta.dirname;
@@ -74,14 +74,17 @@ function pageFiles(dir: string): string[] {
   });
 }
 
+/** The attribute called `name` on an element, or undefined when the element has none. */
+function attribute(attributes: JSXAttributeItem[], name: string): JSXAttribute | undefined {
+  return attributes.find((item): item is JSXAttribute =>
+    item.type === "JSXAttribute" && item.name.name === name
+  );
+}
+
 /** The source text of a `className` attribute, or "" when the element has none. */
-function classNameText(attributes: ts.JsxAttributes): string {
-  for (const attribute of attributes.properties) {
-    if (ts.isJsxAttribute(attribute) && attribute.name.getText() === "className") {
-      return attribute.initializer?.getText() ?? "";
-    }
-  }
-  return "";
+function classNameText(attributes: JSXAttributeItem[], text: string): string {
+  const value = attribute(attributes, "className")?.value;
+  return value ? text.slice(value.start, value.end) : "";
 }
 
 /** A hand-built primary or outline button: the classes the shared Button already provides. */
@@ -92,57 +95,49 @@ function looksLikeButton(className: string): boolean {
 }
 
 /** The literal value of a `type` attribute, or null when it is missing or computed. */
-function typeAttribute(attributes: ts.JsxAttributes): string | null {
-  for (const attribute of attributes.properties) {
-    if (!ts.isJsxAttribute(attribute) || attribute.name.getText() !== "type") continue;
-    const init = attribute.initializer;
-    if (init && ts.isStringLiteral(init)) return init.text;
-    if (init && ts.isJsxExpression(init) && init.expression) {
-      const expression = init.expression;
-      if (ts.isStringLiteralLike(expression)) return expression.text;
+function typeAttribute(attributes: JSXAttributeItem[]): string | null {
+  const value = attribute(attributes, "type")?.value;
+  if (value?.type === "Literal") return value.value;
+  if (value?.type === "JSXExpressionContainer") {
+    const expression = value.expression;
+    if (expression.type === "Literal" && typeof expression.value === "string") {
+      return expression.value;
     }
-    return null;
+    if (expression.type === "TemplateLiteral" && expression.expressions.length === 0) {
+      return expression.quasis[0]?.value.cooked ?? null;
+    }
   }
   return null;
 }
 
 /** Every place a page bypasses the shared form controls or declares its own style constant. */
 export function findViolations(fileName: string, text: string): string[] {
-  const source = ts.createSourceFile(
-    fileName,
-    text,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX,
-  );
-  const found: string[] = [];
-  const where = (node: ts.Node) =>
-    `${relative(SRC, fileName)}:${source.getLineAndCharacterOfPosition(node.getStart()).line + 1}`;
+  const { program, errors } = parseSync(fileName, text);
+  if (errors.length > 0) throw new Error(`${fileName}: ${errors[0]?.message}`);
 
-  function visit(node: ts.Node) {
-    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
-      const tag = node.tagName.getText();
+  const found: string[] = [];
+  const where = (node: { start: number; }) =>
+    `${relative(SRC, fileName)}:${text.slice(0, node.start).split("\n").length}`;
+
+  new Visitor({
+    JSXOpeningElement(node) {
+      const tag = text.slice(node.name.start, node.name.end);
       const shared = SHARED_FOR_TAG[tag];
       if (
         shared && !(tag === "input" && NATIVE_INPUT_TYPES.has(typeAttribute(node.attributes) ?? ""))
       ) {
         found.push(`${where(node)}: raw <${tag}>, use ${shared}`);
       }
-    }
-    if (
-      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node))
-      && node.tagName.getText() === "button"
-      && looksLikeButton(classNameText(node.attributes))
-    ) {
-      found.push(`${where(node)}: hand-built <button>, use Button from @/components/ui/button`);
-    }
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
-      const shared = FORBIDDEN_CONSTANTS[node.name.text];
-      if (shared) found.push(`${where(node)}: constant ${node.name.text}, use ${shared}`);
-    }
-    ts.forEachChild(node, visit);
-  }
-  visit(source);
+      if (tag === "button" && looksLikeButton(classNameText(node.attributes, text))) {
+        found.push(`${where(node)}: hand-built <button>, use Button from @/components/ui/button`);
+      }
+    },
+    VariableDeclarator(node) {
+      if (node.id.type !== "Identifier") return;
+      const shared = FORBIDDEN_CONSTANTS[node.id.name];
+      if (shared) found.push(`${where(node)}: constant ${node.id.name}, use ${shared}`);
+    },
+  }).visit(program);
   return found;
 }
 
