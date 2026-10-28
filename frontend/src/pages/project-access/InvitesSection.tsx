@@ -149,7 +149,7 @@ export function InvitesSection({ slug }: { readonly slug: string; }) {
                 <div className="bg-muted flex items-center gap-3 rounded-md py-2.5 pr-2.5 pl-3.5">
                   <code
                     data-testid="invite-link"
-                    className="min-w-0 flex-1 text-meta break-all"
+                    className="min-w-0 flex-1 text-code break-all"
                   >
                     {link}
                   </code>
