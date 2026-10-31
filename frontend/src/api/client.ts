@@ -10,13 +10,22 @@ export class APIError extends Error {
   code: string;
   /** Seconds from the `Retry-After` header, or undefined when the response has none. */
   retryAfter: number | undefined;
+  /** The `X-Request-Id` of the failed response, so a person can quote it to an admin. */
+  requestId: string | undefined;
 
-  constructor(status: number, code: string, message: string, retryAfter?: number) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    retryAfter?: number,
+    requestId?: string,
+  ) {
     super(message);
     this.name = "APIError";
     this.status = status;
     this.code = code;
     this.retryAfter = retryAfter;
+    this.requestId = requestId;
   }
 }
 
@@ -144,6 +153,7 @@ async function send<T>(
       code,
       message,
       parseRetryAfter(res.headers?.get("Retry-After") ?? null),
+      res.headers?.get("X-Request-Id")?.trim() || undefined,
     );
   }
 

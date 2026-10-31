@@ -24,4 +24,27 @@ describe("ErrorState", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "Retry" }));
     expect(onRetry).toHaveBeenCalledOnce();
   });
+
+  it("shows the request ID with a copy button", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    render(<ErrorState title="Could not load members." requestId="req-123.abc" />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("give your admin this request ID:");
+    expect(screen.getByText("req-123.abc")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Copy request ID" }));
+    expect(writeText).toHaveBeenCalledWith("req-123.abc");
+  });
+
+  it("leaves the request ID line out when the server sent none", () => {
+    render(<ErrorState title="Could not load members." />);
+
+    expect(screen.queryByText(/request ID/)).not.toBeInTheDocument();
+  });
+
+  it("uses a custom retry label", () => {
+    render(<ErrorState title="Could not load members." onRetry={vi.fn()} retryLabel="Try again" />);
+
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+  });
 });
