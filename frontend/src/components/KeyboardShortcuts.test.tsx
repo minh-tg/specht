@@ -103,8 +103,15 @@ describe("KeyboardShortcuts", () => {
     for (const name of ["?", "J", "K", "X", "1", "2", "3"]) {
       expect(within(dialog).getAllByText(name, { selector: "kbd" })).not.toHaveLength(0);
     }
-    // The finding page keys have their own group, so J and K never read as list keys there.
+    // J and K appear once per group: the list cursor and the finding page queue. No group binds a
+    // key twice, so a locator scoped to one group finds one J.
+    const list = within(dialog).getByRole("region", { name: "In a findings list" });
     const finding = within(dialog).getByRole("region", { name: "On a finding" });
+    for (const group of [list, finding]) {
+      expect(within(group).getAllByText("J", { selector: "kbd" })).toHaveLength(1);
+      expect(within(group).getAllByText("K", { selector: "kbd" })).toHaveLength(1);
+    }
+    expect(within(dialog).getAllByText("J", { selector: "kbd" })).toHaveLength(2);
     expect(within(finding).getByText("Next finding in the list you opened it from"))
       .toBeInTheDocument();
     expect(within(finding).getByText("Previous finding in the list you opened it from"))
