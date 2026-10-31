@@ -10,6 +10,9 @@ releases.
 
 ### Added
 
+- Report responses carry `scan_completeness` (`complete`, `partial` or `unknown`), the value
+  stored for the report. `unknown` means the scanner output does not say whether the scan was
+  complete, and a declared `scan_filter` is separate.
 - Waiver responses carry `decision_reason`. It is `expired` when a pending request
   outlived its expiry and the server rejected it, and null for a reviewer's decision.
   Requests rejected that way before this release are backfilled.
