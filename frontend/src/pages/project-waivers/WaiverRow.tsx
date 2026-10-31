@@ -34,6 +34,7 @@ export interface WaiverRowActions {
 }
 
 function decisionLine(waiver: Waiver, who: ActorContext, reason: string | null): string | null {
+  if (reason === "Expired before a decision") return reason;
   if (!waiver.decided_by && !reason) return null;
   const by = waiver.decided_by
     ? actorLabel({ user_id: waiver.decided_by, user_name: waiver.decided_by_name }, who)
