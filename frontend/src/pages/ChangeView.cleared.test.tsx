@@ -331,7 +331,7 @@ describe("ChangeView after a blocked scan", () => {
     renderPage(undefined);
 
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
-      "Nothing first seen in this commit blocks the merge.",
+      "Nothing first seen in this commit blocks this change.",
     );
     expect(screen.queryByText(/What cleared/)).not.toBeInTheDocument();
     expect(gateUrls.some((url) => url.includes("report_id=r1"))).toBe(false);
@@ -394,7 +394,7 @@ describe("ChangeView after a blocked scan", () => {
     expect(screen.getByText(/recorded this verdict when the scan uploaded/)).toBeInTheDocument();
     expect(screen.getByText(/reflects it as of then/)).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(/\bgreen\b/i);
-    expect(document.body).not.toHaveTextContent(/blocks the merge|can merge/i);
+    expect(document.body).not.toHaveTextContent(/blocks the merge|for this merge|can merge/i);
   });
 
   it("copes with null lists from the API", async () => {

@@ -72,7 +72,7 @@ describe("ExistingDebt", () => {
 
     expect(
       screen.getByText(
-        "2 older findings are open in Acme API. They are not counted for this merge.",
+        "2 older findings are open in Acme API. They are not counted for this change.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/block this project/)).not.toBeInTheDocument();
@@ -81,7 +81,7 @@ describe("ExistingDebt", () => {
   it("uses the singular for one older finding, and the slug without a project name", () => {
     renderDebt(["pre1"], { passing: true });
 
-    expect(screen.getByText("1 older finding is open in acme. It is not counted for this merge."))
+    expect(screen.getByText("1 older finding is open in acme. It is not counted for this change."))
       .toBeInTheDocument();
   });
 
