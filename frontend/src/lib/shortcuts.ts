@@ -2,7 +2,12 @@ import { type KeyboardEvent as ReactKeyboardEvent, useSyncExternalStore } from "
 import { isSingleKeyEnabled } from "./singleKeyShortcuts";
 
 /** Where a shortcut works. The help sheet groups by this so a scoped key never reads as global. */
-export const SHORTCUT_SCOPES = ["Everywhere", "In a findings list", "In the waivers tabs"] as const;
+export const SHORTCUT_SCOPES = [
+  "Everywhere",
+  "In a findings list",
+  "On a finding",
+  "In the waivers tabs",
+] as const;
 export type ShortcutScope = typeof SHORTCUT_SCOPES[number];
 
 export interface Shortcut {
@@ -76,6 +81,24 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: "grid-first", scope: "In a findings list", description: "First row", combos: [["Home"]] },
   { id: "grid-last", scope: "In a findings list", description: "Last row", combos: [["End"]] },
   {
+    id: "queue-next",
+    scope: "On a finding",
+    description: "Next finding in the list you opened it from",
+    combos: [["J"]],
+  },
+  {
+    id: "queue-previous",
+    scope: "On a finding",
+    description: "Previous finding in the list you opened it from",
+    combos: [["K"]],
+  },
+  {
+    id: "decide-pick",
+    scope: "On a finding",
+    description: "Pick Real issue, Not a problem or Accept for now",
+    combos: [["1"], ["2"], ["3"]],
+  },
+  {
     id: "waiver-tabs",
     scope: "In the waivers tabs",
     description: "Move between the tabs",
@@ -118,7 +141,7 @@ export function comboLabel(combo: readonly string[], mac: boolean = isMacPlatfor
 
 /** Whether a combination is one printable character, the kind WCAG 2.1.4 lets a person switch off. */
 export const isSingleKeyCombo = (combo: readonly string[]): boolean =>
-  combo.length === 1 && /^[A-Za-z?]$/.test(combo[0]!);
+  combo.length === 1 && /^[A-Za-z0-9?]$/.test(combo[0]!);
 
 /**
  * The combinations to print for a shortcut: the primary ones, plus Ctrl on macOS when it is also
@@ -187,6 +210,22 @@ export function matchesHelpKey(event: KeyboardEvent): boolean {
   if (!isPlainKeyPress(event, false)) return false;
   const target = event.target;
   if (target instanceof Element && target.closest(TEXT_TARGET)) return false;
+  return document.querySelector(OPEN_LAYER) === null;
+}
+
+/** Fields that take typed characters. A radio, checkbox or button does not, so keys still work there. */
+const TYPING_TARGET =
+  "input:not([type=\"radio\"]):not([type=\"checkbox\"]):not([type=\"button\"]):not([type=\"submit\"]), textarea, select, [contenteditable]:not([contenteditable=\"false\"]), [role=\"combobox\"], [role=\"textbox\"]";
+
+/**
+ * Whether a keydown may drive a one-character shortcut that works anywhere on a page, such as J,
+ * K and 1 to 3 on a finding: the switch is on, the key press is plain and not a repeat, focus is
+ * not in a field, and no menu or dialog is open.
+ */
+export function matchesPageKey(event: KeyboardEvent): boolean {
+  if (!isSingleKeyEnabled() || !isPlainKeyPress(event, false)) return false;
+  const target = event.target;
+  if (target instanceof Element && target.closest(TYPING_TARGET)) return false;
   return document.querySelector(OPEN_LAYER) === null;
 }
 

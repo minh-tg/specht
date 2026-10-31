@@ -48,3 +48,12 @@ export function changeViewBackPath(slug: string, state: unknown): string | null 
   if (typeof path !== "string") return null;
   return path.startsWith(`/${slug}/changes/`) ? path : null;
 }
+
+/**
+ * The findings list query the person opened this finding from (`state.from`), or null when they
+ * did not come from the list. Only "" or a "?" query is accepted, since router state is not trusted.
+ */
+export function findingsListSearch(state: unknown): string | null {
+  const from = (state as { from?: unknown; } | null)?.from;
+  return typeof from === "string" && (from === "" || from.startsWith("?")) ? from : null;
+}

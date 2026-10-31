@@ -12,10 +12,12 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { type AnalysisState, analysisStateLabel, type ReachabilityState } from "@/lib/enums";
 import { formatDate, formatDateTime } from "@/lib/format";
+import { matchesPageKey } from "@/lib/shortcuts";
+import { useSingleKeyEnabled } from "@/lib/singleKeyShortcuts";
 import { truncateText } from "@/lib/utils";
 import type { WaiverAction } from "@/lib/waiverRequest";
 import type { Finding, FindingEvent } from "@/types/api";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useEffectEvent, useState } from "react";
 import {
   dayFromNow,
   type DecisionId,
@@ -120,6 +122,20 @@ export function DecisionForm(
     // A real issue has to keep counting, so an answer that would exempt it is cleared.
     if (next === "real" && exemptsFromGate(shownReach)) setReach("unknown");
   }
+
+  // Keys 1 to 3 pick the three answers, in their order on screen.
+  const singleKeys = useSingleKeyEnabled();
+  const onDecisionKey = useEffectEvent((event: KeyboardEvent) => {
+    const choice = /^[1-3]$/.test(event.key) ? DECISIONS[Number(event.key) - 1] : undefined;
+    if (!choice || !allowed || !matchesPageKey(event)) return;
+    event.preventDefault();
+    pickDecision(choice.id);
+  });
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => onDecisionKey(event);
+    document.addEventListener("keydown", listener);
+    return () => document.removeEventListener("keydown", listener);
+  }, []);
 
   function clearDecision() {
     setDecision(null);
@@ -245,6 +261,13 @@ export function DecisionForm(
         <legend id="decision-legend" className="mb-2 text-body font-semibold">
           What is this finding?
         </legend>
+        {allowed && (
+          <p className="text-muted-foreground -mt-1 mb-1 text-meta">
+            {singleKeys
+              ? "Keys 1 to 3 pick. They pause while you type in a field."
+              : "Single-key shortcuts are off. Turn them on in the account menu."}
+          </p>
+        )}
         <div className="grid gap-2 sm:grid-cols-3">
           {DECISIONS.map((choice) => (
             <Choice
