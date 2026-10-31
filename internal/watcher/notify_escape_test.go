@@ -2,7 +2,6 @@ package watcher
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -21,18 +20,22 @@ func TestBuildSlackPayloadEscapesSlackControlSequences(t *testing.T) {
 	raw, err := BuildSlackPayload([]Notification{hostile})
 
 	require.NoError(t, err)
-	var got struct {
-		Attachments []map[string]any `json:"attachments"`
-	}
+	var got slackPayload
 	require.NoError(t, json.Unmarshal(raw, &got))
 	require.Len(t, got.Attachments, 1)
-	joined, err := json.Marshal(got.Attachments[0])
-	require.NoError(t, err)
-	decoded := string(joined)
-	for _, bad := range []string{"<!channel>", "<!here>", "<!everyone>", "<@U123>", "<https://evil.example"} {
-		assert.NotContains(t, strings.ReplaceAll(decoded, "\\u003c", "<"), bad)
+	att := got.Attachments[0]
+	assert.Equal(t, "&lt;!channel&gt; &lt;https://evil.example|Fix now&gt; &amp; more", att.Title)
+	values := map[string]string{}
+	for _, f := range att.Fields {
+		values[f.Title] = f.Value
 	}
-	assert.Equal(t, "&lt;!channel&gt; &lt;https://evil.example|Fix now&gt; &amp; more", got.Attachments[0]["title"])
+	assert.Equal(t, "&lt;!here&gt;", values["CVE"])
+	assert.Equal(t, "pkg:npm/&lt;@U123&gt;", values["Package"])
+	assert.Equal(t, "&lt;!everyone&gt; web", values["Project"])
+	for _, text := range []string{att.Title, att.Fallback, values["CVE"], values["Package"], values["Project"]} {
+		assert.NotContains(t, text, "<")
+		assert.NotContains(t, text, ">")
+	}
 }
 
 func TestSlackEscapeEscapesAmpersandFirst(t *testing.T) {

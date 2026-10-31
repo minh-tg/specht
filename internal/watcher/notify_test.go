@@ -68,22 +68,54 @@ func TestBuildSlackPayload_Shape(t *testing.T) {
 	if !ok {
 		t.Fatalf("attachment[0] = %#v, want object", atts[0])
 	}
-	want := map[string]string{
-		"title":    "Prototype pollution in lodash",
-		"cve":      "CVE-2019-10744",
-		"package":  "pkg:npm/lodash",
-		"project":  "acme-web",
-		"severity": "high",
-		"link":     "https://osv.dev/vulnerability/CVE-2019-10744",
+	// Slack renders only the attachment keys it defines, so the finding
+	// details travel as fields and the advisory link as title_link.
+	wantTop := map[string]any{
+		"fallback":   "Prototype pollution in lodash CVE-2019-10744",
+		"title":      "Prototype pollution in lodash",
+		"title_link": "https://osv.dev/vulnerability/CVE-2019-10744",
 	}
-	for key, val := range want {
+	for key, val := range wantTop {
 		if first[key] != val {
 			t.Errorf("attachment.%s = %v, want %q", key, first[key], val)
 		}
 	}
 	for key := range first {
-		if _, ok := want[key]; !ok {
+		if _, ok := wantTop[key]; !ok && key != "fields" {
 			t.Errorf("unexpected attachment key %q", key)
+		}
+	}
+	fields, _ := first["fields"].([]any)
+	wantFields := [][2]string{{"CVE", "CVE-2019-10744"}, {"Package", "pkg:npm/lodash"}, {"Project", "acme-web"}, {"Severity", "high"}}
+	if len(fields) != len(wantFields) {
+		t.Fatalf("fields = %#v, want %d entries", first["fields"], len(wantFields))
+	}
+	for i, w := range wantFields {
+		f, _ := fields[i].(map[string]any)
+		if f["title"] != w[0] || f["value"] != w[1] || f["short"] != true {
+			t.Errorf("field[%d] = %#v, want %v short", i, f, w)
+		}
+	}
+
+	second, _ := atts[1].(map[string]any)
+	if _, ok := second["fields"]; ok {
+		t.Errorf("empty values must not produce fields, got %#v", second["fields"])
+	}
+	if _, ok := second["title_link"]; ok {
+		t.Errorf("no link must not produce title_link, got %#v", second["title_link"])
+	}
+}
+
+func TestBuildSlackPayload_DropsNonWebLinks(t *testing.T) {
+	for _, link := range []string{"javascript:alert(1)", "data:text/html,x", "ftp://x.example/a", "/relative", "not a url"} {
+		n := testNotification()
+		n.Link = link
+		raw, err := BuildSlackPayload([]Notification{n})
+		if err != nil {
+			t.Fatalf("BuildSlackPayload error: %v", err)
+		}
+		if strings.Contains(string(raw), "title_link") {
+			t.Errorf("link %q reached title_link: %s", link, raw)
 		}
 	}
 }
@@ -433,8 +465,12 @@ func TestEnvelopeFlowEndToEnd(t *testing.T) {
 		t.Fatalf("attachments = %d, want 1", len(payload.Attachments))
 	}
 	att := payload.Attachments[0]
-	if att.CVE != "CVE-2019-10744" || att.Package != "pkg:npm/lodash" ||
-		att.Project != "acme-web" || att.Severity != "high" ||
+	values := map[string]string{}
+	for _, f := range att.Fields {
+		values[f.Title] = f.Value
+	}
+	if values["CVE"] != "CVE-2019-10744" || values["Package"] != "pkg:npm/lodash" ||
+		values["Project"] != "acme-web" || values["Severity"] != "high" ||
 		att.Title != "Prototype pollution in lodash" {
 		t.Errorf("delivered attachment = %+v, mapping wrong", att)
 	}
