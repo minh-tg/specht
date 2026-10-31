@@ -53,8 +53,11 @@ export function QueueNav({ slug, queue, announce }: {
     );
 
   return (
-    <nav aria-label="Findings in this list" className="mb-4 flex flex-wrap items-center gap-2">
-      <span className="text-muted-foreground mr-auto text-meta tabular-nums">
+    <nav
+      aria-label="Findings in this list"
+      className="flex flex-wrap items-center gap-2 sm:mr-auto"
+    >
+      <span className="text-muted-foreground text-meta tabular-nums">
         {position === null
           ? "Finding its place in the list..."
           : `Finding ${position}${total === null ? "" : ` of ${total}`} in this list`}
@@ -63,7 +66,7 @@ export function QueueNav({ slug, queue, announce }: {
         <Button
           type="button"
           variant="outline"
-          size="sm"
+          size="xs"
           disabled={!previous}
           onClick={() => move(previous, -1)}
         >
@@ -74,7 +77,7 @@ export function QueueNav({ slug, queue, announce }: {
         <Button
           type="button"
           variant="outline"
-          size="sm"
+          size="xs"
           disabled={!next}
           onClick={() => move(next, 1)}
         >

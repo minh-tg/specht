@@ -141,6 +141,18 @@ describe("the triage queue from the findings list", () => {
     expect(liveRegion()).toHaveTextContent("This is the first finding in the list.");
   });
 
+  it("sits in the back link's row, so it adds no height above the decision", async () => {
+    renderDetail("f1", { from: FROM });
+    await inQueue("2 of 3");
+
+    const nav = screen.getByRole("navigation", { name: "Findings in this list" });
+    const back = screen.getByRole("link", { name: "← Back to findings" });
+    expect(nav.parentElement).toBe(back.parentElement);
+    // Nothing sits between that row and the title.
+    expect(nav.parentElement!.nextElementSibling)
+      .toContainElement(screen.getByRole("heading", { level: 1 }));
+  });
+
   it("moves with the buttons too, which name their keys", async () => {
     const user = userEvent.setup();
     renderDetail("f1", { from: FROM });

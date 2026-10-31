@@ -218,6 +218,8 @@ export function FindingDetail() {
         >
           {changeBack ? <>&larr; Back to the change</> : <>&larr; Back to findings</>}
         </Link>
+        {/* The queue shares the back link's row, so it never pushes the decision down. */}
+        {queue && <QueueNav slug={slug ?? ""} queue={queue} announce={setAnnouncement} />}
         <UpdatedHint
           updatedAt={Math.min(findingUpdatedAt, eventsUpdatedAt || findingUpdatedAt)}
           watch={[finding, events]}
@@ -228,8 +230,6 @@ export function FindingDetail() {
           }}
         />
       </div>
-
-      {queue && <QueueNav slug={slug ?? ""} queue={queue} announce={setAnnouncement} />}
 
       <FindingHeader
         finding={finding}
