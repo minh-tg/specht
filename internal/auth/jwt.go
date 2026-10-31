@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -55,10 +56,40 @@ func NewJWTAuthenticatorWithRevoker(secret string, revoker Revoker) (*JWTAuthent
 	if len(secret) < 32 {
 		return nil, fmt.Errorf("JWT_SECRET must be at least 32 bytes")
 	}
+	if reason := weakSecret(secret); reason != "" {
+		return nil, fmt.Errorf("JWT_SECRET is too weak: %s; generate one with `openssl rand -hex 32`", reason)
+	}
 	if revoker == nil {
 		return nil, fmt.Errorf("revoker is required")
 	}
 	return &JWTAuthenticator{secret: []byte(secret), revoker: revoker}, nil
+}
+
+// minDistinctSecretBytes is the fewest different byte values a secret may
+// use. A real key of 32 or more random bytes has far more; a repeated
+// character or a short pattern has few.
+const minDistinctSecretBytes = 8
+
+// weakSecret names why a secret of acceptable length is still unusable, or
+// returns "" when it passes. It is not an entropy test: it catches the
+// placeholders shipped in the example files and keys made of a few repeated
+// bytes.
+func weakSecret(secret string) string {
+	if lower := strings.ToLower(secret); strings.Contains(lower, "change-me") || strings.Contains(lower, "changeme") {
+		return "it looks like a placeholder from an example file"
+	}
+	var seen [256]bool
+	distinct := 0
+	for i := 0; i < len(secret); i++ {
+		if !seen[secret[i]] {
+			seen[secret[i]] = true
+			distinct++
+		}
+	}
+	if distinct < minDistinctSecretBytes {
+		return fmt.Sprintf("it uses only %d distinct characters, at least %d are required", distinct, minDistinctSecretBytes)
+	}
+	return ""
 }
 
 func (a *JWTAuthenticator) CreateToken(userID, email, role string, tokenVersion int32) (string, error) {
