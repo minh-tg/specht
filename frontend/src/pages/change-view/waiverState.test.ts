@@ -1,6 +1,6 @@
 import type { Waiver } from "@/types/api";
 import { describe, expect, it } from "vitest";
-import { waiverChip, waiverView, waiverViewsByFinding } from "./waiverState";
+import { waiverCandidates, waiverChip, waiverView, waiverViewsByFinding } from "./waiverState";
 
 const NOW = new Date("2026-11-01T12:00:00Z");
 const PAST = "2026-10-20T00:00:00Z";
@@ -111,5 +111,48 @@ describe("waiverViewsByFinding", () => {
     expect(waiverViewsByFinding(undefined, NOW).size).toBe(0);
     const nullTargets = waiver({ targets: null as unknown as Waiver["targets"] });
     expect(waiverViewsByFinding([nullTargets], NOW).size).toBe(0);
+  });
+});
+
+describe("waiverCandidates", () => {
+  function views(...entries: Array<[string, Partial<Waiver>]>) {
+    return waiverViewsByFinding(
+      entries.map(([id, extra], index) =>
+        waiver({
+          id: `w${index}`,
+          targets: [{ id: `t${index}`, finding_id: id }],
+          ...extra,
+        })
+      ),
+      NOW,
+    );
+  }
+
+  it("leaves out findings with a request waiting or a waiver in force", () => {
+    const result = waiverCandidates(
+      ["a", "b", "c", "d"],
+      views(["a", { status: "pending" }], ["b", { status: "approved" }]),
+    );
+
+    expect(result).toEqual({ eligible: ["c", "d"], waiting: 1, inForce: 1 });
+  });
+
+  it("lets a finding be asked for again after a rejection, withdrawal, expiry or revocation", () => {
+    const result = waiverCandidates(
+      ["a", "b", "c", "d", "e"],
+      views(
+        ["a", { status: "rejected" }],
+        ["b", { status: "withdrawn" }],
+        ["c", { status: "approved", expires_at: PAST }],
+        ["d", { status: "approved", enabled: false }],
+      ),
+    );
+
+    expect(result).toEqual({ eligible: ["a", "b", "c", "d", "e"], waiting: 0, inForce: 0 });
+  });
+
+  it("reads an empty or missing waiver list as nothing covered", () => {
+    expect(waiverCandidates(["a"], waiverViewsByFinding(null, NOW)).eligible).toEqual(["a"]);
+    expect(waiverCandidates([], new Map())).toEqual({ eligible: [], waiting: 0, inForce: 0 });
   });
 });
