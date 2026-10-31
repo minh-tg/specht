@@ -146,7 +146,7 @@ func TestRotateRefusesADeactivatedAccount(t *testing.T) {
 	family := uuid.NewString()
 	old, err := stores.RefreshTokens.Create(ctx, rotationInput(user, family))
 	require.NoError(t, err)
-	_, _, err = stores.Users.Deactivate(ctx, user.ID)
+	_, _, err = stores.Users.Deactivate(ctx, user.ID, true)
 	require.NoError(t, err)
 
 	// Deactivation bumps the generation as well; use the new one so the

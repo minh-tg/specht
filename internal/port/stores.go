@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -90,6 +91,17 @@ var ErrPasswordStale = errors.New("password changed since it was verified")
 // ErrAccountDeactivated is returned when an SSO link finds the account
 // deactivated under its row lock, so it neither links nor proves the address.
 var ErrAccountDeactivated = errors.New("account is deactivated")
+
+// SoleProjectAdminError is returned when a deactivation would leave projects
+// without an admin who can sign in, and the caller did not confirm it.
+type SoleProjectAdminError struct {
+	// Projects holds the slugs of the affected projects, in name order.
+	Projects []string
+}
+
+func (e *SoleProjectAdminError) Error() string {
+	return "the account is the only active admin of " + strings.Join(e.Projects, ", ")
+}
 
 // ErrCreatorInactive is returned when an API key would be created by an account
 // that is deactivated or does not exist.
@@ -270,8 +282,11 @@ type UserStore interface {
 	// Deactivate is SetDisabled(true) that also reports the API keys it
 	// revoked. Deactivating revokes every key the account created, in the
 	// same transaction, so a refused deactivation (the last active admin)
-	// revokes nothing. Reactivating does not bring the keys back.
-	Deactivate(ctx context.Context, userID string) (User, []RevokedAPIKey, error)
+	// revokes nothing. Reactivating does not bring the keys back. Unless
+	// force is set, the projects where the account is the only admin who can
+	// sign in are checked in the same transaction, under their membership
+	// locks, and a *SoleProjectAdminError names them.
+	Deactivate(ctx context.Context, userID string, force bool) (User, []RevokedAPIKey, error)
 	// ClearPassword removes the account's password hash so it can no longer
 	// sign in with a password. It is idempotent.
 	ClearPassword(ctx context.Context, userID string) error

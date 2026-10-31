@@ -167,16 +167,18 @@ func (r *pgUserPort) ChangeRole(ctx context.Context, userID, role string) (port.
 // SetDisabled deactivates or reactivates an account, refusing to deactivate
 // the last active admin. Deactivating also revokes the account's API keys.
 func (r *pgUserPort) SetDisabled(ctx context.Context, userID string, disabled bool) (port.User, error) {
-	user, _, err := r.setDisabled(ctx, userID, disabled)
+	user, _, err := r.setDisabled(ctx, userID, disabled, true)
 	return user, err
 }
 
-// Deactivate is SetDisabled(true) that returns the keys it revoked.
-func (r *pgUserPort) Deactivate(ctx context.Context, userID string) (port.User, []port.RevokedAPIKey, error) {
-	return r.setDisabled(ctx, userID, true)
+// Deactivate is SetDisabled(true) that returns the keys it revoked. Unless
+// force is set it also refuses, with a *port.SoleProjectAdminError, when the
+// account is the only admin who can sign in of some project.
+func (r *pgUserPort) Deactivate(ctx context.Context, userID string, force bool) (port.User, []port.RevokedAPIKey, error) {
+	return r.setDisabled(ctx, userID, true, force)
 }
 
-func (r *pgUserPort) setDisabled(ctx context.Context, userID string, disabled bool) (port.User, []port.RevokedAPIKey, error) {
+func (r *pgUserPort) setDisabled(ctx context.Context, userID string, disabled, force bool) (port.User, []port.RevokedAPIKey, error) {
 	uid, err := parseID(userID)
 	if err != nil {
 		return port.User{}, nil, err
@@ -189,6 +191,14 @@ func (r *pgUserPort) setDisabled(ctx context.Context, userID string, disabled bo
 			return err
 		}
 		if disabled {
+			// The project locks come before the admin locks: a membership write
+			// holds its project lock while its foreign key check waits on a user
+			// row, so taking them the other way round could deadlock.
+			if !force {
+				if err := guardSoleProjectAdmin(ctx, q, uid); err != nil {
+					return err
+				}
+			}
 			if err := guardLastAdmin(ctx, q, target); err != nil {
 				return err
 			}
@@ -223,6 +233,25 @@ func (r *pgUserPort) setDisabled(ctx context.Context, userID string, disabled bo
 		return port.User{}, nil, mappingErr(err)
 	}
 	return out, revoked, nil
+}
+
+// guardSoleProjectAdmin locks the membership of every project the user
+// administers and returns a *port.SoleProjectAdminError naming the ones where
+// no other admin who can sign in is left. The check runs under the same locks a
+// member removal takes before it counts the other admins, so a removal and a
+// deactivation of the last two admins cannot both pass.
+func guardSoleProjectAdmin(ctx context.Context, q *sqlc.Queries, uid pgtype.UUID) error {
+	if _, err := q.LockProjectsAdministeredBy(ctx, uid); err != nil {
+		return err
+	}
+	slugs, err := q.ListProjectsSoleAdminedBy(ctx, uid)
+	if err != nil {
+		return err
+	}
+	if len(slugs) > 0 {
+		return &port.SoleProjectAdminError{Projects: slugs}
+	}
+	return nil
 }
 
 // guardLastAdmin locks the active admins and returns ErrLastGlobalAdmin when

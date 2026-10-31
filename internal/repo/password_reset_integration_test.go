@@ -133,7 +133,7 @@ func TestDeactivationRetiresPendingResetLinks(t *testing.T) {
 	ctx := context.Background()
 	f := newResetFixture(t, repos, "leaver@test.com")
 
-	_, _, err := f.stores.Users.Deactivate(ctx, f.user.ID)
+	_, _, err := f.stores.Users.Deactivate(ctx, f.user.ID, true)
 	require.NoError(t, err)
 	assert.Equal(t, 0, f.pendingLinks(t))
 
@@ -164,7 +164,7 @@ func TestRefusedDeactivationKeepsThePendingResetLink(t *testing.T) {
 		TokenHash: token, UserID: only.ID, CreatedBy: only.ID, ExpiresAt: time.Now().Add(time.Hour),
 	}))
 
-	_, _, err := stores.Users.Deactivate(ctx, only.ID)
+	_, _, err := stores.Users.Deactivate(ctx, only.ID, true)
 	require.ErrorIs(t, err, port.ErrLastGlobalAdmin)
 
 	_, err = stores.PasswordReset.Redeem(ctx, token, "$2a$10$new-hash")
