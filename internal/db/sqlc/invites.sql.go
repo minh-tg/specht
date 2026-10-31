@@ -154,6 +154,33 @@ func (q *Queries) GetPendingInvite(ctx context.Context, arg GetPendingInvitePara
 	return i, err
 }
 
+const getPendingInviteByHash = `-- name: GetPendingInviteByHash :one
+SELECT id, token_hash, project_id, role, email, created_by, created_at, expires_at, accepted_by, accepted_at, revoked_at FROM invites
+WHERE token_hash = $1
+  AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > NOW()
+`
+
+// Reads the invite a claim is about to take, without locking it, so the claim
+// can lock the creator first and the invite second.
+func (q *Queries) GetPendingInviteByHash(ctx context.Context, tokenHash string) (Invite, error) {
+	row := q.db.QueryRow(ctx, getPendingInviteByHash, tokenHash)
+	var i Invite
+	err := row.Scan(
+		&i.ID,
+		&i.TokenHash,
+		&i.ProjectID,
+		&i.Role,
+		&i.Email,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.AcceptedBy,
+		&i.AcceptedAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
 const getProjectSlugByID = `-- name: GetProjectSlugByID :one
 SELECT slug FROM projects WHERE id = $1
 `
@@ -222,8 +249,79 @@ func (q *Queries) ListPendingInvites(ctx context.Context, projectID pgtype.UUID)
 	return items, nil
 }
 
+const lockInviteCreator = `-- name: LockInviteCreator :one
+SELECT role, disabled_at FROM users WHERE id = $1 FOR SHARE
+`
+
+type LockInviteCreatorRow struct {
+	Role       string             `json:"role"`
+	DisabledAt pgtype.Timestamptz `json:"disabled_at"`
+}
+
+// Share-locks the account that made an invite and returns what decides whether
+// it may still hand out the role. A deactivation or a global role change
+// updates this row, so each one either committed before this read or waits for
+// the claim to finish.
+func (q *Queries) LockInviteCreator(ctx context.Context, id pgtype.UUID) (LockInviteCreatorRow, error) {
+	row := q.db.QueryRow(ctx, lockInviteCreator, id)
+	var i LockInviteCreatorRow
+	err := row.Scan(&i.Role, &i.DisabledAt)
+	return i, err
+}
+
+const lockInviteCreatorMembership = `-- name: LockInviteCreatorMembership :one
+SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2 FOR SHARE
+`
+
+type LockInviteCreatorMembershipParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	UserID    pgtype.UUID `json:"user_id"`
+}
+
+// Share-locks the creator's direct membership row. A demotion or a removal
+// writes the same row, so it cannot slip between the check and the grant.
+func (q *Queries) LockInviteCreatorMembership(ctx context.Context, arg LockInviteCreatorMembershipParams) (string, error) {
+	row := q.db.QueryRow(ctx, lockInviteCreatorMembership, arg.ProjectID, arg.UserID)
+	var role string
+	err := row.Scan(&role)
+	return role, err
+}
+
+const lockInviteCreatorTeamRoles = `-- name: LockInviteCreatorTeamRoles :many
+SELECT pt.role FROM project_teams pt
+JOIN team_members tm ON tm.team_id = pt.team_id
+WHERE pt.project_id = $1 AND tm.user_id = $2
+FOR SHARE OF pt, tm
+`
+
+type LockInviteCreatorTeamRolesParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	UserID    pgtype.UUID `json:"user_id"`
+}
+
+// Share-locks the team links that give the creator a role on the project.
+func (q *Queries) LockInviteCreatorTeamRoles(ctx context.Context, arg LockInviteCreatorTeamRolesParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, lockInviteCreatorTeamRoles, arg.ProjectID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var role string
+		if err := rows.Scan(&role); err != nil {
+			return nil, err
+		}
+		items = append(items, role)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lookupInvite = `-- name: LookupInvite :one
-SELECT i.role, i.email, p.name AS project_name
+SELECT i.role, i.email, i.project_id, i.created_by, p.name AS project_name
 FROM invites i
 JOIN projects p ON p.id = i.project_id
 WHERE i.token_hash = $1
@@ -233,15 +331,24 @@ WHERE i.token_hash = $1
 type LookupInviteRow struct {
 	Role        string      `json:"role"`
 	Email       pgtype.Text `json:"email"`
+	ProjectID   pgtype.UUID `json:"project_id"`
+	CreatedBy   pgtype.UUID `json:"created_by"`
 	ProjectName string      `json:"project_name"`
 }
 
 // What the accept page may show to whoever holds the link: the project name,
-// the role and the address the invite is bound to.
+// the role and the address the invite is bound to. The project and creator are
+// for the check that the creator may still hand out the role.
 func (q *Queries) LookupInvite(ctx context.Context, tokenHash string) (LookupInviteRow, error) {
 	row := q.db.QueryRow(ctx, lookupInvite, tokenHash)
 	var i LookupInviteRow
-	err := row.Scan(&i.Role, &i.Email, &i.ProjectName)
+	err := row.Scan(
+		&i.Role,
+		&i.Email,
+		&i.ProjectID,
+		&i.CreatedBy,
+		&i.ProjectName,
+	)
 	return i, err
 }
 
@@ -274,6 +381,18 @@ func (q *Queries) RevokeInvite(ctx context.Context, arg RevokeInviteParams) (Inv
 		&i.RevokedAt,
 	)
 	return i, err
+}
+
+const revokePendingInvitesByCreator = `-- name: RevokePendingInvitesByCreator :exec
+UPDATE invites SET revoked_at = NOW()
+WHERE created_by = $1
+  AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > NOW()
+`
+
+// Ends the open links an account made. Used when the account is deactivated.
+func (q *Queries) RevokePendingInvitesByCreator(ctx context.Context, createdBy pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, revokePendingInvitesByCreator, createdBy)
+	return err
 }
 
 const setInviteAcceptedBy = `-- name: SetInviteAcceptedBy :exec

@@ -29,12 +29,45 @@ RETURNING *;
 
 -- name: LookupInvite :one
 -- What the accept page may show to whoever holds the link: the project name,
--- the role and the address the invite is bound to.
-SELECT i.role, i.email, p.name AS project_name
+-- the role and the address the invite is bound to. The project and creator are
+-- for the check that the creator may still hand out the role.
+SELECT i.role, i.email, i.project_id, i.created_by, p.name AS project_name
 FROM invites i
 JOIN projects p ON p.id = i.project_id
 WHERE i.token_hash = $1
   AND i.accepted_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > NOW();
+
+-- name: GetPendingInviteByHash :one
+-- Reads the invite a claim is about to take, without locking it, so the claim
+-- can lock the creator first and the invite second.
+SELECT * FROM invites
+WHERE token_hash = $1
+  AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > NOW();
+
+-- name: LockInviteCreator :one
+-- Share-locks the account that made an invite and returns what decides whether
+-- it may still hand out the role. A deactivation or a global role change
+-- updates this row, so each one either committed before this read or waits for
+-- the claim to finish.
+SELECT role, disabled_at FROM users WHERE id = $1 FOR SHARE;
+
+-- name: LockInviteCreatorMembership :one
+-- Share-locks the creator's direct membership row. A demotion or a removal
+-- writes the same row, so it cannot slip between the check and the grant.
+SELECT role FROM project_members WHERE project_id = $1 AND user_id = $2 FOR SHARE;
+
+-- name: LockInviteCreatorTeamRoles :many
+-- Share-locks the team links that give the creator a role on the project.
+SELECT pt.role FROM project_teams pt
+JOIN team_members tm ON tm.team_id = pt.team_id
+WHERE pt.project_id = $1 AND tm.user_id = $2
+FOR SHARE OF pt, tm;
+
+-- name: RevokePendingInvitesByCreator :exec
+-- Ends the open links an account made. Used when the account is deactivated.
+UPDATE invites SET revoked_at = NOW()
+WHERE created_by = $1
+  AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > NOW();
 
 -- name: ClaimInvite :one
 -- Marks the invite used. Of two requests with the same link only one gets a

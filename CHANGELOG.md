@@ -386,6 +386,7 @@ releases.
 
 ### Security
 
+- An invite link works only while the account that made it is active and could still make it: after its creator is deactivated, removed from the project, demoted below the invite's role, or loses global admin, the link answers like an expired one. Deactivating an account also revokes the open links it made.
 - Self-service registration is closed unless `REGISTRATION_ENABLED=true`.
 - An SSO exchange code works only in the browser that started the login. The
   exchange refuses a code from a browser without that login's `sso_state_<id>`

@@ -210,6 +210,10 @@ func (r *pgUserPort) setDisabled(ctx context.Context, userID string, disabled bo
 		if err != nil {
 			return err
 		}
+		// The open invite links the account made end with it.
+		if err := q.RevokePendingInvitesByCreator(ctx, uid); err != nil {
+			return err
+		}
 		for _, k := range keys {
 			revoked = append(revoked, port.RevokedAPIKey{ID: toUUID(k.ID), ProjectSlug: k.ProjectSlug, Name: k.Name})
 		}
