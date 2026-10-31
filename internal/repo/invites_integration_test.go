@@ -38,7 +38,7 @@ func newInviteFixture(t *testing.T, repos *Repos) *inviteFixture {
 		repos:     repos,
 		projectID: uuid.UUID(project.ID.Bytes).String(),
 		slug:      project.Slug,
-		inviter:   newUser(t, repos, "inviter@test.com", "member"),
+		inviter:   newUser(t, repos, "inviter@test.com", "admin"),
 	}
 }
 

@@ -3,10 +3,13 @@ package repo
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/db/sqlc"
 	"github.com/minh-tg/specht/internal/port"
 )
@@ -120,6 +123,14 @@ func (r *pgInvitePort) Lookup(ctx context.Context, tokenHash string) (port.Invit
 	if err != nil {
 		return port.InviteView{}, mappingErr(err)
 	}
+	// A link its creator can no longer hand out looks like any dead link.
+	ok, _, err := creatorMayGrant(ctx, r.q, row.ProjectID, row.CreatedBy, row.Role)
+	if err != nil {
+		return port.InviteView{}, err
+	}
+	if !ok {
+		return port.InviteView{}, port.ErrNotFound
+	}
 	return port.InviteView{ProjectName: row.ProjectName, Role: row.Role, Email: stringFromTextPtr(row.Email)}, nil
 }
 
@@ -160,12 +171,70 @@ func (r *pgInvitePort) AcceptAsUser(ctx context.Context, tokenHash, userID strin
 	})
 }
 
+// creatorMayGrant reports whether the account that made an invite may still
+// hand out its role on the project, by the rule CreateInvite applies. It share
+// locks the rows the answer rests on, so inside a transaction a deactivation,
+// demotion or removal of the creator waits until the transaction ends. The
+// string names the reason when the answer is no. An invite without a creator
+// (the account was deleted) is refused: no code path makes one on purpose.
+func creatorMayGrant(ctx context.Context, q *sqlc.Queries, projectID, createdBy pgtype.UUID, role string) (bool, string, error) {
+	if !createdBy.Valid {
+		return false, "creator account is gone", nil
+	}
+	creator, err := q.LockInviteCreator(ctx, createdBy)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, "creator account is gone", nil
+	}
+	if err != nil {
+		return false, "", err
+	}
+	grantor := auth.InviteGrantor{Active: !creator.DisabledAt.Valid, GlobalRole: creator.Role}
+	direct, err := q.LockInviteCreatorMembership(ctx, sqlc.LockInviteCreatorMembershipParams{ProjectID: projectID, UserID: createdBy})
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return false, "", err
+	}
+	grantor.DirectRole = direct
+	teamRoles, err := q.LockInviteCreatorTeamRoles(ctx, sqlc.LockInviteCreatorTeamRolesParams{ProjectID: projectID, UserID: createdBy})
+	if err != nil {
+		return false, "", err
+	}
+	for _, tr := range teamRoles {
+		if auth.RoleRank(tr) > auth.RoleRank(grantor.TeamRole) {
+			grantor.TeamRole = tr
+		}
+	}
+	if auth.MayGrantInvite(grantor, role) {
+		return true, "", nil
+	}
+	if !grantor.Active {
+		return false, "creator is deactivated", nil
+	}
+	return false, "creator no longer holds the authority to grant " + role, nil
+}
+
 // accept claims the invite, resolves the person and adds them to the project in
 // one transaction. If any step fails the claim is rolled back and the link
-// stays usable.
+// stays usable. The claim goes through only while the creator may still hand
+// out the invite's role, checked under locks in the same transaction. The
+// creator is locked before the invite row, the order a deactivation takes.
 func (r *pgInvitePort) accept(ctx context.Context, tokenHash string, resolve func(q *sqlc.Queries, inv sqlc.Invite) (sqlc.User, error)) (port.AcceptedInvite, error) {
 	var out port.AcceptedInvite
 	err := r.withTx(ctx, func(q *sqlc.Queries) error {
+		open, err := q.GetPendingInviteByHash(ctx, tokenHash)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return port.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		ok, reason, err := creatorMayGrant(ctx, q, open.ProjectID, open.CreatedBy, open.Role)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			slog.Info("invite refused: its creator cannot grant it", "invite_id", toUUID(open.ID), "project_id", toUUID(open.ProjectID), "role", open.Role, "reason", reason)
+			return port.ErrNotFound
+		}
 		inv, err := q.ClaimInvite(ctx, tokenHash)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return port.ErrNotFound
