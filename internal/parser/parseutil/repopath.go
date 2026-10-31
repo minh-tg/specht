@@ -43,8 +43,13 @@ var userRoots = [][]string{
 // workspace root it starts with, then failing that a user's home directory. A
 // path under neither stays absolute: a fixed mount such as /app is the same on
 // every run. A root is dropped only when a file name is left after it.
+//
+// A file: URI (what SARIF producers write for an absolute location) is read as
+// the path it names, so file:///home/runner/work/a/a/x.go is handled like
+// /home/runner/work/a/a/x.go. CleanFilePath alone would drop the leading slash
+// of such a URI and leave a path that no longer looks absolute.
 func RepoPath(raw string) string {
-	p := CleanFilePath(raw)
+	p := CleanFilePath(fileURIPath(raw))
 	if !strings.HasPrefix(p, "/") {
 		return p
 	}
@@ -77,4 +82,25 @@ func matchRoot(segs, root []string) bool {
 		}
 	}
 	return true
+}
+
+// fileURIPath turns a file: URI into the path it names, keeping the leading
+// slash that marks the path absolute. Anything else comes back unchanged. A
+// URI with a Windows drive (file:///C:/x) or a host other than localhost is
+// left for CleanFilePath, which already handles both.
+func fileURIPath(raw string) string {
+	rest, ok := strings.CutPrefix(strings.TrimSpace(raw), "file://")
+	if !ok {
+		return raw
+	}
+	if after, found := strings.CutPrefix(rest, "localhost/"); found {
+		rest = "/" + after
+	}
+	if !strings.HasPrefix(rest, "/") {
+		return raw
+	}
+	if len(rest) >= 3 && rest[2] == ':' {
+		return raw
+	}
+	return rest
 }

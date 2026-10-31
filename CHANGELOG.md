@@ -294,6 +294,10 @@ releases.
   of `$CI_PROJECT_DIR` put the runner's directory into the finding's identity and the
   same secret closed and reopened on every new runner. The file is now relative to the
   checkout, in the JSON and the SARIF format.
+- A generic SARIF finding keeps its identity when the checkout moves. A producer that was
+  given an absolute target writes the path (or a `file:///` URI) into the result's location,
+  which put the runner's directory into the fingerprint. The location is now relative to the
+  checkout.
 - The server validates all of its settings at startup and reports every
   problem in one message.
 - Request logs carry a request ID that matches the `X-Request-Id` response
