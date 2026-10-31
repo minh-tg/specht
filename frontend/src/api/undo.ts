@@ -33,10 +33,15 @@ function focusIsAdrift(): boolean {
 /**
  * Puts focus back on `target` when it is still on the page and usable, otherwise on `<main>`. Does
  * nothing when the person has already moved focus somewhere real.
+ *
+ * The body is never a target. A button that disables itself while it saves (Save decision) drops
+ * focus to the body before its toast is raised, and focusing the body again would leave a keyboard
+ * user nowhere.
  */
 function restoreFocus(target: Element | null): void {
   if (!focusIsAdrift()) return;
-  const usable = target instanceof HTMLElement && target.isConnected && !target.matches(":disabled")
+  const usable = target instanceof HTMLElement && target !== document.body && target.isConnected
+      && !target.matches(":disabled")
     ? target
     : document.getElementById(MAIN_CONTENT_ID);
   usable?.focus({ preventScroll: true });

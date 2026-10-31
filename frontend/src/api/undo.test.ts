@@ -109,6 +109,29 @@ describe("undoOptions", () => {
     await vi.waitFor(() => expect(document.activeElement).toBe(main));
   });
 
+  it("falls back to main when focus was on the body when the toast was raised", async () => {
+    // A button that disables itself while saving drops focus to the body before the toast shows.
+    // Browsers move focus off a control that becomes disabled; jsdom does not, so blur it here.
+    control.focus();
+    control.blur();
+    control.disabled = true;
+    expect(document.activeElement).toBe(document.body);
+    const options = undoOptions(plan());
+    actionOf(options).onClick();
+    await settle();
+    await vi.waitFor(() => expect(document.activeElement).toBe(main));
+  });
+
+  it("falls back to main when that control is disabled by the time Undo finishes", async () => {
+    control.focus();
+    const options = undoOptions(plan());
+    control.blur();
+    control.disabled = true;
+    actionOf(options).onClick();
+    await settle();
+    await vi.waitFor(() => expect(document.activeElement).toBe(main));
+  });
+
   it("leaves focus alone when the person has moved on", async () => {
     control.focus();
     const options = undoOptions(plan());
