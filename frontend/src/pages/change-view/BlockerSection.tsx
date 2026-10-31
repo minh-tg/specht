@@ -3,7 +3,7 @@ import { INLINE_LINK } from "@/components/inlineLink";
 import { Ledger } from "@/components/Ledger";
 import { BlockerEntry } from "@/pages/change-view/BlockerEntry";
 import { ChangeAside } from "@/pages/change-view/ChangeAside";
-import { fixSentence } from "@/pages/change-view/resolve";
+import { fixesText } from "@/pages/change-view/resolve";
 import { WaiverRequestDialog } from "@/pages/change-view/WaiverRequestDialog";
 import { useQueries } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -79,14 +79,7 @@ export function BlockerSection(
     title: results[index]?.data?.current_title ?? "Loading…",
     handled: handled.has(id),
   }));
-  const fixesText = shown
-    .map((_, index) => {
-      const finding = results[index]?.data;
-      const fix = finding ? fixSentence(finding) : null;
-      return finding && fix ? `${index + 1}. ${finding.current_title}: ${fix}` : null;
-    })
-    .filter((line): line is string => line !== null)
-    .join("\n");
+  const allFixes = fixesText(shown.map((_, index) => results[index]?.data));
 
   if (ids.length === 0) return null;
 
@@ -141,7 +134,7 @@ export function BlockerSection(
         <ChangeAside
           items={items}
           onHandledChange={(id, next) => setHandled((set) => toggle(set, id, next))}
-          fixesText={fixesText}
+          fixesText={allFixes}
           waiting={waiting}
           stalled={stalled}
           onStartWaiting={onStartWaiting}
