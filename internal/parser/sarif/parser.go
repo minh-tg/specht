@@ -21,6 +21,11 @@
 //     relationships and taxonomies land in extensions under the tool
 //     namespace. Unsupported fields are ignored by the JSON decoder
 //     without dropping usable results.
+//   - A location written as an absolute path or file: URI loses its checkout
+//     directory (parseutil.RepoPath), because that differs between runners.
+//     The uriBaseId and originalUriBaseIds of a run are not read: a relative
+//     uri is already relative to the checkout in practice, and a base that
+//     names a subdirectory cannot be told from one that names the root.
 //   - Findings without any location are kept with an "(unknown)" file and
 //     no file/line dimensions rather than dropped.
 //   - A log whose runs are all Gitleaks belongs to the gitleaks adapter, which
@@ -48,6 +53,12 @@ import (
 
 const unknownFile = "(unknown)"
 
+// fingerprintVersion is the version of this adapter's identity formula. Version 2
+// takes the file relative to the checkout (parseutil.RepoPath), so a log written
+// with absolute locations is the same findings on every runner. Version 1 kept
+// the path as written.
+const fingerprintVersion = 2
+
 // Scanner adapts SARIF 2.1.0 output to the normalized domain model.
 type Scanner struct{}
 
@@ -69,7 +80,7 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 		},
 		Version:               "2.1.0",
 		ContractVersion:       1,
-		FingerprintVersion:    1,
+		FingerprintVersion:    fingerprintVersion,
 		FindingKinds:          []scanner.FindingKind{"sast"},
 		ScanTypes:             []domain.ScanType{domain.ScanTypeFilesystem, domain.ScanTypeRepository},
 		ProvidesPackages:      false,
@@ -257,7 +268,7 @@ type sarifLocation struct {
 func convert(budget *parseutil.Budget, log sarifLog) (*domain.NormalizedReport, error) {
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
-		FingerprintVersion: 1,
+		FingerprintVersion: fingerprintVersion,
 		Completeness:       domain.CompletenessUnknown,
 		ScanType:           domain.ScanTypeFilesystem,
 		ScanScope:          &domain.ScanScope{Ext: map[string]string{}},
@@ -418,7 +429,7 @@ func resultFile(result sarifResult) string {
 	if len(result.Locations) == 0 {
 		return unknownFile
 	}
-	uri := parseutil.CleanFilePath(result.Locations[0].PhysicalLocation.ArtifactLocation.URI)
+	uri := parseutil.RepoPath(result.Locations[0].PhysicalLocation.ArtifactLocation.URI)
 	if uri == "" {
 		return unknownFile
 	}

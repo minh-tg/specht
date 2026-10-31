@@ -32,6 +32,13 @@ func TestRepoPath(t *testing.T) {
 		{"mac home", "/Users/minh/specht/main.tf", "specht/main.tf"},
 		{"root home", "/root/specht/main.tf", "specht/main.tf"},
 		{"unknown mount stays", "/app/nginx-1.0.exe", "/app/nginx-1.0.exe"},
+		{"file uri under a workspace", "file:///home/runner/work/specht/specht/src/a.go", "src/a.go"},
+		{"file uri under a container mount", "file:///src/src/a.go", "src/a.go"},
+		{"file uri with localhost", "file://localhost/github/workspace/src/a.go", "src/a.go"},
+		{"file uri is unescaped", "file:///github/workspace/src/my%20dir/a.go", "src/my dir/a.go"},
+		{"file uri under an unknown mount stays absolute", "file:///app/src/a.go", "/app/src/a.go"},
+		{"file uri with a drive", "file:///C:/work/src/a.go", "work/src/a.go"},
+		{"file uri with a host", "file://build-host/src/a.go", "build-host/src/a.go"},
 		{"root without a file stays", "/src", "/src"},
 		{"gitlab without a file stays", "/builds/x/1", "/builds/x/1"},
 	}
