@@ -1,8 +1,14 @@
 import { DetailList, type DetailRow } from "@/components/DetailList";
 import { analysisStateLabel, technicalStateLabel } from "@/lib/enums";
-import { formatDateTime } from "@/lib/format";
+import { EMPTY_VALUE, formatDateTime } from "@/lib/format";
 import type { Finding } from "@/types/api";
 import { formatPercent } from "./cveText";
+
+/** A date for a row, or nothing when the report carried none or an unreadable one. */
+function dateValue(iso: string | undefined): string | undefined {
+  const text = formatDateTime(iso);
+  return text === EMPTY_VALUE ? undefined : text;
+}
 
 /** What is known about one finding, as a plain list of facts beside the page. */
 export function MetadataGrid({ finding }: { readonly finding: Finding; }) {
@@ -24,8 +30,8 @@ export function MetadataGrid({ finding }: { readonly finding: Finding; }) {
           : <span className="text-muted-foreground">No</span>,
       }]
       : []),
-    { label: "First seen", value: formatDateTime(finding.first_seen_at) },
-    { label: "Last seen", value: formatDateTime(finding.last_seen_at) },
+    { label: "First seen", value: dateValue(finding.first_seen_at) },
+    { label: "Last seen", value: dateValue(finding.last_seen_at) },
     {
       label: "Introduced",
       value: finding.introduced_commit_sha

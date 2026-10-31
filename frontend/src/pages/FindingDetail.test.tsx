@@ -163,14 +163,16 @@ beforeEach(() => {
 });
 
 describe("FindingDetail dates", () => {
-  it("shows a formatted date when first_seen_at is invalid", async () => {
+  it("leaves out the first seen row when first_seen_at is invalid", async () => {
     findingFixture = { first_seen_at: "not-a-date", last_seen_at: "2025-01-02T00:00:00Z" };
     renderDetail();
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
     // The invalid value must never render through toLocaleString() (which
-    // throws RangeError on an Invalid Date) — the fallback shows instead.
-    expect(screen.getByText("None", { exact: true })).toBeInTheDocument();
+    // throws RangeError on an Invalid Date), and a row without a date is dropped, not "None".
+    expect(screen.queryByText("First seen")).not.toBeInTheDocument();
+    expect(screen.queryByText("None", { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByText("Last seen")).toBeInTheDocument();
   });
 });
 
