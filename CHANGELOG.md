@@ -690,3 +690,6 @@ releases.
 - Watcher and tracker webhook failures no longer write the endpoint URL to the log. A Slack
   incoming-webhook URL or a tracker URL with a token in its path or query used to appear in
   the transport-error line. The log now names the scheme and host and the cause only.
+- Startup fails when `WATCHER_SLACK_URL`, `WATCHER_WEBHOOK_URL` (watcher enabled) or
+  `WATCHER_WEBHOOK_URLS` (`TRACKER_PROVIDER=webhook`) is not `https`. `http` stays allowed for a
+  loopback host. The error names the variable and does not repeat the URL.
