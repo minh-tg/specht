@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/minh-tg/specht/internal/db"
+	"github.com/minh-tg/specht/internal/testimage"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -136,7 +137,7 @@ func runE2E(m *testing.M) int {
 func startDatabase() error {
 	ctx := context.Background()
 	req := testcontainers.ContainerRequest{
-		Image:        "postgres:17-alpine",
+		Image:        testimage.Postgres(),
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
 			"POSTGRES_USER":     "specht",
