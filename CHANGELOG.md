@@ -395,6 +395,13 @@ releases.
 ### Security
 
 - An invite link works only while the account that made it is active and could still make it: after its creator is deactivated, removed from the project, demoted below the invite's role, or loses global admin, the link answers like an expired one. Deactivating an account also revokes the open links it made.
+- A report whose JSON values are packed tighter than the memory budget charges for is
+  refused with `422 too_many_findings` before it is decoded. Under the 64-level nesting cap,
+  bodies of one-key objects or alternating objects and arrays still peaked at 75x to 99x
+  their size (the budget charges 64x), so a few concurrent uploads could use more memory than
+  `INGEST_MEMORY_BUDGET` allows. The server now estimates each document's decoded size and
+  refuses one past 40x its length. Captured reports estimate at 4x to 19x, so they are
+  unaffected.
 - Self-service registration is closed unless `REGISTRATION_ENABLED=true`.
 - An SSO exchange code works only in the browser that started the login. The
   exchange refuses a code from a browser without that login's `sso_state_<id>`

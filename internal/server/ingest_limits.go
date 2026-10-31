@@ -41,8 +41,9 @@ const (
 	// ingestBytesPerRawByte is what an ingest charges for each byte of its
 	// report. Decoding a report holds the parsed structs, the format check's
 	// copy and the redaction copy next to the bytes: the measured peak is 10 to
-	// 30 times the report for real findings, and padding that slips past the
-	// document scan costs more, so the charge is set well above both.
+	// 30 times the report for real findings. The document scan refuses a report
+	// estimated at more than scanner.MaxCostPerByte times its length, and the
+	// densest shapes it accepts peak at about 43 times, so the charge covers both.
 	ingestBytesPerRawByte = 64
 )
 
