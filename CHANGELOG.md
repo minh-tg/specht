@@ -690,3 +690,7 @@ releases.
   project holds at most 8 waiting fetches. When a fetch cannot be queued, because the
   queue is full or the project used its share, the CVE detail now reports the provider as
   `error` instead of `pending`, so the page stops waiting for a fetch that will not run.
+- Reading findings no longer starts one EPSS and KEV refresh per CVE without a limit. Four
+  refreshes run at once with up to 256 waiting, and a read past that serves the cached value.
+  Only well-formed CVE ids (`CVE-YYYY-NNNN`) are refreshed, and a failed KEV download is not
+  repeated for a minute.

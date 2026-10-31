@@ -206,6 +206,9 @@ func TestIntelRefresher_PrunesExpiredRetryEntries(t *testing.T) {
 	// Fill the retry map with CVEs that resolved nothing.
 	for i := range intelRetryPruneAt {
 		r.schedule(ctx, unresolvedIntel{}, fmt.Sprintf("CVE-2024-%05d", i))
+		if (i+1)%intelRefreshQueue == 0 {
+			r.wg.Wait()
+		}
 	}
 	r.wg.Wait()
 	require.Len(t, r.retryAfter, intelRetryPruneAt)
