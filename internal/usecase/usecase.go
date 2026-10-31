@@ -89,6 +89,10 @@ type IngestReportInput struct {
 	// sha256). Artifacts key on (type, name, digest) so rebuilds under one
 	// tag never conflate; tags themselves are never identity.
 	Digest string
+	// ScanFilter is what the uploader says the scanner left out on purpose
+	// (a severity floor, only fixable findings). The report stores it and
+	// closes only findings inside it. The zero value means an unfiltered scan.
+	ScanFilter domain.ScanFilter
 }
 
 // IngestReportOutput reports what a completed ingest produced.

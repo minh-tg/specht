@@ -4097,6 +4097,7 @@ components:
           maxItems: 5000
           items: { type: string, maxLength: 1024 }
         scan_mode: { type: string, enum: [full, incremental], default: full }
+        scan_filter: { $ref: "#/components/schemas/ScanFilter" }
         gate_severity: { type: string, description: Comma-separated override for the post-ingest threshold check. }
         gate_introduced_only:
           type: boolean
@@ -4110,6 +4111,26 @@ components:
           type: string
           enum: [container_image, sbom, repository_snapshot, filesystem, sarif, iac_stack]
           description: "Kind of the scanned artifact. Case is ignored and hyphens are read as underscores; any other value is refused with 400 `invalid_field`. When empty it follows the scan type: an image scan is `container_image`, a repository scan `repository_snapshot`, an IaC scan `iac_stack`, a filesystem or lockfile scan `filesystem`, an SBOM `sbom`. A DAST scan records no artifact."
+
+    ScanFilter:
+      type: object
+      description: |
+        What the scanner left out on purpose. Trivy `--severity HIGH,CRITICAL`
+        and `--ignore-unfixed` (Grype `--only-fixed`) write nothing about the
+        flag into the report, so the uploader declares it here. A filtered scan
+        only closes findings inside the filter: a finding outside it stays open
+        when the report omits it, and a manual verification of such a finding
+        stays inconclusive.
+      properties:
+        severities:
+          type: array
+          maxItems: 16
+          items: { type: string, enum: [critical, high, medium, low, unknown] }
+          description: Severities the scan kept. Case is ignored, duplicates are dropped, and any other value is refused with 400 `invalid_field`. Empty or absent means no severity filter.
+        fixable_only:
+          type: boolean
+          default: false
+          description: True when the scan kept only findings that have a fixed version.
 
     IngestResponse:
       type: object
@@ -4158,6 +4179,7 @@ components:
         commit_sha: { type: [string, "null"] }
         base_revision: { type: string }
         scan_mode: { type: string, enum: [full, incremental] }
+        scan_filter: { $ref: "#/components/schemas/ScanFilter" }
         changed_files:
           type: array
           items: { type: string }
