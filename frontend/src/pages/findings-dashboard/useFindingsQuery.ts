@@ -29,13 +29,12 @@ const DEFAULT_SORT = DEFAULT_FINDINGS_SORT;
 const FILTER_KEYS = ["severity", "status", "kind", "analysis_state", "q"] as const;
 
 /**
- * The list's view state. Everything lives in the URL, so a filtered, sorted, searched page is
- * linkable and the back button restores it. The sort and the search are applied by the server
- * across every page, never to the rows on screen alone.
+ * Reads the list's filters, sort and page from its query string. The finding page reads the same
+ * string from router state to walk the list the person came from.
  */
-export function useFindingsQuery() {
-  const [searchParams, setSearchParams] = useSearchParams();
-
+export function findingsViewFromSearch(
+  searchParams: URLSearchParams,
+): { filters: FindingsFilters; sort: FindingsSort; offset: number; } {
   const filters: FindingsFilters = {
     severity: searchParams.get("severity") ?? "",
     status: searchParams.get("status") ?? "",
@@ -54,6 +53,17 @@ export function useFindingsQuery() {
 
   const parsedOffset = Number.parseInt(searchParams.get("offset") ?? "0", 10);
   const offset = Number.isFinite(parsedOffset) && parsedOffset > 0 ? parsedOffset : 0;
+  return { filters, sort, offset };
+}
+
+/**
+ * The list's view state. Everything lives in the URL, so a filtered, sorted, searched page is
+ * linkable and the back button restores it. The sort and the search are applied by the server
+ * across every page, never to the rows on screen alone.
+ */
+export function useFindingsQuery() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { filters, sort, offset } = findingsViewFromSearch(searchParams);
 
   function setFilter(key: string, value: string) {
     const next = new URLSearchParams(searchParams);
