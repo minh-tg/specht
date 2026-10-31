@@ -9,6 +9,7 @@ import {
   keyLabel,
   matchesHelpKey,
   matchesModShortcut,
+  matchesPageKey,
   shortcut,
   SHORTCUT_SCOPES,
   SHORTCUTS,
@@ -49,9 +50,22 @@ describe("shortcut registry", () => {
     }
   });
 
-  it("marks exactly ?, J, K and X as single-key combinations", () => {
+  it("binds a key at most once in a scope, and J and K only where the focus or the page owns them", () => {
+    for (const scope of SHORTCUT_SCOPES) {
+      const combos = shortcutsIn(scope).flatMap((s) => s.combos.map((c) => c.join("+")));
+      expect(new Set(combos).size).toBe(combos.length);
+    }
+    const scopesOf = (key: string) =>
+      SHORTCUTS.filter((s) => s.combos.some((c) => c.length === 1 && c[0] === key)).map((s) =>
+        s.scope
+      );
+    expect(scopesOf("J")).toEqual(["In a findings list", "On a finding"]);
+    expect(scopesOf("K")).toEqual(["In a findings list", "On a finding"]);
+  });
+
+  it("marks exactly ?, 1 to 3, J, K and X as single-key combinations", () => {
     const single = SHORTCUTS.flatMap((s) => s.combos.filter(isSingleKeyCombo).map((c) => c[0]));
-    expect(single.sort()).toEqual(["?", "J", "K", "X"]);
+    expect([...new Set(single)].sort()).toEqual(["1", "2", "3", "?", "J", "K", "X"]);
     expect(isSingleKeyCombo(["↓"])).toBe(false);
     expect(isSingleKeyCombo(["Home"])).toBe(false);
     expect(isSingleKeyCombo(["Space"])).toBe(false);
@@ -140,6 +154,18 @@ describe("shortcut registry against the code that handles the keys", () => {
     const handled = [...grid.matchAll(/case "([^"]+)":/g)].map((m) => m[1]);
     const registered = Object.values(gridKeys).flat();
     for (const k of handled) expect(registered).toContain(k);
+  });
+
+  it("lists the finding page keys that the queue and the decision form handle", () => {
+    const queue = read("pages/finding-detail/QueueNav.tsx");
+    const form = read("pages/finding-detail/DecisionForm.tsx");
+    expect(shortcut("queue-next")).toMatchObject({ scope: "On a finding", combos: [["J"]] });
+    expect(shortcut("queue-previous")).toMatchObject({ scope: "On a finding", combos: [["K"]] });
+    expect(queue).toContain("key === \"j\"");
+    expect(queue).toContain("key === \"k\"");
+    expect(shortcut("decide-pick").combos).toEqual([["1"], ["2"], ["3"]]);
+    expect(form).toContain("/^[1-3]$/");
+    for (const source of [queue, form]) expect(source).toContain("matchesPageKey(event)");
   });
 
   it("lists the waiver tab arrows that the tab list handles", () => {
@@ -264,5 +290,51 @@ describe("the bare ? help key", () => {
   it.each(["dialog", "alertdialog", "menu"])("ignores a ? while a %s is open", (role) => {
     document.body.innerHTML = `<div role="${role}"></div><button>b</button>`;
     expect(press({}, document.querySelector("button")!)).toBe(false);
+  });
+});
+
+describe("the finding page keys", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    resetSingleKeyForTests();
+  });
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  function press(key: string, target: Element, init: KeyboardEventInit = {}) {
+    let result = false;
+    const listener = (e: KeyboardEvent) => {
+      result = matchesPageKey(e);
+    };
+    document.addEventListener("keydown", listener);
+    target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, ...init }));
+    document.removeEventListener("keydown", listener);
+    return result;
+  }
+
+  it("works on the page, a button and a picked radio, where typing goes nowhere", () => {
+    document.body.innerHTML = "<button>b</button><input type=\"radio\" id=\"r\" />";
+    expect(press("j", document.body)).toBe(true);
+    expect(press("1", document.querySelector("button")!)).toBe(true);
+    expect(press("2", document.querySelector("#r")!)).toBe(true);
+  });
+
+  it.each([
+    ["text input", "<input id=\"f\" />"],
+    ["textarea", "<textarea id=\"f\"></textarea>"],
+    ["combobox", "<div role=\"combobox\" tabindex=\"0\" id=\"f\"></div>"],
+  ])("ignores a key typed in a %s", (_name, html) => {
+    document.body.innerHTML = html;
+    expect(press("j", document.querySelector("#f")!)).toBe(false);
+  });
+
+  it("ignores keys while a dialog is open, with a modifier, and when single keys are off", () => {
+    document.body.innerHTML = "<div role=\"dialog\"></div>";
+    expect(press("k", document.body)).toBe(false);
+    document.body.innerHTML = "";
+    expect(press("k", document.body, { ctrlKey: true })).toBe(false);
+    setSingleKeyEnabled(false);
+    expect(press("k", document.body)).toBe(false);
   });
 });

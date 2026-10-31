@@ -12,7 +12,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { Section } from "@/components/Section";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UpdatedHint } from "@/components/UpdatedHint";
-import { changeViewBackPath, entryModeFromSearch } from "@/lib/entryMode";
+import { changeViewBackPath, entryModeFromSearch, findingsListSearch } from "@/lib/entryMode";
 import { analysisStateLabel, isReachabilityState } from "@/lib/enums";
 import { blocksGate, blocksGateSentence } from "@/lib/gate";
 import { waiverAction } from "@/lib/waiverRequest";
@@ -32,18 +32,18 @@ import { FixFirst } from "./finding-detail/FixFirst";
 import { HistorySection } from "./finding-detail/HistorySection";
 import { HowToFix } from "./finding-detail/HowToFix";
 import { MetadataGrid } from "./finding-detail/MetadataGrid";
+import { QueueNav } from "./finding-detail/QueueNav";
 import { ReachabilitySection } from "./finding-detail/ReachabilitySection";
 import { SignoffSection } from "./finding-detail/SignoffSection";
 import { TriageSection } from "./finding-detail/TriageSection";
+import { useFindingQueue } from "./finding-detail/useFindingQueue";
 import { VerifyFixSection } from "./finding-detail/VerifyFixSection";
 import { WaiverControl } from "./finding-detail/WaiverControl";
 import { WhereItOccurs } from "./finding-detail/WhereItOccurs";
 
 /** Where "Back to findings" goes: the list page the user came from, if known. */
 function backToFindingsPath(slug: string, state: unknown): string {
-  const from = (state as { from?: unknown; } | null)?.from;
-  const search = typeof from === "string" && (from === "" || from.startsWith("?")) ? from : "";
-  return `/${slug}/findings${search}`;
+  return `/${slug}/findings${findingsListSearch(state) ?? ""}`;
 }
 
 export function FindingDetail() {
@@ -67,6 +67,13 @@ export function FindingDetail() {
   const [waiverOpen, setWaiverOpen] = useState(false);
   // The page's one polite live region: save results and queue moves are spoken here.
   const [announcement, setAnnouncement] = useState("");
+  const mode = entryModeFromSearch(location.search);
+  // Opened from the findings list, J and K walk that filtered list. A pasted link has no list.
+  const queue = useFindingQueue(
+    slug ?? "",
+    findingId ?? "",
+    mode === "triage" ? findingsListSearch(location.state) : null,
+  );
   const {
     data: reachability,
     isLoading: reachabilityLoading,
@@ -131,7 +138,6 @@ export function FindingDetail() {
     gateRechecking: pendingTriage !== undefined,
   });
 
-  const mode = entryModeFromSearch(location.search);
   // Arriving from a change, the way back is the change view itself. A link pasted without the
   // router state has no change to return to, so it falls back to the findings list.
   const changeBack = mode === "unblock" ? changeViewBackPath(slug ?? "", location.state) : null;
@@ -189,6 +195,7 @@ export function FindingDetail() {
         )
         : (
           <DecisionForm
+            key={finding.id}
             finding={finding}
             slug={slug ?? ""}
             reachability={reachInput}
@@ -211,6 +218,8 @@ export function FindingDetail() {
         >
           {changeBack ? <>&larr; Back to the change</> : <>&larr; Back to findings</>}
         </Link>
+        {/* The queue shares the back link's row, so it never pushes the decision down. */}
+        {queue && <QueueNav slug={slug ?? ""} queue={queue} announce={setAnnouncement} />}
         <UpdatedHint
           updatedAt={Math.min(findingUpdatedAt, eventsUpdatedAt || findingUpdatedAt)}
           watch={[finding, events]}
