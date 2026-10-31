@@ -2,6 +2,7 @@ package grype
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
@@ -112,4 +113,57 @@ func TestRealDirectoryScanKeepsItsTargetWhenClean(t *testing.T) {
 
 	clean := parseTarget(t, grypeDocWithSource(`{"type":"directory","target":{"userInput":"."}}`, false))
 	assert.Equal(t, nr.Target, clean.Target)
+}
+
+// withoutMatches returns the report with its matches array emptied and every
+// other field, source included, left as Grype wrote it.
+func withoutMatches(t *testing.T, raw []byte) []byte {
+	t.Helper()
+	var doc map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(raw, &doc))
+	doc["matches"] = json.RawMessage(`[]`)
+	out, err := json.Marshal(doc)
+	require.NoError(t, err)
+	return out
+}
+
+// The fixtures below are Grype 0.120.0 output trimmed to three matches.
+// grype-image.json is `grype registry:docker.io/library/alpine:3.18`.
+// grype-sbom.json is `grype sbom:` on a Syft CycloneDX SBOM of a directory
+// holding a package-lock.json, scanned with --source-name grype-fixture-lock.
+func TestRealImageAndSBOMSourcesDeriveTheirTargets(t *testing.T) {
+	cases := []struct {
+		name     string
+		fixture  string
+		kind     string
+		target   string
+		scanType domain.ScanType
+	}{
+		{
+			"image pulled from a registry", "testdata/grype-image.json",
+			"container_image", "docker.io/library/alpine:3.18", domain.ScanTypeImage,
+		},
+		{
+			"SBOM file scan", "testdata/grype-sbom.json",
+			"filesystem", "grype-fixture-lock", domain.ScanTypeFilesystem,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := os.ReadFile(tc.fixture)
+			require.NoError(t, err)
+
+			withFindings := parseTarget(t, raw)
+			require.Len(t, withFindings.Findings, 3)
+			require.NotNil(t, withFindings.Target)
+			assert.Equal(t, tc.kind, withFindings.Target.Kind)
+			assert.Equal(t, tc.target, withFindings.Target.Identifier)
+			assert.Equal(t, tc.scanType, withFindings.ScanType)
+
+			clean := parseTarget(t, withoutMatches(t, raw))
+			assert.Empty(t, clean.Findings)
+			assert.Equal(t, withFindings.Target, clean.Target, "a clean scan of the same source names the same target")
+			assert.Equal(t, withFindings.ScanType, clean.ScanType)
+		})
+	}
 }
