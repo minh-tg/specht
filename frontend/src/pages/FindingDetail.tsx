@@ -8,10 +8,8 @@ import {
   useWaivers,
 } from "@/api/hooks";
 import { usePendingTriage } from "@/api/pendingTriage";
-import { DisabledReason } from "@/components/DisabledReason";
 import { ErrorState } from "@/components/ErrorState";
 import { Section } from "@/components/Section";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UpdatedHint } from "@/components/UpdatedHint";
 import { changeViewBackPath, entryModeFromSearch } from "@/lib/entryMode";
@@ -24,9 +22,12 @@ import { WaiverRequestDialog } from "./change-view/WaiverRequestDialog";
 import { AnalysisNote } from "./finding-detail/AnalysisNote";
 import { AutoCloseNote } from "./finding-detail/AutoCloseNote";
 import { ContextGrid } from "./finding-detail/ContextGrid";
+import { showsCveBlock } from "./finding-detail/cveBlock";
 import { CveDetails } from "./finding-detail/CveDetails";
+import { DetailsDisclosure } from "./finding-detail/DetailsDisclosure";
 import { EvidenceSection } from "./finding-detail/EvidenceSection";
 import { FindingHeader } from "./finding-detail/FindingHeader";
+import { FixFirst } from "./finding-detail/FixFirst";
 import { HistorySection } from "./finding-detail/HistorySection";
 import { HowToFix } from "./finding-detail/HowToFix";
 import { MetadataGrid } from "./finding-detail/MetadataGrid";
@@ -34,6 +35,7 @@ import { ReachabilitySection } from "./finding-detail/ReachabilitySection";
 import { SignoffSection } from "./finding-detail/SignoffSection";
 import { TriageSection } from "./finding-detail/TriageSection";
 import { VerifyFixSection } from "./finding-detail/VerifyFixSection";
+import { WaiverControl } from "./finding-detail/WaiverControl";
 import { WhereItOccurs } from "./finding-detail/WhereItOccurs";
 
 /** Where "Back to findings" goes: the list page the user came from, if known. */
@@ -131,6 +133,56 @@ export function FindingDetail() {
   // router state has no change to return to, so it falls back to the findings list.
   const changeBack = mode === "unblock" ? changeViewBackPath(slug ?? "", location.state) : null;
 
+  const unblock = mode === "unblock";
+  const reachabilitySection = (
+    <ReachabilitySection
+      findingId={finding.id}
+      reachability={reachability}
+      isLoading={reachabilityLoading}
+      isError={reachabilityIsError}
+      error={reachabilityError}
+      isSuccess={reachabilityLoaded}
+    />
+  );
+  const cveBlock = showsCveBlock(finding) ? <CveDetails findingId={finding.id} /> : null;
+  // Fix-first keeps the waiver and the triage form next to the fix and moves the reachability form
+  // and the fix check below the fold. Decide-first keeps all of them here, as before.
+  const decideSection = (
+    <Section
+      title="Decide"
+      description={
+        <>
+          Currently: {analysisStateLabel(shown.analysis_state) ?? "Not triaged"}
+          {currentGate && <>{" · "}{currentGate}</>}
+        </>
+      }
+    >
+      {unblock && (
+        <div className="mb-4">
+          <WaiverControl waiver={waiver} onRequest={() => setWaiverOpen(true)} />
+        </div>
+      )}
+      {!pendingTriage && (
+        <AnalysisNote
+          reason={finding.analysis_reason}
+          expiresAt={finding.analysis_expires_at}
+        />
+      )}
+      <TriageSection
+        findingId={finding.id}
+        projectSlug={slug}
+        currentState={finding.analysis_state}
+      />
+      <AutoCloseNote finding={finding} />
+      {!unblock && (
+        <>
+          <VerifyFixSection findingId={finding.id} projectSlug={slug} />
+          {reachabilitySection}
+        </>
+      )}
+    </Section>
+  );
+
   return (
     <div data-mode={mode} className="mx-auto max-w-5xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
@@ -157,81 +209,63 @@ export function FindingDetail() {
         floor={gate?.policy?.severity_floor}
       />
 
-      <div className="mt-2 grid gap-x-10 lg:grid-cols-[minmax(0,1fr)_17rem]">
-        <div className="min-w-0">
-          <HowToFix finding={finding} />
+      {mode === "unblock"
+        ? (
+          <div className="mt-2 max-w-3xl">
+            <FixFirst finding={finding} />
 
-          <WhereItOccurs finding={finding} />
+            <WhereItOccurs finding={finding} />
 
-          <Section
-            title="Decide"
-            description={
-              <>
-                Currently: {analysisStateLabel(shown.analysis_state) ?? "Not triaged"}
-                {currentGate && <>{" · "}{currentGate}</>}
-              </>
-            }
-          >
-            {!pendingTriage && (
-              <AnalysisNote
-                reason={finding.analysis_reason}
-                expiresAt={finding.analysis_expires_at}
+            {decideSection}
+
+            <DetailsDisclosure summary="reachability, context, evidence, history">
+              {reachabilitySection}
+              <VerifyFixSection findingId={finding.id} projectSlug={slug} />
+              <ContextGrid context={finding.context} />
+              <Section title="About this finding">
+                <MetadataGrid finding={shown} />
+              </Section>
+              {cveBlock}
+              <EvidenceSection findingId={finding.id} projectSlug={slug} />
+              <SignoffSection findingId={finding.id} projectSlug={slug} />
+              <HistorySection
+                events={events}
+                isLoading={eventsLoading}
+                isError={eventsIsError}
               />
-            )}
-            <TriageSection
-              findingId={finding.id}
-              projectSlug={slug}
-              currentState={finding.analysis_state}
-            />
-            <AutoCloseNote finding={finding} />
-            <VerifyFixSection findingId={finding.id} projectSlug={slug} />
-            <ReachabilitySection
-              findingId={finding.id}
-              reachability={reachability}
-              isLoading={reachabilityLoading}
-              isError={reachabilityIsError}
-              error={reachabilityError}
-              isSuccess={reachabilityLoaded}
-            />
-          </Section>
+            </DetailsDisclosure>
+          </div>
+        )
+        : (
+          <div className="mt-2 grid gap-x-10 lg:grid-cols-[minmax(0,1fr)_17rem]">
+            <div className="min-w-0">
+              <HowToFix finding={finding} />
 
-          <ContextGrid context={finding.context} />
+              <WhereItOccurs finding={finding} />
 
-          <CveDetails findingId={finding.id} />
+              {decideSection}
 
-          <EvidenceSection findingId={finding.id} projectSlug={slug} />
+              <ContextGrid context={finding.context} />
 
-          <SignoffSection findingId={finding.id} projectSlug={slug} />
+              {cveBlock}
 
-          <HistorySection
-            events={events}
-            isLoading={eventsLoading}
-            isError={eventsIsError}
-          />
-        </div>
+              <EvidenceSection findingId={finding.id} projectSlug={slug} />
 
-        <aside aria-label="About this finding" className="mt-8 grid content-start gap-5">
-          {waiver.kind === "pending"
-            ? (
-              <p className="bg-muted text-muted-foreground rounded-md px-3.5 py-3 text-meta">
-                Waiver requested. A manager will decide. The verdict does not change until they
-                approve it.
-              </p>
-            )
-            : (
-              <DisabledReason reason={waiver.kind === "disabled" ? waiver.reason : undefined}>
-                <Button
-                  variant="outline"
-                  disabled={waiver.kind === "disabled"}
-                  onClick={() => setWaiverOpen(true)}
-                >
-                  Request waiver
-                </Button>
-              </DisabledReason>
-            )}
-          <MetadataGrid finding={shown} />
-        </aside>
-      </div>
+              <SignoffSection findingId={finding.id} projectSlug={slug} />
+
+              <HistorySection
+                events={events}
+                isLoading={eventsLoading}
+                isError={eventsIsError}
+              />
+            </div>
+
+            <aside aria-label="About this finding" className="mt-8 grid content-start gap-5">
+              <WaiverControl waiver={waiver} onRequest={() => setWaiverOpen(true)} />
+              <MetadataGrid finding={shown} />
+            </aside>
+          </div>
+        )}
 
       <WaiverRequestDialog
         slug={slug ?? ""}
