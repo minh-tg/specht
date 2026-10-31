@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"sync"
@@ -76,15 +77,20 @@ const ingestPath = "/api/v1/reports"
 //  1. enter: a place in the caller's own gate, at most perPrincipal at a time,
 //     held while the body is read. A caller past its limit waits in its own
 //     queue and never delays another caller.
-//  2. reserve: before the body is read, a share of the caller's memory
-//     allowance, the same for the project, then the global memory charge for
-//     the declared length (the largest body allowed when none is declared).
-//     The body is read into memory the ingest has already paid for, so a
-//     request the budget cannot hold never buffers its bytes. The reservation
-//     shrinks to the bytes that arrived.
-//  3. claim: once the whole body is in memory, a place in the project's gate
-//     and a global slot. These are held while the report is decoded and
-//     stored.
+//  2. reserve: while the body is read, one byte of the memory budget per byte
+//     of body, against the caller's allowance, the project's, then the whole
+//     budget. A body with a declared length reserves it before the first byte
+//     is read; one without reserves a chunk ahead of the bytes that arrived.
+//     No body byte is buffered outside the budget, and a slow upload holds
+//     only the bytes it declared or sent, never the charge for decoding. A
+//     request the budget cannot hold is refused unread.
+//  3. charge, then claim: once the whole body is in memory, the hold is raised
+//     to the full decoding charge (the same three levels, in the same order),
+//     then the project's place and a global slot are taken. These are held
+//     while the report is decoded and stored. A request that cannot get the
+//     difference within one queue wait is refused and gives back its raw hold,
+//     so two uploads that each hold part of what the other needs wait at most
+//     one queue wait and cannot block each other for good.
 //  4. release: everything is given back, in reverse order, on every path.
 //
 // The project gate is what keeps one tenant from filling every global slot:
@@ -155,7 +161,9 @@ type ingestTicket struct {
 	gate      *gate
 	tenantG   *gate
 	held      memoryHold
-	releases  []func()
+	// memoryRegistered is set once the release of held has been queued.
+	memoryRegistered bool
+	releases         []func()
 }
 
 // memoryHold is the memory a ticket holds: against its caller's allowance,
@@ -204,62 +212,147 @@ func (a *ingestAdmission) enter(ctx context.Context, principal, tenant string) (
 	}
 }
 
-// charges returns what an ingest of rawBytes holds against the caller's
-// allowance, the project's allowance and the whole budget.
-func (t *ingestTicket) charges(rawBytes int) memoryHold {
+// rawHold is what holding rawBytes of request body costs: one byte of budget
+// per byte, against the caller's allowance, the project's allowance and the
+// whole budget. Each is capped at what it can hold at all.
+func (t *ingestTicket) rawHold(rawBytes int) memoryHold {
+	a := t.a
+	global := min(max(int64(rawBytes), 1), a.memory.size)
+	caller := min(global, a.memoryShare)
+	return memoryHold{caller: caller, tenant: min(caller, a.tenantShare), global: global}
+}
+
+// fullHold is what decoding and storing a report of rawBytes costs: the raw
+// hold times ingestBytesPerRawByte, with the same caps.
+func (t *ingestTicket) fullHold(rawBytes int) memoryHold {
 	a := t.a
 	global := a.memory.charge(rawBytes)
 	caller := min(global, a.memoryShare)
 	return memoryHold{caller: caller, tenant: min(caller, a.tenantShare), global: global}
 }
 
-// reserve takes the memory the ingest needs for a body of rawBytes before the
-// body is read: the caller's and the project's memory allowance, then the
-// global memory charge. The bytes read next sit inside what is reserved, so a
-// request the budget cannot hold never buffers its body. The whole wait is
-// bounded by one queue wait.
+// reserve holds the memory for rawBytes of body that is about to be read, one
+// byte of budget per byte. Every byte read next sits inside what is held, so
+// a request the budget cannot hold never buffers its body, while a slow
+// upload holds only what it has sent (or declared) and not the charge for
+// decoding. It only raises the hold; asking for less than is held does
+// nothing. The wait is bounded by one queue wait.
 func (t *ingestTicket) reserve(ctx context.Context, rawBytes int) error {
+	return t.raise(ctx, t.rawHold(rawBytes))
+}
+
+// charge raises the hold to the full charge for a report of rawBytes, once its
+// body is in memory. If the budget cannot give the difference within the queue
+// wait it returns errIngestBusy and the caller releases the ticket, which gives
+// the raw hold back: a request never waits for more while others wait for what
+// it holds longer than one queue wait.
+func (t *ingestTicket) charge(ctx context.Context, rawBytes int) error {
+	return t.raise(ctx, t.fullHold(rawBytes))
+}
+
+// raise grows the hold to want, in a fixed order that every request follows:
+// the caller's allowance, then the project's, then the whole budget. A request
+// waits on one of these while holding only those before it, and the holders of
+// the last one are running ingests that wait on nothing, so waits do not form
+// a cycle. A wait that outlasts the queue wait ends in errIngestBusy.
+func (t *ingestTicket) raise(ctx context.Context, want memoryHold) error {
 	a := t.a
+	if !t.memoryRegistered {
+		t.memoryRegistered = true
+		t.releases = append(t.releases, func() {
+			a.memory.sem.Release(t.held.global)
+			t.tenantG.memory.Release(t.held.tenant)
+			t.gate.memory.Release(t.held.caller)
+			t.held = memoryHold{}
+		})
+	}
 	deadline := time.Now().Add(a.queueWait)
-	want := t.charges(rawBytes)
-
-	if err := waitUntil(ctx, deadline, func(ctx context.Context) error { return t.gate.memory.Acquire(ctx, want.caller) }); err != nil {
-		return err
+	if more := want.caller - t.held.caller; more > 0 {
+		if err := waitUntil(ctx, deadline, func(ctx context.Context) error { return t.gate.memory.Acquire(ctx, more) }); err != nil {
+			return err
+		}
+		t.held.caller = want.caller
 	}
-	t.held.caller = want.caller
-	t.releases = append(t.releases, func() { t.gate.memory.Release(t.held.caller) })
-
-	if err := waitUntil(ctx, deadline, func(ctx context.Context) error { return t.tenantG.memory.Acquire(ctx, want.tenant) }); err != nil {
-		return err
+	if more := want.tenant - t.held.tenant; more > 0 {
+		if err := waitUntil(ctx, deadline, func(ctx context.Context) error { return t.tenantG.memory.Acquire(ctx, more) }); err != nil {
+			return err
+		}
+		t.held.tenant = want.tenant
 	}
-	t.held.tenant = want.tenant
-	t.releases = append(t.releases, func() { t.tenantG.memory.Release(t.held.tenant) })
-
-	if err := waitUntil(ctx, deadline, func(ctx context.Context) error { return a.memory.sem.Acquire(ctx, want.global) }); err != nil {
-		return err
+	if more := want.global - t.held.global; more > 0 {
+		if err := waitUntil(ctx, deadline, func(ctx context.Context) error { return a.memory.sem.Acquire(ctx, more) }); err != nil {
+			return err
+		}
+		t.held.global = want.global
 	}
-	t.held.global = want.global
-	t.releases = append(t.releases, func() { a.memory.sem.Release(t.held.global) })
 	return nil
 }
 
-// shrink gives back the part of the reservation a body of rawBytes does not
-// need. A body of unknown length reserves the largest one allowed and shrinks
-// to what arrived.
-func (t *ingestTicket) shrink(rawBytes int) {
-	got := t.charges(rawBytes)
-	if got.caller < t.held.caller {
-		t.gate.memory.Release(t.held.caller - got.caller)
-		t.held.caller = got.caller
+// bodyChunk is how much of a body is read, and held, at a time.
+const bodyChunk = 64 << 10
+
+// readBody reads the request body into memory it has reserved first. A body
+// with a declared length reserves all of it before reading; one without
+// reserves a chunk ahead of the bytes read so far, up to the largest body
+// allowed. It returns the chunks read; join them after charge, so the copy is
+// inside the full charge. The error is errIngestBusy or the context's error
+// when the budget refused a reservation, and a *bodyReadError when reading
+// failed.
+func (t *ingestTicket) readBody(ctx context.Context, src io.Reader, declared int64) ([][]byte, int, error) {
+	limit := int64(maxIngestBodyBytes)
+	if declared >= 0 {
+		limit = declared
+		if err := t.reserve(ctx, int(declared)); err != nil {
+			return nil, 0, err
+		}
 	}
-	if got.tenant < t.held.tenant {
-		t.tenantG.memory.Release(t.held.tenant - got.tenant)
-		t.held.tenant = got.tenant
+	var chunks [][]byte
+	total := 0
+	for {
+		size := int(max(1, min(bodyChunk, limit-int64(total))))
+		if declared < 0 {
+			if err := t.reserve(ctx, total+size); err != nil {
+				return nil, 0, err
+			}
+		}
+		buf := make([]byte, size)
+		filled := 0
+		var readErr error
+		for filled < size && readErr == nil {
+			var n int
+			n, readErr = src.Read(buf[filled:])
+			filled += n
+		}
+		if filled > 0 {
+			chunks = append(chunks, buf[:filled])
+			total += filled
+		}
+		if errors.Is(readErr, io.EOF) {
+			return chunks, total, nil
+		}
+		if readErr != nil {
+			return nil, 0, &bodyReadError{readErr}
+		}
 	}
-	if got.global < t.held.global {
-		t.a.memory.sem.Release(t.held.global - got.global)
-		t.held.global = got.global
+}
+
+// bodyReadError marks a failure to read the request body, as opposed to the
+// budget refusing a reservation.
+type bodyReadError struct{ err error }
+
+func (e *bodyReadError) Error() string { return e.err.Error() }
+func (e *bodyReadError) Unwrap() error { return e.err }
+
+// joinChunks copies chunks into one slice of total bytes.
+func joinChunks(chunks [][]byte, total int) []byte {
+	if len(chunks) == 1 {
+		return chunks[0]
 	}
+	out := make([]byte, 0, total)
+	for _, c := range chunks {
+		out = append(out, c...)
+	}
+	return out
 }
 
 // claim takes the project's place and a global slot once the body is in

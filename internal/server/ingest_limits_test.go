@@ -259,9 +259,9 @@ func TestRequestTimeout_IngestGetsALongerBudgetThanOtherRoutes(t *testing.T) {
 }
 
 // admitTicket takes everything an ingest needs once its body is known: the
-// memory reservation, then the place and slot.
+// full memory charge, then the place and slot.
 func admitTicket(tk *ingestTicket, ctx context.Context, rawBytes int) error {
-	if err := tk.reserve(ctx, rawBytes); err != nil {
+	if err := tk.charge(ctx, rawBytes); err != nil {
 		return err
 	}
 	return tk.claim(ctx)

@@ -143,26 +143,27 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ticket.release()
 
-	// Reserve the memory for the body before reading any more of it. A body
-	// without a declared length reserves the largest allowed one.
-	declared := r.ContentLength
-	if declared < 0 {
-		declared = maxIngestBodyBytes
+	// The body is read into memory reserved as it goes, then charged in full
+	// before the project's place and a global slot are taken.
+	deadlines.armBody(w)
+	chunks, size, err := ticket.readBody(r.Context(), rest, r.ContentLength)
+	if err != nil {
+		var readErr *bodyReadError
+		switch {
+		case errors.As(err, &readErr):
+			h.respondIngestBodyError(w, readErr.err, "invalid_json", "invalid request body")
+		case errors.Is(err, errIngestBusy):
+			respondIngestBusy(w, adm.queueWait)
+		}
+		return
 	}
-	if err := ticket.reserve(r.Context(), int(declared)); err != nil {
+	if err := ticket.charge(r.Context(), size); err != nil {
 		if errors.Is(err, errIngestBusy) {
 			respondIngestBusy(w, adm.queueWait)
 		}
 		return
 	}
-
-	deadlines.armBody(w)
-	data, err := io.ReadAll(rest)
-	if err != nil {
-		h.respondIngestBodyError(w, err, "invalid_json", "invalid request body")
-		return
-	}
-	ticket.shrink(len(data))
+	data := joinChunks(chunks, size)
 	if err := ticket.claim(r.Context()); err != nil {
 		if errors.Is(err, errIngestBusy) {
 			respondIngestBusy(w, adm.queueWait)

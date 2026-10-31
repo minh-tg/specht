@@ -693,11 +693,13 @@ releases.
   that committed right after the change used to leave that session alive under a
   generation the link never expected. The change now answers 409 `account_changed`, issues
   no session, and the caller signs in again.
-- Report upload reserves its share of the ingest memory budget before it reads the
-  body, sized by `Content-Length` (the 25 MiB limit when the length is not declared,
-  shrunk to the bytes that arrive). A request the budget cannot hold now gets
-  `503 ingest_busy` without its body being buffered, so many API keys can no longer
-  hold request bodies in memory outside `INGEST_MEMORY_BUDGET`.
+- Report upload holds one byte of the ingest memory budget per byte of body while the
+  body is read: all of `Content-Length` up front, or a chunk ahead of the bytes that have
+  arrived when no length is declared. The 64x charge for decoding is taken once the whole
+  body is in memory. A request the budget cannot hold gets `503 ingest_busy` without its
+  body being buffered, so many API keys can no longer hold request bodies in memory
+  outside `INGEST_MEMORY_BUDGET`, and a slow upload does not keep other projects' uploads
+  waiting.
 - The embedded web app compresses each file once and serves the stored gzip bytes with
   `Content-Length` and an `ETag` (answering `If-None-Match` with 304). It used to gzip
   every asset on every request, which let one anonymous client keep a CPU core busy.
