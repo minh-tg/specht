@@ -166,11 +166,12 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, fmt.Errorf("%w: %q", ErrUnknownScanner, input.Scanner)
 	}
 
-	// A document with far more objects than the finding limit allows is
-	// refused before anything decodes it: format checks and parsers turn every
-	// object into a struct, so a hostile upload would exhaust memory there.
+	// A document with far more objects than the finding limit allows, or with
+	// its values packed tighter than the memory charge covers, is refused
+	// before anything decodes it: format checks and parsers turn every object
+	// into a struct, so a hostile upload would exhaust memory there.
 	limit := u.deps.IngestMaxFindings
-	if err := scanner.CheckDocument(input.RawData, limit); err != nil {
+	if err := scanner.CheckIngestDocument(input.RawData, limit); err != nil {
 		slog.Warn("ingest refused: too many objects", "scanner", input.Scanner, "bytes", len(input.RawData))
 		return nil, fmt.Errorf("scanner %s: %w", input.Scanner, err)
 	}

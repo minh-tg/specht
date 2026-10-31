@@ -261,3 +261,62 @@ func TestCheckDocumentAllocatesNothingPerElement(t *testing.T) {
 	})
 	assert.LessOrEqual(t, allocs, 4.0)
 }
+
+// A report's values must cost well under the cap, or ordinary scanner output
+// sits next to the refusal. The cap is MaxCostPerByte; the densest captured
+// report estimates at less than half of it.
+func TestCapturedFixturesEstimateWellUnderTheDensityCap(t *testing.T) {
+	var files int
+	for _, root := range []string{"../../e2e/testdata", "../../internal/parser/testdata"} {
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			data, err := os.ReadFile(path)
+			require.NoError(t, err)
+			files++
+			perByte := float64(scanner.EstimatedDecodeBytes(data)) / float64(len(data))
+			assert.Less(t, perByte, float64(scanner.MaxCostPerByte)/2, path)
+			assert.NoError(t, scanner.CheckIngestDocument(data, scanner.DefaultMaxFindings), path)
+			return nil
+		})
+		require.NoError(t, err)
+	}
+	require.NotZero(t, files, "the fixture directories are empty or moved")
+}
+
+func TestCheckIngestDocumentRefusesValuesPackedDenserThanTheCharge(t *testing.T) {
+	const size = 1 << 20
+	cases := map[string]string{
+		"one-key objects":  `{"r":[` + strings.TrimSuffix(strings.Repeat(`{"a":0},`, size/8), ",") + `]}`,
+		"empty objects":    `{"r":[` + strings.TrimSuffix(strings.Repeat(`{},`, size/3), ",") + `]}`,
+		"nested arrays":    `{"r":[` + strings.TrimSuffix(strings.Repeat(strings.Repeat("[", 40)+strings.Repeat("]", 40)+",", size/80), ",") + `]}`,
+		"object chain":     `{"r":[` + strings.TrimSuffix(strings.Repeat(strings.Repeat(`{"a":`, 50)+`0`+strings.Repeat("}", 50)+",", size/300), ",") + `]}`,
+		"alternating deep": `{"r":[` + strings.TrimSuffix(strings.Repeat(strings.Repeat(`{"n":[`, 25)+`0`+strings.Repeat("]}", 25)+",", size/200), ",") + `]}`,
+	}
+	for name, doc := range cases {
+		t.Run(name, func(t *testing.T) {
+			require.NoError(t, scanner.CheckDocument([]byte(doc), scanner.DefaultMaxFindings),
+				"the counts and the depth cap alone accept this document")
+			err := scanner.CheckIngestDocument([]byte(doc), scanner.DefaultMaxFindings)
+			var tooMany *scanner.TooManyFindingsError
+			require.ErrorAs(t, err, &tooMany)
+			assert.True(t, tooMany.Dense)
+			assert.False(t, tooMany.Depth)
+			require.ErrorIs(t, err, scanner.ErrTooManyFindings)
+		})
+	}
+}
+
+func TestCheckIngestDocumentAcceptsDenseValuesInsideAPaddedBody(t *testing.T) {
+	// 20 bytes of string pad per one-key object puts the document at about 25 bytes
+	// of estimate per byte, under the cap.
+	unit := `{"a":"` + strings.Repeat("x", 20) + `"}`
+	doc := `{"r":[` + strings.TrimSuffix(strings.Repeat(unit+",", 40000), ",") + `]}`
+	require.NoError(t, scanner.CheckIngestDocument([]byte(doc), scanner.DefaultMaxFindings))
+}
+
+func TestCheckIngestDocumentLetsATinyDocumentThroughWhateverItsShape(t *testing.T) {
+	doc := strings.Repeat(`{"a":`, 60) + "0" + strings.Repeat("}", 60)
+	require.NoError(t, scanner.CheckIngestDocument([]byte(doc), scanner.DefaultMaxFindings))
+}
