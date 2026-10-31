@@ -39,14 +39,36 @@ let audits = 0;
  * wait; the loop then repeats until nothing is running.
  */
 async function settle(page: Page): Promise<void> {
-  await page.evaluate(async () => {
+  const stuck = await page.evaluate(async () => {
+    // A looping animation (a skeleton pulse, a spinner) never finishes, so each wait is capped and
+    // the test fails naming what is still running instead of using up the whole test timeout.
+    const deadline = Date.now() + 5_000;
     for (let attempt = 0; attempt < 10; attempt += 1) {
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const running = document.getAnimations();
-      if (running.length === 0) return;
-      await Promise.all(running.map((animation) => animation.finished.catch(() => undefined)));
+      if (running.length === 0) return [];
+      const left = deadline - Date.now();
+      if (left <= 0) break;
+      await Promise.race([
+        Promise.all(running.map((animation) => animation.finished.catch(() => undefined))),
+        new Promise((resolve) => setTimeout(resolve, left)),
+      ]);
     }
+    return document.getAnimations().map((animation) => {
+      const target = (animation.effect as KeyframeEffect | null)?.target;
+      const name = animation instanceof CSSAnimation
+        ? animation.animationName
+        : animation instanceof CSSTransition
+        ? `transition ${animation.transitionProperty}`
+        : animation.id || "script animation";
+      const where = target
+        ? `${target.tagName.toLowerCase()}.${[...target.classList].join(".")}`
+        : "no target";
+      const iterations = animation.effect?.getTiming().iterations;
+      return `${name} on ${where} (iterations ${String(iterations)})`;
+    });
   });
+  expect(stuck, "animations still running when the page should be settled").toEqual([]);
 }
 
 async function audit(page: Page, name: string): Promise<void> {
