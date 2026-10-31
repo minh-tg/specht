@@ -1,5 +1,12 @@
+import { APIError } from "@/api/client";
 import { describe, expect, it } from "vitest";
-import { NOT_A_MEMBER_REASON, waiverAction } from "./waiverRequest";
+import {
+  NOT_A_MEMBER_REASON,
+  reasonLength,
+  waiverAction,
+  waiverRequestFailure,
+  waiverWithdrawFailure,
+} from "./waiverRequest";
 
 const base = {
   permissions: true,
@@ -52,5 +59,66 @@ describe("waiverAction", () => {
       kind: "disabled",
       reason: "The gate is rechecking after your triage.",
     });
+  });
+});
+
+describe("reasonLength", () => {
+  it("counts characters of the trimmed text, as the server does", () => {
+    expect(reasonLength("  abc  ")).toBe(3);
+    // One emoji is two UTF-16 units but one character to the server.
+    expect(reasonLength("\u{1F600}\u{1F600}")).toBe(2);
+  });
+});
+
+describe("waiverRequestFailure", () => {
+  it("names the existing request and keeps the request id", () => {
+    const error = new APIError(409, "waiver_request_exists", "x", undefined, "req-9");
+    const failure = waiverRequestFailure(error);
+    expect(failure.detail).toMatch(/already waiting for a manager/);
+    expect(failure.detail).toMatch(/Your text is kept/);
+    expect(failure.requestId).toBe("req-9");
+  });
+
+  it("shows the server's own words for a validation refusal", () => {
+    const failure = waiverRequestFailure(
+      new APIError(400, "invalid_body", "reason is longer than 1000 characters"),
+    );
+    expect(failure.detail).toBe("Reason is longer than 1000 characters. Your text is kept.");
+    expect(failure.requestId).toBeUndefined();
+  });
+
+  it("maps a 422 and other client errors to the server message", () => {
+    const failure = waiverRequestFailure(new APIError(422, "unprocessable", "Cannot do that."));
+    expect(failure.detail).toBe("Cannot do that. Your text is kept.");
+  });
+
+  it("covers forbidden, rate limit, server error and a lost connection", () => {
+    expect(waiverRequestFailure(new APIError(403, "forbidden", "no")).detail)
+      .toMatch(/Only project members/);
+    expect(waiverRequestFailure(new APIError(429, "rate_limited", "slow", 12)).detail)
+      .toMatch(/Wait 12 seconds/);
+    expect(waiverRequestFailure(new APIError(500, "internal_error", "boom")).detail)
+      .toMatch(/server had a problem/);
+    expect(waiverRequestFailure(new TypeError("Failed to fetch")).detail)
+      .toMatch(/could not be reached/);
+  });
+});
+
+describe("waiverWithdrawFailure", () => {
+  it("says someone decided first on a conflict", () => {
+    const failure = waiverWithdrawFailure(
+      new APIError(409, "waiver_not_pending", "x", undefined, "req-1"),
+    );
+    expect(failure.detail).toMatch(/already decided/);
+    expect(failure.requestId).toBe("req-1");
+  });
+
+  it("covers forbidden, missing and server errors", () => {
+    expect(waiverWithdrawFailure(new APIError(403, "forbidden", "no")).detail)
+      .toMatch(/Only the person who asked/);
+    expect(waiverWithdrawFailure(new APIError(404, "not_found", "no")).detail)
+      .toMatch(/no longer exists/);
+    expect(waiverWithdrawFailure(new APIError(502, "bad", "no")).detail)
+      .toMatch(/server had a problem/);
   });
 });

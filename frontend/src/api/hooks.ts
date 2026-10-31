@@ -954,6 +954,12 @@ export function useRequestWaiver(slug: string) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.waivers() });
       void queryClient.invalidateQueries({ queryKey: queryKeys.projectStats() });
     },
+    // A request that already exists is news to this screen: load it so the page can show it.
+    onError: (error) => {
+      if (error instanceof APIError && error.code === "waiver_request_exists") {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.waivers() });
+      }
+    },
   });
 }
 
@@ -1159,6 +1165,10 @@ export function useWithdrawWaiver(slug: string) {
         { method: "POST" },
       ),
     onSuccess: decided,
+    // Someone decided it first: refresh so the screen shows what happened.
+    onError: (error) => {
+      if (error instanceof APIError && error.code === "waiver_not_pending") decided();
+    },
   });
 }
 
