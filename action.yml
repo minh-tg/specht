@@ -70,7 +70,7 @@ inputs:
     required: false
     default: ""
   base-ref:
-    description: Baseline git ref for the change scope. Defaults to GITHUB_BASE_REF.
+    description: Baseline git ref for the change scope. Defaults to GITHUB_BASE_REF on pull requests and to the repository default branch on pushes to other branches.
     required: false
     default: ""
   scan-severities:

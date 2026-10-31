@@ -135,6 +135,13 @@ releases.
 
 ### Changed
 
+- The adapter sends the repository default branch as `base_revision` on push builds of a
+  branch other than the default branch, so the server compares the report with the newest
+  full report on the default branch, as it already does for pull and merge requests. GitHub
+  takes the default branch from the event payload and GitLab from `CI_DEFAULT_BRANCH`. Tag
+  builds and builds of the default branch are unchanged, and `-base-ref` or a pull or merge
+  request base still wins. The gate scope does not change: `-introduced-only` stays off by
+  default on these builds.
 - Stored raw evidence for Trivy, Semgrep and Checkov reports is redacted before it is stored.
   Secret matches and the source around them are removed at any depth, and a payload that cannot
   be redacted is stored as `{"redaction":"failed"}` while its findings still ingest. A payload
