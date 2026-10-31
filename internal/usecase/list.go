@@ -146,6 +146,13 @@ type SuggestionResponse struct {
 	Detail     string `json:"detail,omitempty"`
 	Confidence string `json:"confidence"`
 	Source     string `json:"source,omitempty"`
+	// Fallback is true when no real fix exists and the suggestion is the
+	// generic kind-level guidance.
+	Fallback         bool   `json:"fallback"`
+	Package          string `json:"package,omitempty"`
+	Ecosystem        string `json:"ecosystem,omitempty"`
+	InstalledVersion string `json:"installed_version,omitempty"`
+	FixedVersion     string `json:"fixed_version,omitempty"`
 }
 
 // suggestionFromEvidence builds the remediation suggestion from persisted
@@ -164,6 +171,8 @@ func suggestionFromEvidence(f port.Finding, dims []port.FindingDimension, tool s
 	return &SuggestionResponse{
 		Action: s.Action, Target: s.Target, Detail: s.Detail,
 		Confidence: string(s.Confidence), Source: s.Source,
+		Fallback: s.Fallback, Package: s.Package, Ecosystem: s.Ecosystem,
+		InstalledVersion: s.InstalledVersion, FixedVersion: s.FixedVersion,
 	}
 }
 

@@ -259,6 +259,14 @@ export interface FindingSuggestion {
   detail?: string;
   confidence: "low" | "medium" | "high";
   source?: string;
+  /** True when no real fix exists and this is the generic kind-level guidance. */
+  fallback: boolean;
+  /** sca only, when the scanner reported them. */
+  package?: string;
+  ecosystem?: string;
+  installed_version?: string;
+  /** Scanner-reported fixed version; absent when none is known. */
+  fixed_version?: string;
 }
 
 export interface PolicyEffective {

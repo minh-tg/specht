@@ -52,12 +52,33 @@ type Suggestion struct {
 	Detail     string     `json:"detail,omitempty"`
 	Confidence Confidence `json:"confidence"`
 	Source     string     `json:"source,omitempty"`
+	// Fallback is true when the suggestion is the kind-level label from
+	// fallback(): the source supplied nothing, so there is no real fix.
+	Fallback bool `json:"fallback"`
+	// Package, Ecosystem, InstalledVersion and FixedVersion are copied from
+	// the finding's dimensions for sca findings, each only when the
+	// scanner reported it. FixedVersion is never derived or guessed.
+	Package          string `json:"package,omitempty"`
+	Ecosystem        string `json:"ecosystem,omitempty"`
+	InstalledVersion string `json:"installed_version,omitempty"`
+	FixedVersion     string `json:"fixed_version,omitempty"`
 }
 
 // Suggest builds the suggestion for one finding. It always returns exactly
 // one suggestion: source-backed when evidence allows, labeled fallback
 // otherwise.
 func Suggest(in Input) Suggestion {
+	s := suggest(in)
+	if in.FindingKind == "sca" {
+		s.Package = in.Dims["package_name"]
+		s.Ecosystem = in.Dims["ecosystem"]
+		s.InstalledVersion = in.Dims["installed_version"]
+		s.FixedVersion = in.Dims["fixed_version"]
+	}
+	return s
+}
+
+func suggest(in Input) Suggestion {
 	switch in.FindingKind {
 	case "sca":
 		return suggestSCA(in)
@@ -157,6 +178,7 @@ func fallback(in Input) Suggestion {
 		FindingID: in.FindingID, Action: "review",
 		Target: targetOf(in), Detail: detail,
 		Confidence: ConfidenceLow, Source: in.Tool,
+		Fallback: true,
 	}
 }
 

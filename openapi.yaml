@@ -4269,13 +4269,41 @@ components:
 
     Suggestion:
       type: object
-      required: [action, confidence]
+      required: [action, confidence, fallback]
       properties:
         action: { type: string }
         target: { type: string }
         detail: { type: string }
         confidence: { type: string, enum: [low, medium, high] }
         source: { type: string }
+        fallback:
+          type: boolean
+          description: >-
+            True when the scanner supplied no usable fix and the suggestion is the generic
+            kind-level guidance (action `review`, confidence `low`). There is no real fix to
+            apply or group by. False for every suggestion built from scanner data, including
+            medium-confidence guidance without an exact version.
+        package:
+          type: string
+          description: >-
+            Affected package name. Present only on `sca` findings whose scanner reported
+            one, including when `fallback` is true. Absent for every other finding kind.
+        ecosystem:
+          type: string
+          description: >-
+            Package ecosystem as the scanner reported it (for example `npm` or `go`). Present
+            only on `sca` findings whose scanner reported one. Absent otherwise.
+        installed_version:
+          type: string
+          description: >-
+            Version currently installed. Present only on `sca` findings whose scanner
+            reported one. Absent otherwise.
+        fixed_version:
+          type: string
+          description: >-
+            Lowest version the scanner reports as fixed, copied unchanged and never derived.
+            Present only on `sca` findings whose scanner reported one. Absent when no fixed
+            version is known, so a client must not offer an upgrade command without it.
 
     Intel:
       type: object

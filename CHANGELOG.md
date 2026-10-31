@@ -10,6 +10,10 @@ releases.
 
 ### Added
 
+- The fix suggestion on the finding detail response carries `fallback`, which is true
+  when the scanner gave no usable fix, and for `sca` findings the `package`, `ecosystem`,
+  `installed_version` and `fixed_version` the scanner reported. `fixed_version` is
+  omitted when it is unknown.
 - `FINGERPRINT_KEY` keeps the key that Gitleaks secret identities are hashed with
   out of the database. Unset, the key is still made on first use and stored in
   `instance_secrets`. `deploy/README.md` explains what each choice protects and how
