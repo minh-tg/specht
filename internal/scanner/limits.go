@@ -47,6 +47,30 @@ const (
 	// deeper is refused before a parser runs. The deepest real scanner fixture
 	// under e2e/testdata or internal/parser/testdata nests 14 levels.
 	MaxNestingDepth = 64
+
+	// The three costs below estimate what one JSON value of each kind holds in
+	// memory while the ingest pipeline runs: the typed structs and maps the
+	// parsers decode, the format check's copy and the redaction copy, all alive
+	// together. They come from measuring the worst shapes the parsers accept
+	// (single-key objects nested 58 levels, lists of one-key objects, alternating
+	// object and array levels), which cost 570 to 710 bytes per object and about
+	// 110 per array. Each is rounded up. A string's own bytes are not in these
+	// costs: the body holds them.
+	costPerObject = 640
+	costPerArray  = 128
+	costPerScalar = 80
+
+	// MaxCostPerByte is how many bytes of estimated memory a document may hold
+	// per byte of its own length. The ingest admission charges 64 bytes per byte
+	// of the body, so 40 leaves over a third of the charge for what the estimate
+	// misses. Density, not depth, drives the peak: a body of one-key objects
+	// costs a Go map for every 6 bytes, and the depth cap alone let such shapes
+	// reach 99x. The captured reports estimate at a fraction of this.
+	MaxCostPerByte = 40
+
+	// costSlack lets a tiny document pass whatever its shape, because its
+	// absolute cost is small next to the memory one ingest is charged at least.
+	costSlack = 256 << 10
 )
 
 // ErrTooManyFindings is returned when a report would produce more findings
@@ -60,6 +84,9 @@ var ErrTooManyFindings = errors.New("report has too many findings")
 type TooManyFindingsError struct {
 	Limit int
 	Depth bool
+	// Dense marks a refusal for packing more values into the body than
+	// MaxCostPerByte allows, whatever their number.
+	Dense bool
 }
 
 func (e *TooManyFindingsError) Error() string {
@@ -110,6 +137,31 @@ func MaxFindings(ctx context.Context) int {
 // counts, with the same TooManyFindingsError. Only the containers the scan opens
 // count toward the depth, so brackets inside strings do not.
 func CheckDocument(data []byte, limit int, arrayKeys ...string) error {
+	_, err := checkDocument(data, limit, false, arrayKeys)
+	return err
+}
+
+// CheckIngestDocument is CheckDocument with one more refusal, for the body of an
+// upload: the document is also refused when its values would hold more than
+// MaxCostPerByte bytes of memory per byte of the document (see costPerObject).
+// The counts bound how many values a document holds; this bounds how small each
+// may be, so the memory the ingest charges for the body covers what decoding it
+// takes. The refusal is a TooManyFindingsError with Dense set.
+func CheckIngestDocument(data []byte, limit int) error {
+	_, err := checkDocument(data, limit, true, nil)
+	return err
+}
+
+// EstimatedDecodeBytes is the memory the ingest cost model puts on data: what
+// CheckIngestDocument compares with MaxCostPerByte times the length. It is the
+// figure up to the point a count or the depth cap stops the scan.
+func EstimatedDecodeBytes(data []byte) int {
+	cost, _ := checkDocument(data, 0, false, nil)
+	return cost
+}
+
+// checkDocument scans data and returns the estimated cost of the values it met.
+func checkDocument(data []byte, limit int, density bool, arrayKeys []string) (int, error) {
 	if limit <= 0 {
 		limit = DefaultMaxFindings
 	}
@@ -117,6 +169,8 @@ func CheckDocument(data []byte, limit int, arrayKeys ...string) error {
 		objectCeiling:  limit * ObjectsPerFinding,
 		elementCeiling: limit * ElementsPerFinding,
 		valueCeiling:   limit * ValuesPerFinding,
+		density:        density,
+		costCeiling:    len(data)*MaxCostPerByte + costSlack,
 		track:          len(arrayKeys) > 0,
 		rootCounts:     slices.Contains(arrayKeys, ""),
 		limit:          limit,
@@ -138,11 +192,11 @@ func CheckDocument(data []byte, limit int, arrayKeys ...string) error {
 					s.keyCounts = s.matchesKey(data[i+1 : end])
 				}
 			} else {
-				err = s.value(false)
+				err = s.value(kindScalar)
 			}
 			i = end
 		case '{':
-			if err = s.value(true); err == nil {
+			if err = s.value(kindObject); err == nil {
 				s.push(0)
 			}
 		case '[':
@@ -150,7 +204,7 @@ func CheckDocument(data []byte, limit int, arrayKeys ...string) error {
 			if s.arrayCounts() {
 				frame |= frameCounts
 			}
-			if err = s.value(false); err == nil {
+			if err = s.value(kindArray); err == nil {
 				s.push(frame)
 			}
 		case '}', ']':
@@ -164,17 +218,17 @@ func CheckDocument(data []byte, limit int, arrayKeys ...string) error {
 			for end+1 < len(data) && !isDelimiter(data[end+1]) {
 				end++
 			}
-			err = s.value(false)
+			err = s.value(kindScalar)
 			i = end
 		}
 		if err != nil {
-			return err
+			return s.cost, err
 		}
 		if len(s.stack) > MaxNestingDepth {
-			return &TooManyFindingsError{Limit: MaxNestingDepth, Depth: true}
+			return s.cost, &TooManyFindingsError{Limit: MaxNestingDepth, Depth: true}
 		}
 	}
-	return nil
+	return s.cost, nil
 }
 
 // maxKeyLen is the longest decoded array key that can match. The parsers' array
@@ -192,7 +246,8 @@ type docScan struct {
 	limit                                       int
 	objectCeiling, elementCeiling, valueCeiling int
 	objects, elements, values                   int
-	track, rootCounts                           bool
+	costCeiling, cost                           int
+	density, track, rootCounts                  bool
 	keys                                        [][]byte
 	stack                                       []byte // one flag byte per open container
 	keyCounts                                   bool   // the key just read names a counted array
@@ -224,15 +279,33 @@ func (s *docScan) arrayCounts() bool {
 	return s.keyCounts
 }
 
+// valueKind is the kind of a JSON value the scan met, which sets its cost.
+type valueKind int
+
+const (
+	kindScalar valueKind = iota // a string, number, true, false or null
+	kindObject
+	kindArray
+)
+
 // value records one JSON value starting here and checks the ceilings.
-func (s *docScan) value(isObject bool) error {
+func (s *docScan) value(kind valueKind) error {
 	if s.values++; s.values > s.valueCeiling {
 		return TooManyFindings(s.limit)
 	}
-	if isObject {
+	switch kind {
+	case kindObject:
 		if s.objects++; s.objects > s.objectCeiling {
 			return TooManyFindings(s.limit)
 		}
+		s.cost += costPerObject
+	case kindArray:
+		s.cost += costPerArray
+	default:
+		s.cost += costPerScalar
+	}
+	if s.density && s.cost > s.costCeiling {
+		return &TooManyFindingsError{Limit: s.limit, Dense: true}
 	}
 	if s.track && s.elementCounts() {
 		if s.elements++; s.elements > s.elementCeiling {

@@ -56,6 +56,9 @@ func ingestFailure(scannerName string, err error) (code, message string) {
 	case errors.As(err, &unrecognized):
 		return "unrecognized_format", unrecognizedMessage(unrecognized)
 	case errors.As(err, &tooMany):
+		if tooMany.Dense {
+			return "too_many_findings", fmt.Sprintf("The %s report packs too many small JSON values into its size for this instance to read. Split it into smaller reports and ingest each.", scannerName)
+		}
 		if tooMany.Depth {
 			return "too_many_findings", fmt.Sprintf("The %s report nests deeper than %d levels, the most this instance accepts. Split it into smaller reports and ingest each.", scannerName, tooMany.Limit)
 		}
