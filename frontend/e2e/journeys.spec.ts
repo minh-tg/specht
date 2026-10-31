@@ -394,7 +394,8 @@ test("an admin creates a project and follows the guided CI setup", async ({ page
   const githubSnippet = page.locator("pre").first();
   await expect(githubSnippet).toContainText("uses: minh-tg/specht@vX.Y.Z");
   await expect(githubSnippet).not.toContainText("go run");
-  await expect(githubSnippet).not.toContainText("jq");
+  // Whole word only: the random project slug in the snippet can contain the letters "jq".
+  await expect(githubSnippet).not.toContainText(/\bjq\b/);
   await expect(githubSnippet).toContainText(`project: "${slug}"`);
   // The dev build has no release tag to pin, so the page says what to replace.
   await expect(page.getByText(/development build/)).toBeVisible();
