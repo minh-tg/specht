@@ -2,10 +2,11 @@ import { useFinding } from "@/api/hooks";
 import { INLINE_LINK } from "@/components/inlineLink";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { changeViewState, fromChangePath } from "@/lib/entryMode";
 import { fixAction, locationLine } from "@/pages/change-view/resolve";
 import type { Finding } from "@/types/api";
 import { type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 const ROW_CLASS = "border-b px-3 py-3 last:border-b-0";
 
@@ -34,6 +35,7 @@ function Row({ children, busy }: { children: ReactNode; busy?: boolean; }) {
 export function BlockerRowView(
   { slug, findingId, finding, isLoading, isError, onRetry }: BlockerRowProps,
 ) {
+  const routerLocation = useLocation();
   if (isLoading) {
     return (
       <Row busy>
@@ -57,7 +59,9 @@ export function BlockerRowView(
     );
   }
 
-  const target = `/${slug}/findings/${findingId}`;
+  // The finding page reads the state to offer a way back to this exact change view.
+  const target = fromChangePath(`/${slug}/findings/${findingId}`);
+  const targetState = changeViewState(routerLocation);
   const location = locationLine(finding.location);
   const rawAction = fixAction(finding);
   // Scanner text is shown as written, except that a suggestion such as "review src/db.ts" starts
@@ -68,10 +72,10 @@ export function BlockerRowView(
     <Row>
       <div className="flex flex-wrap items-center gap-2">
         <SeverityBadge severity={finding.current_severity} />
-        <Link to={target} className="font-medium hover:underline">
+        <Link to={target} state={targetState} className="font-medium hover:underline">
           {finding.current_title}
         </Link>
-        <Link to={target} className={`${INLINE_LINK} ml-auto text-body`}>
+        <Link to={target} state={targetState} className={`${INLINE_LINK} ml-auto text-body`}>
           Decide
         </Link>
       </div>

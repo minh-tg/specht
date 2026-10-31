@@ -65,9 +65,9 @@ describe("BlockerRowView", () => {
     renderRow({ finding: finding() });
 
     expect(screen.getByRole("link", { name: "Lodash prototype pollution" }))
-      .toHaveAttribute("href", "/acme/findings/f1");
+      .toHaveAttribute("href", "/acme/findings/f1?from=change");
     expect(screen.getByRole("link", { name: "Decide" }))
-      .toHaveAttribute("href", "/acme/findings/f1");
+      .toHaveAttribute("href", "/acme/findings/f1?from=change");
     expect(screen.getByText("High")).toBeInTheDocument();
   });
 
