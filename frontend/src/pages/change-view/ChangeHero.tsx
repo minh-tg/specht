@@ -28,6 +28,8 @@ export interface ChangeHeroProps {
   readonly projectWide?: boolean;
   /** Under the verdict sentence: the strip that says the page is watching for the scan. */
   readonly watch?: ReactNode;
+  /** Between the verdict and the facts: why the verdict may not be current. */
+  readonly notice?: ReactNode;
 }
 
 /** "high" as "High", for a sentence that names the severity floor. */
@@ -106,7 +108,7 @@ function stampFor(
  * the page rule. The stamp is the only solid block on the page, so the verdict is the first thing seen.
  */
 export function ChangeHero(
-  { commit, report, state, blockers, existing, waived, policy, projectWide = false, watch }:
+  { commit, report, state, blockers, existing, waived, policy, projectWide = false, watch, notice }:
     ChangeHeroProps,
 ) {
   const stamp = stampFor(state);
@@ -135,6 +137,7 @@ export function ChangeHero(
           {watch}
         </div>
       </div>
+      {notice}
       <p className="text-muted-foreground mt-4 flex flex-wrap items-center gap-x-0 gap-y-1 text-meta tabular-nums max-sm:grid max-sm:gap-0.5">
         {policy && (
           <FactItem>

@@ -432,9 +432,6 @@ function newestOf(reports: Report[] | undefined): Report | undefined {
   );
 }
 
-/** How often a page waiting for its own scan to finish asks again. */
-export const PROCESSING_POLL_MS = 5_000;
-
 /** Resolves exact scan evidence without a capped walk through project history. */
 export function useChangeReports(projectSlug: string, commit: string, reportId: string | null) {
   return useQuery({
@@ -462,6 +459,9 @@ export function useChangeReports(projectSlug: string, commit: string, reportId: 
     refetchIntervalInBackground: false,
   });
 }
+
+/** How often a page waiting for its own scan to finish asks again. */
+export const PROCESSING_POLL_MS = 5_000;
 
 export function useGateStatus(projectSlug: string, severity?: string, poll?: PollOptions) {
   const suffix = severity ? `?severity=${encodeURIComponent(severity)}` : "";
@@ -957,36 +957,52 @@ export function useRequestWaiver(slug: string) {
   });
 }
 
+/** Longest wait between two checks for the next scan. */
+export const SCAN_POLL_CAP_MS = 30_000;
+
+/** How long watching finds nothing before the page says the scan seems stalled. */
+export const SCAN_STALL_MS = 600_000;
+
 /**
- * How often to ask whether the next scan has landed: every 4 s for the first minute, then every 10 s,
- * and not at all after ten minutes, when the page says to check the CI job instead. A scan takes
- * minutes, so a slow poll costs the reader nothing and the server one indexed read per visitor.
+ * How often to ask whether the next scan has landed: every 4 s for the first minute, every 10 s
+ * until the stall notice, then every 30 s for as long as the page stays open and visible. A scan
+ * takes minutes, so a slow poll costs the reader nothing and the server one indexed read per visitor.
  */
-export function scanPollInterval(elapsedMs: number): number | false {
+export function scanPollInterval(elapsedMs: number): number {
   if (elapsedMs < 60_000) return 4_000;
-  if (elapsedMs < 600_000) return 10_000;
-  return false;
+  if (elapsedMs < SCAN_STALL_MS) return 10_000;
+  return SCAN_POLL_CAP_MS;
 }
 
 /**
- * Watches for the newest report on a branch while the page waits for a scan. It polls only while
- * `enabled`, only while the tab is visible, and gives up after ten minutes (`stalled`).
+ * Watches for the newest report on a branch while the page shows a report from it. It polls only
+ * while `enabled` and the tab is visible, and never gives up: `stalled` turns true after ten
+ * minutes without a newer report, and the checks go on at the capped interval.
+ *
+ * `newer` is a report that appeared after the first answer and was created after `current`, the
+ * report on screen. A newer report that was already there when watching began means the page shows
+ * an old change: `superseded` is then true and the checks stop, since waiting for a scan that
+ * already happened would be wrong.
  */
 export function useScanSignal(
   slug: string,
   options: {
     branch: string | null | undefined;
     enabled: boolean;
-    /** Bump to start the ten minutes again and ask right away, after the page gave up. */
-    attempt?: number;
+    /** The report on screen. A new one restarts the ten minutes. */
+    current?: { id: string; createdAt: string; };
   },
 ) {
-  const { branch, enabled, attempt = 0 } = options;
+  const { branch, enabled, current } = options;
   const startedAt = useRef<number | null>(null);
-  // One key per run of waiting; the page counts as stalled when the run that is current gave up. A
-  // new run (another attempt, or waiting started again) has a new key, so no reset is needed.
-  const runKey = enabled ? `run-${attempt}` : "";
+  // One key per run of watching; the page counts as stalled when the run that is current gave up. A
+  // new run (another report on screen, or watching started again) has a new key, so no reset is
+  // needed.
+  const runKey = enabled ? `${slug}|${branch ?? ""}|${current?.id ?? ""}` : "";
   const [stalledRun, setStalledRun] = useState("");
+  // The newest report the first answer of a run named. Kept as state, set while rendering, so the
+  // comparison below never reads a ref.
+  const [first, setFirst] = useState<{ key: string; report: Report | null; } | null>(null);
 
   useEffect(() => {
     if (!enabled) {
@@ -994,10 +1010,14 @@ export function useScanSignal(
       return;
     }
     startedAt.current = Date.now();
-    const timer = setTimeout(() => setStalledRun(runKey), 600_000);
+    const timer = setTimeout(() => setStalledRun(runKey), SCAN_STALL_MS);
     return () => clearTimeout(timer);
   }, [enabled, runKey]);
   const stalled = enabled && stalledRun === runKey;
+
+  const baseline = first?.key === runKey ? first.report : undefined;
+  const superseded = enabled && !!baseline && !!current && baseline.id !== current.id
+    && baseline.created_at > current.createdAt;
 
   const query = useQuery({
     queryKey: queryKeys.scanSignal(slug, branch ?? ""),
@@ -1009,16 +1029,33 @@ export function useScanSignal(
       );
       return rows[0] ?? null;
     },
-    enabled: enabled && !!slug,
-    refetchInterval: () =>
-      startedAt.current === null ? false : scanPollInterval(Date.now() - startedAt.current),
+    enabled: enabled && !!slug && !superseded,
+    // The first answer is the baseline for "newer", so a cached one from an earlier visit would
+    // read as a new report.
+    gcTime: 0,
+    refetchInterval: superseded
+      ? false
+      : () => startedAt.current === null ? false : scanPollInterval(Date.now() - startedAt.current),
     refetchIntervalInBackground: false,
   });
-  const { refetch } = query;
-  useEffect(() => {
-    if (enabled && attempt > 0) void refetch();
-  }, [enabled, attempt, refetch]);
-  return { newest: query.data ?? null, stalled, isError: query.isError };
+  if (enabled && query.isSuccess && first?.key !== runKey) {
+    setFirst({ key: runKey, report: query.data });
+  }
+
+  const newest = query.data ?? null;
+  const newer = baseline !== undefined && newest && newest.id !== baseline?.id
+      && newest.id !== current?.id && (!current || newest.created_at > current.createdAt)
+    ? newest
+    : null;
+  return {
+    newer,
+    stalled,
+    superseded,
+    watching: enabled && !superseded,
+    isError: query.isError,
+    /** When the last check succeeded, in epoch milliseconds; 0 before the first. */
+    dataUpdatedAt: query.dataUpdatedAt,
+  };
 }
 
 /** The policy that applies to a project, with the layer that supplied each value. */

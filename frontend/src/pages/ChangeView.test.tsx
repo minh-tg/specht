@@ -1,4 +1,4 @@
-import { formatDateTime } from "@/lib/format";
+import { formatClockTime, formatDateTime } from "@/lib/format";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
@@ -750,36 +750,79 @@ describe("ChangeView waivers", () => {
   });
 });
 
-describe("ChangeView waiting for the next scan", () => {
-  it("starts waiting when the reader asks for a new report", async () => {
+function setOnLine(value: boolean) {
+  vi.spyOn(navigator, "onLine", "get").mockReturnValue(value);
+  act(() => {
+    window.dispatchEvent(new Event(value ? "online" : "offline"));
+  });
+}
+
+function signalCalls() {
+  return vi.mocked(globalThis.fetch).mock.calls.filter(([url]) =>
+    String(url).startsWith("/api/v1/projects/acme/reports?limit=1")
+  ).length;
+}
+
+describe("ChangeView watching for the next scan", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("watches without being asked and has no button to start it", async () => {
     renderPage();
     await screen.findByRole("list", { name: "Blocking findings" });
 
-    await userEvent.setup().click(screen.getByRole("button", { name: "Wait for a new report" }));
-
-    expect(await screen.findByText("Waiting for the next scan")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Wait for a new report" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Watching for the next scan of main")).toBeInTheDocument();
+    await waitFor(() => expect(checkedLine()).toBeInTheDocument());
     expect(screen.getByText("BLOCKED")).toBeInTheDocument();
   });
 
-  it("starts waiting by itself once every blocker is handled", async () => {
+  it("announces the watching once, in a single polite status", async () => {
+    renderPage();
+    await screen.findByText("Watching for the next scan of main");
+
+    const statuses = screen.getAllByRole("status").filter((node) =>
+      node.textContent?.includes("Watching")
+    );
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0]).toHaveTextContent(/^Watching for the next scan of main$/);
+  });
+
+  it("keeps Copy all fixes", async () => {
     renderPage();
     await loadedLedger();
-    const user = userEvent.setup();
 
-    await user.click(screen.getByRole("checkbox", { name: "I've done this: Finding f1" }));
-    expect(screen.queryByText("Waiting for the next scan")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("checkbox", { name: "Finding f2" }));
+    expect(screen.getByRole("button", { name: "Copy all fixes" })).toBeInTheDocument();
+  });
 
-    expect(await screen.findByText("Waiting for the next scan")).toBeInTheDocument();
+  it("watches a passing change too, without showing a strip", async () => {
+    changeGate = gate({ threshold_breached: false, blocked_by: [] });
+    renderPage();
+    await screen.findByText("PASSING");
+
+    await waitFor(() => expect(signalCalls()).toBeGreaterThan(0));
+    expect(screen.queryByText(/Watching for the next scan/)).not.toBeInTheDocument();
+  });
+
+  it("does not watch a report with no branch", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    reports = [report({ branch: null })];
+    renderPage();
+    await screen.findByRole("list", { name: "Blocking findings" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+
+    expect(signalCalls()).toBe(0);
+    expect(screen.queryByText(/Watching for the next scan/)).not.toBeInTheDocument();
   });
 
   it("shows the scanning stamp while a newer scan runs, then moves to the new change", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     renderPage();
     await screen.findByRole("list", { name: "Blocking findings" });
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 
-    await user.click(screen.getByRole("button", { name: "Wait for a new report" }));
     signalReports = [
       report({
         id: "r2",
@@ -825,9 +868,7 @@ describe("ChangeView waiting for the next scan", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     renderPage();
     await screen.findByRole("list", { name: "Blocking findings" });
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 
-    await user.click(screen.getByRole("button", { name: "Wait for a new report" }));
     signalReports = [
       report({ id: "r0", commit_sha: NEWER_SHA, created_at: "2024-12-01T00:00:00Z" }),
     ];
@@ -839,23 +880,88 @@ describe("ChangeView waiting for the next scan", () => {
     expect(screen.getByText("BLOCKED")).toBeInTheDocument();
   });
 
-  it("gives up after ten minutes and says to check the CI job", async () => {
+  it("stays on an old change when the branch already has a newer report", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    signalReports = [
+      report({ id: "r2", commit_sha: NEWER_SHA, created_at: "2025-01-02T00:00:00Z" }),
+    ];
+    renderPage();
+    await screen.findByRole("list", { name: "Blocking findings" });
+    await waitFor(() => expect(signalCalls()).toBe(1));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+
+    expect(screen.getByTestId("where")).toHaveTextContent(FULL_SHA);
+    expect(screen.queryByText(/Watching for the next scan/)).not.toBeInTheDocument();
+    expect(signalCalls()).toBe(1);
+  });
+
+  it("says no new report arrived after ten minutes, and keeps watching", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     renderPage();
     await screen.findByRole("list", { name: "Blocking findings" });
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-
-    await user.click(screen.getByRole("button", { name: "Wait for a new report" }));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600_500);
     });
 
     expect(
-      await screen.findByText(
-        "Nothing yet after ten minutes. Check your CI job, watcher or report upload.",
+      await screen.findByText(`No new report since ${formatClockTime("2025-01-01T00:00:00Z")}`),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Check that the CI job ran on your last push and that its scan step uploads to Specht\. Still watching; checked/,
       ),
-    )
-      .toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Check again" })).toBeInTheDocument();
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Check again" })).not.toBeInTheDocument();
+
+    const before = signalCalls();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(31_000);
+    });
+    expect(signalCalls()).toBeGreaterThan(before);
+  });
+
+  it("does not announce the strip a second time once the stalled notice speaks", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderPage();
+    await screen.findByRole("list", { name: "Blocking findings" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600_500);
+    });
+    await screen.findByText(/No new report since/);
+
+    const strip = screen.getByText("Watching for the next scan of main");
+    expect(strip).not.toHaveAttribute("role", "status");
+  });
+
+  it("says it is offline while the connection is gone, and clears when it is back", async () => {
+    renderPage();
+    await screen.findByRole("list", { name: "Blocking findings" });
+
+    setOnLine(false);
+
+    expect(
+      await screen.findByText(
+        /^You are offline\. This is the verdict from \d{2}:\d{2}; it updates when the connection is back\.$/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Paused while you are offline")).toBeInTheDocument();
+    expect(screen.queryByText("Watching for the next scan of main")).not.toBeInTheDocument();
+
+    setOnLine(true);
+
+    await waitFor(() => expect(screen.queryByText(/You are offline/)).not.toBeInTheDocument());
+    expect(screen.getByText("Watching for the next scan of main")).toBeInTheDocument();
+  });
+
+  it("says offline on a passing change as well", async () => {
+    changeGate = gate({ threshold_breached: false, blocked_by: [] });
+    renderPage();
+    await screen.findByText("PASSING");
+
+    setOnLine(false);
+
+    expect(await screen.findByText(/^You are offline\./)).toBeInTheDocument();
   });
 });

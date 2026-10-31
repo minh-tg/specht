@@ -5,8 +5,9 @@ import { BlockerEntry } from "@/pages/change-view/BlockerEntry";
 import { ChangeAside } from "@/pages/change-view/ChangeAside";
 import { fixesText } from "@/pages/change-view/resolve";
 import { WaiverRequestDialog } from "@/pages/change-view/WaiverRequestDialog";
+import type { WatchState } from "@/pages/change-view/WatchStrip";
 import { useQueries } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 /** Entries fetched and rendered before the "Show all" control reveals the rest. */
 export const MAX_BLOCKER_ROWS = 20;
@@ -19,10 +20,10 @@ export interface BlockerSectionProps {
   readonly floor?: string;
   readonly canRequestWaiver: boolean;
   readonly projectWide?: boolean;
-  readonly waiting: boolean;
-  readonly stalled: boolean;
-  readonly onStartWaiting: () => void;
-  readonly onCheckAgain: () => void;
+  /** The branch the page watches for the next scan. */
+  readonly branch?: string | null;
+  /** The page's watching, or absent when it is not watching. */
+  readonly watch?: WatchState;
 }
 
 /**
@@ -37,10 +38,8 @@ export function BlockerSection(
     floor,
     canRequestWaiver,
     projectWide = false,
-    waiting,
-    stalled,
-    onStartWaiting,
-    onCheckAgain,
+    branch,
+    watch,
   }: BlockerSectionProps,
 ) {
   const [showAll, setShowAll] = useState(false);
@@ -67,12 +66,6 @@ export function BlockerSection(
     else next.delete(id);
     return next;
   }
-
-  const allHandled = ids.length > 0 && ids.every((id) => handled.has(id));
-  useEffect(() => {
-    // Handling the last blocker means a push is next, so start listening for the scan.
-    if (allHandled) onStartWaiting();
-  }, [allHandled, onStartWaiting]);
 
   const items = shown.map((id, index) => ({
     id,
@@ -135,10 +128,8 @@ export function BlockerSection(
           items={items}
           onHandledChange={(id, next) => setHandled((set) => toggle(set, id, next))}
           fixesText={allFixes}
-          waiting={waiting}
-          stalled={stalled}
-          onStartWaiting={onStartWaiting}
-          onCheckAgain={onCheckAgain}
+          watch={watch}
+          branch={branch}
         />
       </div>
       {dialog && (

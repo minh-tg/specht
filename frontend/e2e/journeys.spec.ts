@@ -593,6 +593,7 @@ test("a CI link opens the change view with only what the change introduced", asy
   await ingestFixture(request, token, slug, FIXTURE_HIGH_NEW, {
     commit_sha: CHANGE_SHA,
     base_revision: BASE_SHA,
+    branch: "feature/e2e-change",
     gate_introduced_only: true,
   });
   await uiLogin(page);
@@ -615,7 +616,8 @@ test("a CI link opens the change view with only what the change introduced", asy
   await introduced.getByRole("checkbox", { name: `I've done this: ${NEW_TITLE}` }).check();
   await expect(page.getByText("1 of 1 handled")).toBeVisible();
   await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
-  await expect(page.getByText("Waiting for the next scan")).toBeVisible();
+  // The page watches for the next scan on its own; ticking a fix does not start or stop it.
+  await expect(page.getByText("Watching for the next scan of feature/e2e-change")).toBeVisible();
   await introduced.getByRole("checkbox", { name: `I've done this: ${NEW_TITLE}` }).uncheck();
 
   // Deciding is one click away.
