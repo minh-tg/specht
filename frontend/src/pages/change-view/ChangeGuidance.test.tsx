@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ChangeAside } from "./ChangeAside";
 import { ChangeHero } from "./ChangeHero";
@@ -58,5 +59,37 @@ describe("report-source guidance", () => {
     expect(screen.getByText("Check your scanner or CI job, then send a fresh report."))
       .toBeInTheDocument();
     expect(screen.queryByText("PASSING")).not.toBeInTheDocument();
+  });
+});
+
+describe("Copy all fixes", () => {
+  function renderAside(fixesText: string) {
+    render(
+      <ChangeAside
+        items={[{ id: "f1", title: "Lodash prototype pollution", handled: false }]}
+        onHandledChange={vi.fn()}
+        fixesText={fixesText}
+        waiting={false}
+        stalled={false}
+        onStartWaiting={vi.fn()}
+        onCheckAgain={vi.fn()}
+      />,
+    );
+  }
+
+  it("is absent when no blocker has a real fix", () => {
+    renderAside("");
+
+    expect(screen.queryByRole("button", { name: "Copy all fixes" })).not.toBeInTheDocument();
+  });
+
+  it("copies exactly the text it is given", async () => {
+    const user = userEvent.setup();
+    const text = "1. Lodash prototype pollution: Upgrade lodash";
+    renderAside(text);
+
+    await user.click(screen.getByRole("button", { name: "Copy all fixes" }));
+
+    expect(await navigator.clipboard.readText()).toBe(text);
   });
 });

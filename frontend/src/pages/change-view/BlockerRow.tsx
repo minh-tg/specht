@@ -84,8 +84,9 @@ export function BlockerRowView(
           ? <p className="text-body font-semibold">{action}</p>
           : (
             <p className="text-body">
-              <span className="font-semibold">No automated fix is known.</span>{" "}
-              Open it to decide what to do.
+              <span className="font-semibold">No known fix.</span> {location
+                ? "Start at the location above, or open the finding to decide."
+                : "Open the finding to decide what to do."}
             </p>
           )}
       </div>

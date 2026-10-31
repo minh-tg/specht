@@ -145,7 +145,15 @@ function LoadedEntry(
             ? <p className="mt-0.5 font-mono text-code [overflow-wrap:anywhere]">{fix}</p>
             : (
               <p className="mt-0.5 text-body">
-                <strong>No automated fix is known.</strong> Open it to decide what to do.
+                <strong>No known fix.</strong> {where
+                  ? (
+                    <>
+                      Start at{" "}
+                      <span className="font-mono text-code [overflow-wrap:anywhere]">{where}</span>,
+                      or open the full finding to decide.
+                    </>
+                  )
+                  : "Open the full finding to decide what to do."}
               </p>
             )}
         </div>

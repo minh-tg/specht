@@ -1,9 +1,11 @@
-import type { Report } from "@/types/api";
+import type { Finding, Report } from "@/types/api";
 import { describe, expect, it } from "vitest";
 import {
   existingBlockers,
   fixAction,
+  fixesText,
   floorSourceLabel,
+  isRealFix,
   locationLine,
   resolveReport,
   shortCommit,
@@ -157,9 +159,80 @@ describe("fixAction", () => {
     ).toBe("Upgrade lodash@4.17.21");
   });
 
+  it("treats the server's generic review suggestion as no fix", () => {
+    expect(
+      fixAction({
+        suggestion: {
+          action: "review",
+          target: "src/db.ts",
+          detail: "No fix description reported",
+          confidence: "low",
+        },
+      }),
+    ).toBeNull();
+    // A scanner summary still wins over a fallback suggestion.
+    expect(
+      fixAction({
+        remediation: { summary: "Use a parameterized query" },
+        suggestion: { action: "review", target: "src/db.ts", confidence: "low" },
+      }),
+    ).toBe("Use a parameterized query");
+  });
+
   it("is null when there is no fix, so nothing is invented", () => {
     expect(fixAction({})).toBeNull();
     expect(fixAction({ remediation: { summary: "   " } })).toBeNull();
+  });
+});
+
+describe("isRealFix", () => {
+  it("accepts a source-backed suggestion", () => {
+    expect(isRealFix({ action: "upgrade", target: "lodash", confidence: "high" })).toBe(true);
+    expect(isRealFix({ action: "fix-code", target: "src/db.ts", confidence: "medium" })).toBe(
+      true,
+    );
+    expect(isRealFix({ action: "rotate", confidence: "high" })).toBe(true);
+  });
+
+  it("rejects the generic review fallback and a missing suggestion", () => {
+    expect(isRealFix({ action: "review", target: "src/db.ts", confidence: "low" })).toBe(false);
+    expect(isRealFix(undefined)).toBe(false);
+  });
+});
+
+describe("fixesText", () => {
+  function found(id: string, title: string, extra: Partial<Finding> = {}): Finding {
+    return { id, current_title: title, ...extra } as Finding;
+  }
+
+  it("lists only real fixes and keeps each entry's ledger number", () => {
+    const text = fixesText([
+      found("a", "SQL injection", {
+        suggestion: { action: "review", target: "src/db.ts", confidence: "low" },
+      }),
+      found("b", "Lodash prototype pollution", {
+        suggestion: { action: "upgrade", target: "lodash", confidence: "high" },
+      }),
+      undefined,
+      found("d", "Leaked token", { remediation: { summary: "Rotate the token" } }),
+    ]);
+
+    expect(text).toBe(
+      "2. Lodash prototype pollution: Upgrade lodash\n4. Leaked token: Rotate the token",
+    );
+    expect(text).not.toMatch(/Review|SQL injection/);
+  });
+
+  it("is empty when no entry has a real fix", () => {
+    expect(
+      fixesText([
+        found("a", "SQL injection", {
+          suggestion: { action: "review", target: "src/db.ts", confidence: "low" },
+        }),
+        found("b", "Open bucket"),
+      ]),
+    ).toBe("");
+    expect(fixesText([])).toBe("");
   });
 });
 

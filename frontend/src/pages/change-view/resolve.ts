@@ -1,4 +1,10 @@
-import type { FindingLocation, FindingRemediation, FindingSuggestion, Report } from "@/types/api";
+import type {
+  Finding,
+  FindingLocation,
+  FindingRemediation,
+  FindingSuggestion,
+  Report,
+} from "@/types/api";
 
 /** Shortest commit prefix the change route accepts and renders. */
 export const SHORT_COMMIT_LENGTH = 7;
@@ -54,10 +60,20 @@ export function locationLine(location?: FindingLocation): string | null {
 }
 
 /**
+ * Whether a suggestion is an actual fix. When the scanner supplied nothing usable, the server
+ * (`remediate.fallback`) still sends one suggestion with the action "review" and the file or
+ * package as its target. That is a pointer to where to look, not a fix, so it must not be shown
+ * as the thing to do or copied as one.
+ */
+export function isRealFix(suggestion?: FindingSuggestion): suggestion is FindingSuggestion {
+  return !!suggestion?.action && suggestion.action !== "review";
+}
+
+/**
  * One actionable line for a finding: the first line of the scanner's fix summary, else the
  * reviewable suggestion's action and target. Null when the scanner supplied no fix (including when
- * the summary is only the server's fallback label), so the caller
- * can say so plainly instead of showing a made-up instruction.
+ * the summary is only the server's fallback label or the suggestion is the server's generic
+ * "review" fallback), so the caller can say so plainly instead of showing a made-up instruction.
  */
 export function fixAction(
   finding: { remediation?: FindingRemediation; suggestion?: FindingSuggestion; },
@@ -69,7 +85,7 @@ export function fixAction(
     const first = summary.split("\n")[0].trim();
     if (first) return first;
   }
-  if (finding.suggestion?.action) {
+  if (isRealFix(finding.suggestion)) {
     const { action, target } = finding.suggestion;
     return target ? `${action} ${target}` : action;
   }
@@ -85,6 +101,21 @@ export function fixSentence(
 ): string | null {
   const raw = fixAction(finding);
   return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : null;
+}
+
+/**
+ * The numbered "title: fix" lines behind "Copy all fixes". Entries that are still loading (undefined)
+ * or have no real fix are left out, but keep their position number, so a line still matches the
+ * ledger entry it came from. Empty when no entry has a fix.
+ */
+export function fixesText(findings: readonly (Finding | undefined)[]): string {
+  return findings
+    .map((finding, index) => {
+      const fix = finding ? fixSentence(finding) : null;
+      return finding && fix ? `${index + 1}. ${finding.current_title}: ${fix}` : null;
+    })
+    .filter((line): line is string => line !== null)
+    .join("\n");
 }
 
 /** Human name for the layer that supplied the effective policy floor. */
