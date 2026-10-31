@@ -1,4 +1,6 @@
+import { APIError } from "@/api/client";
 import { findingQueryOptions } from "@/api/hooks";
+import { shouldRetryQuery } from "@/api/retry";
 import type { Finding } from "@/types/api";
 import { useQueries } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -7,8 +9,38 @@ import { useEffect, useMemo, useState } from "react";
  * Most finding requests in flight at once. The findings list cannot return several findings by id
  * (it filters by severity, status, kind and so on, not by id), so the change view reads each
  * blocker from `GET /findings/{id}` and keeps this many going, starting the next as one settles.
+ * Production allows a client 10 requests a second with a burst of 20, and the page makes others, so
+ * the window stays small.
  */
-export const FINDING_FETCH_WINDOW = 6;
+export const FINDING_FETCH_WINDOW = 4;
+
+/** Times a finding request is repeated after the server says to slow down (HTTP 429). */
+export const RATE_LIMIT_RETRIES = 4;
+/** The first wait after a 429 with no `Retry-After`; each further wait doubles. */
+export const RATE_LIMIT_BASE_DELAY_MS = 1000;
+/** The longest wait between two tries, whatever `Retry-After` asks for. */
+export const RATE_LIMIT_MAX_DELAY_MS = 15_000;
+
+function isRateLimited(error: unknown): error is APIError {
+  return error instanceof APIError && error.status === 429;
+}
+
+/**
+ * A 429 is the server pacing the page, not a failure, so it is tried again a few times. Any other
+ * error follows the app's usual rule (client errors are final, server errors get two more tries).
+ */
+export function retryFindingRequest(failureCount: number, error: unknown): boolean {
+  if (isRateLimited(error)) return failureCount < RATE_LIMIT_RETRIES;
+  return shouldRetryQuery(failureCount, error);
+}
+
+/** How long to wait before the next try: `Retry-After` when sent, else 1 s doubling to a cap. */
+export function findingRetryDelay(failureCount: number, error: unknown): number {
+  if (isRateLimited(error) && error.retryAfter !== undefined) {
+    return Math.min(error.retryAfter * 1000, RATE_LIMIT_MAX_DELAY_MS);
+  }
+  return Math.min(RATE_LIMIT_BASE_DELAY_MS * 2 ** failureCount, RATE_LIMIT_MAX_DELAY_MS);
+}
 
 export interface BlockerFindings {
   /** The loaded findings by id. */
@@ -26,6 +58,8 @@ export interface BlockerFindings {
   readonly total: number;
   /** Every request has finished, so the whole list is known. */
   readonly done: boolean;
+  /** The server asked the page to slow down and a request is waiting to try again. */
+  readonly waiting: boolean;
   /** Fetches one finding again. */
   readonly retry: (id: string) => void;
   /** Fetches again every finding that failed. */
@@ -43,6 +77,8 @@ export function useBlockerFindings(ids: readonly string[]): BlockerFindings {
     queries: ids.map((id, index) => ({
       ...findingQueryOptions(id),
       enabled: !!id && index < allowed,
+      retry: retryFindingRequest,
+      retryDelay: findingRetryDelay,
     })),
   });
 
@@ -55,6 +91,7 @@ export function useBlockerFindings(ids: readonly string[]): BlockerFindings {
   // `results` is a new array on every render, so the memo is keyed on what it reads from it.
   const dataKey = results.map((result) => result.dataUpdatedAt).join(",");
   const errorKey = results.map((result) => (result.isError ? "1" : "0")).join("");
+  const waiting = results.some((result) => result.isPending && isRateLimited(result.failureReason));
   const refetchers = results.map((result) => result.refetch);
   return useMemo(() => {
     const list = results.map((result) => result.data);
@@ -73,6 +110,7 @@ export function useBlockerFindings(ids: readonly string[]): BlockerFindings {
       settled,
       total: ids.length,
       done: settled >= ids.length,
+      waiting,
       retry: (id: string) => {
         const index = ids.indexOf(id);
         if (index >= 0) void refetchers[index]();
@@ -84,5 +122,5 @@ export function useBlockerFindings(ids: readonly string[]): BlockerFindings {
       },
     };
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [ids, settled, dataKey, errorKey]);
+  }, [ids, settled, dataKey, errorKey, waiting]);
 }
