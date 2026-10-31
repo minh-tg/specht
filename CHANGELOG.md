@@ -696,3 +696,7 @@ releases.
 - The embedded web app compresses each file once and serves the stored gzip bytes with
   `Content-Length` and an `ETag` (answering `If-None-Match` with 304). It used to gzip
   every asset on every request, which let one anonymous client keep a CPU core busy.
+- The server refuses a `JWT_SECRET` that is long enough but weak: fewer than 8 distinct
+  characters (such as 32 times `a`), or a value containing `change-me` or `changeme`, which
+  covers the placeholder in `deploy/.env.prod.example`. The error says to generate one with
+  `openssl rand -hex 32`.
