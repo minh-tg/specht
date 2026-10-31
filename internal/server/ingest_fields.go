@@ -18,6 +18,8 @@ const (
 	maxTextFieldBytes     = 255
 	maxChangedFiles       = 5000
 	maxChangedFileBytes   = 1024
+	maxFilterSeverities   = 16
+	maxFilterSeverityLen  = 32
 	msgNULNotAllowed      = "must not contain a NUL character"
 	msgControlNotAllowed  = "must not contain control characters"
 	msgCommitShaCharacter = "may only contain letters, digits, '.', '_' and '-'"
@@ -73,7 +75,30 @@ func (r ingestRequest) invalidField() (field, problem string) {
 			return "changed_files", "entries " + problem
 		}
 	}
+	if r.ScanFilter != nil {
+		if problem := scanFilterProblem(*r.ScanFilter); problem != "" {
+			return "scan_filter.severities", problem
+		}
+	}
 	return "", ""
+}
+
+// scanFilterProblem says why the declared scan filter is refused, or returns ""
+// when it is acceptable. The length checks come first so a hostile list is never
+// echoed back whole in the message.
+func scanFilterProblem(f scanFilterRequest) string {
+	if len(f.Severities) > maxFilterSeverities {
+		return fmt.Sprintf("may list at most %d severities", maxFilterSeverities)
+	}
+	for _, s := range f.Severities {
+		if problem := textProblem(s, maxFilterSeverityLen); problem != "" {
+			return "entries " + problem
+		}
+	}
+	if _, err := domain.NormalizeScanFilter(f.Severities, f.FixableOnly); err != nil {
+		return "entries must be one of " + strings.Join(domain.ScanSeverities, ", ")
+	}
+	return ""
 }
 
 // textProblem says why s is not an acceptable metadata value, or returns ""

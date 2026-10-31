@@ -2503,6 +2503,7 @@ export interface components {
        * @enum {string}
        */
       scan_mode: "full" | "incremental";
+      scan_filter?: components["schemas"]["ScanFilter"];
       /** @description Comma-separated override for the post-ingest threshold check. */
       gate_severity?: string;
       /** @description Scope the post-ingest threshold check to what this report introduced. */
@@ -2526,6 +2527,23 @@ export interface components {
         | "filesystem"
         | "sarif"
         | "iac_stack";
+    };
+    /**
+     * @description What the scanner left out on purpose. Trivy `--severity HIGH,CRITICAL`
+     *     and `--ignore-unfixed` (Grype `--only-fixed`) write nothing about the
+     *     flag into the report, so the uploader declares it here. A filtered scan
+     *     only closes findings inside the filter: a finding outside it stays open
+     *     when the report omits it, and a manual verification of such a finding
+     *     stays inconclusive.
+     */
+    ScanFilter: {
+      /** @description Severities the scan kept. Case is ignored, duplicates are dropped, and any other value is refused with 400 `invalid_field`. Empty or absent means no severity filter. */
+      severities?: ("critical" | "high" | "medium" | "low" | "unknown")[];
+      /**
+       * @description True when the scan kept only findings that have a fixed version.
+       * @default false
+       */
+      fixable_only: boolean;
     };
     IngestResponse: {
       /** Format: uuid */
@@ -2573,6 +2591,7 @@ export interface components {
       base_revision?: string;
       /** @enum {string} */
       scan_mode?: "full" | "incremental";
+      scan_filter?: components["schemas"]["ScanFilter"];
       changed_files?: string[];
       /** @description Fixed, sanitized reason a failed report failed. Absent unless status is failed. */
       error_message?: string;

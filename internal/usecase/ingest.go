@@ -107,6 +107,11 @@ func validateIngestInput(input IngestReportInput) (IngestReportInput, error) {
 		return input, err
 	}
 	input.ScanMode = scanMode
+	filter, err := domain.NormalizeScanFilter(input.ScanFilter.Severities, input.ScanFilter.FixableOnly)
+	if err != nil {
+		return input, fmt.Errorf("invalid scan_filter: %w", err)
+	}
+	input.ScanFilter = filter
 	// Revision canonicalization: SHAs compare case-insensitively
 	// everywhere, so store them canonical. Branches are case-sensitive and
 	// untouched.
@@ -222,7 +227,7 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	// the same stored form. A different commit or scope with the same bytes
 	// ingests normally: scanner output is often byte-identical when nothing
 	// changed.
-	rawHash := reportHash(sc, originalData, nr, redactionFailed)
+	rawHash := reportHash(sc, originalData, nr, redactionFailed, input.ScanFilter)
 	if u.deps.Stores.Ingest != nil {
 		return u.ingestAtomically(ctx, project, input, nr, scopeHash, rawHash)
 	}
@@ -690,6 +695,8 @@ func (u *Usecases) createReport(ctx context.Context, project port.Project, input
 		ScanCompleteness:    string(nr.Completeness),
 		CoveredFindingKinds: nr.CoveredFindingKinds,
 		ExaminedKeys:        domain.NormalizeExaminedKeys(nr.ExaminedKeys),
+		FilterSeverities:    input.ScanFilter.Severities,
+		FilterFixableOnly:   input.ScanFilter.FixableOnly,
 		Status:              "processing",
 	})
 	if err != nil {
@@ -1596,11 +1603,19 @@ func gateSeverityRank(severities []string) int16 {
 // a keyed hash of the secret, the finding identities are folded in too, so a report
 // under a rotated key stays apart. The identities are keyed digests, so they reveal
 // nothing about the secrets. When redaction failed, every such report is stored as
-// the same placeholder, so the identities are folded in for that case as well. Every
-// other scanner's hash is the plain SHA-256 of the body.
-func reportHash(sc scanner.Scanner, raw []byte, nr *domain.NormalizedReport, redactionFailed bool) string {
+// the same placeholder, so the identities are folded in for that case as well. A
+// declared scan filter is folded in too: the same bytes uploaded with another filter
+// are another claim about what the scan looked at, so they get their own report
+// instead of replaying the first one. An unfiltered upload hashes the body alone.
+// Every other scanner's hash is the plain SHA-256 of the body.
+func reportHash(sc scanner.Scanner, raw []byte, nr *domain.NormalizedReport, redactionFailed bool, filter domain.ScanFilter) string {
 	h := sha256.New()
 	h.Write(raw)
+	if !filter.IsZero() {
+		h.Write([]byte{0})
+		fmt.Fprintf(h, "scan-filter:%s:fixable=%t", strings.Join(filter.Severities, ","), filter.FixableOnly)
+		h.Write([]byte{0})
+	}
 	if scanner.UsesFingerprintKey(sc) || redactionFailed {
 		fingerprints := make([]string, 0, len(nr.Findings))
 		for _, f := range nr.Findings {

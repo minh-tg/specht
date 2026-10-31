@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/minh-tg/specht/internal/audit"
 	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/domain"
 	"github.com/minh-tg/specht/internal/notify"
 	"github.com/minh-tg/specht/internal/patch"
 	"github.com/minh-tg/specht/internal/policy"
@@ -357,6 +358,27 @@ type ingestRequest struct {
 	ArtifactName       string `json:"artifact_name,omitempty"`
 	ArtifactVersion    string `json:"artifact_version,omitempty"`
 	ArtifactType       string `json:"artifact_type,omitempty"`
+	// ScanFilter declares what the scanner left out on purpose. A filtered
+	// report closes only the findings inside the filter.
+	ScanFilter *scanFilterRequest `json:"scan_filter,omitempty"`
+}
+
+type scanFilterRequest struct {
+	Severities  []string `json:"severities,omitempty"`
+	FixableOnly bool     `json:"fixable_only,omitempty"`
+}
+
+// domainFilter is the normalized filter. invalidField has already refused a
+// filter that does not normalize, so the zero value stands for no filter.
+func (r ingestRequest) domainFilter() domain.ScanFilter {
+	if r.ScanFilter == nil {
+		return domain.ScanFilter{}
+	}
+	f, err := domain.NormalizeScanFilter(r.ScanFilter.Severities, r.ScanFilter.FixableOnly)
+	if err != nil {
+		return domain.ScanFilter{}
+	}
+	return f
 }
 
 type ingestResponse struct {

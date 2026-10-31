@@ -204,6 +204,15 @@ type ReportResponse struct {
 	// RawDataExpiresAt is the date the window ended for it; it is null while the payload is kept.
 	RawDataExpired   bool       `json:"raw_data_expired"`
 	RawDataExpiresAt *time.Time `json:"raw_data_expires_at"`
+	// ScanFilter is what the uploader declared the scan left out on purpose.
+	// It is omitted for an unfiltered scan.
+	ScanFilter *ScanFilterResponse `json:"scan_filter,omitempty"`
+}
+
+// ScanFilterResponse is the declared scan filter of a report.
+type ScanFilterResponse struct {
+	Severities  []string `json:"severities"`
+	FixableOnly bool     `json:"fixable_only"`
 }
 
 // FindingEvent is the API representation of a finding audit event.
@@ -313,7 +322,21 @@ func toReport(r port.Report, retentionDays int) ReportResponse {
 		CompletedAt:      timeOpt(r.CompletedAt),
 		RawDataExpired:   r.RawDataExpired,
 		RawDataExpiresAt: rawExpiresAt(r.CreatedAt, r.RawDataExpired, retentionDays),
+		ScanFilter:       scanFilterOpt(r),
 	}
+}
+
+// scanFilterOpt returns the report's declared filter, or nil for an unfiltered
+// scan. Severities is never nil, so a client reads an empty list, not null.
+func scanFilterOpt(r port.Report) *ScanFilterResponse {
+	if len(r.FilterSeverities) == 0 && !r.FilterFixableOnly {
+		return nil
+	}
+	severities := r.FilterSeverities
+	if severities == nil {
+		severities = []string{}
+	}
+	return &ScanFilterResponse{Severities: severities, FixableOnly: r.FilterFixableOnly}
 }
 
 // changedFilesOpt decodes the stored path list; corrupt or empty content

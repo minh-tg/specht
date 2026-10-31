@@ -215,6 +215,7 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		ArtifactName:       req.ArtifactName,
 		ArtifactVersion:    req.ArtifactVersion,
 		ArtifactType:       req.ArtifactType,
+		ScanFilter:         req.domainFilter(),
 	})
 	if err != nil {
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {

@@ -4,6 +4,7 @@ package repo
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -12,7 +13,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/minh-tg/specht/internal/db"
+	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/parser"
 	"github.com/minh-tg/specht/internal/port"
+	"github.com/minh-tg/specht/internal/scanner"
 	"github.com/minh-tg/specht/internal/usecase"
 )
 
@@ -305,4 +309,81 @@ func TestScanFilterMigrationRollbackRestoresTheOldFunction(t *testing.T) {
 
 	require.NoError(t, db.RunMigrations(dsn, "../../migrations"))
 	assert.True(t, has(newSig))
+}
+
+// End to end: a Trivy report written with --severity HIGH,CRITICAL looks like a
+// full scan, so only the declared filter keeps it from closing a medium finding.
+func TestScanFilterIngestClosesOnlyInsideTheDeclaredFilter(t *testing.T) {
+	pool, cleanup := setupIngestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(pool)
+	reg := scanner.NewRegistry()
+	for _, sc := range parser.Builtins() {
+		require.NoError(t, reg.Register(sc))
+	}
+	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg})
+	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
+	require.NoError(t, err)
+	_, err = uc.CreateProject(globalAdminCtx(creator.ID), "My App", "my-app", "validation", creator.ID)
+	require.NoError(t, err)
+	project, err := stores.Projects.GetBySlug(ctx, "my-app")
+	require.NoError(t, err)
+
+	raw, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
+	require.NoError(t, err)
+	// The same scan with every finding gone, as a filtered scan that kept none.
+	empty, err := rewriteTrivyReport(raw, func(results []map[string]any) {
+		for _, r := range results {
+			for _, key := range []string{"Vulnerabilities", "Misconfigurations", "Secrets"} {
+				if _, ok := r[key]; ok {
+					r[key] = []any{}
+				}
+			}
+		}
+	})
+	require.NoError(t, err)
+	state := func(substr string) string {
+		t.Helper()
+		findings, err := stores.Findings.ListByProject(ctx, project.ID, port.ListFindingsParams{Limit: 100})
+		require.NoError(t, err)
+		id := findingIDFor(findings, substr)
+		require.NotEmpty(t, id, substr)
+		f, err := stores.Findings.GetByID(ctx, id)
+		require.NoError(t, err)
+		return f.State
+	}
+	ingest := func(data []byte, commit string, filter domain.ScanFilter) *usecase.IngestReportOutput {
+		t.Helper()
+		out, err := uc.IngestReport(ctx, usecase.IngestReportInput{
+			ProjectSlug: "my-app", Scanner: "trivy", RawData: data, Branch: "main", CommitSha: commit, ScanFilter: filter,
+		})
+		require.NoError(t, err)
+		return out
+	}
+
+	ingest(raw, "aaa111", domain.ScanFilter{})
+	require.Equal(t, "open", state("curl"), "critical")
+	require.Equal(t, "open", state("lodash"), "medium")
+
+	filter := domain.ScanFilter{Severities: []string{"CRITICAL", "high"}}
+	filtered := ingest(empty, "bbb222", filter)
+	report, err := stores.Reports.GetByID(ctx, filtered.ReportID)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"high", "critical"}, report.FilterSeverities)
+	assert.False(t, report.FilterFixableOnly)
+	assert.Equal(t, "fixed", state("curl"), "the filter kept critical findings, and this one is gone")
+	assert.Equal(t, "open", state("lodash"), "the filter hid medium findings, so absence says nothing")
+
+	// The same bytes under the same filter and commit replay.
+	again := ingest(empty, "bbb222", filter)
+	assert.True(t, again.Replayed)
+	assert.Equal(t, filtered.ReportID, again.ReportID)
+
+	// The same bytes with no filter are a different claim: a full scan with
+	// nothing in it, which closes the medium finding too.
+	full := ingest(empty, "bbb222", domain.ScanFilter{})
+	assert.False(t, full.Replayed)
+	assert.NotEqual(t, filtered.ReportID, full.ReportID)
+	assert.Equal(t, "fixed", state("lodash"))
 }
