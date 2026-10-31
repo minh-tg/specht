@@ -159,10 +159,33 @@ func TestKEVProvider_FailedRefreshKeepsCatalogAndRetries(t *testing.T) {
 	require.ErrorContains(t, err, "status 503")
 
 	fail.Store(false)
+	now = now.Add(kevFailureBackoff)
 	records, err := p.Fetch(context.Background(), []string{"CVE-2024-1111"})
-	require.NoError(t, err, "the next call retries the download")
+	require.NoError(t, err, "the next call after the backoff retries the download")
 	assert.True(t, records["CVE-2024-1111"].KEV)
 	assert.EqualValues(t, 3, downloads.Load())
+}
+
+func TestKEVProvider_FailedDownloadIsNotRepeatedInsideTheBackoff(t *testing.T) {
+	var downloads atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		downloads.Add(1)
+		http.Error(w, "down", http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	p := &KEVProvider{CatalogURL: srv.URL, Client: srv.Client(), Now: func() time.Time { return now }}
+	for range 20 {
+		_, err := p.Fetch(context.Background(), []string{"CVE-2024-1111"})
+		require.ErrorContains(t, err, "status 503")
+	}
+	assert.EqualValues(t, 1, downloads.Load(), "a failing feed is hit once per backoff window")
+
+	now = now.Add(kevFailureBackoff)
+	_, err := p.Fetch(context.Background(), []string{"CVE-2024-1111"})
+	require.Error(t, err)
+	assert.EqualValues(t, 2, downloads.Load())
 }
 
 func TestStore_RefreshMergesAndServes(t *testing.T) {
@@ -362,4 +385,13 @@ func TestStore_SecondRefreshUpdatesTheWidenedFields(t *testing.T) {
 	assert.InDelta(t, 0.75, rec.EPSSPercentile, 1e-9)
 	assert.Equal(t, "2026-03-01", rec.KEVDueDate)
 	assert.Equal(t, "Known", rec.KEVRansomware)
+}
+
+func TestIsCVEWantsTheRealIdentifierShape(t *testing.T) {
+	for _, id := range []string{"CVE-2024-3094", "CVE-2024-0001", "CVE-2021-1234567"} {
+		assert.True(t, IsCVE(id), id)
+	}
+	for _, id := range []string{"", "CVE-", "CVE-x", "CVE-2024-1", "CVE-2024-12345678", "cve-2024-3094", "CVE-2024-3094 ", "CVE-2024-3094,CVE-2024-1111", "GHSA-xxxx-yyyy-zzzz"} {
+		assert.False(t, IsCVE(id), id)
+	}
 }

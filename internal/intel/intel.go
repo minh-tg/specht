@@ -22,7 +22,7 @@ package intel
 
 import (
 	"context"
-	"strings"
+	"regexp"
 	"sync"
 	"time"
 
@@ -58,10 +58,13 @@ type Provider interface {
 	Fetch(ctx context.Context, cveIDs []string) (map[string]Record, error)
 }
 
-// IsCVE reports whether id looks like a CVE identifier (the only shape
-// feeds can match reliably).
+var cvePattern = regexp.MustCompile(`^CVE-[0-9]{4}-[0-9]{4,7}$`)
+
+// IsCVE reports whether id is a well-formed CVE identifier (the only shape
+// feeds can match reliably). An id that merely starts with "CVE-" is not
+// refreshed, so a made-up id never costs an outbound request.
 func IsCVE(id string) bool {
-	return strings.HasPrefix(id, "CVE-")
+	return cvePattern.MatchString(id)
 }
 
 // DefaultMaxRecords caps how many CVE records a Store keeps. Every distinct

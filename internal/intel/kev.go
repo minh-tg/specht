@@ -20,6 +20,11 @@ const maxKEVResponseBytes = 32 << 20
 // KEVProvider.TTL is unset.
 const DefaultKEVCatalogTTL = time.Hour
 
+// kevFailureBackoff is how long a failed download is remembered. Calls inside
+// the window return the same error without a request, so a failing feed is not
+// hit once per queued refresh.
+const kevFailureBackoff = time.Minute
+
 // KEVProvider fetches the CISA KEV catalog in bulk and keeps the parsed
 // catalog for TTL, so a burst of single-CVE refreshes downloads it once.
 // CatalogURL is injectable for tests; production is the CISA JSON feed.
@@ -36,6 +41,8 @@ type KEVProvider struct {
 	mu       sync.Mutex
 	entries  map[string]kevEntry
 	loadedAt time.Time
+	failedAt time.Time
+	failure  error
 }
 
 // Name implements Provider.
@@ -65,11 +72,15 @@ func (p *KEVProvider) Fetch(ctx context.Context, cveIDs []string) (map[string]Re
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.entries == nil || p.clock().Sub(p.loadedAt) >= p.ttl() {
+		if p.failure != nil && p.clock().Sub(p.failedAt) < kevFailureBackoff {
+			return nil, p.failure
+		}
 		entries, err := p.download(ctx)
 		if err != nil {
+			p.failedAt, p.failure = p.clock(), err
 			return nil, err
 		}
-		p.entries, p.loadedAt = entries, p.clock()
+		p.entries, p.loadedAt, p.failure = entries, p.clock(), nil
 	}
 	out := make(map[string]Record)
 	for _, id := range cveIDs {
