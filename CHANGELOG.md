@@ -387,6 +387,9 @@ releases.
   server ran at info.
 - JSON request bodies with content after the first JSON value (such as
   `{"a":1} GARBAGE`) are refused with 400 instead of being read up to the first value.
+- The web app's HTML, JavaScript and CSS are served with `charset=utf-8`, and its responses
+  carry `Strict-Transport-Security` behind a trusted TLS-terminating proxy, as API
+  responses already did. The first page load used to go out without it.
 
 ### Security
 
