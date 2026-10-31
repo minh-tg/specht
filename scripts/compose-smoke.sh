@@ -5,7 +5,8 @@
 #
 # Requirements: Docker with the compose plugin, curl, python3.
 #
-# Optional env: COMPOSE_SMOKE_PORT (default 18083).
+# Optional env: COMPOSE_SMOKE_PORT (default 18083). SPECHT_TEST_POSTGRES_IMAGE and IMAGE_PREFIX
+#   point the database and the build's base images at a mirror (CI does this).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -19,6 +20,13 @@ BASE="http://127.0.0.1:$PORT/api/v1"
 EMAIL="smoke@example.test"
 PASSWORD="compose-smoke-123"
 SETUP_TOKEN="compose-smoke-setup-token"
+
+# Compose reads these from the environment. Unset, the files keep their own defaults.
+if [ -n "${SPECHT_TEST_POSTGRES_IMAGE:-}" ]; then
+  export SPECHT_POSTGRES_IMAGE="$SPECHT_TEST_POSTGRES_IMAGE"
+fi
+SPECHT_DOCKERFILE="$(./scripts/mirror-dockerfile.sh deploy/Dockerfile)"
+export SPECHT_DOCKERFILE
 COMPOSE=(docker compose -p "$PROJECT" -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml --env-file "$ENV_FILE")
 
 cleanup() {

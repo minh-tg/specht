@@ -9,6 +9,7 @@
 #
 # Optional env: RESTORE_SMOKE_PORT (default 18082), RESTORE_SMOKE_DB_PORT
 #   (default 54332).
+# SPECHT_TEST_POSTGRES_IMAGE replaces the Postgres image (CI points it at a mirror).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -48,7 +49,7 @@ docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 # over TCP waits for the final server, which is the one that has the database.
 docker run -d --name "$CONTAINER" \
   -e POSTGRES_USER=specht -e POSTGRES_PASSWORD=specht -e POSTGRES_DB="$SRC_DB" \
-  -p "127.0.0.1:$DB_PORT:5432" docker.io/library/postgres:17-alpine >/dev/null
+  -p "127.0.0.1:$DB_PORT:5432" "${SPECHT_TEST_POSTGRES_IMAGE:-docker.io/library/postgres:17-alpine}" >/dev/null
 ready=0
 for _ in $(seq 1 60); do
   if docker exec "$CONTAINER" pg_isready -h 127.0.0.1 -U specht -d "$SRC_DB" >/dev/null 2>&1; then

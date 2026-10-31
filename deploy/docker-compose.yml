@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:17-alpine
+    image: ${SPECHT_POSTGRES_IMAGE:-postgres:17-alpine}
     environment:
       POSTGRES_USER: specht
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
