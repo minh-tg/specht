@@ -449,6 +449,14 @@ export interface UserProfile {
   created_at: string;
 }
 
+/** What the uploader declared the scanner left out on purpose. Absent for an unfiltered scan. */
+export interface ScanFilter {
+  /** Severities the scan kept. Empty or absent means no severity filter. */
+  severities?: Severity[];
+  /** True when the scan kept only findings that have a fixed version. */
+  fixable_only: boolean;
+}
+
 export interface Report {
   id: string;
   project_id: string;
@@ -462,6 +470,7 @@ export interface Report {
   commit_sha?: string | null;
   base_revision?: string;
   scan_mode?: "full" | "incremental";
+  scan_filter?: ScanFilter;
   changed_files?: string[];
   error_message?: string;
   created_at: string;
