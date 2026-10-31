@@ -150,7 +150,7 @@ func (t *WebHookTracker) dispatch(ctx context.Context, event Event) {
 		default:
 			t.queueDepth.Add(-1)
 			if t.logger != nil {
-				t.logger("webhook queue full; delivery dropped", "url", url)
+				t.logger("webhook queue full; delivery dropped", "target", netutil.RedactURL(url))
 			}
 		}
 	}
@@ -212,7 +212,7 @@ func (t *WebHookTracker) post(ctx context.Context, url, eventType string, payloa
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
 	if err != nil {
 		if t.logger != nil {
-			t.logger("webhook request build failed", "url", url, "error", err)
+			t.logger("webhook request build failed", "target", netutil.RedactURL(url), "error", netutil.StripURLError(err))
 		}
 		return
 	}
@@ -225,7 +225,7 @@ func (t *WebHookTracker) post(ctx context.Context, url, eventType string, payloa
 	resp, err := t.client.Do(req)
 	if err != nil {
 		if t.logger != nil {
-			t.logger("webhook dispatch failed", "url", url, "error", err)
+			t.logger("webhook dispatch failed", "target", netutil.RedactURL(url), "error", netutil.StripURLError(err))
 		}
 		return
 	}
@@ -233,7 +233,7 @@ func (t *WebHookTracker) post(ctx context.Context, url, eventType string, payloa
 	_, _ = io.Copy(io.Discard, resp.Body)
 	_ = resp.Body.Close()
 	if t.logger != nil {
-		t.logger("webhook dispatched", "url", url, "event", eventType, "status", resp.StatusCode)
+		t.logger("webhook dispatched", "target", netutil.RedactURL(url), "event", eventType, "status", resp.StatusCode)
 	}
 }
 

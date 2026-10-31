@@ -687,3 +687,6 @@ releases.
   that committed right after the change used to leave that session alive under a
   generation the link never expected. The change now answers 409 `account_changed`, issues
   no session, and the caller signs in again.
+- Watcher and tracker webhook failures no longer write the endpoint URL to the log. A Slack
+  incoming-webhook URL or a tracker URL with a token in its path or query used to appear in
+  the transport-error line. The log now names the scheme and host and the cause only.
