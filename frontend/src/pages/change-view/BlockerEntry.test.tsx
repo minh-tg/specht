@@ -87,9 +87,11 @@ describe("BlockerEntry link", () => {
                   onOpenChange={vi.fn()}
                   handled={false}
                   onHandledChange={vi.fn()}
-                  waiverRequested={false}
-                  canRequestWaiver
+                  request={{ kind: "available" }}
+                  canApprove={false}
+                  who={{}}
                   onRequestWaiver={vi.fn()}
+                  onWithdrawWaiver={vi.fn()}
                 />
               </Ledger>
             }
