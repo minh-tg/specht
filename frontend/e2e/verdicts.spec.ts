@@ -35,7 +35,7 @@ test("CI explanations retain the project-wide scope and tightened floor", async 
   await expect(page.getByRole("region", { name: "Findings blocking this project" })).toBeVisible();
   await page.goto(`${link}&scope=introduced`);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-    "This change introduces no blocking findings.",
+    "Nothing first seen in this commit blocks the merge.",
   );
 });
 
@@ -62,6 +62,6 @@ test("an exact check link keeps its report after another scan of the same commit
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("1 finding blocks this change.");
   await page.goto(`/${slug}/changes/${CHANGE_SHA}?report=${reports[0].id}&scope=introduced`);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-    "This change introduces no blocking findings.",
+    "Nothing first seen in this commit blocks the merge.",
   );
 });
