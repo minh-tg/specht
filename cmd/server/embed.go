@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"mime"
 	"net/http"
+	"net/netip"
 	"path"
 	"strings"
 
@@ -15,9 +16,9 @@ import (
 var frontendDist embed.FS
 
 var mimeTypes = map[string]string{
-	".js":    "text/javascript",
-	".css":   "text/css",
-	".html":  "text/html",
+	".js":    "text/javascript; charset=utf-8",
+	".css":   "text/css; charset=utf-8",
+	".html":  "text/html; charset=utf-8",
 	".svg":   "image/svg+xml",
 	".png":   "image/png",
 	".ico":   "image/x-icon",
@@ -38,8 +39,8 @@ func (s spaFileSystem) Open(name string) (fs.File, error) {
 	return f, nil
 }
 
-func spaHandler(apiHandler http.Handler) http.Handler {
-	return spaHandlerWithFS(apiHandler, frontendDist)
+func spaHandler(apiHandler http.Handler, trustedProxies []netip.Prefix) http.Handler {
+	return spaHandlerWithFS(apiHandler, frontendDist, trustedProxies)
 }
 
 func cleanSPAPath(p string) string {
@@ -81,7 +82,13 @@ func fileExists(fsys fs.FS, name string) bool {
 	return err == nil && !info.IsDir()
 }
 
-func spaHandlerWithFS(apiHandler http.Handler, assets fs.FS) http.Handler {
+// spaHandlerWithFS serves the API handler for /api/ and /health and the
+// embedded files for everything else. The file branch resolves the transport
+// through trustedProxies the way the router does, so its responses carry HSTS
+// behind a TLS-terminating proxy. The API branch is left to the router: the
+// address the file branch resolves must not reach it, or the router would see
+// the client as an untrusted peer and lose the proxy's verdict.
+func spaHandlerWithFS(apiHandler http.Handler, assets fs.FS, trustedProxies []netip.Prefix) http.Handler {
 	root := "dist"
 	if _, err := fs.Stat(assets, "dist/dist/index.html"); err == nil {
 		root = "dist/dist"
@@ -112,11 +119,13 @@ func spaHandlerWithFS(apiHandler http.Handler, assets fs.FS) http.Handler {
 	// below never goes through this handler.
 	compressedFiles := server.CompressStatic(fileServer)
 
-	return server.SecurityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	api := server.SecurityHeaders(apiHandler)
+	files := server.TrustedProxyHeaders(trustedProxies)(server.SecurityHeaders(compressedFiles))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/health" {
-			apiHandler.ServeHTTP(w, r)
+			api.ServeHTTP(w, r)
 			return
 		}
-		compressedFiles.ServeHTTP(w, r)
-	}))
+		files.ServeHTTP(w, r)
+	})
 }
