@@ -92,7 +92,7 @@ export function waiverChip(kind: WaiverViewKind): string {
     case "rejected":
       return "Waiver rejected";
     case "request_expired":
-      return "Request expired";
+      return "Expired before a decision";
     case "revoked":
       return "Waiver revoked";
     case "expired":

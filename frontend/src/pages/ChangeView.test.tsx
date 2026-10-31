@@ -813,7 +813,7 @@ describe("ChangeView waiver path", () => {
         decision_note: "expired before a decision",
       },
       "The request expired before anyone decided.",
-      "Request expired",
+      "Expired before a decision",
     ],
     ["withdrawn", { status: "withdrawn" }, "Request withdrawn.", "Request withdrawn"],
     ["revoked", { status: "approved", enabled: false }, "Waiver revoked.", "Waiver revoked"],

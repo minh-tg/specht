@@ -467,6 +467,24 @@ describe("ProjectWaivers", () => {
     expect(screen.getByText("Rejected by You: Encrypt it, it takes one line.")).toBeInTheDocument();
   });
 
+  it("labels a request the server rejected for lateness as expired, not rejected", async () => {
+    waivers.push(waiver({
+      id: "w8",
+      status: "rejected",
+      decision_reason: "expired",
+      decision_note: "expired before a decision",
+      name: "Waiver request: zlib: overflow",
+    }));
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("tab", { name: "Closed 2" }));
+
+    expect(screen.getByText("Expired before a decision")).toBeInTheDocument();
+    expect(screen.getByText("Rejected by You: Encrypt it, it takes one line."))
+      .toBeInTheDocument();
+    expect(screen.queryByText(/Rejected: expired before a decision/)).not.toBeInTheDocument();
+  });
+
   it("says so when a list is empty", async () => {
     waivers = [];
     renderPage();
