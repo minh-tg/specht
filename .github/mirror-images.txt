@@ -1,0 +1,9 @@
+# Docker Hub images that CI pulls and no Dockerfile names, one name:tag[@digest] per line, relative
+# to docker.io/library/. The base images in deploy/Dockerfile and deploy/Dockerfile.adapter are
+# picked up from their FROM lines (see scripts/mirror-images.sh), so they are not repeated here.
+#
+# postgres:17         integration job, the server and migration steps
+# postgres:17-alpine  testcontainers in the integration and e2e suites, the smoke scripts, the
+#                     dogfood job and the compose database
+postgres:17
+postgres:17-alpine
