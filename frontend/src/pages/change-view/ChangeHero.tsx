@@ -64,7 +64,7 @@ function headline(
     case "passing":
       return projectWide
         ? "Project gate passed."
-        : "Nothing first seen in this commit blocks the merge.";
+        : "Nothing first seen in this commit blocks this change.";
     case "unblocked":
       return "Unblocked. Nothing blocks this change now.";
     case "unconfirmed":
