@@ -110,7 +110,7 @@ describe("BlockerRowView", () => {
       finding: finding({
         finding_kind: "sast",
         location: { file: "src/db.ts", start_line: 42 },
-        suggestion: { action: "review", target: "src/db.ts", confidence: "low" },
+        suggestion: { action: "review", target: "src/db.ts", confidence: "low", fallback: true },
       }),
     });
 
