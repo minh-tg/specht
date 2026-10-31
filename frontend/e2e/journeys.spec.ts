@@ -210,18 +210,17 @@ test("finding detail triage applies states and enforces reasons", async ({ page,
   await page.goto(`/${slug}/findings`);
   await page.locator("tbody tr").filter({ hasText: HIGH_TITLE }).click();
   await expect(page).toHaveURL(new RegExp(`/${slug}/findings/`));
-  await expect(page.getByRole("heading", { name: "Triage" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "What is this finding?" })).toBeVisible();
 
-  const triageSelect = page.getByLabel("Triage action");
-  const apply = page.getByRole("button", { name: "Apply" });
+  const save = page.getByRole("button", { name: "Save decision" });
 
-  // The reason-required branch: Apply stays disabled until the reason
-  // exists, then applies and reports the gate effect.
-  await chooseOption(page, triageSelect, "False positive");
-  await expect(apply).toBeDisabled();
-  await page.getByPlaceholder("Reason").fill("browser journey: not reachable in our build");
-  await expect(apply).toBeEnabled();
-  await apply.click();
+  // The reason-required branch: Save stays disabled until the reason
+  // exists, then saves and reports the gate effect.
+  await page.getByRole("radio", { name: /^Not a problem/ }).check();
+  await expect(save).toBeDisabled();
+  await page.getByLabel(/^Reason/).fill("browser journey: not reachable in our build");
+  await expect(save).toBeEnabled();
+  await save.click();
   await expect(page.getByText(/Triage saved \(effect:/)).toBeVisible();
 
   // A reason-free state applies directly and sticks: after a reload the
@@ -229,9 +228,9 @@ test("finding detail triage applies states and enforces reasons", async ({ page,
   // picker, not a state display).
   // Wait for the PATCH itself: the first confirmation is still on screen, so
   // asserting on its text would let the reload cut the second save short.
-  await chooseOption(page, triageSelect, "Exploitable");
+  await page.getByRole("radio", { name: /^Real issue/ }).check();
   const saved = page.waitForResponse((res) => res.request().method() === "PATCH" && res.ok());
-  await apply.click();
+  await save.click();
   await saved;
   await page.goto(`/${slug}/findings`);
   await expect(
@@ -546,9 +545,9 @@ test("triaging the only blocker flips the project verdict to passing", async ({ 
   await page.getByRole("link", { name: HIGH_TITLE }).click();
   await expect(page.getByRole("region", { name: "Why this blocks" })).toBeVisible();
 
-  await chooseOption(page, page.getByLabel("Triage action"), "False positive");
-  await page.getByPlaceholder("Reason").fill("e2e: test credential, not a real secret");
-  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("radio", { name: /^Not a problem/ }).check();
+  await page.getByLabel(/^Reason/).fill("e2e: test credential, not a real secret");
+  await page.getByRole("button", { name: "Save decision" }).click();
   await expect(page.getByText(/Triage saved \(effect:/)).toBeVisible();
 
   await page.getByRole("link", { name: "← Back to findings" }).click();
@@ -567,18 +566,18 @@ test("marking the only blocker not reachable flips the project verdict to passin
   await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: HIGH_TITLE }).click();
 
-  const assess = page.getByRole("button", { name: "Assess" });
-  await expect(assess).toBeDisabled();
-  await chooseOption(page, page.getByLabel("Reachability assessment"), "Not Reachable");
-  await page.getByLabel("Evidence", { exact: true }).fill(
-    "e2e: the vulnerable code path is never called",
-  );
-  await expect(assess).toBeEnabled();
-  await assess.click();
+  const save = page.getByRole("button", { name: "Save decision" });
+  await expect(save).toBeDisabled();
+  await page.getByRole("radio", { name: "No", exact: true }).check();
+  // Nobody can reach it, so it stops blocking; the form asks why for the audit trail.
+  await expect(save).toBeDisabled();
+  await page.getByLabel(/^Reason/).fill("e2e: the vulnerable code path is never called");
+  await expect(save).toBeEnabled();
+  await save.click();
 
-  // The assessment is saved, shown as the latest one, and the gate follows.
-  await expect(page.getByText("Reachability saved")).toBeVisible();
-  await expect(page.getByText(/Latest:\s*Not Reachable/)).toBeVisible();
+  // The assessment is saved, shown as the saved answer, and the gate follows.
+  await expect(page.getByText("Reachability saved", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Saved answer: No/)).toBeVisible();
 
   await page.getByRole("link", { name: "← Back to findings" }).click();
   await expect(page.getByText("PASSING", { exact: true })).toBeVisible();
@@ -1252,8 +1251,8 @@ test("a keyboard user undoes a triage change from the notification", async ({ pa
   const decide = page.getByRole("heading", { level: 2, name: "Decide" }).locator("..");
   await expect(decide).toContainText("Currently: Not triaged");
 
-  await chooseOption(page, page.getByLabel("Triage action"), "Exploitable");
-  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("radio", { name: /^Real issue/ }).check();
+  await page.getByRole("button", { name: "Save decision" }).click();
   // The chosen state shows at once and the page claims nothing about the gate until it refetched.
   await expect(decide).toContainText("Currently: Exploitable");
   await expect(page.getByText(/Triage saved \(effect:/)).toBeVisible();
@@ -1304,8 +1303,8 @@ test("Undo puts a triage back to a state that needed a reason, with its reason a
   await expect(decide).toContainText("Currently: Accepted risk");
   await expect(decide).toContainText("Reason: covered by the WAF rule");
 
-  await chooseOption(page, page.getByLabel("Triage action"), "Exploitable");
-  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("radio", { name: /^Real issue/ }).check();
+  await page.getByRole("button", { name: "Save decision" }).click();
   await expect(decide).toContainText("Currently: Exploitable");
   await expect(page.getByText(/Triage saved \(effect:/)).toBeVisible();
   await expect(decide).not.toContainText("Reason:");

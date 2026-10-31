@@ -80,6 +80,13 @@ function renderDetail(state?: unknown, search = "") {
   );
 }
 
+/** Fix-first mode still uses the select-based triage and reachability forms these tests cover. */
+const FIX_FIRST = "?from=change";
+
+async function openDetails() {
+  await userEvent.setup().click(screen.getByRole("button", { name: /^Details/ }));
+}
+
 beforeEach(() => {
   findingFixture = {};
   reachabilityFixture = [];
@@ -213,12 +220,10 @@ describe("FindingDetail source link", () => {
 describe("FindingDetail triage validation", () => {
   it("blocks accepted_risk until both an expiry date and a reason are provided", async () => {
     const user = userEvent.setup();
-    renderDetail();
+    renderDetail(undefined, FIX_FIRST);
     await screen.findByRole("heading", { name: "Test Vulnerability" });
 
-    const selects = screen.getAllByRole("combobox");
-    expect(selects.length).toBeGreaterThanOrEqual(2);
-    const triageSelect = selects[0];
+    const triageSelect = screen.getByLabelText("Triage action");
     await chooseOption(user, triageSelect, "Accepted risk");
     const apply = screen.getByRole("button", { name: "Apply" });
     expect(apply).toBeDisabled();
@@ -248,7 +253,7 @@ describe("FindingDetail triage validation", () => {
   it("refuses to overwrite a decision made since the page loaded and shows the newer one", async () => {
     triageConflict = true;
     const user = userEvent.setup();
-    renderDetail();
+    renderDetail(undefined, FIX_FIRST);
     await screen.findByRole("heading", { name: "Test Vulnerability" });
 
     await chooseOption(user, screen.getAllByRole("combobox")[0], "False positive");
@@ -272,7 +277,7 @@ describe("FindingDetail triage validation", () => {
 
   it("blocks false_positive until a reason is provided", async () => {
     const user = userEvent.setup();
-    renderDetail();
+    renderDetail(undefined, FIX_FIRST);
     await screen.findByRole("heading", { name: "Test Vulnerability" });
 
     const selects = screen.getAllByRole("combobox");
@@ -293,7 +298,7 @@ describe("FindingDetail triage validation", () => {
 describe("FindingDetail triage explanations", () => {
   it("explains the chosen triage action and links the explanation to the select", async () => {
     const user = userEvent.setup();
-    renderDetail();
+    renderDetail(undefined, FIX_FIRST);
     await screen.findByRole("heading", { name: "Test Vulnerability" });
     const select = screen.getByLabelText("Triage action");
     expect(select).not.toHaveAttribute("aria-describedby");
@@ -314,8 +319,9 @@ describe("FindingDetail triage explanations", () => {
 describe("FindingDetail accessibility", () => {
   it("names each triage and reachability control for assistive technology", async () => {
     const user = userEvent.setup();
-    renderDetail();
+    renderDetail(undefined, FIX_FIRST);
     await screen.findByRole("heading", { name: "Test Vulnerability" });
+    await openDetails();
 
     await chooseOption(user, screen.getByLabelText("Triage action"), "Accepted risk");
 
@@ -328,7 +334,7 @@ describe("FindingDetail accessibility", () => {
 
   it("confirms a successful triage in a polite toast, not in the form", async () => {
     const user = userEvent.setup();
-    renderDetail();
+    renderDetail(undefined, FIX_FIRST);
     await screen.findByRole("heading", { name: "Test Vulnerability" });
 
     await chooseOption(user, screen.getByLabelText("Triage action"), "Exploitable");
@@ -363,7 +369,7 @@ describe("FindingDetail accessibility", () => {
     );
 
     const user = userEvent.setup();
-    renderDetail();
+    renderDetail(undefined, FIX_FIRST);
     await screen.findByRole("heading", { name: "Test Vulnerability" });
 
     await chooseOption(user, screen.getByLabelText("Triage action"), "Exploitable");
@@ -375,12 +381,12 @@ describe("FindingDetail accessibility", () => {
 });
 
 describe("FindingDetail decision flow", () => {
-  it("orders the sections: how to fix, where, decide, context, history", async () => {
+  it("leads with the decision: decide, how to fix, where, context, history", async () => {
     findingFixture = { context: { source_link: "https://example.com/repo" } };
     renderDetail();
     await screen.findByRole("heading", { name: "Test Vulnerability" });
 
-    const order = ["How to fix", "Where it occurs", "Decide", "Context", "History"].map((name) =>
+    const order = ["Decide", "How to fix", "Where it occurs", "Context", "History"].map((name) =>
       screen.getByRole("heading", { level: 2, name })
     );
     for (let i = 0; i < order.length - 1; i++) {
@@ -390,21 +396,23 @@ describe("FindingDetail decision flow", () => {
     }
   });
 
-  it("puts the triage and reachability controls inside the Decide section", async () => {
+  it("puts the decision and the reachability answer in one form inside the Decide section", async () => {
     renderDetail();
     await screen.findByRole("heading", { name: "Test Vulnerability" });
 
     const decide = screen.getByRole("heading", { level: 2, name: "Decide" }).parentElement!;
-    expect(within(decide).getByRole("heading", { level: 3, name: "Triage" })).toBeInTheDocument();
-    expect(within(decide).getByRole("heading", { level: 3, name: "Reachability" }))
+    const form = within(decide).getByRole("form", { name: "What is this finding?" });
+    expect(within(form).getByRole("group", { name: "What is this finding?" })).toBeInTheDocument();
+    expect(within(form).getByRole("group", { name: /Can an attacker reach this code/ }))
       .toBeInTheDocument();
-    expect(within(decide).getByLabelText("Triage action")).toBeInTheDocument();
-    expect(within(decide).getByLabelText("Reachability assessment")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Triage action")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Reachability assessment")).not.toBeInTheDocument();
   });
 
   it("offers the reachability and triage options from the shared vocabularies", async () => {
-    renderDetail();
+    renderDetail(undefined, FIX_FIRST);
     await screen.findByRole("heading", { name: "Test Vulnerability" });
+    await openDetails();
 
     const reachability = screen.getByLabelText("Reachability assessment");
     expect(await listOptions(userEvent.setup(), reachability)).toEqual([
@@ -462,8 +470,9 @@ describe("FindingDetail decision flow", () => {
   });
 
   it("mounts the error regions before anything happens", async () => {
-    renderDetail();
+    renderDetail(undefined, FIX_FIRST);
     await screen.findByRole("heading", { name: "Test Vulnerability" });
+    await openDetails();
 
     expect(screen.getByRole("alert", { name: "Triage result error" })).toBeEmptyDOMElement();
     expect(screen.getByRole("alert", { name: "Reachability result error" }))
@@ -473,8 +482,9 @@ describe("FindingDetail decision flow", () => {
 
   it("confirms a reachability save in a toast and leaves triage untouched", async () => {
     const user = userEvent.setup();
-    renderDetail();
+    renderDetail(undefined, FIX_FIRST);
     await screen.findByRole("heading", { name: "Test Vulnerability" });
+    await openDetails();
 
     await chooseOption(user, screen.getByLabelText("Reachability assessment"), "Reachable");
     await user.click(screen.getByRole("button", { name: "Assess" }));
@@ -702,9 +712,10 @@ describe("FindingDetail reachability rendering", () => {
 
   it("labels a reachability state instead of rendering the raw enum", async () => {
     reachabilityFixture = [assessment({ state: "not_reachable" })];
-    renderDetail();
+    renderDetail(undefined, FIX_FIRST);
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    await openDetails();
     const latest = latestParagraph();
     expect(latest.textContent).toContain("Not Reachable");
     expect(latest.textContent).not.toContain("not_reachable");
@@ -712,9 +723,10 @@ describe("FindingDetail reachability rendering", () => {
 
   it("renders a controlled label when a reachability state is unvalidated", async () => {
     reachabilityFixture = [assessment({ state: "maybe_reachable", evidence: "trace exists" })];
-    renderDetail();
+    renderDetail(undefined, FIX_FIRST);
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    await openDetails();
     const latest = latestParagraph();
     expect(latest.textContent).not.toContain("maybe_reachable");
     expect(latest.textContent).not.toContain("maybe reachable");
@@ -724,9 +736,10 @@ describe("FindingDetail reachability rendering", () => {
   it("truncates long evidence inline and keeps the full text reachable", async () => {
     const fullEvidence = "x".repeat(2000);
     reachabilityFixture = [assessment({ evidence: fullEvidence })];
-    renderDetail();
+    renderDetail(undefined, FIX_FIRST);
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    await openDetails();
     const latest = latestParagraph();
     // The 2000-char payload must not land in the layout.
     expect(latest.textContent!.length).toBeLessThan(300);
@@ -737,9 +750,10 @@ describe("FindingDetail reachability rendering", () => {
 
   it("keeps short evidence inline untruncated", async () => {
     reachabilityFixture = [assessment({ evidence: "short reason" })];
-    renderDetail();
+    renderDetail(undefined, FIX_FIRST);
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    await openDetails();
     const latest = latestParagraph();
     expect(latest.textContent).toContain(". short reason");
     expect(latest.textContent).not.toContain("…");
@@ -747,8 +761,9 @@ describe("FindingDetail reachability rendering", () => {
 
   it("resets assessment inputs upon successful submission", async () => {
     const user = userEvent.setup();
-    renderDetail();
+    renderDetail(undefined, FIX_FIRST);
     await screen.findByRole("heading", { name: "Test Vulnerability" });
+    await openDetails();
 
     const selects = screen.getAllByRole("combobox");
     const reachSelect = selects[1];

@@ -95,7 +95,7 @@ it("renders the finding detail route", async () => {
   );
 
   expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
-  expect(screen.getByText("Reachability")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { level: 2, name: "Decide" })).toBeInTheDocument();
 });
 
 it("sends anonymous visitors from a protected project page to sign in", async () => {
