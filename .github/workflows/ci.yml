@@ -7,6 +7,13 @@ on:
 
 permissions:
   contents: read
+  packages: read
+
+env:
+  # Repository variable, for example ghcr.io/minh-tg/mirror. Unset, jobs pull from Docker Hub. Set,
+  # they pull from the mirror filled by the mirror-images workflow, and fall back to Docker Hub with
+  # a warning when the mirror lacks an image. See .github/actions/image-source.
+  IMAGE_MIRROR: ${{ vars.IMAGE_MIRROR }}
 
 jobs:
   # The unit and integration suites run as separate jobs so they overlap. The
@@ -51,6 +58,9 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Pulls from the GHCR mirror when IMAGE_MIRROR is set and complete, else from Docker Hub.
+      - uses: ./.github/actions/image-source
+
       # Started here, after the login above, because a service container is pulled before any step
       # runs and its credentials cannot be optional.
       - name: Start PostgreSQL
@@ -59,7 +69,7 @@ jobs:
             -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=specht \
             --health-cmd="pg_isready -U postgres -d specht" \
             --health-interval=5s --health-timeout=3s --health-retries=10 \
-            postgres:17
+            "$CI_POSTGRES_17_IMAGE"
           for _ in $(seq 1 60); do
             [ "$(docker inspect -f '{{.State.Health.Status}}' postgres)" = healthy ] && exit 0
             sleep 2
@@ -74,10 +84,13 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # Ryuk is testcontainers' cleanup container, pulled from Docker Hub. The runner is discarded
+      # after the job and the suite stops its own container, so it is not needed here.
       - name: Integration tests (real Postgres via testcontainers)
         run: go test -tags integration ./internal/repo/ -count=1 -timeout 15m
         env:
           DOCKER_HOST: unix:///var/run/docker.sock
+          TESTCONTAINERS_RYUK_DISABLED: "true"
 
       - name: Apply complete migration chain
         run: go run ./cmd/server migrate
@@ -149,6 +162,9 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Pulls from the GHCR mirror when IMAGE_MIRROR is set and complete, else from Docker Hub.
+      - uses: ./.github/actions/image-source
+
       - uses: ./.github/actions/setup-go
         with:
           scope: build
@@ -180,6 +196,9 @@ jobs:
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Pulls from the GHCR mirror when IMAGE_MIRROR is set and complete, else from Docker Hub.
+      - uses: ./.github/actions/image-source
 
       - uses: ./.github/actions/setup-go
         with:
@@ -231,6 +250,9 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Pulls from the GHCR mirror when IMAGE_MIRROR is set and complete, else from Docker Hub.
+      - uses: ./.github/actions/image-source
+
       - uses: ./.github/actions/setup-go
         with:
           scope: build
@@ -263,6 +285,9 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Pulls from the GHCR mirror when IMAGE_MIRROR is set and complete, else from Docker Hub.
+      - uses: ./.github/actions/image-source
+
       # Builds the image from source with the build override and walks the "Start" section of
       # deploy/README.md: setup token, first admin, project, scan, verdict, restart.
       - name: Compose smoke
@@ -286,6 +311,9 @@ jobs:
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Pulls from the GHCR mirror when IMAGE_MIRROR is set and complete, else from Docker Hub.
+      - uses: ./.github/actions/image-source
 
       - uses: ./.github/actions/setup-go
         with:
@@ -394,9 +422,12 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Pulls from the GHCR mirror when IMAGE_MIRROR is set and complete, else from Docker Hub.
+      - uses: ./.github/actions/image-source
+
       - name: Build image with version metadata
         run: |
-          docker build -f deploy/Dockerfile \
+          docker build -f "$(scripts/mirror-dockerfile.sh deploy/Dockerfile)" \
             --build-arg VERSION=ci-validation \
             --build-arg COMMIT="$(git rev-parse --short HEAD)" \
             -t specht:ci .
@@ -411,6 +442,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
+      packages: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -422,6 +454,9 @@ jobs:
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Pulls from the GHCR mirror when IMAGE_MIRROR is set and complete, else from Docker Hub.
+      - uses: ./.github/actions/image-source
 
       - uses: ./.github/actions/setup-go
         with:
@@ -439,7 +474,7 @@ jobs:
 
       - name: Build the adapter image
         run: |
-          docker build --load -f deploy/Dockerfile.adapter \
+          docker build --load -f "$(scripts/mirror-dockerfile.sh deploy/Dockerfile.adapter)" \
             --build-arg VERSION=0.0.0-dryrun \
             --build-arg COMMIT="$(git rev-parse --short HEAD)" \
             -t specht-adapter:dryrun .
@@ -650,6 +685,9 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # Pulls from the GHCR mirror when IMAGE_MIRROR is set and complete, else from Docker Hub.
+      - uses: ./.github/actions/image-source
+
       # Started here, after the login above, because a service container is pulled before any step
       # runs and its credentials cannot be optional.
       - name: Start PostgreSQL
@@ -658,7 +696,7 @@ jobs:
             -e POSTGRES_USER=specht -e POSTGRES_PASSWORD=${{ github.run_id }} -e POSTGRES_DB=specht \
             --health-cmd="pg_isready -U specht -d specht" \
             --health-interval=5s --health-timeout=3s --health-retries=10 \
-            postgres:17-alpine
+            "$SPECHT_TEST_POSTGRES_IMAGE"
           for _ in $(seq 1 60); do
             [ "$(docker inspect -f '{{.State.Health.Status}}' postgres)" = healthy ] && exit 0
             sleep 2

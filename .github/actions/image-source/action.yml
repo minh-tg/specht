@@ -1,0 +1,52 @@
+name: image-source
+description: >
+  Chooses where a job pulls third-party images from. When IMAGE_MIRROR is set (the repository
+  variable, for example ghcr.io/minh-tg/mirror) and the mirror holds every image listed by
+  scripts/mirror-images.sh, the job uses the mirror. Otherwise it uses Docker Hub, as before. The
+  choice is exported as IMAGE_PREFIX (read by scripts/mirror-dockerfile.sh), as
+  SPECHT_TEST_POSTGRES_IMAGE (read by the Go tests and the smoke scripts) and as
+  CI_POSTGRES_17_IMAGE for steps that start the Debian postgres:17 image.
+
+  The caller sets IMAGE_MIRROR in its env and needs `packages: read` to pull private mirror
+  packages. Run it after checkout, because it reads the image list from the repository.
+
+runs:
+  using: composite
+  steps:
+    # Public packages pull anonymously, so a failed login is not an error. A private package linked
+    # to this repository needs the token.
+    - name: Log in to GHCR
+      if: ${{ startsWith(env.IMAGE_MIRROR, 'ghcr.io/') }}
+      continue-on-error: true
+      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Select the image source
+      shell: bash
+      run: |
+        prefix="docker.io/library"
+        if [ -z "${IMAGE_MIRROR:-}" ]; then
+          echo "IMAGE_MIRROR is not set: pulling from Docker Hub."
+        else
+          mirror="${IMAGE_MIRROR%/}"
+          missing=()
+          while IFS= read -r ref; do
+            if ! docker buildx imagetools inspect "$mirror/$ref" >/dev/null 2>&1; then
+              missing+=("$ref")
+            fi
+          done < <(scripts/mirror-images.sh)
+          if [ "${#missing[@]}" -eq 0 ]; then
+            prefix="$mirror"
+            echo "Pulling from the mirror $mirror."
+          else
+            echo "::warning title=Image mirror incomplete::$mirror cannot serve: ${missing[*]}. Pulling from Docker Hub. Run the mirror-images workflow and check that the packages are public or linked to this repository."
+          fi
+        fi
+        {
+          echo "IMAGE_PREFIX=$prefix"
+          echo "SPECHT_TEST_POSTGRES_IMAGE=$prefix/postgres:17-alpine"
+          echo "CI_POSTGRES_17_IMAGE=$prefix/postgres:17"
+        } >> "$GITHUB_ENV"
