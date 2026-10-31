@@ -2,7 +2,7 @@ import { Ledger } from "@/components/Ledger";
 import type { Finding } from "@/types/api";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { BlockerEntry } from "./BlockerEntry";
 
@@ -51,6 +51,61 @@ function renderEntry(item: Finding) {
     </MemoryRouter>,
   );
 }
+
+function Destination() {
+  const location = useLocation();
+  const state = location.state as { changeView?: string; } | null;
+  return (
+    <>
+      <p data-testid="destination">{location.pathname + location.search}</p>
+      <p data-testid="state">{state?.changeView}</p>
+    </>
+  );
+}
+
+describe("BlockerEntry link", () => {
+  it("opens the finding marked as coming from the change, and remembers the change", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/acme/changes/abc1234?report=r1&scope=introduced"]}>
+        <Routes>
+          <Route
+            path="/acme/changes/:commit"
+            element={
+              <Ledger label="Blocking findings">
+                <BlockerEntry
+                  slug="acme"
+                  index={1}
+                  findingId="f1"
+                  finding={finding()}
+                  isLoading={false}
+                  isError={false}
+                  onRetry={vi.fn()}
+                  open
+                  onOpenChange={vi.fn()}
+                  handled={false}
+                  onHandledChange={vi.fn()}
+                  waiverRequested={false}
+                  canRequestWaiver
+                  onRequestWaiver={vi.fn()}
+                />
+              </Ledger>
+            }
+          />
+          <Route path="/acme/findings/:id" element={<Destination />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const link = screen.getByRole("link", { name: "Open the full finding" });
+    expect(link).toHaveAttribute("href", "/acme/findings/f1?from=change");
+    await user.click(link);
+    expect(screen.getByTestId("destination")).toHaveTextContent("/acme/findings/f1?from=change");
+    expect(screen.getByTestId("state")).toHaveTextContent(
+      "/acme/changes/abc1234?report=r1&scope=introduced",
+    );
+  });
+});
 
 describe("BlockerEntry fix", () => {
   it("shows the upgrade and a copy button for an SCA finding with a real fix", async () => {
