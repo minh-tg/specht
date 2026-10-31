@@ -450,7 +450,8 @@
           "target": "src/repository.go",
           "detail": "No fix description reported — follow the rule documentation for the secure pattern.",
           "confidence": "low",
-          "source": "sarif"
+          "source": "sarif",
+          "fallback": true
         }
       },
       "total": null
@@ -506,7 +507,8 @@
           "target": "src/config.go",
           "detail": "No fix description reported — follow the rule documentation for the secure pattern.",
           "confidence": "low",
-          "source": "sarif"
+          "source": "sarif",
+          "fallback": true
         }
       },
       "total": null
@@ -562,7 +564,8 @@
           "target": "requirements.txt",
           "detail": "No fix description reported — follow the rule documentation for the secure pattern.",
           "confidence": "low",
-          "source": "sarif"
+          "source": "sarif",
+          "fallback": true
         }
       },
       "total": null

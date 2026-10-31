@@ -130,6 +130,7 @@ describe("BlockerEntry fix", () => {
         target: "src/db.ts",
         detail: "No fix description reported",
         confidence: "low",
+        fallback: true,
       },
     }));
 
@@ -143,7 +144,7 @@ describe("BlockerEntry fix", () => {
 
   it("does not name a place to start when the finding has no location", () => {
     renderEntry(finding({
-      suggestion: { action: "review", confidence: "low" },
+      suggestion: { action: "review", confidence: "low", fallback: true },
     }));
 
     expect(screen.getByText("No known fix.")).toBeInTheDocument();

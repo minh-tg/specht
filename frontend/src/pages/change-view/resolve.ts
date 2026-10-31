@@ -61,12 +61,12 @@ export function locationLine(location?: FindingLocation): string | null {
 
 /**
  * Whether a suggestion is an actual fix. When the scanner supplied nothing usable, the server
- * (`remediate.fallback`) still sends one suggestion with the action "review" and the file or
- * package as its target. That is a pointer to where to look, not a fix, so it must not be shown
- * as the thing to do or copied as one.
+ * still sends one suggestion (action "review", the file or package as its target) and marks it
+ * `fallback`. That is a pointer to where to look, not a fix, so it must not be shown as the thing
+ * to do or copied as one.
  */
 export function isRealFix(suggestion?: FindingSuggestion): suggestion is FindingSuggestion {
-  return !!suggestion?.action && suggestion.action !== "review";
+  return !!suggestion && !suggestion.fallback;
 }
 
 /**

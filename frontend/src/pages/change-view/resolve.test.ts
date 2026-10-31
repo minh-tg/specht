@@ -167,6 +167,7 @@ describe("fixAction", () => {
           target: "src/db.ts",
           detail: "No fix description reported",
           confidence: "low",
+          fallback: true,
         },
       }),
     ).toBeNull();
@@ -174,7 +175,7 @@ describe("fixAction", () => {
     expect(
       fixAction({
         remediation: { summary: "Use a parameterized query" },
-        suggestion: { action: "review", target: "src/db.ts", confidence: "low" },
+        suggestion: { action: "review", target: "src/db.ts", confidence: "low", fallback: true },
       }),
     ).toBe("Use a parameterized query");
   });
@@ -187,16 +188,29 @@ describe("fixAction", () => {
 
 describe("isRealFix", () => {
   it("accepts a source-backed suggestion", () => {
-    expect(isRealFix({ action: "upgrade", target: "lodash", confidence: "high" })).toBe(true);
-    expect(isRealFix({ action: "fix-code", target: "src/db.ts", confidence: "medium" })).toBe(
+    expect(isRealFix({ action: "upgrade", target: "lodash", confidence: "high", fallback: false }))
+      .toBe(true);
+    expect(
+      isRealFix({ action: "fix-code", target: "src/db.ts", confidence: "medium", fallback: false }),
+    ).toBe(
       true,
     );
-    expect(isRealFix({ action: "rotate", confidence: "high" })).toBe(true);
+    expect(isRealFix({ action: "rotate", confidence: "high", fallback: false })).toBe(true);
   });
 
   it("rejects the generic review fallback and a missing suggestion", () => {
-    expect(isRealFix({ action: "review", target: "src/db.ts", confidence: "low" })).toBe(false);
+    expect(isRealFix({ action: "review", target: "src/db.ts", confidence: "low", fallback: true }))
+      .toBe(false);
     expect(isRealFix(undefined)).toBe(false);
+  });
+
+  it("trusts the server's fallback flag over the action name", () => {
+    expect(
+      isRealFix({ action: "review", target: "src/db.ts", confidence: "medium", fallback: false }),
+    )
+      .toBe(true);
+    expect(isRealFix({ action: "upgrade", target: "lodash", confidence: "low", fallback: true }))
+      .toBe(false);
   });
 });
 
@@ -208,7 +222,7 @@ describe("fixesText", () => {
   it("lists only real fixes and keeps each entry's ledger number", () => {
     const text = fixesText([
       found("a", "SQL injection", {
-        suggestion: { action: "review", target: "src/db.ts", confidence: "low" },
+        suggestion: { action: "review", target: "src/db.ts", confidence: "low", fallback: true },
       }),
       found("b", "Lodash prototype pollution", {
         suggestion: { action: "upgrade", target: "lodash", confidence: "high" },
@@ -227,7 +241,7 @@ describe("fixesText", () => {
     expect(
       fixesText([
         found("a", "SQL injection", {
-          suggestion: { action: "review", target: "src/db.ts", confidence: "low" },
+          suggestion: { action: "review", target: "src/db.ts", confidence: "low", fallback: true },
         }),
         found("b", "Open bucket"),
       ]),
