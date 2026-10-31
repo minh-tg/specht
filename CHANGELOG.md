@@ -671,6 +671,9 @@ releases.
 - `PUT /api/v1/projects/{slug}/waivers/{id}` answers `404` for a waiver of another project
   and for an id that does not exist, whatever the body holds. Before, an emptied
   `conditions` list gave `404` for the first and `400` for the second.
+- The `waiver_deletions` archive now refuses `DELETE` and `TRUNCATE` as well as `UPDATE`,
+  including from the application's own database role. Deleting a project still removes
+  its archived records.
 - A person whose manager or admin rank on a project comes only from a linked
   team can no longer grant manager or admin through a member row, a team link
   or an invite. Before, they could write a direct admin row for themselves and
