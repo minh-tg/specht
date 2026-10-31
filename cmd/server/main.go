@@ -169,6 +169,9 @@ func main() {
 	if warning := insecureDBTransport(cfg.DBURL); warning != "" {
 		slog.Warn(warning)
 	}
+	if warning := catchAllProxyWarning(cfg.TrustedProxies); warning != "" {
+		slog.Warn(warning)
+	}
 	if handled := handleSubcommand(cfg); handled {
 		return
 	}
