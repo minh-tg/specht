@@ -731,3 +731,8 @@ releases.
 - The EPSS and CISA KEV feed clients now refuse redirects and connections to private,
   link-local and other non-public addresses. A loopback feed URL is still allowed. A
   feed mirror on a private address is refused, and so is egress through `HTTPS_PROXY`.
+- Report upload reserves its share of the ingest memory budget before it reads the
+  body, sized by `Content-Length` (the 25 MiB limit when the length is not declared,
+  shrunk to the bytes that arrive). A request the budget cannot hold now gets
+  `503 ingest_busy` without its body being buffered, so many API keys can no longer
+  hold request bodies in memory outside `INGEST_MEMORY_BUDGET`.
