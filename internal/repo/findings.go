@@ -700,6 +700,16 @@ func (r *pgFindingRepo) ListFindingIDsPresentInReport(ctx context.Context, repor
 	})
 }
 
+func (r *pgFindingRepo) ListReportIntroducedChangeTypes(ctx context.Context, reportID pgtype.UUID, findingIDs []pgtype.UUID) ([]sqlc.ListReportIntroducedChangeTypesRow, error) {
+	if len(findingIDs) == 0 {
+		return nil, nil
+	}
+	return r.q.ListReportIntroducedChangeTypes(ctx, sqlc.ListReportIntroducedChangeTypesParams{
+		ReportID:   reportID,
+		FindingIds: findingIDs,
+	})
+}
+
 func (r *pgFindingRepo) RecordReportIntroducedFindings(ctx context.Context, reportID pgtype.UUID, baselineReportID pgtype.UUID, findingIDs []pgtype.UUID, changeTypes []string) error {
 	if len(findingIDs) == 0 {
 		return nil

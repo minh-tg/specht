@@ -535,6 +535,14 @@ JOIN unnest($4::text[]) WITH ORDINALITY AS ct(val, ord) ON f.ord = ct.ord
 ON CONFLICT (report_id, finding_id) DO UPDATE SET
     change_type = EXCLUDED.change_type;
 
+-- name: ListReportIntroducedChangeTypes :many
+-- The change type one report recorded for each of the given findings it
+-- introduced. Findings the report did not introduce return no row.
+SELECT finding_id, change_type
+FROM report_introduced_findings
+WHERE report_id = $1
+  AND finding_id = ANY(sqlc.arg(finding_ids)::uuid[]);
+
 -- name: ListIntroducedGateCandidates :many
 SELECT
     f.id,

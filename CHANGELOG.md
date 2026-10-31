@@ -353,6 +353,17 @@ releases.
   both values. Copy the `issuer` value from `/.well-known/openid-configuration` into
   `SSO_ISSUER_URL` unchanged.
 
+### Fixed
+
+- A branch can no longer pass the introduced-only gate by pushing again. When no
+  baseline resolves from `base_revision` (the target branch was never scanned, or a
+  push build sent no base ref), a finding the previous report in the same scan scope
+  recorded as introduced stays introduced while the new report still observes it.
+  This applies only to change branches: the report names a `base_revision` other than
+  its branch, or an earlier report on the branch did. Push builds on a branch that
+  never named a base, such as `main`, keep counting only findings new to the project.
+  `introduced_count` in the ingest response counts the carried findings too.
+
 ### Security
 
 - Self-service registration is closed unless `REGISTRATION_ENABLED=true`.
