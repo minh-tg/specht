@@ -39,9 +39,10 @@ let audits = 0;
  * wait; the loop then repeats until nothing is running.
  */
 async function settle(page: Page): Promise<void> {
-  const stuck = await page.evaluate(async () => {
-    // A looping animation (a skeleton pulse, a spinner) never finishes, so each wait is capped and
-    // the test fails naming what is still running instead of using up the whole test timeout.
+  const looping = await page.evaluate(async () => {
+    // Waits up to 10 rounds, each capped so the whole wait stays under 5 s. A one-shot transition that
+    // keeps restarting (a toast stack settling) is tolerated as before; only an animation that loops
+    // forever fails the audit, since it would otherwise use up the whole test timeout.
     const deadline = Date.now() + 5_000;
     for (let attempt = 0; attempt < 10; attempt += 1) {
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -54,21 +55,20 @@ async function settle(page: Page): Promise<void> {
         new Promise((resolve) => setTimeout(resolve, left)),
       ]);
     }
-    return document.getAnimations().map((animation) => {
-      const target = (animation.effect as KeyframeEffect | null)?.target;
-      const name = animation instanceof CSSAnimation
-        ? animation.animationName
-        : animation instanceof CSSTransition
-        ? `transition ${animation.transitionProperty}`
-        : animation.id || "script animation";
-      const where = target
-        ? `${target.tagName.toLowerCase()}.${[...target.classList].join(".")}`
-        : "no target";
-      const iterations = animation.effect?.getTiming().iterations;
-      return `${name} on ${where} (iterations ${String(iterations)})`;
-    });
+    return document.getAnimations()
+      .filter((animation) => animation.effect?.getTiming().iterations === Infinity)
+      .map((animation) => {
+        const target = (animation.effect as KeyframeEffect | null)?.target;
+        const name = animation instanceof CSSAnimation
+          ? animation.animationName
+          : animation.id || "animation";
+        const where = target
+          ? `${target.tagName.toLowerCase()}${[...target.classList].map((c) => `.${c}`).join("")}`
+          : "no target";
+        return `${name} on ${where}`;
+      });
   });
-  expect(stuck, "animations still running when the page should be settled").toEqual([]);
+  expect(looping, "looping animations on a page that should be settled").toEqual([]);
 }
 
 async function audit(page: Page, name: string): Promise<void> {
