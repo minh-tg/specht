@@ -1,8 +1,7 @@
-import { Drum } from "@/components/Drum";
 import { HoleTracker } from "@/components/HoleTracker";
-import { INLINE_LINK } from "@/components/inlineLink";
 import { Button } from "@/components/ui/button";
 import { useCopyToClipboard } from "@/lib/useCopyToClipboard";
+import { type WatchState, WatchStrip } from "@/pages/change-view/WatchStrip";
 
 export interface AsideItem {
   readonly id: string;
@@ -15,21 +14,19 @@ export interface ChangeAsideProps {
   readonly onHandledChange: (id: string, handled: boolean) => void;
   /** Every fix the scanners know, one per line, for pasting into a terminal or a ticket. */
   readonly fixesText: string;
-  /** The page is waiting for a newer scan to land. */
-  readonly waiting: boolean;
-  readonly stalled: boolean;
-  readonly onStartWaiting: () => void;
-  readonly onCheckAgain: () => void;
+  /** The page is watching for a newer scan. Absent when it is not, for example on an old change. */
+  readonly watch?: WatchState;
+  /** The branch being watched, named in the strip. */
+  readonly branch?: string | null;
 }
 
 /**
  * The margin note beside the ledger: the reader's own progress (holes and a checklist), one primary
- * action, and how to send fresh evidence. Ticking an item tracks the reader's progress and nothing
- * else; the verdict changes only when a scan lands.
+ * action, how to send fresh evidence, and whether the page is watching for it. Ticking an item
+ * tracks the reader's progress and nothing else; the verdict changes only when a scan lands.
  */
 export function ChangeAside(
-  { items, onHandledChange, fixesText, waiting, stalled, onStartWaiting, onCheckAgain }:
-    ChangeAsideProps,
+  { items, onHandledChange, fixesText, watch, branch }: ChangeAsideProps,
 ) {
   const { status, copy } = useCopyToClipboard();
   const done = items.filter((item) => item.handled).length;
@@ -73,32 +70,13 @@ export function ChangeAside(
           Run your CI scan again, or upload a report through the API with matching scan metadata. If
           a watcher is configured, wait for its next scan. This checklist only tracks your progress.
         </p>
-        {waiting
-          ? (
-            <p role="status" className="mt-3 flex items-center gap-2">
-              <Drum />
-              {stalled
-                ? "Nothing yet after ten minutes. Check your CI job, watcher or report upload."
-                : "Waiting for the next scan"}
-            </p>
-          )
-          : (
-            <button
-              type="button"
-              onClick={onStartWaiting}
-              className={`${INLINE_LINK} mt-3`}
-            >
-              Wait for a new report
-            </button>
-          )}
-        {waiting && stalled && (
-          <button
-            type="button"
-            onClick={onCheckAgain}
-            className={`${INLINE_LINK} mt-2`}
-          >
-            Check again
-          </button>
+        {watch && (
+          <WatchStrip
+            className="mt-3"
+            label={`Watching for the next scan${branch ? ` of ${branch}` : ""}`}
+            watch={watch}
+            announce={watch.online && !watch.stalled}
+          />
         )}
       </div>
     </aside>

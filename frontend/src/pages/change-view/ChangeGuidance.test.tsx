@@ -29,10 +29,8 @@ describe("report-source guidance", () => {
         items={[]}
         onHandledChange={vi.fn()}
         fixesText=""
-        waiting={false}
-        stalled={false}
-        onStartWaiting={vi.fn()}
-        onCheckAgain={vi.fn()}
+        branch="main"
+        watch={{ online: true, stalled: false, checkedAt: 0, failing: false }}
       />,
     );
 
@@ -40,7 +38,8 @@ describe("report-source guidance", () => {
       .toBeInTheDocument();
     expect(screen.getByText(/If a watcher is configured/)).toBeInTheDocument();
     expect(screen.getByText(/This checklist only tracks your progress/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Wait for a new report" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Wait for a new report" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Watching for the next scan of main");
     expect(screen.queryByText(/re-scans on its own/)).not.toBeInTheDocument();
   });
 

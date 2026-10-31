@@ -51,14 +51,10 @@ test("waiver audit history can be inspected without management actions", async (
   await expect(page.getByRole("button", { name: /Approve|Reject|Withdraw|Delete/ })).toHaveCount(0);
 });
 
-test("live monitoring is explicitly unavailable instead of pretending to scan", async ({ page }) => {
+test("the change page has no button for starting a live scan watch", async ({ page }) => {
   await page.goto(`./#/${snapshot.slug}/changes/${snapshot.commit}`);
-  await page.getByRole("button", { name: "Wait for a new report", exact: true }).click();
-  await expect(
-    page.getByRole("status").filter({
-      hasText: "Live report monitoring is unavailable in this fixed sample.",
-    }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("1 finding blocks this change.");
   await expect(page.getByRole("button", { name: "Wait for a new report", exact: true }))
-    .toBeVisible();
+    .toHaveCount(0);
+  await expect(page.getByText("Real interface, fixed synthetic reports.")).toBeVisible();
 });

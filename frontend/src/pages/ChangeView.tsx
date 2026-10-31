@@ -15,11 +15,12 @@ import { useOnline } from "@/lib/useOnline";
 import { blockerCount, isReportInProgress } from "@/lib/verdict";
 import { BlockerSection, MAX_BLOCKER_ROWS } from "@/pages/change-view/BlockerSection";
 import { ChangeHero, ChangeHeroSkeleton, type ChangeState } from "@/pages/change-view/ChangeHero";
+import { OfflineNotice, StalledNotice } from "@/pages/change-view/ChangeNotice";
 import { ExistingDebt } from "@/pages/change-view/ExistingDebt";
 import { existingBlockers, resolveReport, shortCommit } from "@/pages/change-view/resolve";
-import { WatchStrip } from "@/pages/change-view/WatchStrip";
+import { type WatchState, WatchStrip } from "@/pages/change-view/WatchStrip";
 import { useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useEffect } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 export { MAX_BLOCKER_ROWS };
@@ -98,7 +99,6 @@ export function ChangeView() {
 
   useDocumentTitle(`${slug} · Change ${short}`);
 
-  const online = useOnline();
   const projectQuery = useProject(slug);
   const reportsQuery = useChangeReports(slug, commit, reportParam);
   const report = resolveReport(reportsQuery.data, commit, reportParam);
@@ -124,25 +124,26 @@ export function ChangeView() {
     return Promise.all(pending);
   };
 
-  // Waiting for the next scan: begins when the reader says they pushed, or has handled every
-  // blocker. It ends when a newer report on this branch is final, and the page moves to its change.
-  const [waitingFor, setWaitingFor] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
-  const waiting = report !== null && waitingFor === report.id;
-  const reportId = report?.id ?? null;
-  const startWaiting = useCallback(() => setWaitingFor(reportId), [reportId]);
-  const checkAgain = useCallback(() => setAttempt((count) => count + 1), []);
+  // Watching for the next scan runs for as long as the page shows a finished report on a branch. It
+  // ends when a newer report on that branch is final, and the page moves to its change.
+  const online = useOnline();
+  const watching = report !== null && report.status === "completed" && !!report.branch;
   const signal = useScanSignal(slug, {
     branch: report?.branch,
-    enabled: waiting && report !== null,
-    attempt,
+    enabled: watching,
+    current: report ? { id: report.id, createdAt: report.created_at } : undefined,
   });
-  const newer = signal.newest && report && signal.newest.id !== report.id
-      && signal.newest.created_at > report.created_at
-    ? signal.newest
-    : null;
+  const newer = signal.newer;
   const scanningNewer = newer !== null && isReportInProgress(newer.status);
   const landed = newer !== null && !scanningNewer ? newer : null;
+  const watch: WatchState | undefined = signal.watching
+    ? {
+      online,
+      stalled: signal.stalled,
+      checkedAt: signal.dataUpdatedAt,
+      failing: signal.isError,
+    }
+    : undefined;
 
   useEffect(() => {
     if (!landed) return;
@@ -271,6 +272,12 @@ export function ChangeView() {
     : gate.threshold_breached
     ? "blocked"
     : "passing";
+  const reportAt = report.completed_at ?? report.created_at;
+  const notice = !online
+    ? <OfflineNotice verdictAt={new Date(changeGateQuery.dataUpdatedAt).toISOString()} />
+    : state === "blocked" && watch?.stalled
+    ? <StalledNotice reportAt={reportAt} checkedAt={signal.dataUpdatedAt} />
+    : undefined;
 
   return (
     <Page>
@@ -284,6 +291,7 @@ export function ChangeView() {
         waived={gate.waived_count ?? 0}
         policy={gate.policy}
         projectWide={projectWide}
+        notice={notice}
       />
       {gate.threshold_breached && (
         <BlockerSection
@@ -293,10 +301,8 @@ export function ChangeView() {
           floor={gate.policy?.severity_floor}
           canRequestWaiver={projectQuery.data?.permissions?.request_waiver ?? false}
           projectWide={projectWide}
-          waiting={waiting}
-          stalled={signal.stalled}
-          onStartWaiting={startWaiting}
-          onCheckAgain={checkAgain}
+          branch={report.branch}
+          watch={watch}
         />
       )}
       <ExistingDebt

@@ -93,16 +93,6 @@ export function Demo() {
   return (
     <div
       onClickCapture={(event) => {
-        const button = (event.target as Element).closest("button");
-        if (
-          button
-          && ["Wait for a new report", "Check again"].includes(button.textContent?.trim() ?? "")
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-          setNotice("Live report monitoring is unavailable in this fixed sample.");
-          return;
-        }
         const anchor = (event.target as Element).closest<HTMLAnchorElement>("a[href]");
         if (anchor && new URL(anchor.href).pathname.startsWith("/api/")) {
           event.preventDefault();
