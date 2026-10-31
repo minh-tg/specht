@@ -12,7 +12,8 @@ INSERT INTO reports (
     started_at, error_message, raw_report_hash,
     raw_data,
     base_revision, changed_files, scan_mode,
-    covered_finding_kinds, examined_keys
+    covered_finding_kinds, examined_keys,
+    filter_severities, filter_fixable_only
 ) VALUES (
     $1, $2, $3, $4,
     $5, $6, $7,
@@ -23,7 +24,8 @@ INSERT INTO reports (
     $18, $19, $20,
     $21,
     $22, $23, $24,
-    sqlc.narg(covered_finding_kinds)::text[], sqlc.narg(examined_keys)::text[]
+    sqlc.narg(covered_finding_kinds)::text[], sqlc.narg(examined_keys)::text[],
+    sqlc.narg(filter_severities)::text[], sqlc.arg(filter_fixable_only)::boolean
 ) RETURNING *;
 
 -- name: GetReportByID :one
@@ -127,7 +129,9 @@ SELECT EXISTS (
 -- qualify. pgx.ErrNoRows means the finding has no observation in a report, or
 -- no completed full report exists in that scope. examined says whether the
 -- report proves it looked for this finding (report_examined_finding), the same
--- test auto-fix uses.
+-- test auto-fix uses. filtered is set when the uploader declared a severity or
+-- fixable-only filter; completeness alone then proves nothing, so callers
+-- require examined.
 WITH latest_observation AS (
     SELECT r.scan_scope_hash
     FROM finding_occurrences fo
@@ -137,7 +141,8 @@ WITH latest_observation AS (
     LIMIT 1
 )
 SELECT r.id, r.tool_name, r.branch, r.commit_sha, r.base_revision, r.scan_mode, r.scan_completeness, r.created_at,
-       report_examined_finding(r.scan_completeness, r.covered_finding_kinds, r.examined_keys, f.id, f.finding_kind, f.fingerprint) AS examined
+       report_examined_finding(r.scan_completeness, r.covered_finding_kinds, r.examined_keys, r.filter_severities, r.filter_fixable_only, r.scan_scope_hash, f.id, f.finding_kind, f.fingerprint) AS examined,
+       (r.filter_severities IS NOT NULL OR r.filter_fixable_only)::boolean AS filtered
 FROM reports r
 JOIN findings f ON f.id = sqlc.arg(finding_id)
 WHERE r.project_id = sqlc.arg(project_id)

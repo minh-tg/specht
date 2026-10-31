@@ -52,6 +52,8 @@ func (r *pgReportPort) Create(ctx context.Context, input port.CreateReportInput)
 		ScanCompleteness:    completeness,
 		CoveredFindingKinds: input.CoveredFindingKinds,
 		ExaminedKeys:        input.ExaminedKeys,
+		FilterSeverities:    input.FilterSeverities,
+		FilterFixableOnly:   input.FilterFixableOnly,
 	})
 	if err != nil {
 		// The duplicate-report unique violation (23505 on the raw-content
@@ -179,6 +181,7 @@ func (r *pgReportPort) LatestCompletedInFindingScope(ctx context.Context, projec
 		Completeness:    row.ScanCompleteness,
 		CreatedAt:       row.CreatedAt.Time,
 		ExaminedFinding: row.Examined,
+		Filtered:        row.Filtered,
 	}, nil
 }
 
@@ -1601,6 +1604,9 @@ func reportRowToPort(re sqlc.Report) port.Report {
 		RawDataExpired: rawDataExpired(re.RawData),
 		CreatedAt:      re.CreatedAt.Time,
 		CompletedAt:    timePtrFromTimestamptz(re.CompletedAt),
+
+		FilterSeverities:  re.FilterSeverities,
+		FilterFixableOnly: re.FilterFixableOnly,
 	}
 }
 

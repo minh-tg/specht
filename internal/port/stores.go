@@ -1207,6 +1207,10 @@ type Report struct {
 	RawDataExpired bool
 	CreatedAt      time.Time
 	CompletedAt    *time.Time
+	// FilterSeverities and FilterFixableOnly are the scan filter the uploader
+	// declared for this report. Both zero means an unfiltered scan.
+	FilterSeverities  []string
+	FilterFixableOnly bool
 }
 
 // CreateReportInput carries report create fields.
@@ -1235,7 +1239,11 @@ type CreateReportInput struct {
 	CoveredFindingKinds []string
 	// ExaminedKeys prove, finding by finding, what the report looked for.
 	ExaminedKeys []string
-	Status       string
+	// FilterSeverities and FilterFixableOnly are the scan filter the uploader
+	// declared. Empty severities store NULL: no severity filter.
+	FilterSeverities  []string
+	FilterFixableOnly bool
+	Status            string
 }
 
 // ReportStore persists scan reports.
@@ -1334,6 +1342,10 @@ type CompletedReport struct {
 	// proves it looked for that finding (a complete report covering its kind,
 	// or examined keys that name it).
 	ExaminedFinding bool
+	// Filtered is set only by LatestCompletedInFindingScope: the uploader
+	// declared a severity or fixable-only filter, so Completeness alone does
+	// not show the report looked at every finding.
+	Filtered bool
 }
 
 // ---------- Inventory ----------
