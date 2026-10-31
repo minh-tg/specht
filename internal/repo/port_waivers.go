@@ -433,9 +433,10 @@ func waiverRowToPort(w sqlc.Waiver) port.Waiver {
 		DecidedBy:   uuidPtrString(w.DecidedBy),
 		DecidedAt:   timePtrFromTimestamptz(w.DecidedAt),
 
-		DecisionNote: w.DecisionNote,
-		CreatedAt:    w.CreatedAt.Time,
-		UpdatedAt:    w.UpdatedAt.Time,
+		DecisionNote:   w.DecisionNote,
+		DecisionReason: stringFromTextPtr(w.DecisionReason),
+		CreatedAt:      w.CreatedAt.Time,
+		UpdatedAt:      w.UpdatedAt.Time,
 	}
 }
 

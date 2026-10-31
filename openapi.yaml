@@ -4700,6 +4700,13 @@ components:
         decided_by_name: { type: string, description: "The decider's display name, or their email when they set none. Left out for API keys." }
         decided_at: { type: string, format: date-time }
         decision_note: { type: string }
+        decision_reason:
+          type: [string, "null"]
+          enum: [expired, null]
+          description: >-
+            Why the server decided the request itself. `expired` marks a pending
+            request that outlived its expiry before anyone decided; it is `rejected`
+            with that reason. Null for a reviewer's decision and for undecided waivers.
         expires_at: { type: [string, "null"], format: date-time }
         conditions:
           type: array

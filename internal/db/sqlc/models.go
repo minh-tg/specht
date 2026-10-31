@@ -502,22 +502,23 @@ type UserIdentity struct {
 }
 
 type Waiver struct {
-	ID           pgtype.UUID        `json:"id"`
-	ProjectID    pgtype.UUID        `json:"project_id"`
-	Name         string             `json:"name"`
-	Description  string             `json:"description"`
-	Enabled      bool               `json:"enabled"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
-	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
-	Status       string             `json:"status"`
-	ScopeAll     bool               `json:"scope_all"`
-	Reason       string             `json:"reason"`
-	RequestedBy  pgtype.UUID        `json:"requested_by"`
-	RequestedAt  pgtype.Timestamptz `json:"requested_at"`
-	DecidedBy    pgtype.UUID        `json:"decided_by"`
-	DecidedAt    pgtype.Timestamptz `json:"decided_at"`
-	DecisionNote string             `json:"decision_note"`
+	ID             pgtype.UUID        `json:"id"`
+	ProjectID      pgtype.UUID        `json:"project_id"`
+	Name           string             `json:"name"`
+	Description    string             `json:"description"`
+	Enabled        bool               `json:"enabled"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
+	Status         string             `json:"status"`
+	ScopeAll       bool               `json:"scope_all"`
+	Reason         string             `json:"reason"`
+	RequestedBy    pgtype.UUID        `json:"requested_by"`
+	RequestedAt    pgtype.Timestamptz `json:"requested_at"`
+	DecidedBy      pgtype.UUID        `json:"decided_by"`
+	DecidedAt      pgtype.Timestamptz `json:"decided_at"`
+	DecisionNote   string             `json:"decision_note"`
+	DecisionReason pgtype.Text        `json:"decision_reason"`
 }
 
 type WaiverCondition struct {

@@ -1079,6 +1079,7 @@ func TestWaiverRequestAndDecision(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "approved", decided.Status)
 	assert.Equal(t, "fine", decided.DecisionNote)
+	assert.Nil(t, decided.DecisionReason, "a reviewer's decision carries no reason")
 	require.NotNil(t, decided.DecidedBy)
 	assert.Equal(t, toUUID(approver.ID), *decided.DecidedBy)
 	require.NotNil(t, decided.DecidedAt)
@@ -1150,6 +1151,19 @@ func TestExpiredPendingRequestIsRejectedAndApprovedOneDisabled(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	human, err := stores.Waivers.CreateWithDetails(ctx, port.CreateWaiverInput{
+		ProjectID: toUUID(project.ID), Name: "refused request", Enabled: true, Status: "pending",
+		Event: port.WaiverEventInput{EventType: "requested", Metadata: []byte(`{}`)},
+	})
+	require.NoError(t, err)
+	reviewer, err := repos.Users.Create(ctx, "reviewer@test.com", pgtype.Text{Valid: false}, pgtype.Text{String: "$2a$10$hash", Valid: true})
+	require.NoError(t, err)
+	_, err = stores.Waivers.Decide(ctx, human.ID, toUUID(project.ID), port.WaiverDecision{
+		Status: "rejected", ActorID: toUUID(reviewer.ID), Note: "fix the dependency instead",
+		Event: port.WaiverEventInput{EventType: "rejected", Metadata: []byte(`{}`)},
+	})
+	require.NoError(t, err)
+
 	expired, err := NewWaiverExpiryStore(repos.pool).ExpireExpired(ctx)
 	require.NoError(t, err)
 	assert.Len(t, expired, 2)
@@ -1158,10 +1172,17 @@ func TestExpiredPendingRequestIsRejectedAndApprovedOneDisabled(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "rejected", gotPending.Status)
 	assert.Equal(t, "expired before a decision", gotPending.DecisionNote)
+	require.NotNil(t, gotPending.DecisionReason)
+	assert.Equal(t, "expired", *gotPending.DecisionReason)
 	gotApproved, err := stores.Waivers.GetByID(ctx, approved.ID, toUUID(project.ID))
 	require.NoError(t, err)
 	assert.Equal(t, "approved", gotApproved.Status)
 	assert.False(t, gotApproved.Enabled)
+	assert.Nil(t, gotApproved.DecisionReason, "disabling an approved waiver is not a rejection")
+	gotHuman, err := stores.Waivers.GetByID(ctx, human.ID, toUUID(project.ID))
+	require.NoError(t, err)
+	assert.Equal(t, "rejected", gotHuman.Status)
+	assert.Nil(t, gotHuman.DecisionReason, "a reviewer's rejection is not an expiry")
 
 	pendingEvents, err := stores.Waivers.ListEvents(ctx, pending.ID)
 	require.NoError(t, err)
