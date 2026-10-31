@@ -704,3 +704,7 @@ releases.
 - Slack notifications escape `&`, `<` and `>` in finding titles, package names, CVE ids and project
   names, so a hostile advisory summary such as `<!channel>` is shown as text and no longer pings
   the channel or renders a link.
+- One project can no longer fill the CVE detail fetch queue and starve the others. Each
+  project holds at most 8 waiting fetches. When a fetch cannot be queued, because the
+  queue is full or the project used its share, the CVE detail now reports the provider as
+  `error` instead of `pending`, so the page stops waiting for a fetch that will not run.

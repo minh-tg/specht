@@ -81,7 +81,10 @@ type Config struct {
 	Rates map[string]float64
 	// QueueSize bounds the jobs waiting for a worker; more are dropped.
 	QueueSize int
-	Workers   int
+	// MaxQueuedPerOwner bounds the waiting jobs one owner (a project, see
+	// WithOwner) may hold, so one tenant cannot fill the whole queue.
+	MaxQueuedPerOwner int
+	Workers           int
 	// ErrorBackoff holds a provider back after a failure that gave no
 	// Retry-After, and keeps a CVE whose fetch failed from being retried on
 	// every read.
@@ -92,12 +95,14 @@ type Config struct {
 
 // Defaults for Config.
 const (
-	DefaultTTL          = 24 * time.Hour
-	DefaultNegativeTTL  = 6 * time.Hour
-	DefaultLeaseTTL     = 2 * time.Minute
-	DefaultQueueSize    = 64
-	DefaultWorkers      = 2
-	DefaultErrorBackoff = 5 * time.Minute
+	DefaultTTL         = 24 * time.Hour
+	DefaultNegativeTTL = 6 * time.Hour
+	DefaultLeaseTTL    = 2 * time.Minute
+	DefaultQueueSize   = 64
+	// DefaultMaxQueuedPerOwner lets eight projects fill the default queue.
+	DefaultMaxQueuedPerOwner = 8
+	DefaultWorkers           = 2
+	DefaultErrorBackoff      = 5 * time.Minute
 	// defaultRate applies to a provider the Rates map does not name.
 	defaultRate = 1.0
 )
@@ -118,6 +123,11 @@ type Resolver struct {
 	mu         sync.Mutex
 	queued     map[string]struct{}
 	retryAfter map[string]time.Time
+	// waiting maps a CVE that sits in the queue to the owner that scheduled
+	// it; ownerWaiting counts those per owner. A job leaves both when a worker
+	// takes it, so a running fetch no longer counts against its owner.
+	waiting      map[string]string
+	ownerWaiting map[string]int
 
 	startOnce sync.Once
 	wg        sync.WaitGroup
@@ -138,6 +148,9 @@ func NewResolver(store Store, cfg Config, providers ...Provider) *Resolver {
 	if cfg.QueueSize <= 0 {
 		cfg.QueueSize = DefaultQueueSize
 	}
+	if cfg.MaxQueuedPerOwner <= 0 {
+		cfg.MaxQueuedPerOwner = DefaultMaxQueuedPerOwner
+	}
 	if cfg.Workers <= 0 {
 		cfg.Workers = DefaultWorkers
 	}
@@ -156,6 +169,9 @@ func NewResolver(store Store, cfg Config, providers ...Provider) *Resolver {
 		jobs:       make(chan string, cfg.QueueSize),
 		queued:     map[string]struct{}{},
 		retryAfter: map[string]time.Time{},
+
+		waiting:      map[string]string{},
+		ownerWaiting: map[string]int{},
 	}
 	for _, p := range providers {
 		rps, ok := cfg.Rates[p.Name()]
@@ -210,6 +226,7 @@ func (r *Resolver) worker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case cve := <-r.jobs:
+			r.dequeued(cve)
 			r.process(ctx, cve)
 			r.mu.Lock()
 			delete(r.queued, cve)
@@ -218,10 +235,32 @@ func (r *Resolver) worker(ctx context.Context) {
 	}
 }
 
-// Schedule queues a background fetch of cve. It returns false when the CVE is
-// inside its retry backoff or the queue is full; the job is then dropped and
-// a later read schedules it again.
+type ownerKey struct{}
+
+// WithOwner marks ctx with the tenant a Lookup works for, so the resolver can
+// cap how many queued fetches one tenant holds. The usecase passes the
+// finding's project id.
+func WithOwner(ctx context.Context, owner string) context.Context {
+	return context.WithValue(ctx, ownerKey{}, owner)
+}
+
+// OwnerFrom returns the owner WithOwner put on ctx, or "" when there is none.
+func OwnerFrom(ctx context.Context) string {
+	owner, _ := ctx.Value(ownerKey{}).(string)
+	return owner
+}
+
+// Schedule queues a background fetch of cve for no particular owner. It
+// returns false when the CVE is inside its retry backoff or the queue is
+// full; the job is then dropped and a later read schedules it again.
 func (r *Resolver) Schedule(cve string) bool {
+	return r.schedule(cve, "")
+}
+
+// schedule is Schedule with the owner whose share of the queue pays for the
+// job. An owner at its cap is refused like a full queue. An empty owner is
+// not capped. A CVE already queued stays with the owner that queued it.
+func (r *Resolver) schedule(cve, owner string) bool {
 	if !r.Enabled() || !ValidCVEID(cve) {
 		return false
 	}
@@ -235,13 +274,35 @@ func (r *Resolver) Schedule(cve string) bool {
 	if until, ok := r.retryAfter[cve]; ok && now.Before(until) {
 		return false
 	}
+	if owner != "" && r.ownerWaiting[owner] >= r.cfg.MaxQueuedPerOwner {
+		r.cfg.Logger.Warn("cve detail fetch queue share used up, dropping job", "cve", cve, "owner", owner)
+		return false
+	}
 	select {
 	case r.jobs <- cve:
 		r.queued[cve] = struct{}{}
+		if owner != "" {
+			r.waiting[cve] = owner
+			r.ownerWaiting[owner]++
+		}
 		return true
 	default:
 		r.cfg.Logger.Warn("cve detail fetch queue full, dropping job", "cve", cve)
 		return false
+	}
+}
+
+// dequeued releases the owner's share when a worker takes the job.
+func (r *Resolver) dequeued(cve string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	owner, ok := r.waiting[cve]
+	if !ok {
+		return
+	}
+	delete(r.waiting, cve)
+	if r.ownerWaiting[owner]--; r.ownerWaiting[owner] <= 0 {
+		delete(r.ownerWaiting, owner)
 	}
 }
 
@@ -472,6 +533,9 @@ func (r *Resolver) Lookup(ctx context.Context, cve string, need bool) ([]Provide
 	backedOff := r.inRetryBackoff(cve, now)
 	refetch := false
 	found := false
+	// asked lists the entries reported pending only because this read wants a
+	// fetch; they turn into errors when the fetch cannot be queued.
+	var asked []int
 	for _, s := range r.slots {
 		name := s.provider.Name()
 		if found {
@@ -493,11 +557,14 @@ func (r *Resolver) Lookup(ctx context.Context, cve string, need bool) ([]Provide
 			out = append(out, ProviderLookup{Name: name, Status: LookupError})
 		default:
 			refetch = true
+			asked = append(asked, len(out))
 			out = append(out, ProviderLookup{Name: name, Status: LookupPending})
 		}
 	}
-	if refetch {
-		r.Schedule(cve)
+	if refetch && !r.schedule(cve, OwnerFrom(ctx)) {
+		for _, i := range asked {
+			out[i].Status = LookupError
+		}
 	}
 	return out, nil
 }

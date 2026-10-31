@@ -209,7 +209,7 @@ func (u *Usecases) GetFindingCVE(ctx context.Context, findingID string) (*CVEDet
 	}
 	need := reportIncomplete(resp)
 	u.attachCVEIntel(cve, resp)
-	resp.Providers = u.attachCVEProviders(ctx, cve, need, &b)
+	resp.Providers = u.attachCVEProviders(cvedetail.WithOwner(ctx, f.ProjectID), cve, need, &b)
 	for _, p := range resp.Providers {
 		if p.Status == cvedetail.LookupPending {
 			resp.Pending = true
