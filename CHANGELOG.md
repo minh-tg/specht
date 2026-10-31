@@ -705,3 +705,6 @@ releases.
   characters (such as 32 times `a`), or a value containing `change-me` or `changeme`, which
   covers the placeholder in `deploy/.env.prod.example`. The error says to generate one with
   `openssl rand -hex 32`.
+- The server logs a warning at startup when `TRUSTED_PROXIES` contains `0.0.0.0/0` or
+  `::/0`, which makes every client a trusted proxy and lets it forge its address and
+  protocol.
