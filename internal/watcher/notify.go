@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/minh-tg/specht/internal/netutil"
@@ -162,7 +163,14 @@ func BuildSlackPayload(notifications []Notification) ([]byte, error) {
 		Attachments: make([]slackAttachment, 0, len(notifications)),
 	}
 	for _, n := range notifications {
-		payload.Attachments = append(payload.Attachments, slackAttachment(n))
+		payload.Attachments = append(payload.Attachments, slackAttachment{
+			Title:    slackEscape(n.Title),
+			CVE:      slackEscape(n.CVE),
+			Package:  slackEscape(n.Package),
+			Project:  slackEscape(n.Project),
+			Severity: slackEscape(n.Severity),
+			Link:     n.Link,
+		})
 	}
 	b, err := json.Marshal(payload)
 	if err != nil {
@@ -186,6 +194,14 @@ type slackAttachment struct {
 	Severity string `json:"severity"`
 	Link     string `json:"link"`
 }
+
+var slackEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
+
+// slackEscape escapes the three characters Slack treats as control sequences
+// in message text. Advisory summaries and package names come from third
+// parties, so without this a title such as "<!channel>" or "<https://x|y>"
+// would mention the channel or render a link.
+func slackEscape(s string) string { return slackEscaper.Replace(s) }
 
 // SignSlackBody computes the X-Specht-Signature value for a raw body:
 // "sha256=" + lowercase hex HMAC-SHA256(body) keyed with the secret.

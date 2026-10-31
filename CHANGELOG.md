@@ -693,3 +693,6 @@ releases.
 - Startup fails when `WATCHER_SLACK_URL`, `WATCHER_WEBHOOK_URL` (watcher enabled) or
   `WATCHER_WEBHOOK_URLS` (`TRACKER_PROVIDER=webhook`) is not `https`. `http` stays allowed for a
   loopback host. The error names the variable and does not repeat the URL.
+- Slack notifications escape `&`, `<` and `>` in finding titles, package names, CVE ids and project
+  names, so a hostile advisory summary such as `<!channel>` is shown as text and no longer pings
+  the channel or renders a link.
