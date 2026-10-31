@@ -14,6 +14,13 @@ releases.
   when the scanner gave no usable fix, and for `sca` findings the `package`, `ecosystem`,
   `installed_version` and `fixed_version` the scanner reported. `fixed_version` is
   omitted when it is unknown.
+- A report upload can declare a scan filter (`scan_filter` with `severities` and
+  `fixable_only`) for scans run with Trivy `--severity` or `--ignore-unfixed` or
+  Grype `--only-fixed`, whose output does not record the flags. A filtered report
+  closes and verifies only findings inside its filter, so a HIGH,CRITICAL scan no
+  longer marks open medium findings fixed. `specht-adapter`, `specht reports upload`
+  and the GitHub Action take `-scan-severities` and `-fixable-only`; for Trivy the
+  adapter also reads `TRIVY_SEVERITY` and `TRIVY_IGNORE_UNFIXED`.
 - `FINGERPRINT_KEY` keeps the key that Gitleaks secret identities are hashed with
   out of the database. Unset, the key is still made on first use and stored in
   `instance_secrets`. `deploy/README.md` explains what each choice protects and how
