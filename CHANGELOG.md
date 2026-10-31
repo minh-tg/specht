@@ -686,3 +686,7 @@ releases.
   that committed right after the change used to leave that session alive under a
   generation the link never expected. The change now answers 409 `account_changed`, issues
   no session, and the caller signs in again.
+- One project can no longer fill the CVE detail fetch queue and starve the others. Each
+  project holds at most 8 waiting fetches. When a fetch cannot be queued, because the
+  queue is full or the project used its share, the CVE detail now reports the provider as
+  `error` instead of `pending`, so the page stops waiting for a fetch that will not run.

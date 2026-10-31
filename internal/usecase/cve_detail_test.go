@@ -38,13 +38,15 @@ type fakeResolver struct {
 	answer  []cvedetail.ProviderLookup
 	err     error
 	needs   []bool
+	owners  []string
 	status  []cvedetail.ProviderStatus
 	stateEr error
 }
 
 func (f *fakeResolver) Providers() []string { return f.names }
 
-func (f *fakeResolver) Lookup(_ context.Context, _ string, need bool) ([]cvedetail.ProviderLookup, error) {
+func (f *fakeResolver) Lookup(ctx context.Context, _ string, need bool) ([]cvedetail.ProviderLookup, error) {
+	f.owners = append(f.owners, cvedetail.OwnerFrom(ctx))
 	f.needs = append(f.needs, need)
 	if f.err != nil {
 		return nil, f.err

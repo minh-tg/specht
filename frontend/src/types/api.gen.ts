@@ -3610,9 +3610,11 @@ export interface components {
       name: "nvd" | "vulncheck" | "osv";
       /**
        * @description `found`: this provider's answer is listed. `not_found`: it has no record.
-       *     `error`: the last fetch failed and is in backoff. `pending`: a fetch is
-       *     scheduled or running. `skipped`: not asked, because the report is complete
-       *     or an earlier provider answered. `disabled`: not configured.
+       *     `error`: the last fetch failed and is in backoff, or no fetch could be
+       *     queued because the queue is full or the project has used its share; read
+       *     again later. `pending`: a fetch is scheduled or running. `skipped`: not
+       *     asked, because the report is complete or an earlier provider answered.
+       *     `disabled`: not configured.
        * @enum {string}
        */
       status: "found" | "not_found" | "error" | "pending" | "skipped" | "disabled";
