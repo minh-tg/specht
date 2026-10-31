@@ -445,6 +445,11 @@ func (u *Usecases) UpdateWaiver(ctx context.Context, input UpdateWaiverInput) (*
 	if err != nil {
 		return nil, invalidWaiverID(err)
 	}
+	// A waiver of another project answers like a missing one, before the body is
+	// checked: validating the scope against stored rows first told the two apart.
+	if _, err := u.deps.Stores.Waivers.GetByID(ctx, id.String(), project.ID); err != nil {
+		return nil, fmt.Errorf("get waiver: %w", err)
+	}
 	waiver := port.Waiver{
 		ID:          id.String(),
 		ProjectID:   project.ID,

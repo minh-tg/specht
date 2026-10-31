@@ -195,7 +195,7 @@ func TestWaiverOperationsPreserveStoreFailures(t *testing.T) {
 	}
 
 	t.Run("update", func(t *testing.T) {
-		wr := &mockWaiverRepo{updateWithDetailsFn: func(context.Context, port.Waiver, *port.WaiverExpiry, *[]port.WaiverCondition, *[]port.WaiverContext, *[]port.WaiverFindingTarget, port.WaiverEventInput) (port.Waiver, error) {
+		wr := &mockWaiverRepo{getByIDFn: waiverExists, updateWithDetailsFn: func(context.Context, port.Waiver, *port.WaiverExpiry, *[]port.WaiverCondition, *[]port.WaiverContext, *[]port.WaiverFindingTarget, port.WaiverEventInput) (port.Waiver, error) {
 			return port.Waiver{}, storeErr
 		}}
 		_, err := waiverUsecaseForProject(project, wr, "").UpdateWaiver(admin, UpdateWaiverInput{
@@ -263,7 +263,7 @@ func TestUpdateWaiverRejectsMalformedContextAndFindingIDs(t *testing.T) {
 			input := tc.input
 			input.WaiverID = waiverID
 			input.ProjectSlug = "my-app"
-			uc := waiverUsecaseForProject(project, &mockWaiverRepo{}, "")
+			uc := waiverUsecaseForProject(project, &mockWaiverRepo{getByIDFn: waiverExists}, "")
 
 			_, err := uc.UpdateWaiver(sessionCtx("admin", auth.RoleAdmin), input)
 

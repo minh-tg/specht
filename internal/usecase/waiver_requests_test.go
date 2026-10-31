@@ -351,6 +351,7 @@ func TestCreateWaiverRequiresAnExplicitScope(t *testing.T) {
 func TestUpdateWaiverCannotSilentlyBecomeABlanket(t *testing.T) {
 	project := makeProject(true)
 	wr := &mockWaiverRepo{
+		getByIDFn:        waiverExists,
 		listConditionsFn: func(context.Context, string) ([]port.WaiverCondition, error) { return nil, nil },
 		listContextsFn:   func(context.Context, string) ([]port.WaiverContext, error) { return nil, nil },
 		listFindingTargetsFn: func(context.Context, string) ([]port.WaiverFindingTarget, error) {
