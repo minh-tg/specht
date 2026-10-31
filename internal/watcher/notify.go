@@ -1,7 +1,7 @@
 // This file holds everything the human-alert channel needs and nothing more:
 // a payload builder that maps watcher findings (Decision) to the Slack
-// message shape {text, attachments:[{title, cve, package, project, severity,
-// link}]}, an HMAC-SHA256 signed HTTP POST, and a bounded retry loop.
+// message shape {text, attachments:[{fallback, title, title_link, fields}]},
+// an HMAC-SHA256 signed HTTP POST, and a bounded retry loop.
 //
 // The channel is DISABLED BY DEFAULT: NewSlackNotifier with an empty webhook
 // URL returns a no-op sender, so an unconfigured deployment pays nothing and
@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -142,35 +143,28 @@ func (n *SlackNotifier) Notify(ctx context.Context, notifications []Notification
 	return nil
 }
 
-// BuildSlackPayload renders the batch as the Slack message envelope:
+// BuildSlackPayload renders one message for the batch:
 //
-//	{ "text": "...", "attachments": [ {title, cve, package, project,
-//	severity, link}, ... ] }
+//	{ "text": "...", "attachments": [ {fallback, title, title_link,
+//	fields:[{title, value, short}]}, ... ] }
 //
-// Field mapping from Notification (whose source is Decision.Finding via
-// NotificationFromDecision):
+// Slack renders only the attachment keys it defines, so the finding details
+// go into fields. Field mapping from Notification (whose source is
+// Decision.Finding via NotificationFromDecision):
 //
-//	text       "CVE watcher: N new finding(s)"  (human summary line)
-//	title      finding.Title                    (advisory summary)
-//	cve        primary vulnerability id         (dimension cve_id)
-//	package    affected package                 (display package_name)
-//	project    project display name             (resolved by caller)
-//	severity   finding.Severity                 (critical..unknown)
-//	link       first advisory reference URL     (metadata references[0])
+//	text         "CVE watcher: N new finding(s)"  (human summary line)
+//	title        finding.Title                    (advisory summary)
+//	title_link   first advisory reference URL     (http and https only)
+//	fields       CVE, Package, Project, Severity  (empty values omitted)
+//
+// Every text value is escaped for Slack.
 func BuildSlackPayload(notifications []Notification) ([]byte, error) {
 	payload := slackPayload{
 		Text:        fmt.Sprintf("CVE watcher: %d new finding(s)", len(notifications)),
 		Attachments: make([]slackAttachment, 0, len(notifications)),
 	}
 	for _, n := range notifications {
-		payload.Attachments = append(payload.Attachments, slackAttachment{
-			Title:    slackEscape(n.Title),
-			CVE:      slackEscape(n.CVE),
-			Package:  slackEscape(n.Package),
-			Project:  slackEscape(n.Project),
-			Severity: slackEscape(n.Severity),
-			Link:     n.Link,
-		})
+		payload.Attachments = append(payload.Attachments, newSlackAttachment(n))
 	}
 	b, err := json.Marshal(payload)
 	if err != nil {
@@ -187,12 +181,47 @@ type slackPayload struct {
 }
 
 type slackAttachment struct {
-	Title    string `json:"title"`
-	CVE      string `json:"cve"`
-	Package  string `json:"package"`
-	Project  string `json:"project"`
-	Severity string `json:"severity"`
-	Link     string `json:"link"`
+	// Fallback is the plain-text form shown where attachments do not render
+	// (notifications, mobile previews).
+	Fallback  string       `json:"fallback"`
+	Title     string       `json:"title"`
+	TitleLink string       `json:"title_link,omitempty"`
+	Fields    []slackField `json:"fields,omitempty"`
+}
+
+type slackField struct {
+	Title string `json:"title"`
+	Value string `json:"value"`
+	Short bool   `json:"short"`
+}
+
+func newSlackAttachment(n Notification) slackAttachment {
+	a := slackAttachment{
+		Fallback: slackEscape(strings.TrimSpace(n.Title + " " + n.CVE)),
+		Title:    slackEscape(n.Title),
+	}
+	if isHTTPLink(n.Link) {
+		a.TitleLink = n.Link
+	}
+	for _, f := range []struct{ title, value string }{
+		{"CVE", n.CVE},
+		{"Package", n.Package},
+		{"Project", n.Project},
+		{"Severity", n.Severity},
+	} {
+		if f.value != "" {
+			a.Fields = append(a.Fields, slackField{Title: f.title, Value: slackEscape(f.value), Short: true})
+		}
+	}
+	return a
+}
+
+// isHTTPLink reports whether raw is an absolute http or https URL. Advisory
+// references come from third parties and keep any scheme, but only web links
+// belong in title_link.
+func isHTTPLink(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
 
 var slackEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")

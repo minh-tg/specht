@@ -696,3 +696,6 @@ releases.
 - Slack notifications escape `&`, `<` and `>` in finding titles, package names, CVE ids and project
   names, so a hostile advisory summary such as `<!channel>` is shown as text and no longer pings
   the channel or renders a link.
+- Slack notifications now show the CVE, package, project and severity as attachment fields and
+  link the title to the first advisory reference. Slack ignored the keys sent before, so the
+  channel only saw the titles. The generic webhook payload is unchanged.
