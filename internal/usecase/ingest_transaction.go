@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 
+	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/domain"
 	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/tracker"
@@ -19,7 +20,11 @@ func (u *Usecases) ingestAtomically(ctx context.Context, project port.Project, i
 	var result *IngestReportOutput
 	var scoped *Usecases
 	events := &ingestTrackerEvents{}
-	err := u.deps.Stores.Ingest.Run(ctx, project.ID, func(stores *port.Stores) error {
+	keyHash := ""
+	if ident := auth.ContextIdentity(ctx); ident != nil && ident.IsAPIKey {
+		keyHash = ident.KeyHash
+	}
+	err := u.deps.Stores.Ingest.Run(ctx, project.ID, keyHash, func(stores *port.Stores) error {
 		deps := u.deps
 		deps.Stores = stores
 		if deps.Tracker != nil {

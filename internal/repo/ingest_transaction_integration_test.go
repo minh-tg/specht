@@ -48,7 +48,7 @@ func TestIngestTransactionSerializesOnlyTheSameProject(t *testing.T) {
 	ctx := context.Background()
 	entered, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
 	go func() {
-		done <- stores.Ingest.Run(ctx, "project-a", func(*port.Stores) error {
+		done <- stores.Ingest.Run(ctx, "project-a", "", func(*port.Stores) error {
 			close(entered)
 			<-release
 			return nil
@@ -58,14 +58,14 @@ func TestIngestTransactionSerializesOnlyTheSameProject(t *testing.T) {
 	defer func() { close(release); require.NoError(t, <-done) }()
 	waitCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 	defer cancel()
-	err := stores.Ingest.Run(waitCtx, "project-a", func(*port.Stores) error {
+	err := stores.Ingest.Run(waitCtx, "project-a", "", func(*port.Stores) error {
 		t.Error("same-project writer entered before the first transaction ended")
 		return nil
 	})
 	require.Error(t, err)
 	otherCtx, cancelOther := context.WithTimeout(ctx, time.Second)
 	defer cancelOther()
-	require.NoError(t, stores.Ingest.Run(otherCtx, "project-b", func(*port.Stores) error { return nil }))
+	require.NoError(t, stores.Ingest.Run(otherCtx, "project-b", "", func(*port.Stores) error { return nil }))
 }
 
 func TestIngestTransactionRollsBackFindingChanges(t *testing.T) {
