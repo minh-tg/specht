@@ -8,6 +8,10 @@
 # copy with the prefix swapped in and prints the copy's path. The digest stays, and it is valid on
 # the mirror because the mirror copies manifests byte for byte. With IMAGE_PREFIX unset, or set to
 # the Docker Hub default, it prints the original path and the build is unchanged.
+#
+# MIRROR_DOCKERFILE_DIR picks the directory the copy goes in (default: a new temp directory). Compose
+# builds through buildx bake, which refuses a Dockerfile outside its working directory, so
+# scripts/compose-smoke.sh points it inside the repository.
 set -euo pipefail
 
 src="${1:?usage: scripts/mirror-dockerfile.sh <dockerfile>}"
@@ -19,7 +23,7 @@ if [ "$prefix" = "$hub" ]; then
   exit 0
 fi
 
-out="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/mirror-dockerfile.XXXXXX")"
+out="${MIRROR_DOCKERFILE_DIR:-$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/mirror-dockerfile.XXXXXX")}"
 dst="$out/$(basename "$src")"
 sed -E "s#^(FROM[[:space:]]+(--[^[:space:]]+[[:space:]]+)*)$hub/#\\1$prefix/#" "$src" >"$dst"
 if cmp -s "$src" "$dst"; then

@@ -25,13 +25,17 @@ SETUP_TOKEN="compose-smoke-setup-token"
 if [ -n "${SPECHT_TEST_POSTGRES_IMAGE:-}" ]; then
   export SPECHT_POSTGRES_IMAGE="$SPECHT_TEST_POSTGRES_IMAGE"
 fi
+# The mirrored copy stays inside the repository: compose builds through buildx bake, which does not
+# read a Dockerfile outside its working directory.
+MIRROR_DOCKERFILE_DIR="$(mktemp -d "$PWD/deploy/.mirror-dockerfile.XXXXXX")"
+export MIRROR_DOCKERFILE_DIR
 SPECHT_DOCKERFILE="$(./scripts/mirror-dockerfile.sh deploy/Dockerfile)"
 export SPECHT_DOCKERFILE
 COMPOSE=(docker compose -p "$PROJECT" -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml --env-file "$ENV_FILE")
 
 cleanup() {
   "${COMPOSE[@]}" down -v >/dev/null 2>&1 || true
-  rm -rf "$WORK"
+  rm -rf "$WORK" "$MIRROR_DOCKERFILE_DIR"
 }
 trap cleanup EXIT
 
@@ -67,7 +71,11 @@ wait_healthy() {
 json() { python3 -c 'import json,sys; print(json.load(sys.stdin)'"$1"')'; }
 
 echo "== compose up (build from source) ==" >&2
-"${COMPOSE[@]}" up -d --build >/dev/null 2>&1 || fail "docker compose up"
+if ! "${COMPOSE[@]}" up -d --build >"$WORK/compose-up.log" 2>&1; then
+  echo "--- docker compose up ---" >&2
+  tail -n 60 "$WORK/compose-up.log" >&2
+  fail "docker compose up"
+fi
 wait_healthy
 curl -fsS "$BASE/ready" >/dev/null || fail "the server is healthy but not ready"
 curl -fsS "$BASE/version" >/dev/null || fail "version endpoint"
