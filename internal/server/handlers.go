@@ -474,13 +474,23 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, v any, maxBytes int6
 	if maxBytes > 0 {
 		r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 	}
-	err := json.NewDecoder(r.Body).Decode(v)
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			// Empty body: leave the zero value in place. Callers with
-			// required fields validate them after decoding.
-			return true
+	dec := json.NewDecoder(r.Body)
+	err := dec.Decode(v)
+	if errors.Is(err, io.EOF) {
+		// Empty body: leave the zero value in place. Callers with
+		// required fields validate them after decoding.
+		return true
+	}
+	if err == nil {
+		// Nothing but whitespace may follow the value.
+		if _, tokErr := dec.Token(); !errors.Is(tokErr, io.EOF) {
+			err = tokErr
+			if err == nil {
+				err = errTrailingJSON
+			}
 		}
+	}
+	if err != nil {
 		var maxErr *http.MaxBytesError
 		if errors.As(err, &maxErr) {
 			respondError(w, http.StatusRequestEntityTooLarge, "body_too_large", "request body too large")
@@ -491,6 +501,9 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, v any, maxBytes int6
 	}
 	return true
 }
+
+// errTrailingJSON marks a body with content after its JSON value.
+var errTrailingJSON = errors.New("unexpected data after the JSON value")
 
 // maxPageSize bounds a single paginated request; larger limits are clamped.
 const maxPageSize = 500

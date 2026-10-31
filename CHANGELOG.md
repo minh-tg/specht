@@ -385,6 +385,8 @@ releases.
   `introduced_count` in the ingest response counts the carried findings too.
 - `LOG_LEVEL` is applied in any letter case. `LOG_LEVEL=WARN` passed validation but the
   server ran at info.
+- JSON request bodies with content after the first JSON value (such as
+  `{"a":1} GARBAGE`) are refused with 400 instead of being read up to the first value.
 
 ### Security
 
