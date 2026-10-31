@@ -391,6 +391,8 @@ releases.
   rejects a message with more than 100 attachments, so the whole round used to be dropped.
 - The tracker event sent when a verification marks a finding fixed now carries the project slug,
   like the created and regression events, so receivers that route by project get it.
+- An OSV answer over 32 MiB now fails with a size error. It used to be cut at 32 MiB and
+  parsed or stored as evidence as if it were complete.
 
 ### Security
 
@@ -712,3 +714,10 @@ releases.
   refreshes run at once with up to 256 waiting, and a read past that serves the cached value.
   Only well-formed CVE ids (`CVE-YYYY-NNNN`) are refreshed, and a failed KEV download is not
   repeated for a minute.
+- The OSV watcher client now refuses redirects and connections to private, link-local
+  and other non-public addresses, as the CVE detail providers and notifiers already
+  do. A loopback endpoint is still allowed. An OSV mirror on a private address is
+  refused, and so is egress through `HTTPS_PROXY`.
+- A failed OSV request records only the status code and its standard reason in the
+  watcher's last error (shown by `GET /api/v1/watcher/status`) and in the logs. It no
+  longer includes up to 512 bytes of the response body.
