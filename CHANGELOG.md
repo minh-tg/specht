@@ -383,6 +383,8 @@ releases.
   its branch, or an earlier report on the branch did. Push builds on a branch that
   never named a base, such as `main`, keep counting only findings new to the project.
   `introduced_count` in the ingest response counts the carried findings too.
+- An OSV answer over 32 MiB now fails with a size error. It used to be cut at 32 MiB and
+  parsed or stored as evidence as if it were complete.
 
 ### Security
 
@@ -686,3 +688,10 @@ releases.
   that committed right after the change used to leave that session alive under a
   generation the link never expected. The change now answers 409 `account_changed`, issues
   no session, and the caller signs in again.
+- The OSV watcher client now refuses redirects and connections to private, link-local
+  and other non-public addresses, as the CVE detail providers and notifiers already
+  do. A loopback endpoint is still allowed. An OSV mirror on a private address is
+  refused, and so is egress through `HTTPS_PROXY`.
+- A failed OSV request records only the status code and its standard reason in the
+  watcher's last error (shown by `GET /api/v1/watcher/status`) and in the logs. It no
+  longer includes up to 512 bytes of the response body.
