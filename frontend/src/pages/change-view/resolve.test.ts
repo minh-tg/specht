@@ -1,9 +1,8 @@
-import type { Finding, Report } from "@/types/api";
+import type { Report } from "@/types/api";
 import { describe, expect, it } from "vitest";
 import {
   existingBlockers,
   fixAction,
-  fixesText,
   floorSourceLabel,
   isRealFix,
   locationLine,
@@ -211,42 +210,6 @@ describe("isRealFix", () => {
       .toBe(true);
     expect(isRealFix({ action: "upgrade", target: "lodash", confidence: "low", fallback: true }))
       .toBe(false);
-  });
-});
-
-describe("fixesText", () => {
-  function found(id: string, title: string, extra: Partial<Finding> = {}): Finding {
-    return { id, current_title: title, ...extra } as Finding;
-  }
-
-  it("lists only real fixes and keeps each entry's ledger number", () => {
-    const text = fixesText([
-      found("a", "SQL injection", {
-        suggestion: { action: "review", target: "src/db.ts", confidence: "low", fallback: true },
-      }),
-      found("b", "Lodash prototype pollution", {
-        suggestion: { action: "upgrade", target: "lodash", confidence: "high" },
-      }),
-      undefined,
-      found("d", "Leaked token", { remediation: { summary: "Rotate the token" } }),
-    ]);
-
-    expect(text).toBe(
-      "2. Lodash prototype pollution: Upgrade lodash\n4. Leaked token: Rotate the token",
-    );
-    expect(text).not.toMatch(/Review|SQL injection/);
-  });
-
-  it("is empty when no entry has a real fix", () => {
-    expect(
-      fixesText([
-        found("a", "SQL injection", {
-          suggestion: { action: "review", target: "src/db.ts", confidence: "low", fallback: true },
-        }),
-        found("b", "Open bucket"),
-      ]),
-    ).toBe("");
-    expect(fixesText([])).toBe("");
   });
 });
 

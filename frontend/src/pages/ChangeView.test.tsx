@@ -28,6 +28,11 @@ let waiverPosts: Array<Record<string, unknown>>;
 let meId: string;
 let withdrawCalls: string[];
 let withdrawFailure: { status: number; code: string; } | null;
+/** When set, finding requests wait here until a test releases them. */
+let holdFindings: boolean;
+let heldFindings: Array<() => void>;
+let findingsInFlight: number;
+let maxFindingsInFlight: number;
 
 function report(overrides: Record<string, unknown> = {}) {
   return {
@@ -66,6 +71,35 @@ function finding(id: string, severity = "high") {
     updated_at: "2025-01-01T00:00:00Z",
     location: { file: `src/${id}.ts`, start_line: 1 },
     remediation: { summary: `Fix ${id}` },
+  };
+}
+
+/** A dependency finding whose suggestion is a real upgrade. */
+function upgradeFinding(
+  id: string,
+  options: {
+    packageName?: string;
+    fixed?: string;
+    ecosystem?: string;
+    severity?: string;
+    fallback?: boolean;
+  } = {},
+) {
+  const { packageName = "lodash", fixed = "4.17.21", ecosystem = "npm", severity = "high" } =
+    options;
+  return {
+    ...finding(id, severity),
+    remediation: undefined,
+    suggestion: {
+      action: "upgrade",
+      target: packageName,
+      confidence: "high",
+      fallback: options.fallback ?? false,
+      package: packageName,
+      ecosystem,
+      installed_version: "4.17.15",
+      fixed_version: fixed,
+    },
   };
 }
 
@@ -115,6 +149,10 @@ beforeEach(() => {
   meId = "u-ada";
   withdrawCalls = [];
   withdrawFailure = null;
+  holdFindings = false;
+  heldFindings = [];
+  findingsInFlight = 0;
+  maxFindingsInFlight = 0;
 
   globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -184,8 +222,11 @@ beforeEach(() => {
     if (url === "/api/v1/projects/acme/waivers/requests" && init?.method === "POST") {
       const body = JSON.parse(String(init.body)) as { target_ids: string[]; };
       waiverPosts.push(body);
-      const created = pendingWaiver(body.target_ids[0]);
-      waivers = [created];
+      const created = {
+        ...pendingWaiver(body.target_ids[0]),
+        targets: body.target_ids.map((id, index) => ({ id: `t${index}`, finding_id: id })),
+      };
+      waivers = [...(waivers as unknown[]), created];
       return Promise.resolve(jsonResponse(created, 201));
     }
     if (url.startsWith("/api/v1/projects/acme/waivers")) {
@@ -209,13 +250,22 @@ beforeEach(() => {
     if (match) {
       const id = decodeURIComponent(match[1]);
       findingFetches.push(id);
-      const data = findings[id];
-      if (data === undefined) {
-        return Promise.resolve(
-          jsonResponse({ error: { code: "not_found", message: "finding missing" } }, 404),
-        );
-      }
-      return Promise.resolve(jsonResponse(data));
+      const respond = () => {
+        const data = findings[id];
+        if (data === undefined) {
+          return jsonResponse({ error: { code: "not_found", message: "finding missing" } }, 404);
+        }
+        return jsonResponse(data);
+      };
+      if (!holdFindings) return Promise.resolve(respond());
+      findingsInFlight += 1;
+      maxFindingsInFlight = Math.max(maxFindingsInFlight, findingsInFlight);
+      return new Promise<Response>((resolve) => {
+        heldFindings.push(() => {
+          findingsInFlight -= 1;
+          resolve(respond());
+        });
+      });
     }
     return Promise.resolve(jsonResponse({}));
   });
@@ -619,7 +669,7 @@ describe("ChangeView", () => {
     expect(screen.getByRole("link", { name: "Back to projects" })).toHaveAttribute("href", "/");
   });
 
-  it("caps the introduced findings at twenty entries behind Show all", async () => {
+  it("draws twenty entries behind Show all, and still fetches every blocker", async () => {
     const ids = Array.from({ length: 25 }, (_, index) => `f${index}`);
     changeGate = gate({ blocked_by: ids });
     findings = Object.fromEntries(ids.map((id) => [id, finding(id)]));
@@ -627,8 +677,8 @@ describe("ChangeView", () => {
 
     const ledger = await screen.findByRole("list", { name: "Blocking findings" });
     await waitFor(() => expect(within(ledger).getAllByRole("listitem")).toHaveLength(20));
-    // The hidden entries are not fetched until they are revealed.
-    expect(findingFetches).toHaveLength(20);
+    // Grouping needs every suggestion, so the hidden entries are fetched too.
+    await waitFor(() => expect(findingFetches).toHaveLength(25));
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Show all 25" }));
     await waitFor(() => expect(within(ledger).getAllByRole("listitem")).toHaveLength(25));
@@ -997,6 +1047,10 @@ function signalCalls() {
 describe("ChangeView watching for the next scan", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    // A test that went offline must not leave the query client paused for the next one.
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
   });
 
   it("watches without being asked and has no button to start it", async () => {
@@ -1194,5 +1248,418 @@ describe("ChangeView watching for the next scan", () => {
     setOnLine(false);
 
     expect(await screen.findByText(/^You are offline\./)).toBeInTheDocument();
+  });
+});
+
+describe("ChangeView grouping by fix", () => {
+  const LODASH = "Upgrade lodash to 4.17.21";
+
+  /** Puts `count` blockers on the gate that one lodash upgrade fixes, and returns their ids. */
+  function lodashBlockers(count: number, prefix = "g"): string[] {
+    const ids = Array.from({ length: count }, (_, index) => `${prefix}${index}`);
+    for (const id of ids) findings[id] = upgradeFinding(id);
+    return ids;
+  }
+
+  function setBlockers(ids: string[]) {
+    changeGate = gate({ blocked_by: ids, blocking_count: ids.length });
+  }
+
+  function groupButton(instruction = LODASH) {
+    // Sixty requests, a few at a time, take longer than the default wait.
+    return screen.findByRole("button", {
+      name: new RegExp(`^\\d{2} \\S+ ${instruction} clears \\d+ blockers$`),
+    }, { timeout: 5000 });
+  }
+
+  async function openGroup(instruction = LODASH) {
+    const user = userEvent.setup();
+    const button = await groupButton(instruction);
+    if (button.getAttribute("aria-expanded") !== "true") await user.click(button);
+    return { user, entry: within(button.closest("li") as HTMLElement) };
+  }
+
+  async function sendRequest(user: ReturnType<typeof userEvent.setup>, reason = "Not reachable.") {
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText("Why is this safe to ship?"), reason);
+    await user.click(within(dialog).getByRole("button", { name: "Send request" }));
+    return dialog;
+  }
+
+  /** Lets every finding request that is waiting come back. */
+  async function releaseHeld() {
+    await act(async () => {
+      while (heldFindings.length > 0) heldFindings.shift()?.();
+    });
+  }
+
+  it("folds blockers that share a real fix into one entry, with the others as plain rows", async () => {
+    const group = lodashBlockers(24);
+    findings.y0 = upgradeFinding("y0", { packageName: "express", fixed: "4.19.0", fallback: true });
+    findings.x0 = upgradeFinding("x0", { fixed: "4.17.19" });
+    findings.x1 = upgradeFinding("x1", { fixed: "4.17.19" });
+    findings.z0 = { ...finding("z0"), finding_kind: "sast" };
+    setBlockers(["y0", ...group, "x0", "x1", "z0"]);
+    renderPage();
+
+    expect(await groupButton()).toHaveAccessibleName(
+      /^02 \S+ Upgrade lodash to 4\.17\.21 clears 24 blockers$/,
+    );
+    expect(await groupButton("Upgrade lodash to 4.17.19")).toHaveAccessibleName(/^26 /);
+    // The fallback and the other kind stay as rows of their own, numbered by their place.
+    expect(entryButton("Finding y0")).toHaveAccessibleName(/^01 /);
+    expect(entryButton("Finding z0")).toHaveAccessibleName(/^28 /);
+    const ledger = screen.getByRole("list", { name: "Blocking findings" });
+    expect(ledger.querySelectorAll(":scope > li[data-entry-id]")).toHaveLength(4);
+    // Grouping needed every suggestion, so every blocker was fetched.
+    expect(findingFetches).toHaveLength(28);
+  });
+
+  it("explains the grouping in plain words and lists each member with its own number", async () => {
+    setBlockers(lodashBlockers(3));
+    renderPage();
+
+    const { entry } = await openGroup();
+
+    expect(entry.getByText(/The scanner reports the same package, ecosystem and fixed version/))
+      .toBeInTheDocument();
+    expect(entry.getByText(/each one still blocks this change until a new scan no longer finds it/))
+      .toBeInTheDocument();
+    expect(entry.getByText(/together they block this change/)).toBeInTheDocument();
+    expect(entry.getByText("lodash (npm)")).toBeInTheDocument();
+    expect(entry.getByText("4.17.15")).toBeInTheDocument();
+    const links = entry.getAllByRole("link");
+    expect(links.map((link) => link.textContent)).toEqual([
+      "Finding g0",
+      "Finding g1",
+      "Finding g2",
+    ]);
+    expect(links[1]).toHaveAttribute("href", "/acme/findings/g1?from=change");
+    expect(document.body.textContent).not.toMatch(/the merge/);
+  });
+
+  it("copies the single upgrade instruction", async () => {
+    setBlockers(lodashBlockers(2));
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    renderPage();
+    const { user, entry } = await openGroup();
+
+    await user.click(entry.getByRole("button", { name: `Copy fix: ${LODASH}` }));
+
+    expect(writeText).toHaveBeenCalledWith(LODASH);
+  });
+
+  it("counts a group once in the checklist and marks every member done together", async () => {
+    setBlockers(lodashBlockers(3));
+    renderPage();
+    const { user, entry } = await openGroup();
+    expect(screen.getByText("0 of 1 handled")).toBeInTheDocument();
+
+    await user.click(entry.getByRole("checkbox", { name: `I've done this: ${LODASH}` }));
+
+    expect(screen.getByText("1 of 1 handled")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: `${LODASH} (clears 3 blockers)` })).toBeChecked();
+    expect(screen.getByText("BLOCKED")).toBeInTheDocument();
+  });
+
+  it("copies all fixes with the group as one numbered line", async () => {
+    findings.p = { ...finding("p"), suggestion: undefined, remediation: { summary: "Fix p" } };
+    setBlockers(["p", ...lodashBlockers(2)]);
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    renderPage();
+    await groupButton();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Copy all fixes" }));
+
+    expect(writeText).toHaveBeenCalledWith(
+      "1. Finding p: Fix p\n2. Upgrade lodash to 4.17.21 (clears 2 blockers)",
+    );
+  });
+
+  it("fetches a few blockers at a time and says how far it has got", async () => {
+    setBlockers(lodashBlockers(14));
+    holdFindings = true;
+    renderPage();
+
+    await waitFor(() => expect(findingFetches).toHaveLength(6));
+    expect(await screen.findByText(/Loading blockers: 0 of 14/)).toBeInTheDocument();
+    // Rows stay as plain entries, in order, until every blocker is known.
+    expect(screen.queryByRole("button", { name: /clears/ })).not.toBeInTheDocument();
+
+    await act(async () => {
+      heldFindings.shift()?.();
+    });
+    await waitFor(() => expect(findingFetches).toHaveLength(7));
+    expect(await screen.findByText(/Loading blockers: 1 of 14/)).toBeInTheDocument();
+
+    await waitFor(async () => {
+      await releaseHeld();
+      expect(screen.getByRole("button", { name: /clears 14 blockers$/ })).toBeInTheDocument();
+    }, { timeout: 5000 });
+    expect(findingFetches).toHaveLength(14);
+    expect(maxFindingsInFlight).toBeLessThanOrEqual(6);
+    expect(screen.queryByText(/Loading blockers/)).not.toBeInTheDocument();
+  });
+
+  it("announces once, politely, when the grouping is done", async () => {
+    findings.z0 = finding("z0");
+    setBlockers([...lodashBlockers(3), "z0"]);
+    renderPage();
+
+    const note = await screen.findByText(
+      "Loaded all 4 blockers. 3 of them are grouped into 1 fix.",
+    );
+    expect(note).toHaveAttribute("role", "status");
+    expect(note).toHaveClass("sr-only");
+  });
+
+  it("says when no blockers share a fix", async () => {
+    renderPage();
+
+    expect(await screen.findByText("Loaded all 2 blockers. None share a fix.")).toBeInTheDocument();
+  });
+
+  it("moves focus to the group, not the page, when the focused row folds into it", async () => {
+    const others = ["o0", "o1", "o2", "o3", "o4"];
+    for (const id of others) findings[id] = finding(id);
+    setBlockers([...lodashBlockers(3), ...others]);
+    holdFindings = true;
+    renderPage();
+    await waitFor(() => expect(heldFindings).toHaveLength(6));
+    await releaseHeld();
+    // Eight blockers, six loaded: the row in focus is a plain row for now.
+    const row = await screen.findByRole("button", { name: entryName("Finding g1") });
+    act(() => row.focus());
+    expect(row).toHaveFocus();
+
+    await waitFor(async () => {
+      await releaseHeld();
+      expect(screen.getByRole("button", { name: /clears 3 blockers$/ })).toBeInTheDocument();
+    }, { timeout: 5000 });
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /clears 3 blockers$/ })).toHaveFocus()
+    );
+  });
+
+  it("leaves focus where it is when the focused row does not fold", async () => {
+    for (const id of ["o0", "o1", "o2", "o3", "o4", "o5"]) findings[id] = finding(id);
+    setBlockers(["o0", ...lodashBlockers(2), "o1", "o2", "o3", "o4", "o5"]);
+    holdFindings = true;
+    renderPage();
+    await waitFor(() => expect(heldFindings).toHaveLength(6));
+    await releaseHeld();
+    const row = await screen.findByRole("button", { name: entryName("Finding o0") });
+    act(() => row.focus());
+
+    await waitFor(async () => {
+      await releaseHeld();
+      expect(screen.getByRole("button", { name: /clears 2 blockers$/ })).toBeInTheDocument();
+    }, { timeout: 5000 });
+
+    expect(screen.getByRole("button", { name: entryName("Finding o0") })).toHaveFocus();
+  });
+
+  describe("when some blockers fail to load", () => {
+    it("names the ones that failed, groups the rest, and retries just those", async () => {
+      setBlockers(lodashBlockers(4));
+      const missing = findings.g3;
+      delete findings.g3;
+      renderPage();
+
+      expect(await screen.findByText(/Could not load 1 of 4 blockers:/)).toHaveTextContent("g3");
+      expect(
+        screen.getByText(
+          "Loaded 3 of 4 blockers. 1 could not be loaded. 3 of them are grouped into 1 fix.",
+        ),
+      ).toBeInTheDocument();
+      expect(await groupButton()).toHaveAccessibleName(/clears 3 blockers$/);
+      // The failed one keeps its own row, with its own retry.
+      expect(screen.getByText(/Could not load this finding/)).toBeInTheDocument();
+      findingFetches.length = 0;
+
+      findings.g3 = missing;
+      await userEvent.setup().click(
+        screen.getByRole("button", { name: "Retry the 1 that failed" }),
+      );
+
+      expect(await screen.findByRole("button", { name: /clears 4 blockers$/ }))
+        .toBeInTheDocument();
+      expect(screen.queryByText(/Could not load 1 of 4/)).not.toBeInTheDocument();
+      expect(findingFetches).toEqual(["g3"]);
+    });
+
+    it("lists the first five failed ids and counts the rest", async () => {
+      setBlockers(Array.from({ length: 8 }, (_, index) => `m${index}`));
+      findings = {};
+      renderPage();
+
+      const notice = await screen.findByText(/Could not load 8 of 8 blockers:/);
+      expect(notice).toHaveTextContent("m0, m1, m2, m3, m4 and 3 more");
+      expect(screen.getByRole("button", { name: "Retry the 8 that failed" })).toBeInTheDocument();
+    });
+  });
+
+  describe("waiver for a group", () => {
+    it("sends one request naming every member, then focuses the group's note", async () => {
+      setBlockers(lodashBlockers(3));
+      renderPage();
+      const { user, entry } = await openGroup();
+
+      await user.click(
+        entry.getByRole("button", { name: `Request one waiver for all 3: ${LODASH}` }),
+      );
+      const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).getByText(/the 3 findings that upgrading lodash to 4\.17\.21 fixes/))
+        .toBeInTheDocument();
+      await sendRequest(user);
+
+      await waitFor(() => expect(waiverPosts).toHaveLength(1));
+      expect(waiverPosts[0].target_ids).toEqual(["g0", "g1", "g2"]);
+      const note = await entry.findByText(/3 blockers left out: 3 with a request waiting/);
+      await waitFor(() => expect(note).toHaveFocus());
+      // The members now say so, and the verdict is unchanged.
+      expect(screen.getAllByText("Waiver requested")).toHaveLength(3);
+      expect(screen.getByText("BLOCKED")).toBeInTheDocument();
+    });
+
+    it("leaves out members already waived or waiting, and says so", async () => {
+      setBlockers(lodashBlockers(4));
+      waivers = [
+        pendingWaiver("g0"),
+        {
+          ...pendingWaiver("g1"),
+          id: "w2",
+          status: "approved",
+          expires_at: "2099-01-01T00:00:00Z",
+        },
+      ];
+      renderPage();
+      const { user, entry } = await openGroup();
+
+      expect(entry.getByText(/2 blockers left out: 1 already waived, 1 with a request waiting/))
+        .toBeInTheDocument();
+      await user.click(
+        entry.getByRole("button", { name: `Request one waiver for 2 findings: ${LODASH}` }),
+      );
+      await sendRequest(user);
+
+      await waitFor(() => expect(waiverPosts).toHaveLength(1));
+      expect(waiverPosts[0].target_ids).toEqual(["g2", "g3"]);
+    });
+
+    it("names the first 50 when the group is larger, then the rest on the next request", async () => {
+      setBlockers(lodashBlockers(60));
+      renderPage();
+      const { user, entry } = await openGroup();
+
+      expect(entry.getByText(/One request can name at most 50 findings\. 60 can be requested/))
+        .toBeInTheDocument();
+      await user.click(
+        entry.getByRole("button", { name: `Request one waiver for the first 50: ${LODASH}` }),
+      );
+      await sendRequest(user);
+      await waitFor(() => expect(waiverPosts).toHaveLength(1));
+      expect(waiverPosts[0].target_ids).toEqual(
+        Array.from({ length: 50 }, (_, index) => `g${index}`),
+      );
+
+      await user.click(
+        await entry.findByRole("button", {
+          name: `Request one waiver for 10 findings: ${LODASH}`,
+        }),
+      );
+      await sendRequest(user, "The rest.");
+      await waitFor(() => expect(waiverPosts).toHaveLength(2));
+      expect(waiverPosts[1].target_ids).toEqual(
+        Array.from({ length: 10 }, (_, index) => `g${index + 50}`),
+      );
+    });
+
+    it("sends all of a group of exactly 50 in one request", async () => {
+      setBlockers(lodashBlockers(50));
+      renderPage();
+      const { user, entry } = await openGroup();
+
+      expect(entry.queryByText(/at most 50/)).not.toBeInTheDocument();
+      await user.click(
+        entry.getByRole("button", { name: `Request one waiver for all 50: ${LODASH}` }),
+      );
+      await sendRequest(user);
+
+      await waitFor(() => expect(waiverPosts).toHaveLength(1));
+      expect(waiverPosts[0].target_ids).toHaveLength(50);
+    });
+
+    it("is disabled with the reason when the viewer may not ask", async () => {
+      permissions = { request_waiver: false };
+      setBlockers(lodashBlockers(3));
+      renderPage();
+      const { entry } = await openGroup();
+
+      expect(entry.getByRole("button", { name: `Request one waiver for all 3: ${LODASH}` }))
+        .toBeDisabled();
+      expect(entry.getAllByText("You are not a member of this project.").length)
+        .toBeGreaterThan(0);
+    });
+
+    it("reads a null waiver list as nothing covered", async () => {
+      setBlockers(lodashBlockers(3));
+      waivers = null as unknown as unknown[];
+      renderPage();
+      const { entry } = await openGroup();
+
+      expect(
+        await entry.findByRole("button", { name: `Request one waiver for all 3: ${LODASH}` }),
+      ).toBeEnabled();
+    });
+  });
+
+  describe("request one waiver for all", () => {
+    it("names every blocker of the change, whatever the grouping", async () => {
+      findings.z0 = finding("z0");
+      setBlockers([...lodashBlockers(2), "z0"]);
+      renderPage();
+      await groupButton();
+      const user = userEvent.setup();
+
+      await user.click(
+        screen.getByRole("button", {
+          name: "Request one waiver for all 3: every blocker of this change",
+        }),
+      );
+      const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).getByText("3 blocking findings")).toBeInTheDocument();
+      await sendRequest(user);
+
+      await waitFor(() => expect(waiverPosts).toHaveLength(1));
+      expect(waiverPosts[0].target_ids).toEqual(["g0", "g1", "z0"]);
+      await waitFor(() => expect(document.getElementById("blocker-waiver-all")).toHaveFocus());
+    });
+
+    it("is not offered for a single blocker", async () => {
+      changeGate = gate({ blocked_by: ["f1"] });
+      renderPage();
+      await screen.findByRole("button", { name: entryName("Finding f1") });
+
+      expect(screen.queryByRole("button", { name: /Request one waiver for/ })).not
+        .toBeInTheDocument();
+    });
+
+    it("is disabled with the reason for a viewer who cannot ask", async () => {
+      permissions = { request_waiver: false };
+      renderPage();
+      await loadedLedger();
+
+      expect(screen.getByRole("button", { name: /^Request one waiver for all 2/ })).toBeDisabled();
+    });
+  });
+
+  it("reads a null blocker list as no blockers", async () => {
+    changeGate = gate({ blocked_by: null, blocking_count: 0 });
+    renderPage();
+
+    expect(await screen.findByRole("heading", { level: 1 })).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Blocking findings" })).not.toBeInTheDocument();
   });
 });

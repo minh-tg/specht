@@ -1,10 +1,4 @@
-import type {
-  Finding,
-  FindingLocation,
-  FindingRemediation,
-  FindingSuggestion,
-  Report,
-} from "@/types/api";
+import type { FindingLocation, FindingRemediation, FindingSuggestion, Report } from "@/types/api";
 
 /** Shortest commit prefix the change route accepts and renders. */
 export const SHORT_COMMIT_LENGTH = 7;
@@ -101,21 +95,6 @@ export function fixSentence(
 ): string | null {
   const raw = fixAction(finding);
   return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : null;
-}
-
-/**
- * The numbered "title: fix" lines behind "Copy all fixes". Entries that are still loading (undefined)
- * or have no real fix are left out, but keep their position number, so a line still matches the
- * ledger entry it came from. Empty when no entry has a fix.
- */
-export function fixesText(findings: readonly (Finding | undefined)[]): string {
-  return findings
-    .map((finding, index) => {
-      const fix = finding ? fixSentence(finding) : null;
-      return finding && fix ? `${index + 1}. ${finding.current_title}: ${fix}` : null;
-    })
-    .filter((line): line is string => line !== null)
-    .join("\n");
 }
 
 /** Human name for the layer that supplied the effective policy floor. */
