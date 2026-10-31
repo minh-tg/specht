@@ -32,6 +32,8 @@ let withdrawFailure: { status: number; code: string; } | null;
 let holdFindings: boolean;
 let heldFindings: Array<() => void>;
 let findingsInFlight: number;
+/** Finding ids the server answers 429 for, this many more times, with this Retry-After if any. */
+let rateLimited: Map<string, { left: number; retryAfter?: string; }>;
 let maxFindingsInFlight: number;
 
 function report(overrides: Record<string, unknown> = {}) {
@@ -153,6 +155,7 @@ beforeEach(() => {
   heldFindings = [];
   findingsInFlight = 0;
   maxFindingsInFlight = 0;
+  rateLimited = new Map();
 
   globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -251,6 +254,16 @@ beforeEach(() => {
       const id = decodeURIComponent(match[1]);
       findingFetches.push(id);
       const respond = () => {
+        const limit = rateLimited.get(id);
+        if (limit && limit.left > 0) {
+          limit.left -= 1;
+          const refused = jsonResponse(
+            { error: { code: "rate_limited", message: "rate limit exceeded, retry later" } },
+            429,
+          );
+          if (limit.retryAfter) refused.headers.set("Retry-After", limit.retryAfter);
+          return refused;
+        }
         const data = findings[id];
         if (data === undefined) {
           return jsonResponse({ error: { code: "not_found", message: "finding missing" } }, 404);
@@ -1384,7 +1397,7 @@ describe("ChangeView grouping by fix", { timeout: 20_000 }, () => {
     holdFindings = true;
     renderPage();
 
-    await waitFor(() => expect(findingFetches).toHaveLength(6));
+    await waitFor(() => expect(findingFetches).toHaveLength(4));
     expect(await screen.findByText(/Loading blockers: 0 of 14/)).toBeInTheDocument();
     // Rows stay as plain entries, in order, until every blocker is known.
     expect(screen.queryByRole("button", { name: /clears/ })).not.toBeInTheDocument();
@@ -1392,7 +1405,7 @@ describe("ChangeView grouping by fix", { timeout: 20_000 }, () => {
     await act(async () => {
       heldFindings.shift()?.();
     });
-    await waitFor(() => expect(findingFetches).toHaveLength(7));
+    await waitFor(() => expect(findingFetches).toHaveLength(5));
     expect(await screen.findByText(/Loading blockers: 1 of 14/)).toBeInTheDocument();
 
     await waitFor(async () => {
@@ -1400,7 +1413,7 @@ describe("ChangeView grouping by fix", { timeout: 20_000 }, () => {
       expect(screen.getByRole("button", { name: /clears 14 blockers$/ })).toBeInTheDocument();
     });
     expect(findingFetches).toHaveLength(14);
-    expect(maxFindingsInFlight).toBeLessThanOrEqual(6);
+    expect(maxFindingsInFlight).toBeLessThanOrEqual(4);
     expect(screen.queryByText(/Loading blockers/)).not.toBeInTheDocument();
   });
 
@@ -1428,9 +1441,9 @@ describe("ChangeView grouping by fix", { timeout: 20_000 }, () => {
     setBlockers([...lodashBlockers(3), ...others]);
     holdFindings = true;
     renderPage();
-    await waitFor(() => expect(heldFindings).toHaveLength(6));
+    await waitFor(() => expect(heldFindings).toHaveLength(4));
     await releaseHeld();
-    // Eight blockers, six loaded: the row in focus is a plain row for now.
+    // Eight blockers, four loaded: the row in focus is a plain row for now.
     const row = await screen.findByRole("button", { name: entryName("Finding g1") });
     act(() => row.focus());
     expect(row).toHaveFocus();
@@ -1450,7 +1463,7 @@ describe("ChangeView grouping by fix", { timeout: 20_000 }, () => {
     setBlockers(["o0", ...lodashBlockers(2), "o1", "o2", "o3", "o4", "o5"]);
     holdFindings = true;
     renderPage();
-    await waitFor(() => expect(heldFindings).toHaveLength(6));
+    await waitFor(() => expect(heldFindings).toHaveLength(4));
     await releaseHeld();
     const row = await screen.findByRole("button", { name: entryName("Finding o0") });
     act(() => row.focus());
@@ -1500,6 +1513,113 @@ describe("ChangeView grouping by fix", { timeout: 20_000 }, () => {
       const notice = await screen.findByText(/Could not load 8 of 8 blockers:/);
       expect(notice).toHaveTextContent("m0, m1, m2, m3, m4 and 3 more");
       expect(screen.getByRole("button", { name: "Retry the 8 that failed" })).toBeInTheDocument();
+    });
+  });
+
+  describe("when the server asks the page to slow down", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function sixBlockers() {
+      const ids = lodashBlockers(6);
+      setBlockers(ids);
+      return ids;
+    }
+
+    function fetchesOf(id: string): number {
+      return findingFetches.filter((fetched) => fetched === id).length;
+    }
+
+    it("waits and tries again after a 429, and says it is waiting", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      sixBlockers();
+      rateLimited.set("g0", { left: 1 });
+      renderPage();
+
+      expect(await screen.findByText(/Loading blockers: 5 of 6, waiting for the server/))
+        .toBeInTheDocument();
+      expect(screen.queryByText(/Could not load/)).not.toBeInTheDocument();
+      expect(fetchesOf("g0")).toBe(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1100);
+      });
+
+      expect(await groupButton()).toHaveAccessibleName(/clears 6 blockers$/);
+      expect(fetchesOf("g0")).toBe(2);
+      expect(screen.queryByText(/Could not load/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/waiting for the server/)).not.toBeInTheDocument();
+    });
+
+    it("waits as long as Retry-After says", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      sixBlockers();
+      rateLimited.set("g0", { left: 1, retryAfter: "3" });
+      renderPage();
+      await screen.findByText(/waiting for the server/);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2500);
+      });
+      expect(fetchesOf("g0")).toBe(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(700);
+      });
+      expect(await groupButton()).toHaveAccessibleName(/clears 6 blockers$/);
+      expect(fetchesOf("g0")).toBe(2);
+    });
+
+    it("backs off 1 s, 2 s, 4 s when no Retry-After comes", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      sixBlockers();
+      rateLimited.set("g0", { left: 3 });
+      renderPage();
+      await screen.findByText(/waiting for the server/);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1100);
+      });
+      expect(fetchesOf("g0")).toBe(2);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      expect(fetchesOf("g0")).toBe(2);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(700);
+      });
+      expect(fetchesOf("g0")).toBe(3);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4200);
+      });
+      expect(await groupButton()).toHaveAccessibleName(/clears 6 blockers$/);
+      expect(fetchesOf("g0")).toBe(4);
+    });
+
+    it("counts a finding as failed only once the retries run out", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const ids = sixBlockers();
+      rateLimited.set("g0", { left: 99, retryAfter: "1" });
+      renderPage();
+      await screen.findByText(/waiting for the server/);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+
+      expect(await screen.findByText(/Could not load 1 of 6 blockers:/)).toHaveTextContent(ids[0]);
+      // One try and four more, then it is a failure with its own retry.
+      expect(fetchesOf("g0")).toBe(5);
+      expect(screen.queryByText(/waiting for the server/)).not.toBeInTheDocument();
+      expect(await groupButton()).toHaveAccessibleName(/clears 5 blockers$/);
+
+      rateLimited.clear();
+      await userEvent.setup({ advanceTimers: vi.advanceTimersByTime }).click(
+        screen.getByRole("button", { name: "Retry the 1 that failed" }),
+      );
+      expect(await screen.findByRole("button", { name: /clears 6 blockers$/ }))
+        .toBeInTheDocument();
     });
   });
 

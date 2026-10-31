@@ -230,8 +230,9 @@ export function BlockerSection(
           <p role="status" className="sr-only">{announcement}</p>
           {!found.done && found.total > FINDING_FETCH_WINDOW && (
             <p aria-busy="true" className="text-muted-foreground mb-2 text-meta">
-              Loading blockers: {found.settled} of{" "}
-              {found.total}. Blockers that one upgrade fixes are grouped when all have loaded.
+              Loading blockers: {found.settled} of {found.total}
+              {found.waiting && ", waiting for the server"}. Blockers that one upgrade fixes are
+              grouped when all have loaded.
             </p>
           )}
           {failedIds.length > 0 && (
