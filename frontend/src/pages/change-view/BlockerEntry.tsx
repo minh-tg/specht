@@ -1,3 +1,4 @@
+import { DisabledReason } from "@/components/DisabledReason";
 import { INLINE_LINK } from "@/components/inlineLink";
 import { LedgerEntry, type LedgerTone } from "@/components/Ledger";
 import { Button } from "@/components/ui/button";
@@ -5,6 +6,7 @@ import { SeverityBadge } from "@/components/ui/severity-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { normalizeSeverity } from "@/lib/enums";
 import { useCopyToClipboard } from "@/lib/useCopyToClipboard";
+import { NOT_A_MEMBER_REASON } from "@/lib/waiverRequest";
 import { fixSentence, locationLine } from "@/pages/change-view/resolve";
 import type { Finding } from "@/types/api";
 import { Link } from "react-router-dom";
@@ -174,10 +176,17 @@ function LoadedEntry(
                 Waiting for a manager to decide.
               </span>
             )
-            : canRequestWaiver && (
-              <Button type="button" variant="outline" onClick={onRequestWaiver}>
-                Request waiver
-              </Button>
+            : (
+              <DisabledReason reason={canRequestWaiver ? undefined : NOT_A_MEMBER_REASON}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!canRequestWaiver}
+                  onClick={onRequestWaiver}
+                >
+                  Request waiver
+                </Button>
+              </DisabledReason>
             )}
           <label className="ml-auto flex min-h-[34px] cursor-pointer items-center gap-2 px-1.5 text-meta">
             <input

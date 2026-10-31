@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -111,18 +111,49 @@ describe("the finding page's aside and fix", () => {
     expect(JSON.parse(post?.body ?? "{}").target_ids).toEqual(["f1"]);
   });
 
-  it("does not offer a waiver without the permission, or for a finding that does not block", async () => {
-    permissions = { request_waiver: false, triage: false };
-    const first = renderDetail();
-    await screen.findByRole("complementary", { name: "About this finding" });
-    expect(screen.queryByRole("button", { name: "Request waiver" })).not.toBeInTheDocument();
-    first.unmount();
+  it("offers the waiver request to a member who may not triage", async () => {
+    permissions = { request_waiver: true, triage: false };
+    renderDetail();
 
-    permissions = { request_waiver: true, triage: true };
+    const button = await screen.findByRole("button", { name: "Request waiver" });
+    expect(button).toBeEnabled();
+  });
+
+  it("keeps the button, disabled with the reason, when the caller is not a member", async () => {
+    permissions = { request_waiver: false, triage: false };
+    renderDetail();
+
+    const aside = await screen.findByRole("complementary", { name: "About this finding" });
+    const button = await within(aside).findByRole("button", { name: "Request waiver" });
+    expect(button).toBeDisabled();
+    expect(within(aside).getByText("You are not a member of this project."))
+      .toBeInTheDocument();
+  });
+
+  it("keeps the button, disabled with the reason, when the finding does not block the gate", async () => {
     gate = { blocked_by: [], policy: { severity_floor: "high" } };
     renderDetail();
-    await screen.findByRole("complementary", { name: "About this finding" });
-    expect(screen.queryByRole("button", { name: "Request waiver" })).not.toBeInTheDocument();
+
+    const aside = await screen.findByRole("complementary", { name: "About this finding" });
+    expect(await within(aside).findByRole("button", { name: "Request waiver" })).toBeDisabled();
+    expect(within(aside).getByText("This finding does not block the gate."))
+      .toBeInTheDocument();
+  });
+
+  it("says why for a finding that is waived or below the floor", async () => {
+    gate = { blocked_by: [], waived_finding_ids: ["f1"], policy: { severity_floor: "high" } };
+    const first = renderDetail();
+    let button = await screen.findByRole("button", { name: "Request waiver" });
+    await waitFor(() => expect(button.parentElement).toHaveTextContent("already waived"));
+    expect(button).toBeDisabled();
+    first.unmount();
+
+    gate = { blocked_by: [], policy: { severity_floor: "critical" } };
+    finding = { ...finding, current_severity: "medium" };
+    renderDetail();
+    button = await screen.findByRole("button", { name: "Request waiver" });
+    await waitFor(() => expect(button.parentElement).toHaveTextContent("below the severity floor"));
+    expect(button).toBeDisabled();
   });
 
   it("says a request is waiting instead of offering another one", async () => {
