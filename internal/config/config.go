@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/netip"
 	"net/url"
@@ -672,14 +673,29 @@ func (s *Server) IngestSlots(def int) int {
 	return max(1, min(slots, s.DBMaxConns-1))
 }
 
+// ParseLogLevel maps a LOG_LEVEL value to a slog level, ignoring case. Both
+// Validate and the logger setup use it, so a value that passes validation is
+// the level the server runs at.
+func ParseLogLevel(s string) (slog.Level, bool) {
+	switch strings.ToLower(s) {
+	case "debug":
+		return slog.LevelDebug, true
+	case "info":
+		return slog.LevelInfo, true
+	case "warn":
+		return slog.LevelWarn, true
+	case "error":
+		return slog.LevelError, true
+	}
+	return slog.LevelInfo, false
+}
+
 func (s *Server) Validate() error {
 	var problems []error
 	if s.DBURL == "" {
 		problems = append(problems, errors.New("DATABASE_URL is required"))
 	}
-	switch strings.ToLower(s.LogLevel) {
-	case "debug", "info", "warn", "error":
-	default:
+	if _, ok := ParseLogLevel(s.LogLevel); !ok {
 		problems = append(problems, fmt.Errorf("LOG_LEVEL must be debug, info, warn or error, got %q", s.LogLevel))
 	}
 	if s.InventoryTTL <= 0 {

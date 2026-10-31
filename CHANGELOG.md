@@ -383,6 +383,8 @@ releases.
   its branch, or an earlier report on the branch did. Push builds on a branch that
   never named a base, such as `main`, keep counting only findings new to the project.
   `introduced_count` in the ingest response counts the carried findings too.
+- `LOG_LEVEL` is applied in any letter case. `LOG_LEVEL=WARN` passed validation but the
+  server ran at info.
 
 ### Security
 
