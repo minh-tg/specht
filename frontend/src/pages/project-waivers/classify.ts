@@ -12,7 +12,12 @@ export const BUCKET_LABEL: Record<WaiverBucket, string> = {
 };
 
 /** Why a waiver in the closed list is closed. */
-export type ClosedReason = "Rejected" | "Withdrawn" | "Revoked" | "Expired";
+export type ClosedReason =
+  | "Rejected"
+  | "Expired before a decision"
+  | "Withdrawn"
+  | "Revoked"
+  | "Expired";
 
 function hasExpired(waiver: Waiver, now: Date): boolean {
   if (!waiver.expires_at) return false;
@@ -39,7 +44,11 @@ export function waiverBucket(waiver: Waiver, now: Date): WaiverBucket {
  * until its expiry is extended.
  */
 export function closedReason(waiver: Waiver, now: Date): ClosedReason {
-  if (waiver.status === "rejected") return "Rejected";
+  if (waiver.status === "rejected") {
+    // The server rejects a request itself when it outlives its end date; a person's rejection
+    // carries no reason. The note text is never matched.
+    return waiver.decision_reason === "expired" ? "Expired before a decision" : "Rejected";
+  }
   if (waiver.status === "withdrawn") return "Withdrawn";
   return hasExpired(waiver, now) ? "Expired" : "Revoked";
 }

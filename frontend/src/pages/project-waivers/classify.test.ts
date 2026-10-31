@@ -68,6 +68,26 @@ describe("closedReason", () => {
   });
 });
 
+describe("closedReason for a request the server rejected", () => {
+  it("calls a request that expired before a decision by decision_reason", () => {
+    expect(closedReason(waiver({ status: "rejected", decision_reason: "expired" }), now))
+      .toBe("Expired before a decision");
+  });
+
+  it("does not read the note: a person's rejection stays Rejected", () => {
+    expect(
+      closedReason(
+        waiver({
+          status: "rejected",
+          decision_reason: null,
+          decision_note: "expired before a decision",
+        }),
+        now,
+      ),
+    ).toBe("Rejected");
+  });
+});
+
 describe("closedReason for a waiver the sweeper switched off", () => {
   // The sweeper disables an expired waiver and leaves it approved, so it is also "off". Expiry has
   // to win, or a waiver that can no longer be restored would be labelled as one that can.
