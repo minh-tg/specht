@@ -36,10 +36,11 @@ var ciEnvVars = []string{
 	"CI", "GITHUB_ACTIONS", "GITLAB_CI",
 	// GitHub Actions context.
 	"GITHUB_BASE_REF", "GITHUB_SHA", "GITHUB_REF_NAME", "GITHUB_EVENT_NAME",
-	"GITHUB_EVENT_PATH", "GITHUB_REPOSITORY", "GITHUB_STEP_SUMMARY",
+	"GITHUB_EVENT_PATH", "GITHUB_REF", "GITHUB_REF_TYPE", "GITHUB_REPOSITORY", "GITHUB_STEP_SUMMARY",
 	"GITHUB_TOKEN", "GH_TOKEN",
 	// GitLab CI context.
 	"CI_MERGE_REQUEST_TARGET_BRANCH_NAME", "CI_COMMIT_SHA", "CI_COMMIT_REF_NAME", "CI_PROJECT_PATH",
+	"CI_COMMIT_BRANCH", "CI_COMMIT_TAG", "CI_DEFAULT_BRANCH",
 	// Adapter configuration.
 	"API_URL", "SPECHT_API_URL", "API_KEY", "SPECHT_API_KEY", "SPECHT_PROJECT",
 	"SPECHT_OWNER", "SPECHT_ENVIRONMENT",
@@ -447,6 +448,149 @@ func TestDetectCIEnvironment_GitLab(t *testing.T) {
 	assert.Equal(t, "master", baseRef)
 	assert.Equal(t, "commit456", commit)
 	assert.Equal(t, "mr-branch", branch)
+}
+
+func TestDetectCIEnvironment_DefaultBranchBase(t *testing.T) {
+	repoEvent := func(t *testing.T, def string) string {
+		return writeEventPayload(t, map[string]any{"repository": map[string]any{"default_branch": def}})
+	}
+	tests := []struct {
+		name     string
+		env      func(t *testing.T) map[string]string
+		flagBase string
+		want     string
+	}{
+		{
+			name: "GitLab push on a non-default branch",
+			env: func(*testing.T) map[string]string {
+				return map[string]string{"CI_DEFAULT_BRANCH": "main", "CI_COMMIT_BRANCH": "feat/x", "CI_COMMIT_REF_NAME": "feat/x"}
+			},
+			want: "main",
+		},
+		{
+			name: "GitLab push on the default branch",
+			env: func(*testing.T) map[string]string {
+				return map[string]string{"CI_DEFAULT_BRANCH": "main", "CI_COMMIT_BRANCH": "main", "CI_COMMIT_REF_NAME": "main"}
+			},
+		},
+		{
+			name: "GitLab tag pipeline",
+			env: func(*testing.T) map[string]string {
+				return map[string]string{"CI_DEFAULT_BRANCH": "main", "CI_COMMIT_TAG": "v1.0.0", "CI_COMMIT_REF_NAME": "v1.0.0"}
+			},
+		},
+		{
+			name: "GitLab merge request target wins",
+			env: func(*testing.T) map[string]string {
+				return map[string]string{
+					"CI_DEFAULT_BRANCH": "main", "CI_COMMIT_BRANCH": "feat/x",
+					"CI_MERGE_REQUEST_TARGET_BRANCH_NAME": "release",
+				}
+			},
+			want: "release",
+		},
+		{
+			name: "GitHub push on a non-default branch",
+			env: func(t *testing.T) map[string]string {
+				return map[string]string{
+					"GITHUB_EVENT_NAME": "push", "GITHUB_REF_TYPE": "branch", "GITHUB_REF": "refs/heads/feat/x",
+					"GITHUB_REF_NAME": "feat/x", "GITHUB_EVENT_PATH": repoEvent(t, "main"),
+				}
+			},
+			want: "main",
+		},
+		{
+			name: "GitHub push with only GITHUB_REF",
+			env: func(t *testing.T) map[string]string {
+				return map[string]string{"GITHUB_REF": "refs/heads/feat/x", "GITHUB_EVENT_PATH": repoEvent(t, "main")}
+			},
+			want: "main",
+		},
+		{
+			name: "GitHub push on the default branch",
+			env: func(t *testing.T) map[string]string {
+				return map[string]string{
+					"GITHUB_REF_TYPE": "branch", "GITHUB_REF": "refs/heads/main",
+					"GITHUB_REF_NAME": "main", "GITHUB_EVENT_PATH": repoEvent(t, "main"),
+				}
+			},
+		},
+		{
+			name: "GitHub tag ref",
+			env: func(t *testing.T) map[string]string {
+				return map[string]string{
+					"GITHUB_REF_TYPE": "tag", "GITHUB_REF": "refs/tags/v1.0.0",
+					"GITHUB_REF_NAME": "v1.0.0", "GITHUB_EVENT_PATH": repoEvent(t, "main"),
+				}
+			},
+		},
+		{
+			name: "GitHub pull request base wins",
+			env: func(t *testing.T) map[string]string {
+				return map[string]string{
+					"GITHUB_BASE_REF": "release", "GITHUB_REF_TYPE": "branch", "GITHUB_REF": "refs/heads/feat/x",
+					"GITHUB_REF_NAME": "feat/x", "GITHUB_EVENT_PATH": repoEvent(t, "main"),
+				}
+			},
+			want: "release",
+		},
+		{
+			name: "explicit flag wins over the default branch",
+			env: func(t *testing.T) map[string]string {
+				return map[string]string{
+					"GITHUB_REF_TYPE": "branch", "GITHUB_REF": "refs/heads/feat/x",
+					"GITHUB_REF_NAME": "feat/x", "GITHUB_EVENT_PATH": repoEvent(t, "main"),
+					"CI_DEFAULT_BRANCH": "trunk", "CI_COMMIT_BRANCH": "feat/x",
+				}
+			},
+			flagBase: "v2",
+			want:     "v2",
+		},
+		{
+			name: "malformed event payload",
+			env: func(t *testing.T) map[string]string {
+				path := filepath.Join(t.TempDir(), "event.json")
+				require.NoError(t, os.WriteFile(path, []byte("{not json"), 0o600))
+				return map[string]string{
+					"GITHUB_REF_TYPE": "branch", "GITHUB_REF": "refs/heads/feat/x",
+					"GITHUB_REF_NAME": "feat/x", "GITHUB_EVENT_PATH": path,
+				}
+			},
+		},
+		{
+			name: "missing event payload",
+			env: func(*testing.T) map[string]string {
+				return map[string]string{
+					"GITHUB_REF_TYPE": "branch", "GITHUB_REF": "refs/heads/feat/x",
+					"GITHUB_REF_NAME": "feat/x", "GITHUB_EVENT_PATH": filepath.Join(t.TempDir(), "absent.json"),
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearCIEnvironment(t)
+			for k, v := range tt.env(t) {
+				t.Setenv(k, v)
+			}
+			baseRef := tt.flagBase
+			var commit, branch string
+			detectCIEnvironment(&baseRef, &commit, &branch)
+			assert.Equal(t, tt.want, baseRef)
+			assert.NotEqual(t, branch, baseRef, "base must never equal the built branch")
+		})
+	}
+}
+
+func TestApplyGateFlags_DefaultBranchBaseKeepsProjectScope(t *testing.T) {
+	var payload client.IngestPayload
+	applyGateFlags(&payload, &adapterFlags{baseRef: "main", baseFromDefaultBranch: true})
+	assert.Equal(t, "main", payload.BaseRevision)
+	assert.False(t, payload.GateIntroducedOnly)
+
+	payload = client.IngestPayload{}
+	applyGateFlags(&payload, &adapterFlags{baseRef: "main"})
+	assert.True(t, payload.GateIntroducedOnly)
 }
 
 func TestDetectCIEnvironment_GitHubPullRequestUsesHead(t *testing.T) {
