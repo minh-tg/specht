@@ -261,13 +261,6 @@ export function DecisionForm(
         <legend id="decision-legend" className="mb-2 text-body font-semibold">
           What is this finding?
         </legend>
-        {allowed && (
-          <p className="text-muted-foreground -mt-1 mb-1 text-meta">
-            {singleKeys
-              ? "Keys 1 to 3 pick. They pause while you type in a field."
-              : "Single-key shortcuts are off. Turn them on in the account menu."}
-          </p>
-        )}
         <div className="grid gap-2 sm:grid-cols-3">
           {DECISIONS.map((choice) => (
             <Choice
@@ -438,6 +431,14 @@ export function DecisionForm(
         <span id="decision-save-hint" className="text-muted-foreground text-meta">
           {saveHint}
         </span>
+        {/* The key hint shares the Save row, so it adds no height above the answers. */}
+        {allowed && (
+          <span className="text-muted-foreground text-meta sm:ml-auto">
+            {singleKeys
+              ? "Keys 1 to 3 pick. They pause while you type in a field."
+              : "Single-key shortcuts are off. Turn them on in the account menu."}
+          </span>
+        )}
       </div>
 
       <PartResults results={results} busy={busy} onRetry={(part) => void save(part)} />
