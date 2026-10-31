@@ -73,6 +73,16 @@ SELECT id FROM projects
 WHERE id = $1
 FOR NO KEY UPDATE;
 
+-- name: LockProjectsAdministeredBy :many
+-- Takes the membership lock of every project where the user holds an admin
+-- row, in id order so two callers cannot wait on each other. A deactivation
+-- holds them while it checks for projects it would leave without an admin, so
+-- a concurrent removal or deactivation of the other admin waits for it.
+SELECT p.id FROM projects p
+WHERE p.id IN (SELECT pm.project_id FROM project_members pm WHERE pm.user_id = $1 AND pm.role = 'admin')
+ORDER BY p.id
+FOR NO KEY UPDATE OF p;
+
 -- name: CountProjectAdmins :one
 -- Admins who can sign in: a deactivated account holds a row but governs nothing.
 SELECT COUNT(*) FROM project_members pm

@@ -324,7 +324,7 @@ func TestReactivationRevivesOnlyKeysTheRevocationMissed(t *testing.T) {
 	project := createTestProject(t, repos)
 	_, err := stores.APIKeys.Create(ctx, newKeyInput(toUUID(project.ID), creator.ID, "race-hash-react"))
 	require.NoError(t, err)
-	_, _, err = stores.Users.Deactivate(ctx, creator.ID)
+	_, _, err = stores.Users.Deactivate(ctx, creator.ID, true)
 	require.NoError(t, err)
 	_, err = stores.APIKeys.GetByHash(ctx, "race-hash-react")
 	t.Logf("lookup while deactivated: %v", err)
@@ -346,7 +346,7 @@ func TestLinkRevokingKeysRefusesADeactivatedAccount(t *testing.T) {
 	stores := NewPortStores(repos.pool)
 	newUser(t, repos, "race-admin3@test.com", "admin")
 	user := newUser(t, repos, "race-link-deact@test.com", "member")
-	_, _, err := stores.Users.Deactivate(ctx, user.ID)
+	_, _, err := stores.Users.Deactivate(ctx, user.ID, true)
 	require.NoError(t, err)
 
 	_, _, err = stores.Identities.LinkRevokingKeys(ctx, user.ID, "https://idp.example.com", "race-sub", true)
