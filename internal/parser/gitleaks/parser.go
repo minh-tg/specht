@@ -195,7 +195,7 @@ type gitleaksFinding struct {
 }
 
 func convert(g gitleaksFinding, key []byte) (domain.NormalizedFinding, error) {
-	file := parseutil.CleanFilePath(g.File)
+	file := parseutil.RepoPath(g.File)
 	if file == "" {
 		file = "unknown"
 	}
@@ -260,9 +260,11 @@ func itoa(n int) string {
 	return fmt.Sprintf("%d", n)
 }
 
-// fingerprintVersion is the version of this scanner's identity formula. Version 2
-// tells two secrets of one rule in one file apart; version 1 merged them.
-const fingerprintVersion = 2
+// fingerprintVersion is the version of this scanner's identity formula. Version 3
+// takes the file relative to the checkout (parseutil.RepoPath), so a scan of an
+// absolute directory is the same finding on every runner. Version 2 told two
+// secrets of one rule in one file apart; version 1 merged them.
+const fingerprintVersion = 3
 
 // UsesFingerprintKey says this scanner hashes secrets with the instance key.
 func (s *Scanner) UsesFingerprintKey() bool { return true }
@@ -290,6 +292,11 @@ func identityOf(g gitleaksFinding, file string, key []byte) (digest, basis strin
 		return hex.EncodeToString(mac.Sum(nil))[:32], "secret", nil
 	}
 	if fp := strings.TrimSpace(g.Fingerprint); fp != "" {
+		// Gitleaks builds its fingerprint from the file as it wrote it, which in a
+		// directory scan is the checkout path.
+		if g.File != "" {
+			fp = strings.Replace(fp, g.File, file, 1)
+		}
 		sum := sha256.Sum256([]byte(fp))
 		return hex.EncodeToString(sum[:])[:32], "fingerprint", nil
 	}

@@ -151,6 +151,6 @@ func TestWithNothingElseToGoOnTheLineTellsFindingsApart(t *testing.T) {
 func TestTheScannerAsksForTheKeyAndSaysItsIdentitiesChanged(t *testing.T) {
 	s := gitleaks.NewScanner()
 	assert.True(t, s.UsesFingerprintKey())
-	assert.EqualValues(t, 2, s.Descriptor().FingerprintVersion)
-	assert.EqualValues(t, 2, parseDoc(t, withKey(testKey), `[]`).FingerprintVersion)
+	assert.EqualValues(t, 3, s.Descriptor().FingerprintVersion)
+	assert.EqualValues(t, 3, parseDoc(t, withKey(testKey), `[]`).FingerprintVersion)
 }

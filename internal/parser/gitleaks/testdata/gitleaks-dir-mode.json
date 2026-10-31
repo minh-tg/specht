@@ -1,0 +1,22 @@
+[
+  {
+    "RuleID": "slack-bot-token",
+    "Description": "Identified a Slack Bot token, which may compromise bot integrations and communication channel security.",
+    "StartLine": 1,
+    "EndLine": 1,
+    "StartColumn": 17,
+    "EndColumn": 72,
+    "Match": "SLACK_BOT_TOKEN=xoxb-placeholder-secret-value-01",
+    "Secret": "xoxb-placeholder-secret-value-01",
+    "File": "/src/config/app.env",
+    "SymlinkFile": "",
+    "Commit": "",
+    "Entropy": 4.95424,
+    "Author": "",
+    "Email": "",
+    "Date": "",
+    "Message": "",
+    "Tags": [],
+    "Fingerprint": "/src/config/app.env:slack-bot-token:1"
+  }
+]
