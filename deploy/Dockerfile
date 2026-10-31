@@ -1,7 +1,7 @@
 FROM docker.io/library/node:26-alpine@sha256:c6ad9e9c1d80f6eb607c26b4b0a132ff7a2344fad1c78ea3baa2a7d4c8de6d94 AS frontend-builder
 WORKDIR /src/frontend
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml frontend/.pnpmfile.cjs ./
-RUN corepack enable && pnpm install --frozen-lockfile
+RUN npm install --global pnpm@11.21.0 && pnpm install --frozen-lockfile
 COPY frontend/ .
 RUN pnpm run build
 
