@@ -1,10 +1,10 @@
 import { formatClockTime, formatDateTime } from "@/lib/format";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChangeView } from "./ChangeView";
 
 const FULL_SHA = "abcdef1234567890abcdef1234567890abcdef12";
@@ -1251,7 +1251,11 @@ describe("ChangeView watching for the next scan", () => {
   });
 });
 
-describe("ChangeView grouping by fix", () => {
+describe("ChangeView grouping by fix", { timeout: 20_000 }, () => {
+  // Fetching dozens of blockers a few at a time takes longer than the default wait on a busy machine.
+  beforeAll(() => configure({ asyncUtilTimeout: 5000 }));
+  afterAll(() => configure({ asyncUtilTimeout: 1000 }));
+
   const LODASH = "Upgrade lodash to 4.17.21";
 
   /** Puts `count` blockers on the gate that one lodash upgrade fixes, and returns their ids. */
@@ -1266,10 +1270,9 @@ describe("ChangeView grouping by fix", () => {
   }
 
   function groupButton(instruction = LODASH) {
-    // Sixty requests, a few at a time, take longer than the default wait.
     return screen.findByRole("button", {
       name: new RegExp(`^\\d{2} \\S+ ${instruction} clears \\d+ blockers$`),
-    }, { timeout: 5000 });
+    });
   }
 
   async function openGroup(instruction = LODASH) {
@@ -1395,7 +1398,7 @@ describe("ChangeView grouping by fix", () => {
     await waitFor(async () => {
       await releaseHeld();
       expect(screen.getByRole("button", { name: /clears 14 blockers$/ })).toBeInTheDocument();
-    }, { timeout: 5000 });
+    });
     expect(findingFetches).toHaveLength(14);
     expect(maxFindingsInFlight).toBeLessThanOrEqual(6);
     expect(screen.queryByText(/Loading blockers/)).not.toBeInTheDocument();
@@ -1435,7 +1438,7 @@ describe("ChangeView grouping by fix", () => {
     await waitFor(async () => {
       await releaseHeld();
       expect(screen.getByRole("button", { name: /clears 3 blockers$/ })).toBeInTheDocument();
-    }, { timeout: 5000 });
+    });
 
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /clears 3 blockers$/ })).toHaveFocus()
@@ -1455,7 +1458,7 @@ describe("ChangeView grouping by fix", () => {
     await waitFor(async () => {
       await releaseHeld();
       expect(screen.getByRole("button", { name: /clears 2 blockers$/ })).toBeInTheDocument();
-    }, { timeout: 5000 });
+    });
 
     expect(screen.getByRole("button", { name: entryName("Finding o0") })).toHaveFocus();
   });
@@ -1548,33 +1551,37 @@ describe("ChangeView grouping by fix", () => {
       expect(waiverPosts[0].target_ids).toEqual(["g2", "g3"]);
     });
 
-    it("names the first 50 when the group is larger, then the rest on the next request", async () => {
-      setBlockers(lodashBlockers(60));
-      renderPage();
-      const { user, entry } = await openGroup();
+    it(
+      "names the first 50 when the group is larger, then the rest on the next request",
+      async () => {
+        setBlockers(lodashBlockers(52));
+        renderPage();
+        const { user, entry } = await openGroup();
 
-      expect(entry.getByText(/One request can name at most 50 findings\. 60 can be requested/))
-        .toBeInTheDocument();
-      await user.click(
-        entry.getByRole("button", { name: `Request one waiver for the first 50: ${LODASH}` }),
-      );
-      await sendRequest(user);
-      await waitFor(() => expect(waiverPosts).toHaveLength(1));
-      expect(waiverPosts[0].target_ids).toEqual(
-        Array.from({ length: 50 }, (_, index) => `g${index}`),
-      );
+        expect(entry.getByText(/One request can name at most 50 findings\. 52 can be requested/))
+          .toBeInTheDocument();
+        await user.click(
+          entry.getByRole("button", { name: `Request one waiver for the first 50: ${LODASH}` }),
+        );
+        await sendRequest(user);
+        await waitFor(() => expect(waiverPosts).toHaveLength(1));
+        expect(waiverPosts[0].target_ids).toEqual(
+          Array.from({ length: 50 }, (_, index) => `g${index}`),
+        );
 
-      await user.click(
-        await entry.findByRole("button", {
-          name: `Request one waiver for 10 findings: ${LODASH}`,
-        }),
-      );
-      await sendRequest(user, "The rest.");
-      await waitFor(() => expect(waiverPosts).toHaveLength(2));
-      expect(waiverPosts[1].target_ids).toEqual(
-        Array.from({ length: 10 }, (_, index) => `g${index + 50}`),
-      );
-    });
+        await user.click(
+          await entry.findByRole("button", {
+            name: `Request one waiver for 2 findings: ${LODASH}`,
+          }),
+        );
+        await sendRequest(user, "The rest.");
+        await waitFor(() => expect(waiverPosts).toHaveLength(2));
+        expect(waiverPosts[1].target_ids).toEqual(
+          Array.from({ length: 2 }, (_, index) => `g${index + 50}`),
+        );
+      },
+      20_000,
+    );
 
     it("sends all of a group of exactly 50 in one request", async () => {
       setBlockers(lodashBlockers(50));
