@@ -43,6 +43,8 @@ export interface LedgerEntryProps {
   readonly tone?: LedgerTone;
   /** A handled entry is dimmed and loses its edge, so progress reads at a glance. */
   readonly resolved?: boolean;
+  /** Names the entry in the DOM (`data-entry-id`), so a caller can find it again after the list changes. */
+  readonly entryId?: string;
   readonly children: ReactNode;
 }
 
@@ -52,12 +54,13 @@ export interface LedgerEntryProps {
  * height of zero alone would not do.
  */
 export function LedgerEntry(
-  { index, open, onOpenChange, summary, tone = "neutral", resolved = false, children }:
+  { index, open, onOpenChange, summary, tone = "neutral", resolved = false, entryId, children }:
     LedgerEntryProps,
 ) {
   const bodyId = useId();
   return (
     <li
+      data-entry-id={entryId}
       data-open={open ? "true" : "false"}
       data-resolved={resolved ? "true" : "false"}
       className={cn(

@@ -109,6 +109,7 @@ function LoadedEntry(
 
   return (
     <LedgerEntry
+      entryId={findingId}
       index={index}
       open={open}
       onOpenChange={onOpenChange}
