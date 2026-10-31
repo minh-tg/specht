@@ -386,6 +386,37 @@ describe("ChangeView after a blocked scan", () => {
     expect(document.body).not.toHaveTextContent(/Scanned in full/);
   });
 
+  it("says Scanned in full only when the scanner reported a complete scan", async () => {
+    reportsById.r2 = report({ scan_completeness: "complete" });
+    findings = { fixed: finding("fixed", { state: "fixed" }) };
+    renderPage(previousState(["fixed"]));
+
+    await screen.findByRole("heading", { level: 1, name: /^Unblocked/ });
+    expect(screen.getByText(/^Scanned in full/)).toBeInTheDocument();
+  });
+
+  it("does not call a filtered scan full even when the scanner reported it complete", async () => {
+    reportsById.r2 = report({
+      scan_completeness: "complete",
+      scan_filter: { severities: ["critical", "high"], fixable_only: false },
+    });
+    findings = { fixed: finding("fixed", { state: "fixed" }) };
+    renderPage(previousState(["fixed"]));
+
+    await screen.findByRole("heading", { level: 1, name: /^Unblocked/ });
+    expect(screen.getByText(/^Filtered scan/)).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/Scanned in full/);
+  });
+
+  it("says a partial scan did not finish", async () => {
+    reportsById.r2 = report({ scan_completeness: "partial" });
+    findings = { fixed: finding("fixed", { state: "fixed" }) };
+    renderPage(previousState(["fixed"]));
+
+    await screen.findByRole("heading", { level: 1, name: /^Unblocked/ });
+    expect(screen.getByText(/^Partial scan/)).toBeInTheDocument();
+  });
+
   it("says the verdict is recorded and the PR check reflects it as of upload, never that CI is green", async () => {
     findings = { fixed: finding("fixed", { state: "fixed" }) };
     renderPage(previousState(["fixed"]));
