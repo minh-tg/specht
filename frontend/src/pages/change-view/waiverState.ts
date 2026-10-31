@@ -101,3 +101,34 @@ export function waiverChip(kind: WaiverViewKind): string {
       return "Request withdrawn";
   }
 }
+
+/** The blockers in a set that a new waiver request may name, and why the others are left out. */
+export interface WaiverCandidates {
+  /** Ids with no request waiting and no waiver in force, in the order given. */
+  readonly eligible: readonly string[];
+  /** Ids that already have a request waiting for a manager. */
+  readonly waiting: number;
+  /** Ids already covered by an approved waiver. */
+  readonly inForce: number;
+}
+
+/**
+ * Splits ids into those a request may name and those it may not. A finding with a request waiting
+ * would make the server refuse the whole request, and one already waived has nothing to ask for.
+ * Any other state (rejected, withdrawn, expired, revoked, none) may be asked for again.
+ */
+export function waiverCandidates(
+  ids: readonly string[],
+  views: ReadonlyMap<string, WaiverView>,
+): WaiverCandidates {
+  const eligible: string[] = [];
+  let waiting = 0;
+  let inForce = 0;
+  for (const id of ids) {
+    const kind = views.get(id)?.kind;
+    if (kind === "pending") waiting += 1;
+    else if (kind === "in_force") inForce += 1;
+    else eligible.push(id);
+  }
+  return { eligible, waiting, inForce };
+}
