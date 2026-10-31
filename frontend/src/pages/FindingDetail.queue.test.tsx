@@ -195,8 +195,12 @@ describe("the triage queue from the findings list", () => {
     const user = userEvent.setup();
     renderDetail("f1", { from: FROM });
     await inQueue("2 of 3");
-    expect(screen.getByText("Keys 1 to 3 pick. They pause while you type in a field."))
-      .toBeInTheDocument();
+    // The hint shares the Save row instead of adding a line above the answers.
+    const hint = screen.getByText("Keys 1 to 3 pick. They pause while you type in a field.");
+    expect(hint.parentElement).toContainElement(
+      screen.getByRole("button", { name: "Save decision" }),
+    );
+    expect(screen.getByRole("group", { name: "What is this finding?" })).not.toContainElement(hint);
 
     await user.keyboard("3");
     expect(screen.getByRole("radio", { name: /^Accept for now/ })).toBeChecked();
