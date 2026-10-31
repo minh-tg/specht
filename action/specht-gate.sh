@@ -247,6 +247,21 @@ introduced_only() {
   esac
 }
 
+# Prints the adapter flags that declare a filtered scan, one per line. Each
+# flag is left out when its input is empty, so the adapter can still fall back to
+# Trivy's own TRIVY_SEVERITY and TRIVY_IGNORE_UNFIXED variables.
+scan_filter_args() {
+  local severities="${SPECHT_INPUT_SCAN_SEVERITIES:-}" fixable="${SPECHT_INPUT_FIXABLE_ONLY:-}"
+  if [[ -n "$severities" ]]; then
+    printf '%s\n' "-scan-severities=${severities}"
+  fi
+  case "$fixable" in
+    true | false) printf '%s\n' "-fixable-only=${fixable}" ;;
+    "") ;;
+    *) error "fixable-only must be true, false or empty, got '${fixable}'" ;;
+  esac
+}
+
 # Extracts the verified archive and runs the adapter. The adapter's exit code
 # is the step's: 0 pass, 1 blocked (findings), 2 error.
 run_adapter() {
@@ -278,6 +293,14 @@ run_adapter() {
   if [[ -n "$base_ref" ]]; then
     args+=(-base-ref "$base_ref")
   fi
+
+  local filter_args line
+  filter_args="$(scan_filter_args)"
+  while IFS= read -r line; do
+    if [[ -n "$line" ]]; then
+      args+=("$line")
+    fi
+  done <<<"$filter_args"
 
   # The adapter reads API_URL and API_KEY; the SPECHT_* names are kept for
   # older releases. The key is never echoed.

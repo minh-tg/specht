@@ -42,6 +42,8 @@ type adapterFlags struct {
 	commit          string
 	branch          string
 	scanMode        string
+	scanSeverities  string
+	fixableOnly     optionalBool
 	baselinePolicy  string
 	annotations     bool
 	publishCheck    bool
@@ -73,6 +75,8 @@ func parseFlags(args []string, stderr io.Writer, inGitHubActions bool) *adapterF
 	fs.StringVar(&f.commit, "commit", "", "Current commit SHA")
 	fs.StringVar(&f.branch, "branch", "", "Current branch name")
 	fs.StringVar(&f.scanMode, "scan-mode", "", "Scan mode: full or incremental")
+	fs.StringVar(&f.scanSeverities, "scan-severities", "", "Severities the scan kept, comma-separated, when it was run with a severity filter (trivy: falls back to TRIVY_SEVERITY)")
+	fs.Var(&f.fixableOnly, "fixable-only", "The scan kept only findings that have a fix: true or false (trivy: falls back to TRIVY_IGNORE_UNFIXED)")
 	fs.StringVar(&f.baselinePolicy, "baseline-policy", "warn", "Missing baseline action: warn or fail (default: warn)")
 	fs.BoolVar(&f.annotations, "annotations", inGitHubActions, "Emit GitHub Actions workflow command annotations")
 	fs.BoolVar(&f.publishCheck, "publish-check", false, "Publish GitHub check run via API (default: true if GITHUB_TOKEN & GITHUB_REPOSITORY are set in CI)")
@@ -172,7 +176,22 @@ func buildPayload(rawInput []byte, f *adapterFlags, stderr io.Writer) (client.In
 
 	applyOwnerEnvironment(&payload, f)
 	applyGateFlags(&payload, f)
+	applyScanFilter(&payload, f)
 	return payload, 0
+}
+
+// applyScanFilter declares on the payload what the scan left out on purpose.
+// Trivy and Grype write nothing about --severity or --ignore-unfixed into
+// their reports, and the server closes only findings inside the declared
+// filter, so a filtered scan has to say so. An explicit flag wins, then a
+// filter already in the input envelope, then for trivy its own environment
+// variables TRIVY_SEVERITY and TRIVY_IGNORE_UNFIXED.
+func applyScanFilter(payload *client.IngestPayload, f *adapterFlags) {
+	var fixable *bool
+	if f.fixableOnly.set {
+		fixable = &f.fixableOnly.value
+	}
+	payload.ScanFilter = client.DeclaredScanFilter(payload.Scanner, f.scanSeverities, fixable, payload.ScanFilter, os.Getenv)
 }
 
 // applyOwnerEnvironment fills the repository owner and the deployment
@@ -883,6 +902,14 @@ Flags:
   -commit string         Current commit SHA (auto-detected in CI)
   -branch string         Current branch name (auto-detected in CI)
   -scan-mode string      Scan mode: full or incremental
+  -scan-severities string Severities the scan kept, comma-separated, for a scan run
+                         with a severity filter (trivy --severity HIGH,CRITICAL).
+                         The server closes only findings inside the filter, so a
+                         filtered scan never closes the findings it hid. For
+                         -tool=trivy, TRIVY_SEVERITY is used when the flag is absent
+  -fixable-only[=bool]   The scan kept only findings that have a fix (trivy
+                         --ignore-unfixed, grype --only-fixed). For -tool=trivy,
+                         TRIVY_IGNORE_UNFIXED=true is used when the flag is absent
   -baseline-policy string Missing baseline action: warn or fail (default: warn)
   -annotations           Emit GitHub Actions workflow command annotations (default: true in CI)
   -publish-check         Publish GitHub check run via API (requires token and repo)
@@ -908,6 +935,8 @@ Environment:
   SPECHT_OWNER           Report owner when neither -owner nor the payload sets one
   SPECHT_ENVIRONMENT     Deployment environment when neither -environment nor the payload sets one
   SPECHT_PROJECT         Project slug when neither -project nor the payload sets one
+  TRIVY_SEVERITY         With -tool=trivy, the severity filter when -scan-severities is absent
+  TRIVY_IGNORE_UNFIXED   With -tool=trivy, true declares a fixable-only scan when -fixable-only is absent
 
 Exit codes:
   0  Pass - no blocking findings, or skipped by -exclude-tool
