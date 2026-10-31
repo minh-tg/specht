@@ -337,7 +337,7 @@ func extractFile(result sarifResult) string {
 	if len(result.Locations) == 0 {
 		return "unknown"
 	}
-	uri := parseutil.CleanFilePath(result.Locations[0].PhysicalLocation.ArtifactLocation.URI)
+	uri := parseutil.RepoPath(result.Locations[0].PhysicalLocation.ArtifactLocation.URI)
 	if uri == "" {
 		return "unknown"
 	}
@@ -386,9 +386,11 @@ func mapSarifLevel(level string, rule sarifRule) domain.Severity {
 	}
 }
 
-// fingerprintVersion is the version of this scanner's identity formula. Version 2
-// leaves the line out, so a finding keeps its identity when code above it moves.
-const fingerprintVersion = 2
+// fingerprintVersion is the version of this scanner's identity formula. Version 3
+// takes the file relative to the checkout (parseutil.RepoPath), so a scan of an
+// absolute directory is the same findings on every runner. Version 2 leaves the
+// line out, so a finding keeps its identity when code above it moves.
+const fingerprintVersion = 3
 
 // sastFinding builds a finding the same way for both Semgrep output formats. Its
 // identity is assigned afterwards by identify, which needs every finding of the
@@ -450,7 +452,7 @@ func parseNative(budget *parseutil.Budget, data []byte) (*domain.NormalizedRepor
 		if err := budget.Add(1); err != nil {
 			return nil, err
 		}
-		file := parseutil.CleanFilePath(r.Path)
+		file := parseutil.RepoPath(r.Path)
 		if file == "" {
 			file = "unknown"
 		}

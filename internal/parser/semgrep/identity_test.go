@@ -181,9 +181,9 @@ func TestBothFormatsGiveTheSameIdentities(t *testing.T) {
 }
 
 func TestTheIdentityFormulaIsVersioned(t *testing.T) {
-	assert.EqualValues(t, 2, semgrep.NewScanner().Descriptor().FingerprintVersion,
+	assert.EqualValues(t, 3, semgrep.NewScanner().Descriptor().FingerprintVersion,
 		"identities no longer include the line, so the version moves")
 	nr, err := semgrep.NewScanner().Parse(context.Background(), []byte(nativeDoc(t, []sighting{shell(7)})))
 	require.NoError(t, err)
-	assert.EqualValues(t, 2, nr.FingerprintVersion)
+	assert.EqualValues(t, 3, nr.FingerprintVersion)
 }

@@ -298,6 +298,8 @@ releases.
   given an absolute target writes the path (or a `file:///` URI) into the result's location,
   which put the runner's directory into the fingerprint. The location is now relative to the
   checkout.
+- A Semgrep scan of an absolute directory (`semgrep scan "$PWD"`) keeps its findings when
+  the checkout moves, in the `--json` and the `--sarif` format.
 - The server validates all of its settings at startup and reports every
   problem in one message.
 - Request logs carry a request ID that matches the `X-Request-Id` response
