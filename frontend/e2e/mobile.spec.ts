@@ -84,7 +84,7 @@ test("a finding detail fits a 360px phone and passes axe", async ({ page, reques
   await uiLogin(page);
   await page.goto(`/${slug}/findings`);
   await page.locator("a[href*=\"/findings/\"]").first().click();
-  await expect(page.getByRole("heading", { name: "Triage" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "What is this finding?" })).toBeVisible();
   await auditPhone(page, "finding detail");
 });
 

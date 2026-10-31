@@ -1,5 +1,5 @@
 import { Toaster } from "@/components/ui/sonner";
-import { chooseOption, createTestQueryClient, jsonResponse } from "@/test/utils";
+import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -85,9 +85,14 @@ async function applyExploitable() {
   const user = userEvent.setup();
   await screen.findByRole("heading", { name: "Test Vulnerability" });
   await screen.findByText("Why this blocks");
-  await chooseOption(user, screen.getAllByRole("combobox")[0]!, "Exploitable");
-  await user.click(screen.getByRole("button", { name: "Apply" }));
+  await pickRealIssue(user);
   await waitFor(() => expect(patch).not.toBeNull());
+}
+
+/** Decide-first: the first of the three answers records the finding as exploitable. */
+async function pickRealIssue(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("radio", { name: /^Real issue/ }));
+  await user.click(screen.getByRole("button", { name: "Save decision" }));
 }
 
 const decide = () => screen.getByRole("heading", { level: 2, name: "Decide" }).parentElement!;
@@ -134,8 +139,7 @@ describe("FindingDetail optimistic triage", () => {
     expect(await screen.findByText(/Reason: test fixture only/)).toBeInTheDocument();
     await screen.findByText("Why this does not block");
     const user = userEvent.setup();
-    await chooseOption(user, screen.getAllByRole("combobox")[0]!, "Exploitable");
-    await user.click(screen.getByRole("button", { name: "Apply" }));
+    await pickRealIssue(user);
     await waitFor(() => expect(patch).not.toBeNull());
 
     expect(decide()).toHaveTextContent("Currently: Exploitable");

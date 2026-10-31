@@ -72,6 +72,11 @@ function renderDetail() {
   );
 }
 
+/** Decide-first puts the waiver request under the decision form. */
+async function decideSection() {
+  return (await screen.findByRole("heading", { level: 2, name: "Decide" })).parentElement!;
+}
+
 describe("the finding page's aside and fix", () => {
   it("lists the exploit facts when a feed knows the CVE", async () => {
     renderDetail();
@@ -123,10 +128,10 @@ describe("the finding page's aside and fix", () => {
     permissions = { request_waiver: false, triage: false };
     renderDetail();
 
-    const aside = await screen.findByRole("complementary", { name: "About this finding" });
-    const button = await within(aside).findByRole("button", { name: "Request waiver" });
+    const decide = await decideSection();
+    const button = await within(decide).findByRole("button", { name: "Request waiver" });
     expect(button).toBeDisabled();
-    expect(within(aside).getByText("You are not a member of this project."))
+    expect(within(decide).getByText("You are not a member of this project."))
       .toBeInTheDocument();
   });
 
@@ -134,9 +139,9 @@ describe("the finding page's aside and fix", () => {
     gate = { blocked_by: [], policy: { severity_floor: "high" } };
     renderDetail();
 
-    const aside = await screen.findByRole("complementary", { name: "About this finding" });
-    expect(await within(aside).findByRole("button", { name: "Request waiver" })).toBeDisabled();
-    expect(within(aside).getByText("This finding does not block the gate."))
+    const decide = await decideSection();
+    expect(await within(decide).findByRole("button", { name: "Request waiver" })).toBeDisabled();
+    expect(within(decide).getByText("This finding does not block the gate."))
       .toBeInTheDocument();
   });
 

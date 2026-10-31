@@ -424,7 +424,7 @@ describe("FindingDetail CVE block", () => {
 });
 
 describe("FindingDetail decide-first order", () => {
-  it("keeps today's order and layout", async () => {
+  it("leads with the decision and keeps the sections unfolded", async () => {
     finding = makeFinding({ finding_kind: "sca", context: { branch: "main" } });
     renderDetail("");
     await loaded();
@@ -433,9 +433,9 @@ describe("FindingDetail decide-first order", () => {
     const names = sectionNames();
     const order = [
       "Why this blocks",
+      "Decide",
       "How to fix",
       "Where it occurs",
-      "Decide",
       "Context",
       "History",
     ];
@@ -443,12 +443,12 @@ describe("FindingDetail decide-first order", () => {
     expect(screen.queryByRole("button", { name: /^Details/ })).not.toBeInTheDocument();
 
     const decide = screen.getByRole("heading", { level: 2, name: "Decide" }).parentElement!;
-    expect(within(decide).getByLabelText("Reachability assessment")).toBeInTheDocument();
-    expect(within(decide).getByRole("button", { name: "Check if it is fixed" }))
+    expect(within(decide).getByRole("group", { name: /Can an attacker reach this code/ }))
       .toBeInTheDocument();
+    expect(within(decide).getByRole("button", { name: "Request waiver" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Check if it is fixed" })).toBeInTheDocument();
 
     const aside = screen.getByRole("complementary", { name: "About this finding" });
-    expect(within(aside).getByRole("button", { name: "Request waiver" })).toBeInTheDocument();
     expect(within(aside).getByText("Fingerprint")).toBeInTheDocument();
   });
 

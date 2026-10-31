@@ -13,7 +13,7 @@ import { Section } from "@/components/Section";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UpdatedHint } from "@/components/UpdatedHint";
 import { changeViewBackPath, entryModeFromSearch } from "@/lib/entryMode";
-import { analysisStateLabel } from "@/lib/enums";
+import { analysisStateLabel, isReachabilityState } from "@/lib/enums";
 import { blocksGate, blocksGateSentence } from "@/lib/gate";
 import { waiverAction } from "@/lib/waiverRequest";
 import { useState } from "react";
@@ -24,6 +24,7 @@ import { AutoCloseNote } from "./finding-detail/AutoCloseNote";
 import { ContextGrid } from "./finding-detail/ContextGrid";
 import { showsCveBlock } from "./finding-detail/cveBlock";
 import { CveDetails } from "./finding-detail/CveDetails";
+import { DecisionForm, type ReachabilityInput } from "./finding-detail/DecisionForm";
 import { DetailsDisclosure } from "./finding-detail/DetailsDisclosure";
 import { EvidenceSection } from "./finding-detail/EvidenceSection";
 import { FindingHeader } from "./finding-detail/FindingHeader";
@@ -64,6 +65,8 @@ export function FindingDetail() {
   const pendingWaivers = useWaivers(slug ?? "", ["pending"]);
   const pendingTriage = usePendingTriage(findingId ?? "");
   const [waiverOpen, setWaiverOpen] = useState(false);
+  // The page's one polite live region: save results and queue moves are spoken here.
+  const [announcement, setAnnouncement] = useState("");
   const {
     data: reachability,
     isLoading: reachabilityLoading,
@@ -145,8 +148,16 @@ export function FindingDetail() {
     />
   );
   const cveBlock = showsCveBlock(finding) ? <CveDetails findingId={finding.id} /> : null;
+  const latestReach = (Array.isArray(reachability) ? reachability : [])[0];
+  const reachInput: ReachabilityInput = {
+    status: reachabilityIsError ? "error" : reachabilityLoaded ? "ready" : "loading",
+    latest: latestReach && isReachabilityState(latestReach.state) ? latestReach.state : null,
+    updatedAt: latestReach?.updated_at,
+    evidence: latestReach?.evidence,
+  };
   // Fix-first keeps the waiver and the triage form next to the fix and moves the reachability form
-  // and the fix check below the fold. Decide-first keeps all of them here, as before.
+  // and the fix check below the fold. Decide-first leads with one form for the decision and the
+  // reachability answer, with the waiver request under it.
   const decideSection = (
     <Section
       title="Decide"
@@ -168,18 +179,26 @@ export function FindingDetail() {
           expiresAt={finding.analysis_expires_at}
         />
       )}
-      <TriageSection
-        findingId={finding.id}
-        projectSlug={slug}
-        currentState={finding.analysis_state}
-      />
+      {unblock
+        ? (
+          <TriageSection
+            findingId={finding.id}
+            projectSlug={slug}
+            currentState={finding.analysis_state}
+          />
+        )
+        : (
+          <DecisionForm
+            finding={finding}
+            slug={slug ?? ""}
+            reachability={reachInput}
+            events={events}
+            waiver={waiver}
+            onRequestWaiver={() => setWaiverOpen(true)}
+            announce={setAnnouncement}
+          />
+        )}
       <AutoCloseNote finding={finding} />
-      {!unblock && (
-        <>
-          <VerifyFixSection findingId={finding.id} projectSlug={slug} />
-          {reachabilitySection}
-        </>
-      )}
     </Section>
   );
 
@@ -239,11 +258,13 @@ export function FindingDetail() {
         : (
           <div className="mt-2 grid gap-x-10 lg:grid-cols-[minmax(0,1fr)_17rem]">
             <div className="min-w-0">
+              {decideSection}
+
               <HowToFix finding={finding} />
 
               <WhereItOccurs finding={finding} />
 
-              {decideSection}
+              <VerifyFixSection findingId={finding.id} projectSlug={slug} />
 
               <ContextGrid context={finding.context} />
 
@@ -261,9 +282,9 @@ export function FindingDetail() {
             </div>
 
             <aside aria-label="About this finding" className="mt-8 grid content-start gap-5">
-              <WaiverControl waiver={waiver} onRequest={() => setWaiverOpen(true)} />
               <MetadataGrid finding={shown} />
             </aside>
+            <p role="status" aria-live="polite" className="sr-only">{announcement}</p>
           </div>
         )}
 

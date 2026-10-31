@@ -6,7 +6,6 @@ import {
   apiToken,
   BASE_SHA,
   CHANGE_SHA,
-  chooseOption,
   FIXTURE_HIGH_MEDIUM,
   FIXTURE_HIGH_NEW,
   ingestFixture,
@@ -180,18 +179,20 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await page.getByRole("button", { name: "Clear" }).click();
 
   await page.locator("a[href*=\"/findings/\"]").first().click();
-  await expect(page.getByRole("heading", { name: "Triage" })).toBeVisible();
-  await chooseOption(page, page.getByLabel("Triage action"), "Not affected");
-  await audit(page, "finding detail with a triage hint");
+  await expect(page.getByRole("group", { name: "What is this finding?" })).toBeVisible();
+  await page.getByRole("radio", { name: /^Not a problem/ }).check();
+  await page.getByRole("radio", { name: /^The code is not affected/ }).check();
+  await audit(page, "finding detail with a decision picked");
 
-  // A success toast is page content for as long as it shows. "reachable" keeps the change blocked.
-  await chooseOption(page, page.getByLabel("Reachability assessment"), "Reachable");
-  await page.getByRole("button", { name: "Assess" }).click();
-  await expect(page.getByText("Reachability saved")).toBeVisible();
+  // A success toast is page content for as long as it shows. A real issue that is reachable keeps
+  // the change blocked.
+  await page.getByRole("radio", { name: /^Real issue/ }).check();
+  await page.getByRole("radio", { name: "Yes", exact: true }).check();
+  await page.getByRole("button", { name: "Save decision" }).click();
+  await expect(page.getByText("Reachability saved", { exact: true })).toBeVisible();
   await audit(page, "finding detail with a success toast");
-  await expect(page.getByRole("button", { name: "Copy fix", exact: true })).toBeInViewport({
-    ratio: 1,
-  });
+  // Decide-first: the decision leads the page, so its Save sits above the fold.
+  await expect(page.getByRole("button", { name: "Save decision" })).toBeInViewport({ ratio: 1 });
 
   await page.goto(`/${slug}/reports`);
   await expect(page.getByRole("heading").first()).toBeVisible();
