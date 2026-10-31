@@ -691,3 +691,6 @@ releases.
   shrunk to the bytes that arrive). A request the budget cannot hold now gets
   `503 ingest_busy` without its body being buffered, so many API keys can no longer
   hold request bodies in memory outside `INGEST_MEMORY_BUDGET`.
+- The embedded web app compresses each file once and serves the stored gzip bytes with
+  `Content-Length` and an `ETag` (answering `If-None-Match` with 304). It used to gzip
+  every asset on every request, which let one anonymous client keep a CPU core busy.
