@@ -84,9 +84,9 @@ test("browse a finding and retain deep links on refresh", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("SQL injection in user query");
   await page.reload();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("SQL injection in user query");
-  await expect(page.getByRole("button", { name: /Request waiver|Save triage|Delete/ })).toHaveCount(
-    0,
-  );
+  await expect(page.getByRole("button", { name: /Save triage|Delete/ })).toHaveCount(0);
+  // The observer cannot request a waiver. The button stays, disabled, and says why.
+  await expect(page.getByRole("button", { name: "Request waiver" })).toBeDisabled();
 });
 
 test("the blocked change retains the introduced finding and existing debt", async ({ page }) => {

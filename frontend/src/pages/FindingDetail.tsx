@@ -8,6 +8,7 @@ import {
   useWaivers,
 } from "@/api/hooks";
 import { usePendingTriage } from "@/api/pendingTriage";
+import { DisabledReason } from "@/components/DisabledReason";
 import { ErrorState } from "@/components/ErrorState";
 import { Section } from "@/components/Section";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { UpdatedHint } from "@/components/UpdatedHint";
 import { analysisStateLabel } from "@/lib/enums";
 import { blocksGate, blocksGateSentence } from "@/lib/gate";
+import { waiverAction } from "@/lib/waiverRequest";
 import { useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { WaiverRequestDialog } from "./change-view/WaiverRequestDialog";
@@ -55,7 +57,7 @@ export function FindingDetail() {
     refetch,
   } = useFinding(findingId ?? "", poll);
   const { data: gate } = useGateStatus(slug ?? "");
-  const { data: project } = useProject(slug ?? "");
+  const { data: project, isLoading: projectLoading } = useProject(slug ?? "");
   const pendingWaivers = useWaivers(slug ?? "", ["pending"]);
   const pendingTriage = usePendingTriage(findingId ?? "");
   const [waiverOpen, setWaiverOpen] = useState(false);
@@ -112,11 +114,16 @@ export function FindingDetail() {
     : finding;
   const gateResult = blocksGate(finding, pendingTriage ? undefined : gate);
   const currentGate = blocksGateSentence(gateResult);
-  const canRequestWaiver = project?.permissions?.request_waiver === true
-    && gateResult?.blocks === true;
   const waiverPending = (Array.isArray(pendingWaivers.data) ? pendingWaivers.data : []).some((
     waiver,
   ) => waiver.targets?.some((target) => target.finding_id === finding.id));
+  const waiver = waiverAction({
+    permissions: project?.permissions?.request_waiver,
+    loading: projectLoading,
+    pending: waiverPending,
+    blocking: gateResult,
+    gateRechecking: pendingTriage !== undefined,
+  });
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -198,20 +205,24 @@ export function FindingDetail() {
         </div>
 
         <aside aria-label="About this finding" className="mt-8 grid content-start gap-5">
-          {canRequestWaiver && (
-            waiverPending
-              ? (
-                <p className="bg-muted text-muted-foreground rounded-md px-3.5 py-3 text-meta">
-                  Waiver requested. A manager will decide. The verdict does not change until they
-                  approve it.
-                </p>
-              )
-              : (
-                <Button variant="outline" onClick={() => setWaiverOpen(true)}>
+          {waiver.kind === "pending"
+            ? (
+              <p className="bg-muted text-muted-foreground rounded-md px-3.5 py-3 text-meta">
+                Waiver requested. A manager will decide. The verdict does not change until they
+                approve it.
+              </p>
+            )
+            : (
+              <DisabledReason reason={waiver.kind === "disabled" ? waiver.reason : undefined}>
+                <Button
+                  variant="outline"
+                  disabled={waiver.kind === "disabled"}
+                  onClick={() => setWaiverOpen(true)}
+                >
                   Request waiver
                 </Button>
-              )
-          )}
+              </DisabledReason>
+            )}
           <MetadataGrid finding={shown} />
         </aside>
       </div>

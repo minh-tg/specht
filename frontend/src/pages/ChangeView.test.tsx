@@ -602,12 +602,35 @@ describe("ChangeView waivers", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  it("hides the request button from someone who may not request waivers", async () => {
+  it("keeps the request button, disabled with a reason, for someone who may not request waivers", async () => {
     permissions = { request_waiver: false };
     renderPage();
 
     await loadedLedger();
-    expect(screen.queryByRole("button", { name: "Request waiver" })).not.toBeInTheDocument();
+    const entry = openEntry();
+    expect(entry.getByRole("button", { name: "Request waiver" })).toBeDisabled();
+    expect(entry.getByText("You are not a member of this project.")).toBeInTheDocument();
+  });
+
+  it("enables the request button for a member, and shows the pending state instead once sent", async () => {
+    permissions = { request_waiver: true };
+    renderPage();
+
+    await loadedLedger();
+    expect(openEntry().getByRole("button", { name: "Request waiver" })).toBeEnabled();
+    expect(openEntry().queryByText("You are not a member of this project."))
+      .not.toBeInTheDocument();
+  });
+
+  it("shows the pending state, not a disabled button, when a request is already waiting", async () => {
+    permissions = { request_waiver: true };
+    waivers = [pendingWaiver("f1")];
+    renderPage();
+
+    await loadedLedger();
+    const entry = openEntry();
+    expect(await entry.findByText("Waiting for a manager to decide.")).toBeInTheDocument();
+    expect(entry.queryByRole("button", { name: "Request waiver" })).not.toBeInTheDocument();
   });
 });
 
