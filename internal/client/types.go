@@ -32,6 +32,16 @@ type IngestPayload struct {
 	ArtifactName       string          `json:"artifact_name,omitempty"`
 	ArtifactVersion    string          `json:"artifact_version,omitempty"`
 	ArtifactType       string          `json:"artifact_type,omitempty"`
+	// ScanFilter declares what the scanner left out on purpose, such as Trivy
+	// --severity or --ignore-unfixed. A filtered scan only closes findings
+	// inside the filter.
+	ScanFilter *ScanFilter `json:"scan_filter,omitempty"`
+}
+
+// ScanFilter is the scan_filter object of an ingest request.
+type ScanFilter struct {
+	Severities  []string `json:"severities,omitempty"`
+	FixableOnly bool     `json:"fixable_only,omitempty"`
 }
 
 // IngestResponse is the server reply to a report ingest.
@@ -278,6 +288,8 @@ type Report struct {
 	ChangedFiles []string   `json:"changed_files,omitempty"`
 	CreatedAt    time.Time  `json:"created_at"`
 	CompletedAt  *time.Time `json:"completed_at"`
+	// ScanFilter is what the uploader declared the scan left out on purpose.
+	ScanFilter *ScanFilter `json:"scan_filter,omitempty"`
 }
 
 // TriageRequest is the request body for setting a finding's analysis state.

@@ -86,6 +86,11 @@ func newReportsGetCmd(d Deps, s *settings) *cobra.Command {
 				_, err := fmt.Fprintf(w, "ID:        %s\nTool:      %s\nStatus:    %s\nScan type: %s\nFindings:  %s\nBranch:    %s\nCommit:    %s\nCreated:   %s\n",
 					r.ID, r.ToolName, r.Status, r.ScanType, countText(r.TotalFindings), dashIfEmpty(deref(r.Branch)), dashIfEmpty(deref(r.CommitSha)),
 					r.CreatedAt.UTC().Format("2006-01-02T15:04:05Z07:00"))
+				if err != nil || r.ScanFilter == nil {
+					return err
+				}
+				_, err = fmt.Fprintf(w, "Filter:    severities %s, fixable only %t\n",
+					dashIfEmpty(strings.Join(r.ScanFilter.Severities, ",")), r.ScanFilter.FixableOnly)
 				return err
 			})
 		},
@@ -131,13 +136,18 @@ func newReportsDeleteCmd(d Deps) *cobra.Command {
 }
 
 func newReportsUploadCmd(d Deps, s *settings) *cobra.Command {
-	var project, scanner, file, branch, commit, environment, owner string
+	var project, scanner, file, branch, commit, environment, owner, scanSeverities string
+	var fixableOnly bool
 	cmd := &cobra.Command{
 		Use:   "upload",
 		Short: "Upload a scanner's report",
 		Long: "Upload the output of a scanner. --file is a path, or - for standard input. A .jsonl or .ndjson file\n" +
 			"(Nuclei writes one) is sent as a list of its lines. Run specht scanners list to see which scanner\n" +
 			"reads which file and how to produce it.\n\n" +
+			"A scan run with a severity filter or only for fixable findings (trivy --severity, --ignore-unfixed,\n" +
+			"grype --only-fixed) must say so with --scan-severities and --fixable-only. The report then closes only\n" +
+			"the findings inside the filter. For trivy, TRIVY_SEVERITY and TRIVY_IGNORE_UNFIXED are used when the\n" +
+			"flags are absent.\n\n" +
 			"This records the scan. To fail a build on a blocked gate, use specht-adapter.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -154,9 +164,14 @@ func newReportsUploadCmd(d Deps, s *settings) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			var fixable *bool
+			if cmd.Flags().Changed("fixable-only") {
+				fixable = &fixableOnly
+			}
 			resp, err := cl.IngestReport(&client.IngestPayload{
 				Project: project, Scanner: scanner, RawData: raw,
 				Branch: branch, CommitSha: commit, Environment: environment, Owner: owner,
+				ScanFilter: client.DeclaredScanFilter(scanner, scanSeverities, fixable, nil, os.Getenv),
 			})
 			if err != nil {
 				return err
@@ -183,6 +198,8 @@ func newReportsUploadCmd(d Deps, s *settings) *cobra.Command {
 	cmd.Flags().StringVar(&commit, "commit", "", "commit that was scanned")
 	cmd.Flags().StringVar(&environment, "environment", "", "environment the scan describes, such as production")
 	cmd.Flags().StringVar(&owner, "owner", "", "repository the scan belongs to, such as github://owner/repo")
+	cmd.Flags().StringVar(&scanSeverities, "scan-severities", "", "severities the scan kept, comma-separated, when it was run with a severity filter")
+	cmd.Flags().BoolVar(&fixableOnly, "fixable-only", false, "the scan kept only findings that have a fix")
 	return cmd
 }
 

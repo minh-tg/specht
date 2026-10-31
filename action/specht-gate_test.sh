@@ -79,6 +79,20 @@ else
   echo "ok: introduced-only 'yes' is refused"
 fi
 
+# A filtered scan reaches the adapter as explicit flags; an empty input adds
+# nothing, so the adapter's Trivy environment fallback still applies.
+expect_scan_filter() {
+  local severities="$1" fixable="$2" want="$3" got
+  got="$("${clean_env[@]}" SPECHT_INPUT_SCAN_SEVERITIES="$severities" SPECHT_INPUT_FIXABLE_ONLY="$fixable" \
+    bash -c 'source "$1"; scan_filter_args' _ "$script" | paste -sd' ' -)"
+  check "$want" "$got" "scan filter flags for severities '${severities}' and fixable-only '${fixable}'"
+}
+
+expect_scan_filter "" "" ""
+expect_scan_filter "high,critical" "" "-scan-severities=high,critical"
+expect_scan_filter "" true "-fixable-only=true"
+expect_scan_filter "HIGH" false "-scan-severities=HIGH -fixable-only=false"
+
 # Failures of the script itself exit 2, never 1, which means blocked by
 # findings. Each case runs one function in a sourced copy of the script.
 expect_exit() {
@@ -104,6 +118,7 @@ expect_exit 2 "the mode is unknown" "main bogus"
 expect_exit 2 "the runner OS is unsupported" "resolve_release" SPECHT_INPUT_VERSION=v1.2.3 RUNNER_OS=Plan9 RUNNER_ARCH=X64
 expect_exit 2 "the api-key is missing on a push" "resolve_skip" SPECHT_EVENT_NAME=push SPECHT_INPUT_API_KEY=
 expect_exit 2 "introduced-only is not a boolean" "introduced_only" SPECHT_INPUT_INTRODUCED_ONLY=yes
+expect_exit 2 "fixable-only is not a boolean" "scan_filter_args" SPECHT_INPUT_FIXABLE_ONLY=yes
 expect_exit 2 "the download fails" "tag=v1.2.3; asset=a.tar.gz; download_release" SPECHT_SELFTEST=1 SPECHT_RELEASE_BASE_URL="http://127.0.0.1:1" RUNNER_TEMP="$work/dl"
 
 printf '%s\n' "$sum" >"$work/rel/SHA256SUMS"

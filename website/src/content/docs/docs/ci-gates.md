@@ -42,6 +42,33 @@ The adapter exits with:
 Do not convert a runtime error into a passing security check. An incomplete
 report is not a completed gate decision.
 
+## Declare a filtered scan
+
+Trivy with `--severity HIGH,CRITICAL` or `--ignore-unfixed`, and Grype with
+`--only-fixed`, write a report that looks like a full scan. The file does not
+record the flags. Without a declaration, every medium, low or unfixed finding
+missing from the report would count as fixed.
+
+Declare the filter when you upload the report. A filtered report closes only the
+findings inside its filter. A finding outside the filter stays open when the
+report omits it, and verifying such a finding by hand stays inconclusive.
+
+| Adapter flag | `specht reports upload` flag | Action input | Meaning |
+| --- | --- | --- | --- |
+| `-scan-severities=high,critical` | `--scan-severities` | `scan-severities` | The severities the scan kept. |
+| `-fixable-only` | `--fixable-only` | `fixable-only` | The scan kept only findings that have a fix. |
+
+For `-tool=trivy`, the adapter and `specht reports upload` read `TRIVY_SEVERITY`
+(for example `HIGH,CRITICAL`) and `TRIVY_IGNORE_UNFIXED=true` when the flags are
+absent, so a step that sets Trivy's own variables needs nothing more. An explicit
+flag wins over the variable. The API takes the same declaration as the
+`scan_filter` object of the ingest request, with `severities` and `fixable_only`;
+a severity other than `critical`, `high`, `medium`, `low` or `unknown` is refused
+with `400 invalid_field`. The report API returns it as `scan_filter`.
+
+Uploading the same file with a different filter creates a separate report. Only
+the same file with the same filter, commit and scan scope is treated as a replay.
+
 ## Read the result
 
 The check's link opens the exact report. Each blocker identifies the finding and

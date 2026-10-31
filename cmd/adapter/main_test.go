@@ -43,6 +43,8 @@ var ciEnvVars = []string{
 	// Adapter configuration.
 	"API_URL", "SPECHT_API_URL", "API_KEY", "SPECHT_API_KEY", "SPECHT_PROJECT",
 	"SPECHT_OWNER", "SPECHT_ENVIRONMENT",
+	// The scan filter trivy declares through its own variables.
+	"TRIVY_SEVERITY", "TRIVY_IGNORE_UNFIXED",
 }
 
 // clearCIEnvironment isolates a test from the ambient environment. A test that

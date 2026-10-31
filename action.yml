@@ -73,6 +73,14 @@ inputs:
     description: Baseline git ref for the change scope. Defaults to GITHUB_BASE_REF.
     required: false
     default: ""
+  scan-severities:
+    description: Severities the scan kept, comma-separated, when it was run with a severity filter such as trivy --severity HIGH,CRITICAL. A filtered scan closes only findings inside the filter. For trivy, TRIVY_SEVERITY is used when this is empty.
+    required: false
+    default: ""
+  fixable-only:
+    description: Set true when the scan kept only findings that have a fix (trivy --ignore-unfixed, grype --only-fixed). For trivy, TRIVY_IGNORE_UNFIXED is used when this is empty.
+    required: false
+    default: ""
   github-token:
     description: GitHub token used to publish the check run
     required: false
@@ -134,6 +142,8 @@ runs:
         SPECHT_INPUT_TOOL: ${{ inputs.tool }}
         SPECHT_INPUT_INTRODUCED_ONLY: ${{ inputs.introduced-only }}
         SPECHT_INPUT_BASE_REF: ${{ inputs.base-ref }}
+        SPECHT_INPUT_SCAN_SEVERITIES: ${{ inputs.scan-severities }}
+        SPECHT_INPUT_FIXABLE_ONLY: ${{ inputs.fixable-only }}
         SPECHT_INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         SPECHT_ACTION_REF: ${{ github.action_ref }}
         SPECHT_EVENT_NAME: ${{ github.event_name }}
