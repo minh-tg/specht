@@ -664,6 +664,10 @@ releases.
   under the membership lock of each project the account administers. Before, two
   deactivations of a project's two admins, or a removal racing a deactivation, could
   both pass the check and leave the project with no admin who can sign in.
+- A report upload that authenticated with an API key no longer lands when the key is
+  revoked, or its creator deactivated, before the body finishes arriving. The ingest
+  transaction now locks the key and its creator's account and answers `401` as a
+  revoked key does. Before, such an upload was stored with `201`.
 - A person whose manager or admin rank on a project comes only from a linked
   team can no longer grant manager or admin through a member row, a team link
   or an invite. Before, they could write a direct admin row for themselves and

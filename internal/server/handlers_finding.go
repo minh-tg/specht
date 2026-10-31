@@ -223,6 +223,11 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 			h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
 			return
 		}
+		if errors.Is(err, usecase.ErrAPIKeyInactive) {
+			respondError(w, http.StatusUnauthorized, "invalid_token", "invalid or expired token")
+			h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
+			return
+		}
 		slog.Error("ingest report", "error", err)
 		if errors.Is(err, usecase.ErrDuplicateReport) {
 			respondError(w, http.StatusConflict, "duplicate_report", "report already exists for this project and data")

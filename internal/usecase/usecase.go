@@ -44,6 +44,11 @@ var ErrInvalidSlug = errors.New("invalid project slug")
 // to another project). Handlers map it to a 404.
 var ErrAPIKeyNotFound = errors.New("api key not found")
 
+// ErrAPIKeyInactive is returned when an ingest authenticated with an API key
+// that was revoked, or whose creator was deactivated, before the report could be
+// stored. Handlers map it to a 401, the answer a revoked key gets on arrival.
+var ErrAPIKeyInactive = port.ErrAPIKeyInactive
+
 // Shared error-message formats used across use cases.
 const errLookupProjectFormat = "lookup project %q: %w"
 
