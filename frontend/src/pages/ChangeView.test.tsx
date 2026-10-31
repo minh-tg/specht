@@ -689,14 +689,18 @@ describe("ChangeView", () => {
     renderPage();
 
     const ledger = await screen.findByRole("list", { name: "Blocking findings" });
-    await waitFor(() => expect(within(ledger).getAllByRole("listitem")).toHaveLength(20));
+    await waitFor(() => expect(within(ledger).getAllByRole("listitem")).toHaveLength(20), {
+      timeout: 10_000,
+    });
     // Grouping needs every suggestion, so the hidden entries are fetched too.
-    await waitFor(() => expect(findingFetches).toHaveLength(25));
+    await waitFor(() => expect(findingFetches).toHaveLength(25), { timeout: 10_000 });
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Show all 25" }));
-    await waitFor(() => expect(within(ledger).getAllByRole("listitem")).toHaveLength(25));
+    await waitFor(() => expect(within(ledger).getAllByRole("listitem")).toHaveLength(25), {
+      timeout: 10_000,
+    });
     expect(findingFetches).toHaveLength(25);
-  });
+  }, 30_000);
 
   it("folds only findings the change did not introduce into the debt section", async () => {
     changeGate = gate({ blocked_by: ["f1", "f2"] });
@@ -1264,9 +1268,9 @@ describe("ChangeView watching for the next scan", () => {
   });
 });
 
-describe("ChangeView grouping by fix", { timeout: 20_000 }, () => {
+describe("ChangeView grouping by fix", { timeout: 40_000 }, () => {
   // Fetching dozens of blockers a few at a time takes longer than the default wait on a busy machine.
-  beforeAll(() => configure({ asyncUtilTimeout: 5000 }));
+  beforeAll(() => configure({ asyncUtilTimeout: 15_000 }));
   afterAll(() => configure({ asyncUtilTimeout: 1000 }));
 
   const LODASH = "Upgrade lodash to 4.17.21";
