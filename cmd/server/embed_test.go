@@ -20,7 +20,7 @@ func TestSPAHandler_apiRoutesPassThrough(t *testing.T) {
 		}
 	})
 
-	handler := spaHandler(mockAPI)
+	handler := spaHandler(mockAPI, nil)
 
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
@@ -44,7 +44,7 @@ func TestSPAHandler_servesIndexForSPARoutes(t *testing.T) {
 		w.WriteHeader(http.StatusNotFound)
 	})
 
-	handler := spaHandler(mockAPI)
+	handler := spaHandler(mockAPI, nil)
 
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
@@ -73,7 +73,7 @@ func TestSPAHandler_servesRoot(t *testing.T) {
 		w.WriteHeader(http.StatusNotFound)
 	})
 
-	handler := spaHandler(mockAPI)
+	handler := spaHandler(mockAPI, nil)
 
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
@@ -114,7 +114,7 @@ func TestSPAHandler_prefersBuiltFrontend(t *testing.T) {
 
 	handler := spaHandlerWithFS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-	}), assets)
+	}), assets, nil)
 
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
@@ -147,7 +147,7 @@ func TestSPAHandler_securityHeadersOnEveryResponse(t *testing.T) {
 		Usecases:       nil,
 		TrustedProxies: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
 	})
-	ts := httptest.NewServer(spaHandlerWithFS(router, assets))
+	ts := httptest.NewServer(spaHandlerWithFS(router, assets, []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}))
 	defer ts.Close()
 
 	wantCSP := "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"
@@ -200,7 +200,7 @@ func newSPATestHandler(t *testing.T) http.Handler {
 	}
 	return spaHandlerWithFS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-	}), assets)
+	}), assets, nil)
 }
 
 func TestSPAHandler_missingAssetReturns404NotShell(t *testing.T) {
@@ -241,8 +241,8 @@ func TestSPAHandler_existingAssetIsImmutable(t *testing.T) {
 	if cc := rec.Header().Get("Cache-Control"); cc != "public, max-age=31536000, immutable" {
 		t.Errorf("Cache-Control = %q, want immutable", cc)
 	}
-	if ct := rec.Header().Get("Content-Type"); ct != "text/javascript" {
-		t.Errorf("Content-Type = %q, want text/javascript", ct)
+	if ct := rec.Header().Get("Content-Type"); ct != "text/javascript; charset=utf-8" {
+		t.Errorf("Content-Type = %q, want text/javascript; charset=utf-8", ct)
 	}
 }
 
@@ -274,7 +274,7 @@ func TestSPAHandler_compressesStaticOnly(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"token":"` + strings.Repeat("x", 2000) + `"}`))
 	})
-	handler := spaHandlerWithFS(api, assets)
+	handler := spaHandlerWithFS(api, assets, nil)
 
 	get := func(path string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
