@@ -125,9 +125,16 @@ func (u *Usecases) VerifyFix(ctx context.Context, findingID string) (*VerifyResp
 		return nil, fmt.Errorf("mark fixed and log event: %w", err)
 	}
 	if u.deps.Tracker != nil {
+		// The verified fix is already stored, so a failed project lookup
+		// only leaves the slug empty rather than failing the request.
+		var slug string
+		if project, err := u.deps.Stores.Projects.GetByID(ctx, f.ProjectID); err == nil {
+			slug = project.Slug
+		}
 		u.deps.Tracker.Dispatch(ctx, tracker.Event{
 			Type:         tracker.EventVerifiedFixed,
 			FindingID:    fid.String(),
+			ProjectSlug:  slug,
 			Severity:     f.CurrentSeverity,
 			SeverityRank: f.CurrentSeverityRank,
 			Title:        f.CurrentTitle,
