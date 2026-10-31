@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// internalTarget stands in for a host on the server's private network. It
+// feedInternalTarget stands in for a host on the server's private network. It
 // listens on loopback, which the default client admits for a loopback feed
 // URL, so only the redirect block keeps the client away from it.
-func internalTarget(t *testing.T) (*httptest.Server, *atomic.Int32) {
+func feedInternalTarget(t *testing.T) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -25,8 +25,8 @@ func internalTarget(t *testing.T) (*httptest.Server, *atomic.Int32) {
 	return srv, &hits
 }
 
-// redirector answers every request with a redirect to the given address.
-func redirector(t *testing.T, to string) *httptest.Server {
+// feedRedirector answers every request with a redirect to the given address.
+func feedRedirector(t *testing.T, to string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, to, http.StatusFound)
@@ -38,8 +38,8 @@ func redirector(t *testing.T, to string) *httptest.Server {
 // The providers have no Client in production (buildIntelStore), so these
 // tests use the default client.
 func TestEPSSProviderRefusesRedirect(t *testing.T) {
-	internal, hits := internalTarget(t)
-	feed := redirector(t, internal.URL+"/latest/meta-data/iam/security-credentials/")
+	internal, hits := feedInternalTarget(t)
+	feed := feedRedirector(t, internal.URL+"/latest/meta-data/iam/security-credentials/")
 	p := &EPSSProvider{BaseURL: feed.URL}
 	_, err := p.Fetch(context.Background(), []string{"CVE-2024-3094"})
 	require.Error(t, err)
@@ -47,8 +47,8 @@ func TestEPSSProviderRefusesRedirect(t *testing.T) {
 }
 
 func TestKEVProviderRefusesRedirect(t *testing.T) {
-	internal, hits := internalTarget(t)
-	feed := redirector(t, internal.URL+"/internal/admin")
+	internal, hits := feedInternalTarget(t)
+	feed := feedRedirector(t, internal.URL+"/internal/admin")
 	p := &KEVProvider{CatalogURL: feed.URL}
 	_, err := p.Fetch(context.Background(), []string{"CVE-2024-3094"})
 	require.Error(t, err)

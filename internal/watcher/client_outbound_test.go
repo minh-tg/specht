@@ -14,14 +14,14 @@ import (
 	"github.com/minh-tg/specht/internal/netutil"
 )
 
-const internalBanner = "INTERNAL-ONLY root:x:0:0 db_password=hunter2"
+const osvInternalBanner = "INTERNAL-ONLY root:x:0:0 db_password=hunter2"
 
-// internalService stands in for a host on the server's private network. It
+// osvInternalService stands in for a host on the server's private network. It
 // records whether the client reached it and answers with a body that must
 // never show up in an error, a log line or stored evidence. It listens on
 // loopback, which the default client admits for a loopback endpoint, so only
 // the redirect block keeps the client away from it.
-func internalService(t *testing.T, status int, body string) (*httptest.Server, *atomic.Int32) {
+func osvInternalService(t *testing.T, status int, body string) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -34,7 +34,7 @@ func internalService(t *testing.T, status int, body string) (*httptest.Server, *
 }
 
 func TestOSVClientRefusesQueryBatchRedirect(t *testing.T) {
-	internal, hits := internalService(t, http.StatusInternalServerError, internalBanner)
+	internal, hits := osvInternalService(t, http.StatusInternalServerError, osvInternalBanner)
 	osv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, internal.URL+"/admin/export", http.StatusTemporaryRedirect)
 	}))
@@ -44,11 +44,11 @@ func TestOSVClientRefusesQueryBatchRedirect(t *testing.T) {
 	_, err := c.QueryBatch(context.Background(), []Query{queryFor("lodash")})
 	require.Error(t, err)
 	assert.Zero(t, hits.Load(), "querybatch followed the redirect")
-	assert.NotContains(t, err.Error(), internalBanner)
+	assert.NotContains(t, err.Error(), osvInternalBanner)
 }
 
 func TestOSVClientRefusesVulnRedirect(t *testing.T) {
-	internal, hits := internalService(t, http.StatusOK, `{"id":"GHSA-x","summary":"`+internalBanner+`"}`)
+	internal, hits := osvInternalService(t, http.StatusOK, `{"id":"GHSA-x","summary":"`+osvInternalBanner+`"}`)
 	osv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			_, _ = w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-x"}}))
@@ -63,7 +63,7 @@ func TestOSVClientRefusesVulnRedirect(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, res)
 	assert.Zero(t, hits.Load(), "full-record fetch followed the redirect")
-	assert.NotContains(t, err.Error(), internalBanner)
+	assert.NotContains(t, err.Error(), osvInternalBanner)
 }
 
 func TestOSVClientRefusesPrivateQueryBatchEndpoint(t *testing.T) {
@@ -95,7 +95,7 @@ func TestHTTPErrorOmitsUpstreamBody(t *testing.T) {
 	want := "osv querybatch: http 500 Internal Server Error"
 	failing := func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(internalBanner))
+		_, _ = w.Write([]byte(osvInternalBanner))
 	}
 
 	t.Run("querybatch", func(t *testing.T) {
