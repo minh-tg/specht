@@ -695,3 +695,6 @@ releases.
 - A failed OSV request records only the status code and its standard reason in the
   watcher's last error (shown by `GET /api/v1/watcher/status`) and in the logs. It no
   longer includes up to 512 bytes of the response body.
+- The EPSS and CISA KEV feed clients now refuse redirects and connections to private,
+  link-local and other non-public addresses. A loopback feed URL is still allowed. A
+  feed mirror on a private address is refused, and so is egress through `HTTPS_PROXY`.
