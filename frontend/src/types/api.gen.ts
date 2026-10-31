@@ -2711,6 +2711,16 @@ export interface components {
       /** @enum {string} */
       confidence: "low" | "medium" | "high";
       source?: string;
+      /** @description True when the scanner supplied no usable fix and the suggestion is the generic kind-level guidance (action `review`, confidence `low`). There is no real fix to apply or group by. False for every suggestion built from scanner data, including medium-confidence guidance without an exact version. */
+      fallback: boolean;
+      /** @description Affected package name. Present only on `sca` findings whose scanner reported one, including when `fallback` is true. Absent for every other finding kind. */
+      package?: string;
+      /** @description Package ecosystem as the scanner reported it (for example `npm` or `go`). Present only on `sca` findings whose scanner reported one. Absent otherwise. */
+      ecosystem?: string;
+      /** @description Version currently installed. Present only on `sca` findings whose scanner reported one. Absent otherwise. */
+      installed_version?: string;
+      /** @description Lowest version the scanner reports as fixed, copied unchanged and never derived. Present only on `sca` findings whose scanner reported one. Absent when no fixed version is known, so a client must not offer an upgrade command without it. */
+      fixed_version?: string;
     };
     Intel: {
       /** @example CVE-2026-1234 */
