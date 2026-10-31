@@ -10,6 +10,7 @@ import {
   FIXTURE_HIGH_MEDIUM,
   FIXTURE_HIGH_NEW,
   ingestFixture,
+  registerPerson,
   requestWaiver,
   seedProject,
   uiLogin,
@@ -303,7 +304,9 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
   await audit(page, "project settings");
 
-  // Admin: the page, and the confirmation that ends an account.
+  // Admin: the page, and the confirmation that ends an account. The test makes its own second
+  // person, so a Deactivate button exists even when no other spec has registered anyone yet.
+  await registerPerson(request, "a11y-person");
   await page.goto("/admin");
   await expect(page.getByRole("list", { name: "People" })).toBeVisible();
   await expect(page.getByText("Nothing to remove")).toBeVisible();
