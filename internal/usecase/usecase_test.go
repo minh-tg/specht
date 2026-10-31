@@ -447,6 +447,22 @@ type mockReportRepo struct {
 	deleteDuplicateReportFn    func(context.Context, string, string, string) error
 	hasCommitFn                func(context.Context, string, string) (bool, error)
 	settleFailedFn             func(context.Context, string, string) error
+	previousInScopeFn          func(context.Context, string, string) (string, error)
+	branchHasChangeFn          func(context.Context, string, string) (bool, error)
+}
+
+func (m *mockReportRepo) PreviousCompletedInScope(ctx context.Context, projectID, reportID string) (string, error) {
+	if m.previousInScopeFn == nil {
+		return "", port.ErrNotFound
+	}
+	return m.previousInScopeFn(ctx, projectID, reportID)
+}
+
+func (m *mockReportRepo) BranchHasChangeReport(ctx context.Context, projectID, branch string) (bool, error) {
+	if m.branchHasChangeFn == nil {
+		return false, nil
+	}
+	return m.branchHasChangeFn(ctx, projectID, branch)
 }
 
 func (m *mockReportRepo) Create(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
@@ -658,6 +674,7 @@ type mockFindingRepo struct {
 	listFindingsByFingerprintsFn      func(context.Context, string, string, []string) ([]port.Finding, error)
 	listFindingIDsPresentInReportFn   func(context.Context, string, []string) ([]string, error)
 	recordReportIntroducedFindingsFn  func(context.Context, string, *string, []port.IntroducedFindingEntry) error
+	listReportIntroducedChangeTypesFn func(context.Context, string, []string) (map[string]string, error)
 	listFindingsIntroducedByCommitFn  func(context.Context, string, string) ([]port.Finding, error)
 	getFindingContextFn               func(context.Context, string) (port.FindingContext, error)
 	setIntroducedByFn                 func(context.Context, string, string, *string) (port.Finding, error)
@@ -894,6 +911,13 @@ func (m *mockFindingRepo) findingIDInReport(ctx context.Context, fid, reportID s
 		}
 	}
 	return false
+}
+
+func (m *mockFindingRepo) ListReportIntroducedChangeTypes(ctx context.Context, reportID string, findingIDs []string) (map[string]string, error) {
+	if m.listReportIntroducedChangeTypesFn == nil {
+		return nil, nil
+	}
+	return m.listReportIntroducedChangeTypesFn(ctx, reportID, findingIDs)
 }
 
 func (m *mockFindingRepo) RecordReportIntroducedFindings(ctx context.Context, reportID string, baselineReportID *string, entries []port.IntroducedFindingEntry) error {

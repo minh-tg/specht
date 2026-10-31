@@ -182,6 +182,34 @@ func (r *pgReportPort) LatestCompletedInFindingScope(ctx context.Context, projec
 	}, nil
 }
 
+func (r *pgReportPort) PreviousCompletedInScope(ctx context.Context, projectID, reportID string) (string, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return "", err
+	}
+	rid, err := parseID(reportID)
+	if err != nil {
+		return "", err
+	}
+	id, err := r.inner.PreviousCompletedInScope(ctx, pid, rid)
+	if err != nil {
+		return "", mappingErr(err)
+	}
+	return toUUID(id), nil
+}
+
+func (r *pgReportPort) BranchHasChangeReport(ctx context.Context, projectID, branch string) (bool, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return false, err
+	}
+	found, err := r.inner.BranchHasChangeReport(ctx, pid, branch)
+	if err != nil {
+		return false, mappingErr(err)
+	}
+	return found, nil
+}
+
 func (r *pgReportPort) GetLatestFullByBranch(ctx context.Context, projectID, scanner, branch string) (port.CompletedReport, error) {
 	pid, err := parseID(projectID)
 	if err != nil {
@@ -1310,6 +1338,33 @@ func (r *pgFindingPort) ListFindingIDsPresentInReport(ctx context.Context, repor
 	out := make([]string, len(rows))
 	for i, row := range rows {
 		out[i] = toUUID(row)
+	}
+	return out, nil
+}
+
+func (r *pgFindingPort) ListReportIntroducedChangeTypes(ctx context.Context, reportID string, findingIDs []string) (map[string]string, error) {
+	rid, err := parseID(reportID)
+	if err != nil {
+		return nil, err
+	}
+	if len(findingIDs) == 0 {
+		return map[string]string{}, nil
+	}
+	uuids := make([]pgtype.UUID, 0, len(findingIDs))
+	for _, id := range findingIDs {
+		u, err := parseID(id)
+		if err != nil {
+			return nil, err
+		}
+		uuids = append(uuids, u)
+	}
+	rows, err := r.inner.ListReportIntroducedChangeTypes(ctx, rid, uuids)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(rows))
+	for _, row := range rows {
+		out[toUUID(row.FindingID)] = row.ChangeType
 	}
 	return out, nil
 }

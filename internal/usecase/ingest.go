@@ -853,6 +853,11 @@ type ingestFindingsState struct {
 	known        map[string]port.Finding
 	knownIDs     []string
 	baselineSeen map[string]bool
+	// carried maps a known finding to the change type the previous report in
+	// this scan scope recorded for it as introduced. It is filled only when
+	// no baseline resolved and the branch is a change branch (see
+	// carryIntroducedEligible).
+	carried map[string]string
 	// reported holds the finding keys an earlier entry of this report already
 	// ingested. A repeated entry adds an occurrence but no second created or
 	// regression event and no second introduced count.
@@ -898,6 +903,9 @@ func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Projec
 		return ingestOutcome{}, err
 	}
 	if err := u.prefetchBaselineOccurrences(ctx, st); err != nil {
+		return ingestOutcome{}, err
+	}
+	if err := u.prefetchCarriedIntroductions(ctx, st); err != nil {
 		return ingestOutcome{}, err
 	}
 
@@ -966,10 +974,59 @@ func (u *Usecases) prefetchBaselineOccurrences(ctx context.Context, st *ingestFi
 	return nil
 }
 
+// carryIntroducedEligible reports whether a report without a baseline may
+// carry introduced findings forward from the previous report in its scope.
+// The branch must be a change branch: this report or an earlier one on the
+// branch named a base revision other than the branch. A trunk that only gets
+// push builds never names a base, so its first-scan backlog is never carried.
+func (u *Usecases) carryIntroducedEligible(ctx context.Context, st *ingestFindingsState) (bool, error) {
+	if st.baselineID != "" || st.input.Branch == "" {
+		return false, nil
+	}
+	if st.input.BaseRevision != "" && !sameRevision(st.input.BaseRevision, st.input.Branch) {
+		return true, nil
+	}
+	return u.deps.Stores.Reports.BranchHasChangeReport(ctx, st.project.ID, st.input.Branch)
+}
+
+// prefetchCarriedIntroductions loads, for a report with no baseline on a
+// change branch, the known findings that the previous completed report in the
+// same scan scope recorded as introduced. Without it a branch whose base was
+// never scanned would shed an introduced blocker by pushing again: the second
+// push sees the finding as known and stops counting it.
+func (u *Usecases) prefetchCarriedIntroductions(ctx context.Context, st *ingestFindingsState) error {
+	if len(st.knownIDs) == 0 {
+		return nil
+	}
+	eligible, err := u.carryIntroducedEligible(ctx, st)
+	if err != nil {
+		return fmt.Errorf("scanner %s: check change branch: %w", st.input.Scanner, err)
+	}
+	if !eligible {
+		return nil
+	}
+	previousID, err := u.deps.Stores.Reports.PreviousCompletedInScope(ctx, st.project.ID, st.report.ID)
+	if errors.Is(err, port.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("scanner %s: find previous report in scope: %w", st.input.Scanner, err)
+	}
+	carried, err := u.deps.Stores.Findings.ListReportIntroducedChangeTypes(ctx, previousID, st.knownIDs)
+	if err != nil {
+		return fmt.Errorf("scanner %s: list carried introduced findings: %w", st.input.Scanner, err)
+	}
+	st.carried = carried
+	return nil
+}
+
 // classifyIngestChange decides whether a finding counts as introduced for
-// this report: regressions and baseline-absent or
-// unseen findings are introduced; everything else pre-existed.
-func classifyIngestChange(exists, regression bool, baselineID string, baselineSeen bool) (introduced bool, changeType string) {
+// this report. Regressions are introduced. With a baseline, a finding the
+// baseline did not observe is introduced. Without one, a finding new to the
+// project is introduced, and so is one the previous report in this scope
+// introduced (carriedType names its recorded change type; empty when there is
+// nothing to carry). Everything else pre-existed.
+func classifyIngestChange(exists, regression bool, baselineID string, baselineSeen bool, carriedType string) (introduced bool, changeType string) {
 	if regression {
 		return true, "regression"
 	}
@@ -981,6 +1038,9 @@ func classifyIngestChange(exists, regression bool, baselineID string, baselineSe
 	}
 	if !exists {
 		return true, "new"
+	}
+	if carriedType != "" {
+		return true, carriedType
 	}
 	return false, ""
 }
@@ -1019,9 +1079,13 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 	}
 
 	regression := !repeat && exists && existing.State == string(finding.TechFixed)
+	carriedType := ""
+	if known {
+		carriedType = st.carried[existing.ID]
+	}
 	introduced, changeType := classifyIngestChange(
 		known, regression, st.baselineID,
-		known && st.baselineSeen[existing.ID],
+		known && st.baselineSeen[existing.ID], carriedType,
 	)
 	// A repeated entry counts toward the total as pre-existing, the split a
 	// replay of this report computes from the distinct introduced findings.

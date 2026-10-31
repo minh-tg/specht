@@ -1010,6 +1010,9 @@ type FindingStore interface {
 	ListFindingsByFingerprints(ctx context.Context, projectID, findingKind string, fingerprints []string) ([]Finding, error)
 	ListFindingIDsPresentInReport(ctx context.Context, reportID string, findingIDs []string) ([]string, error)
 	RecordReportIntroducedFindings(ctx context.Context, reportID string, baselineReportID *string, entries []IntroducedFindingEntry) error
+	// ListReportIntroducedChangeTypes maps each of findingIDs that the report
+	// recorded as introduced to its change type. Others are absent.
+	ListReportIntroducedChangeTypes(ctx context.Context, reportID string, findingIDs []string) (map[string]string, error)
 	ListFindingsIntroducedByCommit(ctx context.Context, projectID, commitSha string) ([]Finding, error)
 	FindScaFindingIDForPurlAndCve(ctx context.Context, projectID, purlName string, candidateIDs []string) (string, error)
 
@@ -1256,6 +1259,13 @@ type ReportStore interface {
 	// one scanner on a branch, or ErrNotFound. It is the baseline fallback
 	// when base_revision names a branch instead of a commit.
 	GetLatestFullByBranch(ctx context.Context, projectID, scanner, branch string) (CompletedReport, error)
+	// PreviousCompletedInScope returns the id of the newest completed report
+	// created before reportID in the same scan scope (scanner, target,
+	// artifact, branch, environment), or ErrNotFound.
+	PreviousCompletedInScope(ctx context.Context, projectID, reportID string) (string, error)
+	// BranchHasChangeReport reports whether any report on the branch was
+	// sent with a base revision other than the branch itself.
+	BranchHasChangeReport(ctx context.Context, projectID, branch string) (bool, error)
 	// LatestCompletedInFindingScope returns the newest completed full report
 	// that shares the scan scope of the report that most recently observed
 	// findingID, or ErrNotFound when no such report exists. Completeness is

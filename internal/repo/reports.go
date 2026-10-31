@@ -141,6 +141,20 @@ func (r *pgReportRepo) GetLatestFullByBranch(ctx context.Context, projectID pgty
 	})
 }
 
+func (r *pgReportRepo) PreviousCompletedInScope(ctx context.Context, projectID, reportID pgtype.UUID) (pgtype.UUID, error) {
+	return r.q.PreviousCompletedReportInScope(ctx, sqlc.PreviousCompletedReportInScopeParams{
+		ProjectID: projectID,
+		ReportID:  reportID,
+	})
+}
+
+func (r *pgReportRepo) BranchHasChangeReport(ctx context.Context, projectID pgtype.UUID, branch string) (bool, error) {
+	return r.q.BranchHasChangeReport(ctx, sqlc.BranchHasChangeReportParams{
+		ProjectID: projectID,
+		Branch:    branch,
+	})
+}
+
 func (r *pgReportRepo) LatestCompletedInFindingScope(ctx context.Context, projectID, findingID pgtype.UUID) (sqlc.LatestCompletedFullReportInFindingScopeRow, error) {
 	return r.q.LatestCompletedFullReportInFindingScope(ctx, sqlc.LatestCompletedFullReportInFindingScopeParams{
 		ProjectID: projectID,

@@ -107,6 +107,8 @@ type ReportRepo interface {
 	HasCompletedReportForCommit(ctx context.Context, projectID pgtype.UUID, commit pgtype.Text) (bool, error)
 
 	GetLatestFullByBranch(ctx context.Context, projectID pgtype.UUID, toolName string, branch pgtype.Text) (sqlc.GetLatestCompletedFullReportByBranchRow, error)
+	PreviousCompletedInScope(ctx context.Context, projectID, reportID pgtype.UUID) (pgtype.UUID, error)
+	BranchHasChangeReport(ctx context.Context, projectID pgtype.UUID, branch string) (bool, error)
 	LatestCompletedInFindingScope(ctx context.Context, projectID, findingID pgtype.UUID) (sqlc.LatestCompletedFullReportInFindingScopeRow, error)
 	CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error)
 	FailStaleReports(ctx context.Context, cutoff time.Time, reason string) (int64, error)
@@ -241,6 +243,7 @@ type FindingRepo interface {
 	ListIntroducedGateCandidates(ctx context.Context, projectID, reportID pgtype.UUID, minSeverityRank int16) ([]sqlc.ListIntroducedGateCandidatesRow, error)
 	ListFindingsByFingerprints(ctx context.Context, projectID pgtype.UUID, findingKind string, fingerprints []string) ([]sqlc.Finding, error)
 	ListFindingIDsPresentInReport(ctx context.Context, reportID pgtype.UUID, findingIDs []pgtype.UUID) ([]pgtype.UUID, error)
+	ListReportIntroducedChangeTypes(ctx context.Context, reportID pgtype.UUID, findingIDs []pgtype.UUID) ([]sqlc.ListReportIntroducedChangeTypesRow, error)
 	RecordReportIntroducedFindings(ctx context.Context, reportID pgtype.UUID, baselineReportID pgtype.UUID, findingIDs []pgtype.UUID, changeTypes []string) error
 	ListFindingsIntroducedByCommit(ctx context.Context, projectID pgtype.UUID, commit pgtype.Text) ([]sqlc.Finding, error)
 	CreateEvent(ctx context.Context, arg CreateEventParams) (sqlc.FindingEvent, error)

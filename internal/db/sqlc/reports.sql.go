@@ -122,6 +122,32 @@ func (q *Queries) ArchiveOrphanedFindings(ctx context.Context, arg ArchiveOrphan
 	return items, nil
 }
 
+const branchHasChangeReport = `-- name: BranchHasChangeReport :one
+SELECT EXISTS (
+    SELECT 1 FROM reports
+    WHERE project_id = $1
+      AND branch = $2::text
+      AND base_revision IS NOT NULL
+      AND base_revision <> ''
+      AND base_revision <> $2::text
+)
+`
+
+type BranchHasChangeReportParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	Branch    string      `json:"branch"`
+}
+
+// Whether any report on the branch was sent with a base revision other than
+// the branch itself, which marks the branch as a change branch (a pull or
+// merge request head) rather than a trunk that only receives push builds.
+func (q *Queries) BranchHasChangeReport(ctx context.Context, arg BranchHasChangeReportParams) (bool, error) {
+	row := q.db.QueryRow(ctx, branchHasChangeReport, arg.ProjectID, arg.Branch)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const clearRawDataBefore = `-- name: ClearRawDataBefore :many
 UPDATE reports SET raw_data = 'null'::jsonb
 WHERE id IN (
@@ -914,6 +940,36 @@ func (q *Queries) LockReportForDelete(ctx context.Context, arg LockReportForDele
 	var status string
 	err := row.Scan(&status)
 	return status, err
+}
+
+const previousCompletedReportInScope = `-- name: PreviousCompletedReportInScope :one
+SELECT prior.id
+FROM reports prior
+JOIN reports current ON current.id = $1
+WHERE prior.project_id = $2
+  AND current.project_id = $2
+  AND prior.scan_scope_hash = current.scan_scope_hash
+  AND prior.status = 'completed'
+  AND prior.id <> current.id
+  AND (prior.created_at, prior.id) < (current.created_at, current.id)
+ORDER BY prior.created_at DESC, prior.id DESC
+LIMIT 1
+`
+
+type PreviousCompletedReportInScopeParams struct {
+	ReportID  pgtype.UUID `json:"report_id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+}
+
+// The newest completed report in the same scan scope as the given report
+// and created before it. Scope covers scanner, target, artifact, branch and
+// environment, so a report of another image or branch never qualifies.
+// pgx.ErrNoRows means the scope has no earlier completed report.
+func (q *Queries) PreviousCompletedReportInScope(ctx context.Context, arg PreviousCompletedReportInScopeParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, previousCompletedReportInScope, arg.ReportID, arg.ProjectID)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const repointDuplicateScopeSeverity = `-- name: RepointDuplicateScopeSeverity :exec

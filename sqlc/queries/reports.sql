@@ -88,6 +88,36 @@ WHERE project_id = $1 AND tool_name = $2 AND branch = $3 AND status = 'completed
 ORDER BY created_at DESC, id DESC
 LIMIT 1;
 
+-- name: PreviousCompletedReportInScope :one
+-- The newest completed report in the same scan scope as the given report
+-- and created before it. Scope covers scanner, target, artifact, branch and
+-- environment, so a report of another image or branch never qualifies.
+-- pgx.ErrNoRows means the scope has no earlier completed report.
+SELECT prior.id
+FROM reports prior
+JOIN reports current ON current.id = sqlc.arg(report_id)
+WHERE prior.project_id = sqlc.arg(project_id)
+  AND current.project_id = sqlc.arg(project_id)
+  AND prior.scan_scope_hash = current.scan_scope_hash
+  AND prior.status = 'completed'
+  AND prior.id <> current.id
+  AND (prior.created_at, prior.id) < (current.created_at, current.id)
+ORDER BY prior.created_at DESC, prior.id DESC
+LIMIT 1;
+
+-- name: BranchHasChangeReport :one
+-- Whether any report on the branch was sent with a base revision other than
+-- the branch itself, which marks the branch as a change branch (a pull or
+-- merge request head) rather than a trunk that only receives push builds.
+SELECT EXISTS (
+    SELECT 1 FROM reports
+    WHERE project_id = $1
+      AND branch = sqlc.arg(branch)::text
+      AND base_revision IS NOT NULL
+      AND base_revision <> ''
+      AND base_revision <> sqlc.arg(branch)::text
+);
+
 -- name: LatestCompletedFullReportInFindingScope :one
 -- Verification basis for one finding: the newest completed full report that
 -- shares the scan scope of the report that most recently observed the finding.

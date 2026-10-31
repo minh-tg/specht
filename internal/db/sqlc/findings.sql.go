@@ -1688,6 +1688,45 @@ func (q *Queries) ListIntroducedGateCandidates(ctx context.Context, arg ListIntr
 	return items, nil
 }
 
+const listReportIntroducedChangeTypes = `-- name: ListReportIntroducedChangeTypes :many
+SELECT finding_id, change_type
+FROM report_introduced_findings
+WHERE report_id = $1
+  AND finding_id = ANY($2::uuid[])
+`
+
+type ListReportIntroducedChangeTypesParams struct {
+	ReportID   pgtype.UUID   `json:"report_id"`
+	FindingIds []pgtype.UUID `json:"finding_ids"`
+}
+
+type ListReportIntroducedChangeTypesRow struct {
+	FindingID  pgtype.UUID `json:"finding_id"`
+	ChangeType string      `json:"change_type"`
+}
+
+// The change type one report recorded for each of the given findings it
+// introduced. Findings the report did not introduce return no row.
+func (q *Queries) ListReportIntroducedChangeTypes(ctx context.Context, arg ListReportIntroducedChangeTypesParams) ([]ListReportIntroducedChangeTypesRow, error) {
+	rows, err := q.db.Query(ctx, listReportIntroducedChangeTypes, arg.ReportID, arg.FindingIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListReportIntroducedChangeTypesRow
+	for rows.Next() {
+		var i ListReportIntroducedChangeTypesRow
+		if err := rows.Scan(&i.FindingID, &i.ChangeType); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockAbsentScopeFindings = `-- name: LockAbsentScopeFindings :many
 SELECT f.id
 FROM findings f
