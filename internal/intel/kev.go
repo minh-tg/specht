@@ -117,7 +117,11 @@ func (p *KEVProvider) download(ctx context.Context) (map[string]kevEntry, error)
 	}
 	client := p.Client
 	if client == nil {
-		client = &http.Client{Timeout: 60 * time.Second}
+		// The safe client refuses redirects and non-public addresses (a
+		// loopback CatalogURL is the one exception). It is built per
+		// download, so release its idle connections when the call ends.
+		client = netutil.SafeHTTPClientForURL(catalogURL, 60*time.Second)
+		defer client.CloseIdleConnections()
 	}
 	resp, err := client.Do(req)
 	if err != nil {
