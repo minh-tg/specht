@@ -4,12 +4,13 @@ import { LedgerEntry, type LedgerTone } from "@/components/Ledger";
 import { Button } from "@/components/ui/button";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { changeViewState, fromChangePath } from "@/lib/entryMode";
 import { normalizeSeverity } from "@/lib/enums";
 import { useCopyToClipboard } from "@/lib/useCopyToClipboard";
 import { NOT_A_MEMBER_REASON } from "@/lib/waiverRequest";
 import { fixSentence, locationLine } from "@/pages/change-view/resolve";
 import type { Finding } from "@/types/api";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 function toneFor(severity: string): LedgerTone {
   const normalized = normalizeSeverity(severity);
@@ -83,7 +84,10 @@ function LoadedEntry(
   const { status, copy } = useCopyToClipboard();
   const where = locationLine(finding.location);
   const fix = fixSentence(finding);
-  const target = `/${slug}/findings/${findingId}`;
+  const routerLocation = useLocation();
+  // The finding page reads the state to offer a way back to this exact change view.
+  const target = fromChangePath(`/${slug}/findings/${findingId}`);
+  const targetState = changeViewState(routerLocation);
   const severity = normalizeSeverity(finding.current_severity);
   // The accessible name starts with the visible text, so a speech user can say what they see.
   const copyLabel = status === "copied"
@@ -200,7 +204,9 @@ function LoadedEntry(
           </label>
         </div>
         <p className="text-meta">
-          <Link to={target} className={INLINE_LINK}>Open the full finding</Link>
+          <Link to={target} state={targetState} className={INLINE_LINK}>
+            Open the full finding
+          </Link>
         </p>
       </div>
     </LedgerEntry>

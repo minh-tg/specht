@@ -66,11 +66,11 @@ function makeFinding(overrides: FindingFixture = {}): Record<string, unknown> {
   };
 }
 
-function renderDetail(state?: unknown) {
+function renderDetail(state?: unknown, search = "") {
   const qc = createTestQueryClient();
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={[{ pathname: "/p1/findings/f1", state }]}>
+      <MemoryRouter initialEntries={[{ pathname: "/p1/findings/f1", search, state }]}>
         <Routes>
           <Route path="/:slug/findings/:findingId" element={<FindingDetail />} />
         </Routes>
@@ -506,6 +506,54 @@ describe("FindingDetail decision flow", () => {
       "href",
       "/p1/findings",
     );
+  });
+
+  it("marks the page as decide-first when opened from the list, with no origin or an unknown one", async () => {
+    for (const search of ["", "?from=list", "?from=", "?from=Change"]) {
+      const { container, unmount } = renderDetail(undefined, search);
+      await screen.findByRole("heading", { name: "Test Vulnerability" });
+      expect(container.querySelector("[data-mode]")).toHaveAttribute("data-mode", "triage");
+      unmount();
+    }
+  });
+
+  it("marks the page as fix-first when opened from the change view", async () => {
+    const { container } = renderDetail(undefined, "?from=change");
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+
+    expect(container.querySelector("[data-mode]")).toHaveAttribute("data-mode", "unblock");
+  });
+
+  it("goes back to the change it was opened from, with that change's own query", async () => {
+    renderDetail(
+      { changeView: "/p1/changes/abc1234?report=r1&scope=introduced" },
+      "?from=change",
+    );
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+
+    expect(screen.getByRole("link", { name: "← Back to the change" })).toHaveAttribute(
+      "href",
+      "/p1/changes/abc1234?report=r1&scope=introduced",
+    );
+    expect(screen.queryByRole("link", { name: "← Back to findings" })).not.toBeInTheDocument();
+  });
+
+  it("goes back to the list when the change is unknown, unsafe or the page was opened from the list", async () => {
+    const cases: Array<[unknown, string]> = [
+      [undefined, "?from=change"],
+      [{ changeView: "http://evil.example/p1/changes/abc" }, "?from=change"],
+      [{ changeView: "/other/changes/abc1234" }, "?from=change"],
+      [{ changeView: "/p1/changes/abc1234" }, ""],
+    ];
+    for (const [state, search] of cases) {
+      const { unmount } = renderDetail(state, search);
+      await screen.findByRole("heading", { name: "Test Vulnerability" });
+      expect(screen.getByRole("link", { name: "← Back to findings" })).toHaveAttribute(
+        "href",
+        "/p1/findings",
+      );
+      unmount();
+    }
   });
 
   it("shows event comments in the history without exposing user ids", async () => {

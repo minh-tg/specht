@@ -14,6 +14,7 @@ import { Section } from "@/components/Section";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UpdatedHint } from "@/components/UpdatedHint";
+import { changeViewBackPath, entryModeFromSearch } from "@/lib/entryMode";
 import { analysisStateLabel } from "@/lib/enums";
 import { blocksGate, blocksGateSentence } from "@/lib/gate";
 import { waiverAction } from "@/lib/waiverRequest";
@@ -125,14 +126,19 @@ export function FindingDetail() {
     gateRechecking: pendingTriage !== undefined,
   });
 
+  const mode = entryModeFromSearch(location.search);
+  // Arriving from a change, the way back is the change view itself. A link pasted without the
+  // router state has no change to return to, so it falls back to the findings list.
+  const changeBack = mode === "unblock" ? changeViewBackPath(slug ?? "", location.state) : null;
+
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
+    <div data-mode={mode} className="mx-auto max-w-5xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <Link
-          to={backToFindingsPath(slug ?? "", location.state)}
+          to={changeBack ?? backToFindingsPath(slug ?? "", location.state)}
           className="text-muted-foreground hover:text-foreground inline-block text-body"
         >
-          &larr; Back to findings
+          {changeBack ? <>&larr; Back to the change</> : <>&larr; Back to findings</>}
         </Link>
         <UpdatedHint
           updatedAt={Math.min(findingUpdatedAt, eventsUpdatedAt || findingUpdatedAt)}

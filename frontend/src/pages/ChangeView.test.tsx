@@ -455,7 +455,7 @@ describe("ChangeView", () => {
     expect(entry.getAllByText("Fix f1").length).toBeGreaterThan(0);
     expect(entry.getByRole("link", { name: "Open the full finding" })).toHaveAttribute(
       "href",
-      "/acme/findings/f1",
+      "/acme/findings/f1?from=change",
     );
   });
 
