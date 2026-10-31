@@ -11,11 +11,13 @@ import { ErrorState } from "@/components/ErrorState";
 import { INLINE_LINK } from "@/components/inlineLink";
 import { formatRelativeTime } from "@/lib/format";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
+import { useOnline } from "@/lib/useOnline";
 import { blockerCount, isReportInProgress } from "@/lib/verdict";
 import { BlockerSection, MAX_BLOCKER_ROWS } from "@/pages/change-view/BlockerSection";
 import { ChangeHero, ChangeHeroSkeleton, type ChangeState } from "@/pages/change-view/ChangeHero";
 import { ExistingDebt } from "@/pages/change-view/ExistingDebt";
 import { existingBlockers, resolveReport, shortCommit } from "@/pages/change-view/resolve";
+import { WatchStrip } from "@/pages/change-view/WatchStrip";
 import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -96,6 +98,7 @@ export function ChangeView() {
 
   useDocumentTitle(`${slug} · Change ${short}`);
 
+  const online = useOnline();
   const projectQuery = useProject(slug);
   const reportsQuery = useChangeReports(slug, commit, reportParam);
   const report = resolveReport(reportsQuery.data, commit, reportParam);
@@ -175,14 +178,29 @@ export function ChangeView() {
     );
   }
 
+  // A failed check while a scan is processing leaves the page it has; only a page with nothing to
+  // show turns into an error.
   const requestError = reportsQuery.error ?? projectQuery.error ?? changeGateQuery.error;
-  if (reportsQuery.isError || projectQuery.isError || changeGateQuery.isError) {
+  if (
+    (reportsQuery.isError && reportsQuery.data === undefined) || projectQuery.isError
+    || changeGateQuery.isError
+  ) {
     return (
       <Page>
         {crumbs}
         <ErrorState
-          title="Could not load this change"
-          detail={requestError instanceof Error ? requestError.message : undefined}
+          title="Specht could not load this change."
+          detail={
+            <>
+              <p>
+                The verdict on your pull request is still the one CI reported. Nothing here changes
+                it.
+              </p>
+              {requestError instanceof Error && <p>The server said: {requestError.message}</p>}
+            </>
+          }
+          requestId={requestError instanceof APIError ? requestError.requestId : undefined}
+          retryLabel="Try again"
           onRetry={() => void retryLoad()}
         />
         <Link to={`/${slug}/findings`} className={`${INLINE_LINK} mt-4 inline-block text-body`}>
@@ -217,6 +235,20 @@ export function ChangeView() {
           blockers={0}
           existing={0}
           waived={0}
+          watch={state === "processing"
+            ? (
+              <WatchStrip
+                label="Watching"
+                announce={false}
+                watch={{
+                  online,
+                  stalled: false,
+                  checkedAt: reportsQuery.dataUpdatedAt,
+                  failing: reportsQuery.isRefetchError,
+                }}
+              />
+            )
+            : undefined}
         />
       </Page>
     );
@@ -267,7 +299,12 @@ export function ChangeView() {
           onCheckAgain={checkAgain}
         />
       )}
-      <ExistingDebt slug={slug} ids={existing} />
+      <ExistingDebt
+        slug={slug}
+        ids={existing}
+        passing={state === "passing" && !projectWide}
+        projectName={projectQuery.data?.name}
+      />
       <p className="sr-only" role="status">
         {scanningNewer && newer
           ? `A new scan started ${formatRelativeTime(newer.created_at)}.`

@@ -19,6 +19,7 @@ let reportsPending: boolean;
 let signalReports: unknown[];
 let changeGate: Record<string, unknown> | null;
 let changeGateStatus: number;
+let changeGateRequestId: string | null;
 let projectGate: Record<string, unknown>;
 let findings: Record<string, unknown>;
 let findingFetches: string[];
@@ -102,6 +103,7 @@ beforeEach(() => {
   signalReports = [];
   changeGate = gate({ blocked_by: ["f1", "f2"] });
   changeGateStatus = 200;
+  changeGateRequestId = null;
   projectGate = { threshold_breached: false, blocking_count: 0, blocked_by: [] };
   findings = { f1: finding("f1", "critical"), f2: finding("f2") };
   findingFetches = [];
@@ -166,9 +168,12 @@ beforeEach(() => {
     }
     if (url.startsWith("/api/v1/projects/acme/gate?introduced_only=")) {
       if (changeGateStatus >= 400) {
-        return Promise.resolve(
-          jsonResponse({ error: { code: "boom", message: "gate failed" } }, changeGateStatus),
+        const failure = jsonResponse(
+          { error: { code: "boom", message: "gate failed" } },
+          changeGateStatus,
         );
+        if (changeGateRequestId) failure.headers.set("X-Request-Id", changeGateRequestId);
+        return Promise.resolve(failure);
       }
       return Promise.resolve(jsonResponse(changeGate ?? {}));
     }
@@ -239,6 +244,13 @@ async function loadedLedger() {
   return screen.getByRole("list", { name: "Blocking findings" });
 }
 
+/** The "· checked just now" part of a watching strip, which is split across elements. */
+function checkedLine() {
+  return screen.queryByText((_, node) =>
+    node?.tagName === "SPAN" && /^· checked just now$/.test(node.textContent ?? "")
+  );
+}
+
 /** The entry that is open, where the detail and its controls can be reached. */
 function openEntry() {
   const entry = document.querySelector("li[data-open='true']");
@@ -286,12 +298,31 @@ describe("ChangeView", () => {
     );
   });
 
-  it("shows a skeleton header while the reports load", () => {
+  it("shows nothing for the first 300 ms of loading, then a skeleton that names the commit", async () => {
+    vi.useFakeTimers();
     reportsPending = true;
     const { container } = renderPage();
 
+    expect(screen.queryByLabelText("Change verdict")).not.toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(299);
+    });
+    expect(screen.queryByLabelText("Change verdict")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Loading the verdict/)).not.toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
     expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByLabelText("Change verdict")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("status")).toHaveTextContent("Loading the verdict for abcdef1…");
+  });
+
+  it("never shows the skeleton when the verdict arrives within 300 ms", async () => {
+    renderPage();
+
+    expect(await screen.findByRole("heading", { level: 1 })).toBeInTheDocument();
+    expect(screen.queryByText(/Loading the verdict/)).not.toBeInTheDocument();
   });
 
   it("renders the change header with branch, scan time and scanner", async () => {
@@ -336,17 +367,57 @@ describe("ChangeView", () => {
     expect(screen.queryByRole("link", { name: "Upload a report" })).not.toBeInTheDocument();
   });
 
-  it("does not claim a verdict while a scan is processing", async () => {
+  it("does not claim a verdict while a scan is processing, and says the page will update", async () => {
     reports = [report({ status: "processing" })];
     renderPage();
 
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
-      "This scan is still processing.",
+      "The scan of abcdef1 is still being processed.",
     );
+    expect(
+      screen.getByText(
+        "There is no verdict until it finishes. This page shows it as soon as it does; you do not need to reload.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("SCANNING")).toBeInTheDocument();
+    expect(screen.getByText("Watching")).toBeInTheDocument();
+    expect(checkedLine()).toBeInTheDocument();
     expect(screen.queryByText("PASSING")).not.toBeInTheDocument();
     expect(screen.queryByText("BLOCKED")).not.toBeInTheDocument();
     expect(screen.queryByText("What is in the way")).not.toBeInTheDocument();
+  });
+
+  it("shows the verdict by itself once the scan it was waiting for finishes", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    reports = [report({ status: "processing" })];
+    renderPage();
+    await screen.findByText("SCANNING");
+
+    reports = [report({ status: "completed" })];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_100);
+    });
+
+    expect(await screen.findByText("BLOCKED")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
+      "2 findings block this change.",
+    );
+  });
+
+  it("keeps the processing page when one check fails, and says so", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    reports = [report({ status: "processing" })];
+    renderPage();
+    await screen.findByText("SCANNING");
+
+    reportsStatus = 500;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_100);
+    });
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("still being processed");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(await screen.findByText(/last check failed, trying again/)).toBeInTheDocument();
   });
 
   it("says a failed scan did not complete, with the reason when the scanner gave one", async () => {
@@ -433,11 +504,29 @@ describe("ChangeView", () => {
     renderPage();
 
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
-      "This change introduces no blocking findings.",
+      "Nothing first seen in this commit blocks the merge.",
     );
+    expect(
+      screen.getByText(
+        "The scan of abcdef1 found no new finding at High or above. Nothing to do here.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("PASSING")).toBeInTheDocument();
     expect(screen.queryByText("What is in the way")).not.toBeInTheDocument();
-    expect(await screen.findByText(/1 other finding/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        "1 older finding is open in Acme API. It is not counted for this merge.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/other finding/)).not.toBeInTheDocument();
+  });
+
+  it("never says CI is green", async () => {
+    changeGate = gate({ threshold_breached: false, blocking_count: 0, blocked_by: [] });
+    renderPage();
+
+    await screen.findByText("PASSING");
+    expect(document.body).not.toHaveTextContent(/\bgreen\b/i);
   });
 
   it("alerts with a back link when the gate request fails", async () => {
@@ -451,13 +540,40 @@ describe("ChangeView", () => {
     );
   });
 
+  it("says the CI verdict stands, and shows the request ID with a copy button", async () => {
+    changeGateStatus = 500;
+    changeGateRequestId = "7f3a9c2e-41d8-4b1e-9c55-2d0e8b1fa0c2";
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    renderPage();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Specht could not load this change.");
+    expect(alert).toHaveTextContent(
+      "The verdict on your pull request is still the one CI reported. Nothing here changes it.",
+    );
+    expect(alert).toHaveTextContent("If it keeps failing, give your admin this request ID:");
+    expect(screen.getByText("7f3a9c2e-41d8-4b1e-9c55-2d0e8b1fa0c2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Copy request ID" }));
+    expect(writeText).toHaveBeenCalledWith("7f3a9c2e-41d8-4b1e-9c55-2d0e8b1fa0c2");
+  });
+
+  it("leaves the request ID out when the response carried none", async () => {
+    changeGateStatus = 500;
+    renderPage();
+
+    await screen.findByRole("alert");
+    expect(screen.queryByText(/request ID/)).not.toBeInTheDocument();
+  });
+
   it("retries the requests behind the error and renders the change once they succeed", async () => {
     changeGateStatus = 500;
     renderPage();
 
     expect(await screen.findByRole("alert")).toHaveTextContent("gate failed");
     changeGateStatus = 200;
-    await userEvent.setup().click(screen.getByRole("button", { name: "Retry" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Try again" }));
 
     expect(await loadedLedger()).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();

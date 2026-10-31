@@ -39,12 +39,12 @@ beforeEach(() => {
   });
 });
 
-function renderDebt(ids: string[]) {
+function renderDebt(ids: string[], props: { passing?: boolean; projectName?: string; } = {}) {
   const qc = createTestQueryClient();
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={["/acme/changes/abcdef1"]}>
-        <ExistingDebt slug="acme" ids={ids} />
+        <ExistingDebt slug="acme" ids={ids} {...props} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -65,6 +65,24 @@ describe("ExistingDebt", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "See all in Findings" }))
       .toHaveAttribute("href", "/acme/findings");
+  });
+
+  it("calls the findings older, and not counted, when the change passed", () => {
+    renderDebt(["pre1", "pre2"], { passing: true, projectName: "Acme API" });
+
+    expect(
+      screen.getByText(
+        "2 older findings are open in Acme API. They are not counted for this merge.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/block this project/)).not.toBeInTheDocument();
+  });
+
+  it("uses the singular for one older finding, and the slug without a project name", () => {
+    renderDebt(["pre1"], { passing: true });
+
+    expect(screen.getByText("1 older finding is open in acme. It is not counted for this merge."))
+      .toBeInTheDocument();
   });
 
   it("does not fetch findings until the section is opened", async () => {

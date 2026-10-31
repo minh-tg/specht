@@ -1,4 +1,5 @@
 import { type AnalysisState, gateEffectLabel, type ReachabilityState } from "@/lib/enums";
+import { isReportInProgress } from "@/lib/verdict";
 import type {
   Aging,
   Capabilities,
@@ -423,6 +424,17 @@ export function useReports(projectSlug: string, limit?: number) {
   });
 }
 
+/** The report a change resolves to: the newest one, as `resolveReport` picks it. */
+function newestOf(reports: Report[] | undefined): Report | undefined {
+  return reports?.reduce<Report | undefined>(
+    (newest, report) => !newest || report.created_at > newest.created_at ? report : newest,
+    undefined,
+  );
+}
+
+/** How often a page waiting for its own scan to finish asks again. */
+export const PROCESSING_POLL_MS = 5_000;
+
 /** Resolves exact scan evidence without a capped walk through project history. */
 export function useChangeReports(projectSlug: string, commit: string, reportId: string | null) {
   return useQuery({
@@ -444,6 +456,10 @@ export function useChangeReports(projectSlug: string, commit: string, reportId: 
       }
     },
     enabled: !!projectSlug && !!commit,
+    // A scan that is still running has no verdict. Ask again until it has one.
+    refetchInterval: (query) =>
+      isReportInProgress(newestOf(query.state.data)?.status) ? PROCESSING_POLL_MS : false,
+    refetchIntervalInBackground: false,
   });
 }
 
