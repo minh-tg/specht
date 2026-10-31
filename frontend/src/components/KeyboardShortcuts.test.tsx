@@ -96,22 +96,31 @@ describe("KeyboardShortcuts", () => {
     expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeInTheDocument();
   });
 
-  it("lists ?, J, K and X while the switch is on", async () => {
+  it("lists ?, J, K, X and 1 to 3 while the switch is on", async () => {
     const user = setup();
     await user.keyboard("?");
     const dialog = await screen.findByRole("dialog");
-    for (const name of ["?", "J", "K", "X"]) {
-      expect(within(dialog).getByText(name, { selector: "kbd" })).toBeInTheDocument();
+    for (const name of ["?", "J", "K", "X", "1", "2", "3"]) {
+      expect(within(dialog).getAllByText(name, { selector: "kbd" })).not.toHaveLength(0);
     }
+    // The finding page keys have their own group, so J and K never read as list keys there.
+    const finding = within(dialog).getByRole("region", { name: "On a finding" });
+    expect(within(finding).getByText("Next finding in the list you opened it from"))
+      .toBeInTheDocument();
+    expect(within(finding).getByText("Previous finding in the list you opened it from"))
+      .toBeInTheDocument();
+    expect(within(finding).getByText("Pick Real issue, Not a problem or Accept for now"))
+      .toBeInTheDocument();
     expect(dialog).not.toHaveTextContent("Single-key shortcuts are off");
   });
 
-  it("hides ?, J, K and X and says how to turn them on while the switch is off", async () => {
+  it("hides ?, J, K, X and 1 to 3 and says how to turn them on while the switch is off", async () => {
     setSingleKeyEnabled(false);
     const user = setup();
     await user.keyboard("{Control>}/{/Control}");
     const dialog = await screen.findByRole("dialog");
-    for (const name of ["?", "J", "K", "X"]) {
+    expect(within(dialog).queryByRole("region", { name: "On a finding" })).toBeNull();
+    for (const name of ["?", "J", "K", "X", "1", "2", "3"]) {
       expect(within(dialog).queryByText(name, { selector: "kbd" })).toBeNull();
     }
     expect(within(dialog).queryByText("Show this sheet")).toBeNull();
