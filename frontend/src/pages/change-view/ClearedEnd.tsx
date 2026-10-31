@@ -2,6 +2,7 @@ import { findingQueryOptions, useWaivers } from "@/api/hooks";
 import { INLINE_LINK } from "@/components/inlineLink";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Skeleton } from "@/components/ui/skeleton";
+import { changeViewState, fromChangePath } from "@/lib/entryMode";
 import { pluralize } from "@/lib/format";
 import { BlockerRow } from "@/pages/change-view/BlockerRow";
 import { MAX_BLOCKER_ROWS } from "@/pages/change-view/BlockerSection";
@@ -15,7 +16,7 @@ import {
 import type { GateStatus, Report, Waiver } from "@/types/api";
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 const ROW = "flex items-start gap-3 border-t py-3.5";
 
@@ -54,6 +55,7 @@ function ClearedRow(
   },
 ) {
   // A copy from the blocked page predates the fix, so this read always goes to the server.
+  const routerLocation = useLocation();
   const query = useQuery({ ...findingQueryOptions(findingId), staleTime: 0 });
   if (query.isPending) {
     return (
@@ -84,7 +86,8 @@ function ClearedRow(
       <Mark cleared={isCleared(cause)} />
       <span className="grid min-w-0">
         <Link
-          to={`/${slug}/findings/${findingId}`}
+          to={fromChangePath(`/${slug}/findings/${findingId}`)}
+          state={changeViewState(routerLocation)}
           className="text-body font-semibold hover:underline"
         >
           {query.data.current_title}
