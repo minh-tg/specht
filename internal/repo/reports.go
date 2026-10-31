@@ -46,6 +46,10 @@ type CreateReportParams struct {
 	// ExaminedKeys are the per-finding proofs the report carries. Nil stores
 	// NULL.
 	ExaminedKeys []string
+	// FilterSeverities and FilterFixableOnly are the scan filter the uploader
+	// declared. Nil severities store NULL: no severity filter.
+	FilterSeverities  []string
+	FilterFixableOnly bool
 }
 
 func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc.Report, error) {
@@ -77,6 +81,8 @@ func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc
 		StartedAt:           pgtype.Timestamptz{Time: time.Now(), Valid: true},
 		CoveredFindingKinds: arg.CoveredFindingKinds,
 		ExaminedKeys:        arg.ExaminedKeys,
+		FilterSeverities:    arg.FilterSeverities,
+		FilterFixableOnly:   arg.FilterFixableOnly,
 	})
 }
 

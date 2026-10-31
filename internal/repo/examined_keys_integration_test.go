@@ -48,7 +48,7 @@ func (s *scopeSeverityScenario) examined(t *testing.T, completeness string, kind
 	}
 	var got bool
 	require.NoError(t, s.pool.QueryRow(s.ctx,
-		`SELECT report_examined_finding($1, $2::text[], $3::text[], $4::uuid, 'sca', 'shared')`,
+		`SELECT report_examined_finding($1, $2::text[], $3::text[], NULL::text[], false, '', $4::uuid, 'sca', 'shared')`,
 		completeness, k, ks, s.findingID).Scan(&got))
 	return got
 }

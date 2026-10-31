@@ -409,6 +409,8 @@ type Report struct {
 	ScanMode            string             `json:"scan_mode"`
 	CoveredFindingKinds []string           `json:"covered_finding_kinds"`
 	ExaminedKeys        []string           `json:"examined_keys"`
+	FilterSeverities    []string           `json:"filter_severities"`
+	FilterFixableOnly   bool               `json:"filter_fixable_only"`
 }
 
 type ReportIntroducedFinding struct {

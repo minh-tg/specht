@@ -1735,7 +1735,7 @@ LEFT JOIN reports prior ON prior.id = s.report_id
 JOIN reports current ON current.id = $1
 WHERE f.project_id = $2
   AND s.scope_hash = $3
-  AND report_examined_finding(current.scan_completeness, current.covered_finding_kinds, current.examined_keys, f.id, f.finding_kind, f.fingerprint)
+  AND report_examined_finding(current.scan_completeness, current.covered_finding_kinds, current.examined_keys, current.filter_severities, current.filter_fixable_only, current.scan_scope_hash, f.id, f.finding_kind, f.fingerprint)
   AND ((s.report_id IS NULL AND s.observed_at <= current.created_at)
        OR (prior.created_at, prior.id) < (current.created_at, current.id))
   AND NOT EXISTS (
@@ -1822,7 +1822,7 @@ WHERE findings.project_id = $1
   AND EXISTS (
       SELECT 1 FROM reports examiner
       WHERE examiner.id = $2
-        AND report_examined_finding(examiner.scan_completeness, examiner.covered_finding_kinds, examiner.examined_keys, findings.id, findings.finding_kind, findings.fingerprint)
+        AND report_examined_finding(examiner.scan_completeness, examiner.covered_finding_kinds, examiner.examined_keys, examiner.filter_severities, examiner.filter_fixable_only, examiner.scan_scope_hash, findings.id, findings.finding_kind, findings.fingerprint)
   )
   AND NOT EXISTS (SELECT 1 FROM finding_scope_severities s WHERE s.finding_id = findings.id)
   AND NOT EXISTS (
@@ -1862,7 +1862,8 @@ type MarkAbsentScopedFindingsFixedParams struct {
 // this scope keeps a clean scan of a branch that never saw the finding from
 // closing it, and nothing may be newer than the current report. The current
 // report must prove it looked for the finding: its kind is covered by a
-// complete report, or its own examined keys name the finding. Incremental
+// complete report, or its own examined keys name the finding, and the finding
+// is inside the report's declared severity and fixable filter. Incremental
 // scans never reach this query, and a partial report proves nothing.
 func (q *Queries) MarkAbsentScopedFindingsFixed(ctx context.Context, arg MarkAbsentScopedFindingsFixedParams) ([]Finding, error) {
 	rows, err := q.db.Query(ctx, markAbsentScopedFindingsFixed, arg.ProjectID, arg.ReportID, arg.ScanScopeHash)
@@ -2169,7 +2170,7 @@ WHERE f.id = s.finding_id
               AND clean.scan_scope_hash = s.scope_hash
               AND clean.status = 'completed'
               AND clean.scan_mode = 'full'
-              AND report_examined_finding(clean.scan_completeness, clean.covered_finding_kinds, clean.examined_keys, f.id, f.finding_kind, f.fingerprint)
+              AND report_examined_finding(clean.scan_completeness, clean.covered_finding_kinds, clean.examined_keys, clean.filter_severities, clean.filter_fixable_only, clean.scan_scope_hash, f.id, f.finding_kind, f.fingerprint)
               AND (clean.created_at, clean.id) > (r.created_at, r.id)
               AND NOT EXISTS (
                   SELECT 1 FROM finding_occurrences seen
