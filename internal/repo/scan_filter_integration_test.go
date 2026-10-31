@@ -282,7 +282,7 @@ func TestReportsFilterSeveritiesCheckRejectsUnknownValues(t *testing.T) {
 	}
 }
 
-// The down migration puts the six-argument examined test back and drops the
+// The 000067 down migration puts the six-argument examined test back and drops the
 // filter columns; applying it again restores the nine-argument one.
 func TestScanFilterMigrationRollbackRestoresTheOldFunction(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
@@ -299,7 +299,15 @@ func TestScanFilterMigrationRollbackRestoresTheOldFunction(t *testing.T) {
 	require.True(t, has(newSig))
 	require.False(t, has(oldSig))
 
-	require.NoError(t, db.RollbackMigrations(dsn, "../../migrations"))
+	// Roll back to just below 000067, however many migrations came after it.
+	for {
+		var version int
+		require.NoError(t, repos.pool.QueryRow(ctx, `SELECT version FROM schema_migrations`).Scan(&version))
+		if version < 67 {
+			break
+		}
+		require.NoError(t, db.RollbackMigrations(dsn, "../../migrations"))
+	}
 	assert.True(t, has(oldSig))
 	assert.False(t, has(newSig))
 	var columns int
