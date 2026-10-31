@@ -53,10 +53,12 @@ Declare the filter when you upload the report. A filtered report closes only the
 findings inside its filter. A finding outside the filter stays open when the
 report omits it, and verifying such a finding by hand stays inconclusive.
 
-| Adapter flag                     | `specht reports upload` flag | Action input      | Meaning                                      |
-| -------------------------------- | ---------------------------- | ----------------- | -------------------------------------------- |
-| `-scan-severities=high,critical` | `--scan-severities`          | `scan-severities` | The severities the scan kept.                |
-| `-fixable-only`                  | `--fixable-only`             | `fixable-only`    | The scan kept only findings that have a fix. |
+- **Severities the scan kept:** `-scan-severities=high,critical` on the
+  adapter, `--scan-severities` on `specht reports upload`, or the
+  `scan-severities` Action input.
+- **Only findings that have a fix:** `-fixable-only` on the adapter,
+  `--fixable-only` on `specht reports upload`, or the `fixable-only` Action
+  input.
 
 For `-tool=trivy`, the adapter and `specht reports upload` read `TRIVY_SEVERITY`
 (for example `HIGH,CRITICAL`) and `TRIVY_IGNORE_UNFIXED=true` when the flags are
