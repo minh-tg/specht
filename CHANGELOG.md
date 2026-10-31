@@ -393,6 +393,8 @@ releases.
   like the created and regression events, so receivers that route by project get it.
 - An OSV answer over 32 MiB now fails with a size error. It used to be cut at 32 MiB and
   parsed or stored as evidence as if it were complete.
+- `LOG_LEVEL` is applied in any letter case. `LOG_LEVEL=WARN` passed validation but the
+  server ran at info.
 
 ### Security
 
