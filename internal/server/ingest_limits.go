@@ -70,17 +70,22 @@ const ingestPath = "/api/v1/reports"
 // API key) and one per project, so one caller, or one project with many
 // callers, cannot use up what every tenant shares.
 //
-// An ingest passes three steps, in this order, and takes the next only when it
+// An ingest passes four steps, in this order, and takes the next only when it
 // holds the one before:
 //
 //  1. enter: a place in the caller's own gate, at most perPrincipal at a time,
 //     held while the body is read. A caller past its limit waits in its own
 //     queue and never delays another caller.
-//  2. admit: once the whole body is in memory, a share of the caller's memory
-//     allowance, the same for the project, a place in the project's gate, then
-//     a global slot, then the global memory charge. These are held while the
-//     report is decoded and stored.
-//  3. release: everything is given back, in reverse order, on every path.
+//  2. reserve: before the body is read, a share of the caller's memory
+//     allowance, the same for the project, then the global memory charge for
+//     the declared length (the largest body allowed when none is declared).
+//     The body is read into memory the ingest has already paid for, so a
+//     request the budget cannot hold never buffers its bytes. The reservation
+//     shrinks to the bytes that arrived.
+//  3. claim: once the whole body is in memory, a place in the project's gate
+//     and a global slot. These are held while the report is decoded and
+//     stored.
+//  4. release: everything is given back, in reverse order, on every path.
 //
 // The project gate is what keeps one tenant from filling every global slot:
 // principals are cheap to add (a manager's session plus any number of keys),
@@ -92,8 +97,8 @@ const ingestPath = "/api/v1/reports"
 // one large report can hold more than that fraction of it.
 //
 // Authorization happens before enter, so a caller with no access to the project
-// holds nothing. The body is read before the global slot is taken, so a slow
-// upload holds only the caller's own gate.
+// holds nothing. The global slot is taken after the body is read, so a slow
+// upload holds the caller's own gate and its memory reservation but no slot.
 type ingestAdmission struct {
 	slots        chan struct{}
 	perPrincipal int
@@ -149,8 +154,13 @@ type ingestTicket struct {
 	tenant    string
 	gate      *gate
 	tenantG   *gate
+	held      memoryHold
 	releases  []func()
 }
+
+// memoryHold is the memory a ticket holds: against its caller's allowance,
+// its project's allowance and the whole budget.
+type memoryHold struct{ caller, tenant, global int64 }
 
 // enter takes a place in the caller's gate, waiting up to the queue wait. It
 // returns errIngestBusy when the caller's places stay taken, and the context's
@@ -194,26 +204,69 @@ func (a *ingestAdmission) enter(ctx context.Context, principal, tenant string) (
 	}
 }
 
-// admit takes what the ingest needs to run once its body of rawBytes is in
-// memory: the caller's and the project's memory allowance, a place in the
-// project's gate, a global slot and the global memory charge. The whole wait is
+// charges returns what an ingest of rawBytes holds against the caller's
+// allowance, the project's allowance and the whole budget.
+func (t *ingestTicket) charges(rawBytes int) memoryHold {
+	a := t.a
+	global := a.memory.charge(rawBytes)
+	caller := min(global, a.memoryShare)
+	return memoryHold{caller: caller, tenant: min(caller, a.tenantShare), global: global}
+}
+
+// reserve takes the memory the ingest needs for a body of rawBytes before the
+// body is read: the caller's and the project's memory allowance, then the
+// global memory charge. The bytes read next sit inside what is reserved, so a
+// request the budget cannot hold never buffers its body. The whole wait is
 // bounded by one queue wait.
-func (t *ingestTicket) admit(ctx context.Context, rawBytes int) error {
+func (t *ingestTicket) reserve(ctx context.Context, rawBytes int) error {
 	a := t.a
 	deadline := time.Now().Add(a.queueWait)
-	charge := min(a.memory.charge(rawBytes), a.memoryShare)
-	if err := waitUntil(ctx, deadline, func(ctx context.Context) error { return t.gate.memory.Acquire(ctx, charge) }); err != nil {
+	want := t.charges(rawBytes)
+
+	if err := waitUntil(ctx, deadline, func(ctx context.Context) error { return t.gate.memory.Acquire(ctx, want.caller) }); err != nil {
 		return err
 	}
-	t.releases = append(t.releases, func() { t.gate.memory.Release(charge) })
+	t.held.caller = want.caller
+	t.releases = append(t.releases, func() { t.gate.memory.Release(t.held.caller) })
 
-	tenantCharge := min(charge, a.tenantShare)
-	if err := waitUntil(ctx, deadline, func(ctx context.Context) error { return t.tenantG.memory.Acquire(ctx, tenantCharge) }); err != nil {
+	if err := waitUntil(ctx, deadline, func(ctx context.Context) error { return t.tenantG.memory.Acquire(ctx, want.tenant) }); err != nil {
 		return err
 	}
-	t.releases = append(t.releases, func() { t.tenantG.memory.Release(tenantCharge) })
+	t.held.tenant = want.tenant
+	t.releases = append(t.releases, func() { t.tenantG.memory.Release(t.held.tenant) })
 
-	timer := time.NewTimer(time.Until(deadline))
+	if err := waitUntil(ctx, deadline, func(ctx context.Context) error { return a.memory.sem.Acquire(ctx, want.global) }); err != nil {
+		return err
+	}
+	t.held.global = want.global
+	t.releases = append(t.releases, func() { a.memory.sem.Release(t.held.global) })
+	return nil
+}
+
+// shrink gives back the part of the reservation a body of rawBytes does not
+// need. A body of unknown length reserves the largest one allowed and shrinks
+// to what arrived.
+func (t *ingestTicket) shrink(rawBytes int) {
+	got := t.charges(rawBytes)
+	if got.caller < t.held.caller {
+		t.gate.memory.Release(t.held.caller - got.caller)
+		t.held.caller = got.caller
+	}
+	if got.tenant < t.held.tenant {
+		t.tenantG.memory.Release(t.held.tenant - got.tenant)
+		t.held.tenant = got.tenant
+	}
+	if got.global < t.held.global {
+		t.a.memory.sem.Release(t.held.global - got.global)
+		t.held.global = got.global
+	}
+}
+
+// claim takes the project's place and a global slot once the body is in
+// memory and reserved. The wait is bounded by one queue wait.
+func (t *ingestTicket) claim(ctx context.Context) error {
+	a := t.a
+	timer := time.NewTimer(a.queueWait)
 	defer timer.Stop()
 	select {
 	case t.tenantG.places <- struct{}{}:
@@ -231,12 +284,6 @@ func (t *ingestTicket) admit(ctx context.Context, rawBytes int) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-
-	release, err := a.memory.acquireUntil(ctx, deadline, rawBytes)
-	if err != nil {
-		return err
-	}
-	t.releases = append(t.releases, release)
 	return nil
 }
 
