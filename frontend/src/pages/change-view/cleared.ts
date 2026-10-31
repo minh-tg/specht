@@ -192,10 +192,10 @@ function joinWords(words: readonly string[]): string {
 }
 
 /**
- * What the scan covered, from the report's own fields. The server stores a completeness for every
- * report but does not send it, so a full scan is described as "no filter declared", not as
- * complete: scanners that give no completeness (Semgrep, SARIF, Checkov and others) are stored as
- * unknown. A filtered or incremental scan says what it left out.
+ * What the scan covered, from the report's own fields. A filtered or incremental scan says what it
+ * left out. Otherwise "Scanned in full" needs the scanner's own word: most formats (Semgrep, SARIF,
+ * Checkov and others) give no completeness and are stored as unknown, and those are described as
+ * "no filter declared", not as complete.
  */
 export function scanCoverage(report: Report): ScanCoverage {
   const filter = report.scan_filter;
@@ -222,6 +222,19 @@ export function scanCoverage(report: Report): ScanCoverage {
       text: `Incremental scan of ${files} changed ${
         files === 1 ? "file" : "files"
       }. Findings in other files were not examined.`,
+    };
+  }
+  if (report.scan_completeness === "complete") {
+    return {
+      unfiltered: true,
+      text: "Scanned in full: the scanner reported a complete scan and no filter was declared.",
+    };
+  }
+  if (report.scan_completeness === "partial") {
+    return {
+      unfiltered: false,
+      text:
+        "Partial scan: the scanner reported that it did not finish. Findings it did not reach stay as they were.",
     };
   }
   return { unfiltered: true, text: "Full scan, no filter declared." };
