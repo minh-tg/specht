@@ -581,6 +581,30 @@ func TestDeleteWaiverIsScopedToProject(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestToWaiverMapsDecisionReason(t *testing.T) {
+	expired := "expired"
+	now := time.Now()
+
+	swept := toWaiver(port.Waiver{
+		ID: "w1", Status: "rejected", DecisionNote: "expired before a decision",
+		DecisionReason: &expired, CreatedAt: now, UpdatedAt: now,
+	})
+	require.NotNil(t, swept.DecisionReason)
+	assert.Equal(t, "expired", *swept.DecisionReason)
+	body, err := json.Marshal(swept)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"decision_reason":"expired"`)
+
+	human := toWaiver(port.Waiver{
+		ID: "w2", Status: "rejected", DecisionNote: "fix the dependency instead",
+		CreatedAt: now, UpdatedAt: now,
+	})
+	assert.Nil(t, human.DecisionReason)
+	body, err = json.Marshal(human)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"decision_reason":null`, "a reviewer's decision serializes as null, not an empty string")
+}
+
 func TestWaiverContextReadsTheDocumentedKeys(t *testing.T) {
 	var ctx CreateWaiverContextInput
 	require.NoError(t, json.Unmarshal([]byte(

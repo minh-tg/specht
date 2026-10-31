@@ -606,8 +606,11 @@ type Waiver struct {
 	DecidedBy    *string
 	DecidedAt    *time.Time
 	DecisionNote string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// DecisionReason is "expired" when the lifecycle sweep rejected the request
+	// because it outlived its expiry, and nil for a reviewer's decision.
+	DecisionReason *string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // WaiverCondition is one waiver predicate.

@@ -462,6 +462,7 @@ type Waiver struct {
 	DecidedBy       string                `json:"decided_by,omitempty"`
 	DecidedAt       string                `json:"decided_at,omitempty"`
 	DecisionNote    string                `json:"decision_note"`
+	DecisionReason  string                `json:"decision_reason,omitempty"`
 	ExpiresAt       string                `json:"expires_at,omitempty"`
 	Conditions      []WaiverCondition     `json:"conditions"`
 	Contexts        []WaiverContext       `json:"contexts"`

@@ -16,6 +16,7 @@ UPDATE waivers SET
     enabled = false,
     status = CASE WHEN status = 'pending' THEN 'rejected' ELSE status END,
     decision_note = CASE WHEN status = 'pending' THEN 'expired before a decision' ELSE decision_note END,
+    decision_reason = CASE WHEN status = 'pending' THEN 'expired' ELSE decision_reason END,
     decided_at = CASE WHEN status = 'pending' THEN NOW() ELSE decided_at END,
     updated_at = NOW()
 WHERE enabled = true

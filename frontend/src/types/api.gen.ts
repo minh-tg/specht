@@ -3089,6 +3089,11 @@ export interface components {
       /** Format: date-time */
       decided_at?: string;
       decision_note: string;
+      /**
+       * @description Why the server decided the request itself. `expired` marks a pending request that outlived its expiry before anyone decided; it is `rejected` with that reason. Null for a reviewer's decision and for undecided waivers.
+       * @enum {string|null}
+       */
+      decision_reason?: "expired" | null;
       /** Format: date-time */
       expires_at?: string | null;
       conditions: components["schemas"]["WaiverCondition"][];

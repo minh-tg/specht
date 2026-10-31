@@ -37,18 +37,21 @@ type WaiverResponse struct {
 	RequestedBy *string `json:"requested_by,omitempty"`
 	// RequestedByName and DecidedByName say who those ids are, for people reading a
 	// project's waivers. They are left out for API keys.
-	RequestedByName string                    `json:"requested_by_name,omitempty"`
-	DecidedByName   string                    `json:"decided_by_name,omitempty"`
-	RequestedAt     *string                   `json:"requested_at,omitempty"`
-	DecidedBy       *string                   `json:"decided_by,omitempty"`
-	DecidedAt       *string                   `json:"decided_at,omitempty"`
-	DecisionNote    string                    `json:"decision_note"`
-	ExpiresAt       *string                   `json:"expires_at,omitempty"`
-	Conditions      []WaiverConditionResp     `json:"conditions"`
-	Contexts        []WaiverContextResp       `json:"contexts"`
-	Targets         []WaiverFindingTargetResp `json:"targets"`
-	CreatedAt       string                    `json:"created_at"`
-	UpdatedAt       string                    `json:"updated_at"`
+	RequestedByName string  `json:"requested_by_name,omitempty"`
+	DecidedByName   string  `json:"decided_by_name,omitempty"`
+	RequestedAt     *string `json:"requested_at,omitempty"`
+	DecidedBy       *string `json:"decided_by,omitempty"`
+	DecidedAt       *string `json:"decided_at,omitempty"`
+	DecisionNote    string  `json:"decision_note"`
+	// DecisionReason is "expired" for a request the lifecycle sweep rejected
+	// because it outlived its expiry, and null for a reviewer's decision.
+	DecisionReason *string                   `json:"decision_reason"`
+	ExpiresAt      *string                   `json:"expires_at,omitempty"`
+	Conditions     []WaiverConditionResp     `json:"conditions"`
+	Contexts       []WaiverContextResp       `json:"contexts"`
+	Targets        []WaiverFindingTargetResp `json:"targets"`
+	CreatedAt      string                    `json:"created_at"`
+	UpdatedAt      string                    `json:"updated_at"`
 }
 
 // WaiverConditionResp is a waiver condition in API responses.
@@ -153,24 +156,25 @@ func toWaiver(w port.Waiver) WaiverResponse {
 		expiresAt = &s
 	}
 	return WaiverResponse{
-		ID:           w.ID,
-		ProjectID:    w.ProjectID,
-		Name:         w.Name,
-		Description:  w.Description,
-		Enabled:      w.Enabled,
-		Status:       w.Status,
-		ScopeAll:     w.ScopeAll,
-		Reason:       w.Reason,
-		RequestedBy:  w.RequestedBy,
-		RequestedAt:  formatTimePtr(w.RequestedAt),
-		DecidedBy:    w.DecidedBy,
-		DecidedAt:    formatTimePtr(w.DecidedAt),
-		DecisionNote: w.DecisionNote,
-		ExpiresAt:    expiresAt,
-		Conditions:   make([]WaiverConditionResp, 0),
-		Contexts:     make([]WaiverContextResp, 0),
-		Targets:      make([]WaiverFindingTargetResp, 0),
-		CreatedAt:    w.CreatedAt.Format(time.RFC3339),
+		ID:             w.ID,
+		ProjectID:      w.ProjectID,
+		Name:           w.Name,
+		Description:    w.Description,
+		Enabled:        w.Enabled,
+		Status:         w.Status,
+		ScopeAll:       w.ScopeAll,
+		Reason:         w.Reason,
+		RequestedBy:    w.RequestedBy,
+		RequestedAt:    formatTimePtr(w.RequestedAt),
+		DecidedBy:      w.DecidedBy,
+		DecidedAt:      formatTimePtr(w.DecidedAt),
+		DecisionNote:   w.DecisionNote,
+		DecisionReason: w.DecisionReason,
+		ExpiresAt:      expiresAt,
+		Conditions:     make([]WaiverConditionResp, 0),
+		Contexts:       make([]WaiverContextResp, 0),
+		Targets:        make([]WaiverFindingTargetResp, 0),
+		CreatedAt:      w.CreatedAt.Format(time.RFC3339),
 		// UpdatedAt keeps its sub-second digits: revoke and restore take it
 		// back as a precondition, and a second-level value would match a
 		// waiver that changed again within the same second.
