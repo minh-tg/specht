@@ -16,11 +16,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/minh-tg/specht/internal/netutil"
 )
 
 const (
@@ -40,6 +41,9 @@ const (
 	// query, so this allows far more history than any real package has; a
 	// response that keeps paging past it is treated as malformed.
 	maxQueryBatchPages = 64
+	// maxResponseBytes caps one querybatch or full-record answer. A larger
+	// body fails with netutil.ErrBodyTooLarge instead of being cut short.
+	maxResponseBytes = 32 << 20
 )
 
 // Query is one entry of the querybatch "queries" array. Ecosystem carries
@@ -78,16 +82,16 @@ type Client interface {
 	QueryBatch(ctx context.Context, queries []Query) ([]QueryResult, error)
 }
 
-// HTTPError is a non-200 OSV response. It carries the status and the
-// response body (truncated) for diagnostics.
+// HTTPError is a non-200 OSV response. It carries only the status code: the
+// response body and reason phrase come from a server the process does not
+// control, and the message is stored as the watcher's last error, returned by
+// the status endpoint and logged.
 type HTTPError struct {
-	Status     int
-	StatusText string
-	Body       string
+	Status int
 }
 
 func (e *HTTPError) Error() string {
-	return fmt.Sprintf("osv querybatch: http %d %s: %s", e.Status, e.StatusText, e.Body)
+	return fmt.Sprintf("osv querybatch: http %d %s", e.Status, http.StatusText(e.Status))
 }
 
 // ErrMalformedResponse marks an OSV response that cannot be decoded. It is
@@ -107,7 +111,7 @@ func IsRetryable(err error) bool {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return false
 	}
-	if errors.Is(err, ErrMalformedResponse) {
+	if errors.Is(err, ErrMalformedResponse) || errors.Is(err, netutil.ErrBodyTooLarge) {
 		return false
 	}
 	var he *HTTPError
@@ -134,7 +138,9 @@ type HTTPClientConfig struct {
 	// MaxConcurrentVulnFetches bounds simultaneous full-advisory GETs. Values
 	// less than one use DefaultVulnFetchConcurrency.
 	MaxConcurrentVulnFetches int
-	// HTTP is the underlying transport. Defaults to a 30s-timeout client.
+	// HTTP is the underlying transport. Defaults to a 30s-timeout client that
+	// refuses redirects and non-public addresses (loopback only when Endpoint
+	// is itself a loopback host).
 	HTTP *http.Client
 	// Now supplies the cache clock; nil means time.Now.
 	Now func() time.Time
@@ -169,7 +175,7 @@ func NewHTTPClient(cfg HTTPClientConfig) *HTTPClient {
 		cfg.MaxConcurrentVulnFetches = DefaultVulnFetchConcurrency
 	}
 	if cfg.HTTP == nil {
-		cfg.HTTP = &http.Client{Timeout: 30 * time.Second}
+		cfg.HTTP = netutil.SafeHTTPClientForURL(cfg.Endpoint, 30*time.Second)
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -304,12 +310,12 @@ func (c *HTTPClient) queryBatchPage(ctx context.Context, queries []Query) ([]bat
 		_ = resp.Body.Close()
 	}()
 
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+	raw, err := netutil.ReadAllLimited(resp.Body, maxResponseBytes)
 	if err != nil {
 		return nil, fmt.Errorf("osv querybatch read: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, &HTTPError{Status: resp.StatusCode, StatusText: resp.Status, Body: truncate(raw, 512)}
+		return nil, &HTTPError{Status: resp.StatusCode}
 	}
 
 	c.cache.put(key, raw)
@@ -455,12 +461,12 @@ func (c *HTTPClient) fetchVuln(ctx context.Context, id string) (Advisory, error)
 		_ = resp.Body.Close()
 	}()
 
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+	raw, err := netutil.ReadAllLimited(resp.Body, maxResponseBytes)
 	if err != nil {
 		return Advisory{}, fmt.Errorf("osv vuln read: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return Advisory{}, &HTTPError{Status: resp.StatusCode, StatusText: resp.Status, Body: truncate(raw, 512)}
+		return Advisory{}, &HTTPError{Status: resp.StatusCode}
 	}
 
 	var a Advisory
@@ -531,13 +537,6 @@ func decodeQueryBatch(raw []byte) ([]batchResult, error) {
 		results = append(results, batchResult{ids: ids, nextPageToken: r.NextPageToken})
 	}
 	return results, nil
-}
-
-func truncate(b []byte, n int) string {
-	if len(b) <= n {
-		return string(b)
-	}
-	return string(b[:n]) + "..."
 }
 
 // cacheKey derives a key for a query chunk from the (ecosystem, name) pairs
