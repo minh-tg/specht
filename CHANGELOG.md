@@ -10,6 +10,9 @@ releases.
 
 ### Added
 
+- Waiver responses carry `decision_reason`. It is `expired` when a pending request
+  outlived its expiry and the server rejected it, and null for a reviewer's decision.
+  Requests rejected that way before this release are backfilled.
 - The fix suggestion on the finding detail response carries `fallback`, which is true
   when the scanner gave no usable fix, and for `sca` findings the `package`, `ecosystem`,
   `installed_version` and `fixed_version` the scanner reported. `fixed_version` is
