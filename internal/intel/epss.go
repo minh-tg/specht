@@ -63,7 +63,11 @@ func (p *EPSSProvider) fetchBatch(ctx context.Context, cveIDs []string, out map[
 	}
 	client := p.Client
 	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
+		// The safe client refuses redirects and non-public addresses (a
+		// loopback BaseURL is the one exception). It is built per call, so
+		// release its idle connections when the call ends.
+		client = netutil.SafeHTTPClientForURL(u, 30*time.Second)
+		defer client.CloseIdleConnections()
 	}
 	resp, err := client.Do(req)
 	if err != nil {
