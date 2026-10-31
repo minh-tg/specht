@@ -89,6 +89,8 @@ export interface Waiver {
   decided_by_name?: string;
   decided_at?: string;
   decision_note: string;
+  /** "expired" when the server rejected a request that outlived its expiry; null for a reviewer's decision. */
+  decision_reason?: "expired" | null;
   expires_at?: string | null;
   conditions: WaiverCondition[];
   contexts: WaiverContext[];
