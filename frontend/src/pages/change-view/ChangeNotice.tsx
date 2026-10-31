@@ -1,3 +1,4 @@
+import { INLINE_LINK } from "@/components/inlineLink";
 import { RelativeTime } from "@/components/RelativeTime";
 import { formatClockTime } from "@/lib/format";
 import type { ReactNode } from "react";
@@ -42,6 +43,22 @@ export function StalledNotice(
           </>
         )
         : null}.
+    </Notice>
+  );
+}
+
+/**
+ * The gate of the scan that blocked before this one could not be read, so the page cannot say
+ * whether those findings cleared. It keeps the plain passing verdict and offers another try.
+ */
+export function UncheckedNotice({ onRetry }: { readonly onRetry: () => void; }) {
+  return (
+    <Notice title="Could not check what blocked the earlier scan">
+      This scan passed, but the findings that blocked the one before it could not be checked, so the
+      page does not say they cleared.{" "}
+      <button type="button" className={`${INLINE_LINK} text-body`} onClick={onRetry}>
+        Try again
+      </button>
     </Notice>
   );
 }

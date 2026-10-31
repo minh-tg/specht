@@ -15,13 +15,16 @@ import { useOnline } from "@/lib/useOnline";
 import { blockerCount, isReportInProgress } from "@/lib/verdict";
 import { BlockerSection, MAX_BLOCKER_ROWS } from "@/pages/change-view/BlockerSection";
 import { ChangeHero, ChangeHeroSkeleton, type ChangeState } from "@/pages/change-view/ChangeHero";
-import { OfflineNotice, StalledNotice } from "@/pages/change-view/ChangeNotice";
+import { OfflineNotice, StalledNotice, UncheckedNotice } from "@/pages/change-view/ChangeNotice";
+import { carryPrevious, judgeCleared, readPrevious } from "@/pages/change-view/cleared";
+import { ClearedEnd } from "@/pages/change-view/ClearedEnd";
 import { ExistingDebt } from "@/pages/change-view/ExistingDebt";
 import { existingBlockers, resolveReport, shortCommit } from "@/pages/change-view/resolve";
+import { useEarlierGate } from "@/pages/change-view/useEarlierGate";
 import { type WatchState, WatchStrip } from "@/pages/change-view/WatchStrip";
 import { useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useEffect } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { type ReactNode, useEffect, useMemo } from "react";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 export { MAX_BLOCKER_ROWS };
 
@@ -95,6 +98,7 @@ export function ChangeView() {
   const severity = searchParams.get("severity") || undefined;
   const short = shortCommit(commit);
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
 
   useDocumentTitle(`${slug} · Change ${short}`);
@@ -112,6 +116,19 @@ export function ChangeView() {
     severity,
   );
   const projectGateQuery = useGateStatus(slug, severity);
+
+  // After a blocked scan, the findings that blocked it ride along in the location state. When this
+  // scan passes, the gate of that earlier scan says which of them are still open.
+  const previous = projectWide ? null : readPrevious(location.state, slug, report?.id);
+  const passedNow = !degraded && changeGateQuery.data?.threshold_breached === false;
+  const earlierGateQuery = useEarlierGate(
+    slug,
+    previous && passedNow ? previous.reportId : undefined,
+    severity,
+  );
+  const cleared = previous && passedNow
+    ? judgeCleared(previous, earlierGateQuery.data, earlierGateQuery.status)
+    : null;
   // Refetches every query the page reads. The change gate stays out while it is disabled
   // (no report, or a scan still running), since refetching it would request a gate for nothing.
   const retryLoad = () => {
@@ -145,6 +162,26 @@ export function ChangeView() {
     }
     : undefined;
 
+  // What the next page needs to know about this one: the blockers it showed, or the earlier ones
+  // that are still open. Keyed by value so the landing effect below runs once per landing.
+  const carryReport = changeGateQuery.data?.threshold_breached
+    ? report?.id
+    : cleared?.kind === "open"
+    ? previous?.reportId
+    : undefined;
+  const carryIds = changeGateQuery.data?.threshold_breached
+    ? (changeGateQuery.data.blocked_by ?? []).join(",")
+    : cleared?.kind === "open"
+    ? cleared.ids.join(",")
+    : "";
+  const carry = useMemo(
+    () =>
+      carryReport && carryIds && !projectWide
+        ? carryPrevious({ slug, reportId: carryReport, ids: carryIds.split(",") })
+        : undefined,
+    [slug, carryReport, carryIds, projectWide],
+  );
+
   useEffect(() => {
     if (!landed) return;
     void queryClient.invalidateQueries({ queryKey: queryKeys.reports(slug) });
@@ -155,9 +192,12 @@ export function ChangeView() {
         scope: projectWide ? "project" : "introduced",
       });
       if (severity) query.set("severity", severity);
-      navigate(`/${slug}/changes/${shortCommit(landed.commit_sha)}?${query}`, { replace: true });
+      navigate(`/${slug}/changes/${shortCommit(landed.commit_sha)}?${query}`, {
+        replace: true,
+        state: carry,
+      });
     }
-  }, [landed, navigate, queryClient, slug, projectWide, severity]);
+  }, [landed, navigate, queryClient, slug, projectWide, severity, carry]);
 
   if (
     projectQuery.isError && projectQuery.error instanceof APIError
@@ -267,17 +307,42 @@ export function ChangeView() {
   const gate = changeGateQuery.data;
   const blockedBy = gate.blocked_by ?? [];
   const existing = existingBlockers(projectGateQuery.data?.blocked_by, blockedBy);
+  const passing = !scanningNewer && !gate.threshold_breached;
+  // A passing scan after a blocked one is judged before it is named: the page waits for the earlier
+  // scan's gate, and says "Unblocked" only when no earlier blocker is still open.
+  if (passing && cleared?.kind === "checking") {
+    return (
+      <Page>
+        {crumbs}
+        <ChangeHeroSkeleton commit={commit} />
+      </Page>
+    );
+  }
   const state: ChangeState = scanningNewer
     ? "scanning"
     : gate.threshold_breached
     ? "blocked"
+    : passing && cleared?.kind === "unblocked"
+    ? "unblocked"
+    : passing && cleared?.kind === "open"
+    ? "unconfirmed"
     : "passing";
   const reportAt = report.completed_at ?? report.created_at;
   const notice = !online
     ? <OfflineNotice verdictAt={new Date(changeGateQuery.dataUpdatedAt).toISOString()} />
     : state === "blocked" && watch?.stalled
     ? <StalledNotice reportAt={reportAt} checkedAt={signal.dataUpdatedAt} />
+    : passing && cleared?.kind === "unchecked"
+    ? <UncheckedNotice onRetry={() => void earlierGateQuery.refetch()} />
     : undefined;
+  const debt = (
+    <ExistingDebt
+      slug={slug}
+      ids={existing}
+      passing={passing && !projectWide}
+      projectName={projectQuery.data?.name}
+    />
+  );
 
   return (
     <Page>
@@ -289,6 +354,7 @@ export function ChangeView() {
         blockers={blockerCount(gate)}
         existing={existing.length}
         waived={gate.waived_count ?? 0}
+        earlierOpen={cleared?.kind === "open" ? cleared.ids.length : 0}
         policy={gate.policy}
         projectWide={projectWide}
         notice={notice}
@@ -305,12 +371,21 @@ export function ChangeView() {
           watch={watch}
         />
       )}
-      <ExistingDebt
-        slug={slug}
-        ids={existing}
-        passing={state === "passing" && !projectWide}
-        projectName={projectQuery.data?.name}
-      />
+      {previous && earlierGateQuery.data && (state === "unblocked" || state === "unconfirmed")
+        ? (
+          <ClearedEnd
+            slug={slug}
+            projectName={projectQuery.data?.name}
+            report={report}
+            gate={gate}
+            earlierGate={earlierGateQuery.data}
+            previous={previous}
+            openIds={cleared?.kind === "open" ? cleared.ids : []}
+          >
+            {debt}
+          </ClearedEnd>
+        )
+        : debt}
       <p className="sr-only" role="status">
         {scanningNewer && newer
           ? `A new scan started ${formatRelativeTime(newer.created_at)}.`
