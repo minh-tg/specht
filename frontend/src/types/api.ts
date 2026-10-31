@@ -462,6 +462,7 @@ export interface Report {
   commit_sha?: string | null;
   base_revision?: string;
   scan_mode?: "full" | "incremental";
+  scan_completeness: "complete" | "partial" | "unknown";
   changed_files?: string[];
   error_message?: string;
   created_at: string;

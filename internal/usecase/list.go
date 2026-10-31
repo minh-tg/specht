@@ -195,6 +195,10 @@ type ReportResponse struct {
 	BaseRevision *string  `json:"base_revision,omitempty"`
 	ScanMode     string   `json:"scan_mode,omitempty"`
 	ChangedFiles []string `json:"changed_files,omitempty"`
+	// ScanCompleteness is the stored completeness: complete, partial or
+	// unknown. Unknown means the scanner output does not say whether the scan
+	// was complete. A declared ScanFilter is separate and does not change it.
+	ScanCompleteness string `json:"scan_completeness"`
 	// ErrorMessage explains a failed report. It holds a fixed, sanitized
 	// reason and is omitted for reports that did not fail.
 	ErrorMessage *string    `json:"error_message,omitempty"`
@@ -317,6 +321,7 @@ func toReport(r port.Report, retentionDays int) ReportResponse {
 		BaseRevision:     strOpt(r.BaseRevision),
 		ScanMode:         r.ScanMode,
 		ChangedFiles:     changedFilesOpt(r.ChangedFiles),
+		ScanCompleteness: completenessOrUnknown(r.ScanCompleteness),
 		ErrorMessage:     reportFailureReasonForResponse(r.ErrorMessage),
 		CreatedAt:        timePtr(r.CreatedAt),
 		CompletedAt:      timeOpt(r.CompletedAt),
@@ -324,6 +329,15 @@ func toReport(r port.Report, retentionDays int) ReportResponse {
 		RawDataExpiresAt: rawExpiresAt(r.CreatedAt, r.RawDataExpired, retentionDays),
 		ScanFilter:       scanFilterOpt(r),
 	}
+}
+
+// completenessOrUnknown returns the stored completeness. A report built
+// without one reads unknown, the column default, so the field is never empty.
+func completenessOrUnknown(c string) string {
+	if c == "" {
+		return string(domain.CompletenessUnknown)
+	}
+	return c
 }
 
 // scanFilterOpt returns the report's declared filter, or nil for an unfiltered

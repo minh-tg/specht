@@ -2591,6 +2591,11 @@ export interface components {
       base_revision?: string;
       /** @enum {string} */
       scan_mode?: "full" | "incremental";
+      /**
+       * @description Whether the scanner output covers the whole scan target. `unknown` means the scanner output does not say whether the scan was complete. A declared `scan_filter` is separate and does not change this value.
+       * @enum {string}
+       */
+      scan_completeness: "complete" | "partial" | "unknown";
       scan_filter?: components["schemas"]["ScanFilter"];
       changed_files?: string[];
       /** @description Fixed, sanitized reason a failed report failed. Absent unless status is failed. */

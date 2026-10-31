@@ -199,19 +199,20 @@ func (r *pgStatsPort) GetProjectLatestCompletedReport(ctx context.Context, proje
 
 func statsReportToPort(row sqlc.GetProjectLatestReportRow) port.Report {
 	return port.Report{
-		ID:             toUUID(row.ID),
-		ProjectID:      toUUID(row.ProjectID),
-		ToolName:       row.ToolName,
-		ToolVersion:    stringFromTextPtr(row.ToolVersion),
-		ScanType:       row.ScanType,
-		ScanTarget:     stringFromTextPtr(row.ScanTarget),
-		Status:         row.Status,
-		TotalFindings:  int32PtrFromInt4(row.TotalFindings),
-		Branch:         stringFromTextPtr(row.Branch),
-		CommitSha:      stringFromTextPtr(row.CommitSha),
-		CreatedAt:      row.CreatedAt.Time,
-		CompletedAt:    timePtrFromTimestamptz(row.CompletedAt),
-		RawDataExpired: row.RawDataExpired,
+		ID:               toUUID(row.ID),
+		ProjectID:        toUUID(row.ProjectID),
+		ToolName:         row.ToolName,
+		ToolVersion:      stringFromTextPtr(row.ToolVersion),
+		ScanType:         row.ScanType,
+		ScanTarget:       stringFromTextPtr(row.ScanTarget),
+		Status:           row.Status,
+		TotalFindings:    int32PtrFromInt4(row.TotalFindings),
+		Branch:           stringFromTextPtr(row.Branch),
+		CommitSha:        stringFromTextPtr(row.CommitSha),
+		ScanCompleteness: row.ScanCompleteness,
+		CreatedAt:        row.CreatedAt.Time,
+		CompletedAt:      timePtrFromTimestamptz(row.CompletedAt),
+		RawDataExpired:   row.RawDataExpired,
 	}
 }
 

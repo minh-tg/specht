@@ -894,7 +894,7 @@ func sampleFindings() []usecase.FindingResponse {
 
 func sampleReports() []usecase.ReportResponse {
 	return []usecase.ReportResponse{
-		{ID: "rep-1", ProjectID: "proj-1", ToolName: "trivy", ScanType: "image", Status: "completed", TotalFindings: int32Ptr(5), CreatedAt: now, CompletedAt: &now},
+		{ID: "rep-1", ProjectID: "proj-1", ToolName: "trivy", ScanType: "image", Status: "completed", TotalFindings: int32Ptr(5), ScanCompleteness: "complete", CreatedAt: now, CompletedAt: &now},
 	}
 }
 
@@ -1538,6 +1538,7 @@ func TestGetReport_Success(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
 	assert.Equal(t, "trivy", resp.ToolName)
+	assert.Contains(t, w.Body.String(), `"scan_completeness":"complete"`)
 }
 
 func TestGetReport_NotFound(t *testing.T) {

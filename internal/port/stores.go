@@ -1201,6 +1201,8 @@ type Report struct {
 	BaseRevision *string
 	ChangedFiles json.RawMessage
 	ScanMode     string
+	// ScanCompleteness is the stored completeness: complete, partial or unknown.
+	ScanCompleteness string
 	// ErrorMessage is the sanitized reason a failed report failed. It is
 	// never the raw store error.
 	ErrorMessage *string

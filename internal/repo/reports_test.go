@@ -35,6 +35,19 @@ func TestInt32CountAcceptsBounds(t *testing.T) {
 	}
 }
 
+func TestReportRowToPort_MapsScanCompleteness(t *testing.T) {
+	for _, stored := range []string{"complete", "partial", "unknown"} {
+		got := reportRowToPort(sqlc.Report{ScanCompleteness: stored})
+		if got.ScanCompleteness != stored {
+			t.Fatalf("ScanCompleteness = %q, want %q", got.ScanCompleteness, stored)
+		}
+		stats := statsReportToPort(sqlc.GetProjectLatestReportRow{ScanCompleteness: stored})
+		if stats.ScanCompleteness != stored {
+			t.Fatalf("stats ScanCompleteness = %q, want %q", stats.ScanCompleteness, stored)
+		}
+	}
+}
+
 func TestReportRowToPort_MapsErrorMessage(t *testing.T) {
 	failed := reportRowToPort(sqlc.Report{
 		ErrorMessage: pgtype.Text{String: "Internal error: could not store findings.", Valid: true},

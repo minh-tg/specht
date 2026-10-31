@@ -40,7 +40,7 @@ WHERE project_id = $1;
 SELECT
     id, project_id, tool_name, tool_version, scan_type,
     scan_target, status, total_findings, branch, commit_sha,
-    created_at, completed_at,
+    scan_completeness, created_at, completed_at,
     CAST((raw_data = 'null'::jsonb) IS TRUE AS boolean) AS raw_data_expired
 FROM reports
 WHERE project_id = $1
@@ -51,7 +51,7 @@ LIMIT 1;
 SELECT
     id, project_id, tool_name, tool_version, scan_type,
     scan_target, status, total_findings, branch, commit_sha,
-    created_at, completed_at,
+    scan_completeness, created_at, completed_at,
     CAST((raw_data = 'null'::jsonb) IS TRUE AS boolean) AS raw_data_expired
 FROM reports
 WHERE project_id = $1 AND status = 'completed'
