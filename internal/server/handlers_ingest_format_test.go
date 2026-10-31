@@ -108,6 +108,20 @@ func TestIngestReport_TooManyFindingsNamesTheLimit(t *testing.T) {
 	assert.NotContains(t, got.Message, "nests deeper", "and never claims a depth refusal")
 }
 
+func TestIngestReport_DenseRefusalSaysPackingNotFindings(t *testing.T) {
+	// A real 1 MiB document of one-key objects, through the check the usecase runs.
+	doc := `{"r":[` + strings.TrimSuffix(strings.Repeat(`{"a":0},`, (1<<20)/8), ",") + `]}`
+	err := fmt.Errorf("scanner trivy: %w", scanner.CheckIngestDocument([]byte(doc), scanner.DefaultMaxFindings))
+
+	status, got := ingestWithError(t, "trivy", err)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, status, "the status stays 422")
+	assert.Equal(t, "too_many_findings", got.Code, "the code stays too_many_findings")
+	assert.Contains(t, got.Message, "packs too many small JSON values")
+	assert.NotContains(t, got.Message, "nests deeper")
+	assert.NotContains(t, got.Message, "more than", "a dense refusal names no finding count")
+}
+
 func TestIngestReport_DepthRefusalSaysNestingNotFindings(t *testing.T) {
 	// A real 65-level document, through the same CheckDocument the usecase runs.
 	depth := scanner.MaxNestingDepth + 1
