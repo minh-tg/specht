@@ -1,0 +1,101 @@
+name: mirror-images
+
+# Copies the third-party images CI pulls from Docker Hub to ghcr.io/<owner>/mirror/<name>:<tag>.
+# Docker Hub counts every pull against the account's hourly quota, and back-to-back CI runs
+# exceed it. GHCR has no such limit for GITHUB_TOKEN pulls. CI switches to the mirror when the
+# repository variable IMAGE_MIRROR is set (see .github/actions/image-source).
+#
+# The list comes from scripts/mirror-images.sh. Images with a digest pin are copied by digest, so
+# the mirror holds the same manifest and the digest in the Dockerfile stays valid.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Mondays: moves the unpinned postgres tags to their latest patch release.
+    - cron: "17 4 * * 1"
+  push:
+    branches: [main]
+    paths:
+      - .github/mirror-images.txt
+      - .github/workflows/mirror-images.yml
+      - deploy/Dockerfile
+      - deploy/Dockerfile.adapter
+      - scripts/mirror-images.sh
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-images
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: copy images to GHCR
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Reading from Docker Hub is a handful of manifest requests a week; a login only raises the
+      # ceiling. Without credentials the step is skipped and the copy runs anonymously.
+      - name: Log in to Docker Hub
+        if: ${{ vars.DOCKERHUB_USERNAME != '' }}
+        continue-on-error: true
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Copy the images
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          dest="ghcr.io/${OWNER,,}/mirror"
+          mapfile -t images < <(scripts/mirror-images.sh)
+          test "${#images[@]}" -gt 0
+
+          # Two entries with one name:tag and different digests would overwrite each other.
+          dupes="$(printf '%s\n' "${images[@]}" | cut -d@ -f1 | sort | uniq -d)"
+          if [ -n "$dupes" ]; then
+            echo "::error::the same tag is pinned to two digests: $dupes"
+            exit 1
+          fi
+
+          status=0
+          for ref in "${images[@]}"; do
+            nametag="${ref%%@*}"
+            src="docker.io/library/$ref"
+            echo "::group::$src -> $dest/$nametag"
+
+            if ! docker buildx imagetools create --tag "$dest/$nametag" "$src"; then
+              echo "::error::could not copy $src"
+              status=1
+              echo "::endgroup::"
+              continue
+            fi
+
+            # The copy must be the source manifest itself. A different digest would break every
+            # Dockerfile pin that refers to it.
+            want="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$src")"
+            got="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$dest/$nametag")"
+            if [ "$want" != "$got" ]; then
+              echo "::error::$dest/$nametag is $got, the source is $want"
+              status=1
+            fi
+            echo "$nametag $got"
+            echo "::endgroup::"
+          done
+          exit "$status"
