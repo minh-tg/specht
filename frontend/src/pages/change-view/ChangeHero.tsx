@@ -10,10 +10,19 @@ import type { ReactNode } from "react";
 
 /**
  * What the header says about the change. `scanning` is a newer report being processed while the page
- * waits; `processing` and `failed` describe the scan this page is about. None of them claims a
- * verdict the evidence does not support.
+ * waits; `processing` and `failed` describe the scan this page is about. `unblocked` is a passing
+ * scan after one that blocked, with every earlier blocker accounted for; `unconfirmed` is a passing
+ * scan while some earlier blocker is still open. None of them claims a verdict the evidence does
+ * not support.
  */
-export type ChangeState = "blocked" | "passing" | "scanning" | "processing" | "failed";
+export type ChangeState =
+  | "blocked"
+  | "passing"
+  | "unblocked"
+  | "unconfirmed"
+  | "scanning"
+  | "processing"
+  | "failed";
 
 export interface ChangeHeroProps {
   readonly commit: string;
@@ -24,6 +33,8 @@ export interface ChangeHeroProps {
   /** Findings that block the project but not through this change. */
   readonly existing: number;
   readonly waived: number;
+  /** For `unconfirmed`: how many earlier blockers are still open. */
+  readonly earlierOpen?: number;
   readonly policy?: PolicyEffective;
   readonly projectWide?: boolean;
   /** Under the verdict sentence: the strip that says the page is watching for the scan. */
@@ -43,6 +54,7 @@ function headline(
   blockers: number,
   projectWide: boolean,
   commit: string,
+  earlierOpen: number,
 ): string {
   switch (state) {
     case "blocked":
@@ -53,6 +65,12 @@ function headline(
       return projectWide
         ? "Project gate passed."
         : "Nothing first seen in this commit blocks the merge.";
+    case "unblocked":
+      return "Unblocked. Nothing blocks this change now.";
+    case "unconfirmed":
+      return `Passed, but ${pluralize(earlierOpen, "earlier blocker")} ${
+        earlierOpen === 1 ? "is" : "are"
+      } still open.`;
     case "scanning":
       return "A newer report is processing.";
     case "processing":
@@ -77,6 +95,10 @@ function subline(
       return `The scan of ${shortCommit(commit)} found no new finding at ${
         floorWord(policy) ?? "the severity floor"
       } or above. Nothing to do here.`;
+    case "unblocked":
+      return "Specht recorded this verdict when the scan uploaded. The pull request check from that scan reflects it as of then; a check from an older run does not update, so re-run the job if you still see one.";
+    case "unconfirmed":
+      return "This scan is recorded as passing, but it did not examine the findings below. They blocked the earlier scan and are still open.";
     case "scanning":
       return "The verdict updates when the scan finishes.";
     case "processing":
@@ -94,6 +116,8 @@ function stampFor(
     case "blocked":
       return { verdict: "blocked", scanning: false };
     case "passing":
+    case "unblocked":
+    case "unconfirmed":
       return { verdict: "passing", scanning: false };
     case "scanning":
     case "processing":
@@ -108,8 +132,19 @@ function stampFor(
  * the page rule. The stamp is the only solid block on the page, so the verdict is the first thing seen.
  */
 export function ChangeHero(
-  { commit, report, state, blockers, existing, waived, policy, projectWide = false, watch, notice }:
-    ChangeHeroProps,
+  {
+    commit,
+    report,
+    state,
+    blockers,
+    existing,
+    waived,
+    earlierOpen = 0,
+    policy,
+    projectWide = false,
+    watch,
+    notice,
+  }: ChangeHeroProps,
 ) {
   const stamp = stampFor(state);
   const branch = report?.branch;
@@ -129,7 +164,7 @@ export function ChangeHero(
         <VerdictBadge verdict={stamp.verdict} scanning={stamp.scanning} size="lg" />
         <div className="grid min-w-0 gap-1.5">
           <h1 className="text-title font-bold text-balance">
-            {headline(state, blockers, projectWide, commit)}
+            {headline(state, blockers, projectWide, commit, earlierOpen)}
           </h1>
           <p className="max-w-[58ch] text-section font-normal leading-snug">
             {subline(state, report, projectWide, commit, policy)}
