@@ -305,9 +305,9 @@ the last document it fetched.
 | `WATCHER_OSV_VULN_ENDPOINT` | `https://api.osv.dev/v1/vulns/{id}` | Full-advisory template; `{id}` is substituted. Keep it inside the same trust boundary as the batch endpoint. |
 | `WATCHER_BATCH_SIZE` | `0` (unlimited; compose sets `100`) | Identifiers per batch. |
 | `WATCHER_COLD_START_WINDOW` | `full` | `full` for full-history cold start, or a Go duration to backfill since. |
-| `WATCHER_SLACK_URL` | *(empty)* | Slack webhook for new advisories. Empty disables the channel. |
+| `WATCHER_SLACK_URL` | *(empty)* | Slack webhook for new advisories. Empty disables the channel. Must be `https`, or `http` to a loopback host; startup fails otherwise. |
 | `WATCHER_SLACK_SIGNING_SECRET` | *(empty)* | **Secret.** Signs Slack deliveries. |
-| `WATCHER_WEBHOOK_URL` | *(empty)* | Generic webhook for new advisories. |
+| `WATCHER_WEBHOOK_URL` | *(empty)* | Generic webhook for new advisories. Same scheme rule as the Slack URL. |
 | `WATCHER_WEBHOOK_SIGNING_SECRET` | *(empty)* | **Secret.** Signs both this webhook and tracker deliveries. |
 
 ### Tracker dispatch
@@ -321,7 +321,7 @@ an external issue tracker. Disabled by default.
 | `TRACKER_BASE_URL` | *(empty)* | Tracker API base URL. |
 | `TRACKER_PROJECT_ID` | *(empty)* | Destination project. |
 | `TRACKER_API_TOKEN` | *(empty)* | **Secret.** Tracker API token. |
-| `WATCHER_WEBHOOK_URLS` | *(empty)* | Comma-separated endpoints fanned out to when `TRACKER_PROVIDER=webhook`. |
+| `WATCHER_WEBHOOK_URLS` | *(empty)* | Comma-separated endpoints fanned out to when `TRACKER_PROVIDER=webhook`. Same scheme rule as the Slack URL. |
 
 ### Threat intel
 

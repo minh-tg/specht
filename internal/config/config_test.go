@@ -883,3 +883,59 @@ func TestLoad_SSOAllowPrivateIssuerIsOffUnlessExplicitlyTrue(t *testing.T) {
 		})
 	}
 }
+
+func TestServerValidate_RejectsInsecureNotificationURLs(t *testing.T) {
+	const secret = "XXXXSECRETTOKENXXXX"
+	cases := map[string]struct {
+		mutate func(*Watcher)
+		want   string
+	}{
+		"slack over http":   {func(w *Watcher) { w.SlackURL = "http://hooks.example.com/" + secret }, "WATCHER_SLACK_URL"},
+		"webhook over http": {func(w *Watcher) { w.WebhookURL = "http://hooks.example.com/" + secret }, "WATCHER_WEBHOOK_URL"},
+		"other scheme":      {func(w *Watcher) { w.SlackURL = "ftp://hooks.example.com/" + secret }, "WATCHER_SLACK_URL"},
+		"no host":           {func(w *Watcher) { w.WebhookURL = "https:///" + secret }, "WATCHER_WEBHOOK_URL"},
+		"relative":          {func(w *Watcher) { w.SlackURL = "/" + secret }, "WATCHER_SLACK_URL"},
+		"tracker over http": {func(w *Watcher) {
+			w.TrackerProvider = "webhook"
+			w.TrackerWebhookURLs = []string{"https://ok.example.com/a", "http://hooks.example.com/" + secret}
+		}, "WATCHER_WEBHOOK_URLS"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			s := validServer()
+			s.Watcher.Enable = true
+			tc.mutate(&s.Watcher)
+			err := s.Validate()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
+			assert.NotContains(t, err.Error(), secret, "a webhook URL is a credential and is never echoed")
+		})
+	}
+}
+
+func TestServerValidate_AcceptsHTTPSAndLoopbackNotificationURLs(t *testing.T) {
+	s := validServer()
+	s.Watcher.Enable = true
+	s.Watcher.SlackURL = "https://hooks.slack.com/services/T0/B0/x"
+	s.Watcher.WebhookURL = "http://127.0.0.1:9000/hook"
+	s.Watcher.TrackerProvider = "webhook"
+	s.Watcher.TrackerWebhookURLs = []string{"https://a.example.com/x", "http://localhost:8081/y"}
+	assert.NoError(t, s.Validate())
+}
+
+func TestServerValidate_SkipsNotificationURLsOfSwitchedOffChannels(t *testing.T) {
+	s := validServer()
+	s.Watcher.SlackURL = "http://hooks.example.com/x"
+	s.Watcher.TrackerProvider = "noop"
+	s.Watcher.TrackerWebhookURLs = []string{"http://hooks.example.com/y"}
+	assert.NoError(t, s.Validate(), "watcher disabled and tracker not webhook")
+}
+
+func TestLoad_ReadsTrackerWebhookSettings(t *testing.T) {
+	t.Setenv("TRACKER_PROVIDER", " Webhook ")
+	t.Setenv("WATCHER_WEBHOOK_URLS", "https://a.example.com/x, ,https://b.example.com/y")
+	s, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "webhook", s.Watcher.TrackerProvider)
+	assert.Equal(t, []string{"https://a.example.com/x", "https://b.example.com/y"}, s.Watcher.TrackerWebhookURLs)
+}

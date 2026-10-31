@@ -220,6 +220,11 @@ type Watcher struct {
 	SlackSigning    string
 	WebhookURL      string
 	WebhookSigning  string
+	// TrackerProvider and TrackerWebhookURLs mirror TRACKER_PROVIDER and
+	// WATCHER_WEBHOOK_URLS so the endpoints are checked with the other
+	// outbound URLs. They are only checked when the provider is "webhook".
+	TrackerProvider    string
+	TrackerWebhookURLs []string
 	// Staleness window multiplier is applied by the watcher status surface.
 }
 
@@ -435,6 +440,12 @@ func loadWatcher(s *Server) error {
 	s.Watcher.SlackSigning = os.Getenv("WATCHER_SLACK_SIGNING_SECRET")
 	s.Watcher.WebhookURL = os.Getenv("WATCHER_WEBHOOK_URL")
 	s.Watcher.WebhookSigning = os.Getenv("WATCHER_WEBHOOK_SIGNING_SECRET")
+	s.Watcher.TrackerProvider = strings.ToLower(strings.TrimSpace(os.Getenv("TRACKER_PROVIDER")))
+	for _, u := range strings.Split(os.Getenv("WATCHER_WEBHOOK_URLS"), ",") {
+		if u = strings.TrimSpace(u); u != "" {
+			s.Watcher.TrackerWebhookURLs = append(s.Watcher.TrackerWebhookURLs, u)
+		}
+	}
 
 	var errs []error
 	if v := os.Getenv("WATCHER_POLL_INTERVAL"); v != "" {
@@ -709,7 +720,56 @@ func (s *Server) Validate() error {
 		problems = append(problems, errors.New("SHUTDOWN_TIMEOUT must be a positive duration"))
 	}
 	problems = append(problems, s.SSO.validate()...)
+	problems = append(problems, s.Watcher.validateURLs()...)
 	return errors.Join(problems...)
+}
+
+// validateURLs checks the notification and tracker endpoints. Their paths or
+// queries carry credentials, so the errors name the variable and never echo
+// the value. A channel that is switched off is never checked.
+func (w Watcher) validateURLs() []error {
+	var problems []error
+	if w.Enable {
+		for _, u := range []struct{ name, value string }{
+			{"WATCHER_SLACK_URL", w.SlackURL},
+			{"WATCHER_WEBHOOK_URL", w.WebhookURL},
+		} {
+			if err := requireWebhookURL(u.name, u.value); err != nil {
+				problems = append(problems, err)
+			}
+		}
+	}
+	if w.TrackerProvider == "webhook" {
+		for _, raw := range w.TrackerWebhookURLs {
+			if err := requireWebhookURL("WATCHER_WEBHOOK_URLS", raw); err != nil {
+				problems = append(problems, err)
+			}
+		}
+	}
+	return problems
+}
+
+// requireWebhookURL accepts an empty value (channel off) or an absolute https
+// URL; http is allowed only for a loopback host, like requireURL. The error
+// never repeats raw because a webhook URL is itself a credential.
+func requireWebhookURL(name, raw string) error {
+	if raw == "" {
+		return nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Hostname() == "" {
+		return fmt.Errorf("%s must be an absolute https URL with a host", name)
+	}
+	switch u.Scheme {
+	case "https":
+	case "http":
+		if !netutil.IsLoopbackHost(u.Hostname()) {
+			return fmt.Errorf("%s must use https unless the host is loopback", name)
+		}
+	default:
+		return fmt.Errorf("%s must use https", name)
+	}
+	return nil
 }
 
 // validate checks the SSO settings an enabled login cannot work without. A
