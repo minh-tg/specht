@@ -713,7 +713,7 @@ describe("ChangeView waivers", () => {
     await user.click(within(dialog).getByRole("button", { name: "Send request" }));
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-      "a pending request already covers this",
+      "A request for one of these findings is already waiting for a manager.",
     );
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
