@@ -5,6 +5,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   queryKeys,
+  SCAN_POLL_CAP_MS,
   scanPollInterval,
   useRequestWaiver,
   useRestoreWaiver,
@@ -58,9 +59,10 @@ describe("scanPollInterval", () => {
     expect(scanPollInterval(599_999)).toBe(10_000);
   });
 
-  it("stops after ten minutes", () => {
-    expect(scanPollInterval(600_000)).toBe(false);
-    expect(scanPollInterval(3_600_000)).toBe(false);
+  it("never stops, and never waits more than thirty seconds", () => {
+    expect(scanPollInterval(600_000)).toBe(30_000);
+    expect(scanPollInterval(3_600_000)).toBe(30_000);
+    expect(scanPollInterval(86_400_000)).toBe(SCAN_POLL_CAP_MS);
   });
 });
 
@@ -181,7 +183,9 @@ describe("useRevokeWaiver and useRestoreWaiver", () => {
 });
 
 describe("useScanSignal", () => {
-  it("does nothing until waiting starts", async () => {
+  const current = { id: "r1", createdAt: "2025-01-01T00:00:00Z" };
+
+  it("does nothing while it is disabled", async () => {
     renderHook(() => useScanSignal("acme", { branch: "main", enabled: false }), { wrapper });
     await act(async () => {
       await Promise.resolve();
@@ -190,62 +194,143 @@ describe("useScanSignal", () => {
   });
 
   it("asks for the newest report on the branch", async () => {
-    reportsAnswer = [{ id: "r9", status: "completed" }];
+    reportsAnswer = [{ id: "r1", status: "completed", created_at: "2025-01-01T00:00:00Z" }];
     const { result } = renderHook(
-      () => useScanSignal("acme", { branch: "feature/refund", enabled: true }),
+      () => useScanSignal("acme", { branch: "feature/refund", enabled: true, current }),
       { wrapper },
     );
 
-    await waitFor(() => expect(result.current.newest?.id).toBe("r9"));
+    await waitFor(() => expect(result.current.dataUpdatedAt).toBeGreaterThan(0));
     expect(calls[0].url).toBe("/api/v1/projects/acme/reports?limit=1&branch=feature%2Frefund");
+    expect(result.current.newer).toBeNull();
+    expect(result.current.superseded).toBe(false);
   });
 
   it("asks across every branch for a report with no branch", async () => {
     const { result } = renderHook(() => useScanSignal("acme", { branch: null, enabled: true }), {
       wrapper,
     });
-    await waitFor(() => expect(result.current.newest).toBeNull());
+    await waitFor(() => expect(result.current.dataUpdatedAt).toBeGreaterThan(0));
     expect(calls[0].url).toBe("/api/v1/projects/acme/reports?limit=1");
   });
 
-  it("polls again while it waits, then reports a stall after ten minutes", async () => {
+  it("reports a report that appears after the first answer as newer", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    const { result } = renderHook(() => useScanSignal("acme", { branch: "main", enabled: true }), {
-      wrapper,
-    });
-    await waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(1));
-    const first = calls.length;
+    reportsAnswer = [{ id: "r1", status: "completed", created_at: "2025-01-01T00:00:00Z" }];
+    const { result } = renderHook(
+      () => useScanSignal("acme", { branch: "main", enabled: true, current }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.dataUpdatedAt).toBeGreaterThan(0));
+    expect(result.current.newer).toBeNull();
 
+    reportsAnswer = [{ id: "r2", status: "processing", created_at: "2025-01-02T00:00:00Z" }];
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4_100);
     });
-    expect(calls.length).toBeGreaterThan(first);
+
+    expect(result.current.newer?.id).toBe("r2");
+  });
+
+  it("ignores a report that is older than the one on screen", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    reportsAnswer = [{ id: "r1", status: "completed", created_at: "2025-01-01T00:00:00Z" }];
+    const { result } = renderHook(
+      () => useScanSignal("acme", { branch: "main", enabled: true, current }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.dataUpdatedAt).toBeGreaterThan(0));
+
+    reportsAnswer = [{ id: "r0", status: "completed", created_at: "2024-12-01T00:00:00Z" }];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_100);
+    });
+
+    expect(result.current.newer).toBeNull();
+  });
+
+  it("stops asking when a newer report was already there, because the page shows an old change", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    reportsAnswer = [{ id: "r2", status: "completed", created_at: "2025-01-02T00:00:00Z" }];
+    const { result } = renderHook(
+      () => useScanSignal("acme", { branch: "main", enabled: true, current }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.superseded).toBe(true));
+    expect(result.current.newer).toBeNull();
+    const settled = calls.length;
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+
+    expect(calls.length).toBe(settled);
+    expect(result.current.watching).toBe(false);
+  });
+
+  it("keeps asking after the stall, at the capped interval", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    reportsAnswer = [{ id: "r1", status: "completed", created_at: "2025-01-01T00:00:00Z" }];
+    const { result } = renderHook(
+      () => useScanSignal("acme", { branch: "main", enabled: true, current }),
+      { wrapper },
+    );
+    await waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(1));
     expect(result.current.stalled).toBe(false);
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(600_000);
+      await vi.advanceTimersByTimeAsync(600_500);
     });
     expect(result.current.stalled).toBe(true);
+    expect(result.current.watching).toBe(true);
+
     const settled = calls.length;
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.advanceTimersByTimeAsync(SCAN_POLL_CAP_MS * 2 + 500);
     });
-    expect(calls.length).toBe(settled);
+    expect(calls.length - settled).toBeGreaterThanOrEqual(2);
+    expect(calls.length - settled).toBeLessThanOrEqual(3);
   });
 
-  it("starts another run when the attempt changes", async () => {
+  it("starts the ten minutes again when the report on screen changes", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    reportsAnswer = [{ id: "r1", status: "completed", created_at: "2025-01-01T00:00:00Z" }];
     const { result, rerender } = renderHook(
-      ({ attempt }) => useScanSignal("acme", { branch: "main", enabled: true, attempt }),
-      { wrapper, initialProps: { attempt: 0 } },
+      ({ report }) => useScanSignal("acme", { branch: "main", enabled: true, current: report }),
+      { wrapper, initialProps: { report: current } },
     );
     await act(async () => {
       await vi.advanceTimersByTimeAsync(601_000);
     });
     expect(result.current.stalled).toBe(true);
 
-    rerender({ attempt: 1 });
+    rerender({ report: { id: "r2", createdAt: "2025-01-02T00:00:00Z" } });
 
     expect(result.current.stalled).toBe(false);
+  });
+
+  it("flags a failed check and recovers on the next one", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    reportsAnswer = [{ id: "r1", status: "completed", created_at: "2025-01-01T00:00:00Z" }];
+    const { result } = renderHook(
+      () => useScanSignal("acme", { branch: "main", enabled: true, current }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.dataUpdatedAt).toBeGreaterThan(0));
+    const ok = result.current.dataUpdatedAt;
+    vi.mocked(globalThis.fetch).mockImplementationOnce(async () =>
+      jsonResponse({ error: { code: "boom", message: "down" } }, 500)
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_100);
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.dataUpdatedAt).toBe(ok);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_100);
+    });
+    await waitFor(() => expect(result.current.isError).toBe(false));
   });
 });

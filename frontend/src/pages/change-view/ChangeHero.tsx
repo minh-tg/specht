@@ -3,6 +3,7 @@ import { RelativeTime } from "@/components/RelativeTime";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { pluralize } from "@/lib/format";
+import { useDelayedFlag } from "@/lib/useDelayedFlag";
 import { floorSourceLabel, shortCommit } from "@/pages/change-view/resolve";
 import type { PolicyEffective, Report } from "@/types/api";
 import type { ReactNode } from "react";
@@ -25,37 +26,61 @@ export interface ChangeHeroProps {
   readonly waived: number;
   readonly policy?: PolicyEffective;
   readonly projectWide?: boolean;
+  /** Under the verdict sentence: the strip that says the page is watching for the scan. */
+  readonly watch?: ReactNode;
+  /** Between the verdict and the facts: why the verdict may not be current. */
+  readonly notice?: ReactNode;
 }
 
-function headline(state: ChangeState, blockers: number, projectWide: boolean): string {
+/** "high" as "High", for a sentence that names the severity floor. */
+function floorWord(policy: PolicyEffective | undefined): string | null {
+  const floor = policy?.severity_floor;
+  return floor ? floor.charAt(0).toUpperCase() + floor.slice(1) : null;
+}
+
+function headline(
+  state: ChangeState,
+  blockers: number,
+  projectWide: boolean,
+  commit: string,
+): string {
   switch (state) {
     case "blocked":
       return `${pluralize(blockers, "finding")} ${blockers === 1 ? "blocks" : "block"} this ${
         projectWide ? "project" : "change"
       }.`;
     case "passing":
-      return projectWide ? "Project gate passed." : "This change introduces no blocking findings.";
+      return projectWide
+        ? "Project gate passed."
+        : "Nothing first seen in this commit blocks the merge.";
     case "scanning":
       return "A newer report is processing.";
     case "processing":
-      return "This scan is still processing.";
+      return `The scan of ${shortCommit(commit)} is still being processed.`;
     case "failed":
       return "This scan did not complete.";
   }
 }
 
-function subline(state: ChangeState, report: Report | null, projectWide: boolean): string {
+function subline(
+  state: ChangeState,
+  report: Report | null,
+  projectWide: boolean,
+  commit: string,
+  policy: PolicyEffective | undefined,
+): string {
   switch (state) {
     case "blocked":
       return "Fix the findings and send a fresh scanner report, or request a waiver.";
     case "passing":
-      return projectWide
-        ? "No project findings block this gate at the selected severity floor."
-        : "No introduced findings block this gate at the selected severity floor.";
+      if (projectWide) return "No project findings block this gate at the selected severity floor.";
+      return `The scan of ${shortCommit(commit)} found no new finding at ${
+        floorWord(policy) ?? "the severity floor"
+      } or above. Nothing to do here.`;
     case "scanning":
       return "The verdict updates when the scan finishes.";
     case "processing":
-      return "There is no verdict until it finishes.";
+      return "There is no verdict until it finishes. This page shows it as soon as it does; you do not need to reload.";
     case "failed":
       return report?.error_message ?? "Check your scanner or CI job, then send a fresh report.";
   }
@@ -83,7 +108,7 @@ function stampFor(
  * the page rule. The stamp is the only solid block on the page, so the verdict is the first thing seen.
  */
 export function ChangeHero(
-  { commit, report, state, blockers, existing, waived, policy, projectWide = false }:
+  { commit, report, state, blockers, existing, waived, policy, projectWide = false, watch, notice }:
     ChangeHeroProps,
 ) {
   const stamp = stampFor(state);
@@ -104,13 +129,15 @@ export function ChangeHero(
         <VerdictBadge verdict={stamp.verdict} scanning={stamp.scanning} size="lg" />
         <div className="grid min-w-0 gap-1.5">
           <h1 className="text-title font-bold text-balance">
-            {headline(state, blockers, projectWide)}
+            {headline(state, blockers, projectWide, commit)}
           </h1>
           <p className="max-w-[58ch] text-section font-normal leading-snug">
-            {subline(state, report, projectWide)}
+            {subline(state, report, projectWide, commit, policy)}
           </p>
+          {watch}
         </div>
       </div>
+      {notice}
       <p className="text-muted-foreground mt-4 flex flex-wrap items-center gap-x-0 gap-y-1 text-meta tabular-nums max-sm:grid max-sm:gap-0.5">
         {policy && (
           <FactItem>
@@ -151,8 +178,13 @@ function FactItem({ children }: { readonly children: ReactNode; }) {
   );
 }
 
-/** The header while the page waits for the report or the gate. */
+/**
+ * The header while the page waits for the report or the gate. It stays empty for the first 300 ms,
+ * so a quick answer never flashes a skeleton, and then says what it is loading.
+ */
 export function ChangeHeroSkeleton({ commit }: { readonly commit: string; }) {
+  const visible = useDelayedFlag(LOADING_DELAY_MS);
+  if (!visible) return null;
   return (
     <section aria-label="Change verdict" aria-busy="true">
       <p className="font-label text-muted-foreground mb-3.5 text-label">
@@ -162,7 +194,13 @@ export function ChangeHeroSkeleton({ commit }: { readonly commit: string; }) {
         <Skeleton className="h-10 w-28 rounded-lg" />
         <Skeleton className="h-8 w-72 max-w-full rounded" />
       </div>
+      <p role="status" className="text-muted-foreground mt-3 text-meta">
+        Loading the verdict for {shortCommit(commit)}…
+      </p>
       <div aria-hidden="true" className="page-rule" />
     </section>
   );
 }
+
+/** How long the page shows nothing before it shows a loading skeleton. */
+export const LOADING_DELAY_MS = 300;

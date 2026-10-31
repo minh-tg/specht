@@ -3,6 +3,7 @@ import snapshot from "./snapshot.json";
 
 export class APIError extends Error {
   readonly retryAfter = undefined;
+  readonly requestId = undefined;
   readonly status: number;
   readonly code: string;
   constructor(status: number, code: string, message: string) {

@@ -288,6 +288,39 @@ describe("Retry-After on error responses", () => {
   });
 });
 
+describe("X-Request-Id on error responses", () => {
+  it("carries the header on the APIError", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        responseWithHeaders(
+          { error: { code: "internal", message: "boom" } },
+          { "X-Request-Id": "7f3a9c2e-41d8-4b1e-9c55-2d0e8b1fa0c2" },
+          500,
+        ),
+      ),
+    );
+
+    const err = await apiFetch("/api/v1/projects/p1/gate").catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(APIError);
+    expect((err as APIError).requestId).toBe("7f3a9c2e-41d8-4b1e-9c55-2d0e8b1fa0c2");
+  });
+
+  it("leaves requestId undefined when the response has no header", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        responseWithHeaders({ error: { code: "internal", message: "boom" } }, {}, 500),
+      ),
+    );
+
+    const err = await apiFetch("/api/v1/projects/p1/gate").catch((e: unknown) => e);
+
+    expect((err as APIError).requestId).toBeUndefined();
+  });
+});
+
 describe("apiFetchWithTotal", () => {
   it("returns the body and the parsed X-Total-Count", async () => {
     const findings = [{ id: "f1" }, { id: "f2" }];

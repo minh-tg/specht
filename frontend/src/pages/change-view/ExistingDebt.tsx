@@ -10,6 +10,12 @@ export const EXISTING_DEBT_PREVIEW = 10;
 export interface ExistingDebtProps {
   slug: string;
   ids: string[];
+  /**
+   * The change passed. The older findings then get a plain note instead of the blocking wording:
+   * they are open, and they do not count for this change.
+   */
+  passing?: boolean;
+  projectName?: string;
 }
 
 /**
@@ -18,7 +24,7 @@ export interface ExistingDebtProps {
  * are mounted only while it is open, so their finding requests fire on demand
  * rather than on every visit to the page.
  */
-export function ExistingDebt({ slug, ids }: ExistingDebtProps) {
+export function ExistingDebt({ slug, ids, passing = false, projectName }: ExistingDebtProps) {
   const [open, setOpen] = useState(false);
 
   if (ids.length === 0) return null;
@@ -31,8 +37,21 @@ export function ExistingDebt({ slug, ids }: ExistingDebtProps) {
       onToggle={(event: SyntheticEvent<HTMLDetailsElement>) => setOpen(event.currentTarget.open)}
     >
       <summary className="cursor-pointer px-3 py-3 text-body font-medium">
-        {pluralize(ids.length, "other finding")} {ids.length === 1 ? "blocks" : "block"}{" "}
-        this project (not introduced by this change)
+        {passing
+          ? (
+            <>
+              {pluralize(ids.length, "older finding")} {ids.length === 1 ? "is" : "are"} open in
+              {" "}
+              {projectName ?? slug}. {ids.length === 1 ? "It is" : "They are"}{" "}
+              not counted for this merge.
+            </>
+          )
+          : (
+            <>
+              {pluralize(ids.length, "other finding")} {ids.length === 1 ? "blocks" : "block"}{" "}
+              this project (not introduced by this change)
+            </>
+          )}
       </summary>
       {open && (
         <ul className="border-t">
