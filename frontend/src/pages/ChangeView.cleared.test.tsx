@@ -230,7 +230,7 @@ describe("ChangeView after a blocked scan", () => {
     ).toBeInTheDocument();
     expect(rows.getByRole("link", { name: "Denial of service in ssh" })).toHaveAttribute(
       "href",
-      "/acme/findings/fixed",
+      "/acme/findings/fixed?from=change",
     );
   });
 
