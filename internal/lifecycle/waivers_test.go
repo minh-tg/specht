@@ -16,6 +16,7 @@ import (
 	"github.com/minh-tg/specht/internal/db"
 	"github.com/minh-tg/specht/internal/db/sqlc"
 	"github.com/minh-tg/specht/internal/repo"
+	"github.com/minh-tg/specht/internal/testimage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -27,7 +28,7 @@ func setupLifecycleTestDB(t *testing.T) (*pgxpool.Pool, func()) {
 	ctx := context.Background()
 
 	req := testcontainers.ContainerRequest{
-		Image:        "postgres:17-alpine",
+		Image:        testimage.Postgres(),
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
 			"POSTGRES_USER":     "specht",
