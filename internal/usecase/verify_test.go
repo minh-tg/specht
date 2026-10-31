@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/minh-tg/specht/internal/port"
+	"github.com/minh-tg/specht/internal/tracker"
 )
 
 func verifyHarness(now time.Time) (*Usecases, *mockFindingRepo, *mockReportRepo, port.Finding) {
@@ -214,4 +215,48 @@ func TestVerifyFix_NoReportInFindingScopeIsInconclusive(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, VerifyInconclusive, resp.Outcome)
 	assert.Nil(t, resp.ReportID)
+}
+
+type recordingTracker struct{ events []tracker.Event }
+
+func (r *recordingTracker) Dispatch(_ context.Context, e tracker.Event) {
+	r.events = append(r.events, e)
+}
+
+func TestVerifyFix_TrackerEventNamesTheProject(t *testing.T) {
+	now := time.Now()
+	for name, lookupFails := range map[string]bool{"slug resolved": false, "lookup failed": true} {
+		t.Run(name, func(t *testing.T) {
+			uc, fr, rr, f := verifyHarness(now)
+			rt := &recordingTracker{}
+			uc.deps.Tracker = rt
+			uc.deps.Stores.Projects.(*mockProjectRepo).getByIDFn = func(_ context.Context, id string) (port.Project, error) {
+				assert.Equal(t, f.ProjectID, id)
+				if lookupFails {
+					return port.Project{}, fmt.Errorf("db down")
+				}
+				return port.Project{ID: id, Slug: "acme-web"}, nil
+			}
+			rr.findingScopeFn = func(context.Context, string, string) (port.CompletedReport, error) {
+				return port.CompletedReport{ID: "11111111-1111-1111-1111-111111111111", ToolName: "trivy", Completeness: "complete", CreatedAt: now}, nil
+			}
+			fr.hasOccurrenceFn = func(context.Context, string, string) (bool, error) { return false, nil }
+			fr.markFixedFn = func(context.Context, string) (port.Finding, error) { return f, nil }
+			fr.createEventFn = func(context.Context, port.FindingEventInput) (port.FindingEvent, error) {
+				return port.FindingEvent{}, nil
+			}
+
+			resp, err := uc.VerifyFix(findingScopeCtx(findingFixtureProjectID), f.ID)
+
+			require.NoError(t, err)
+			assert.Equal(t, VerifyFixed, resp.Outcome)
+			require.Len(t, rt.events, 1)
+			assert.Equal(t, tracker.EventVerifiedFixed, rt.events[0].Type)
+			if lookupFails {
+				assert.Empty(t, rt.events[0].ProjectSlug)
+			} else {
+				assert.Equal(t, "acme-web", rt.events[0].ProjectSlug)
+			}
+		})
+	}
 }

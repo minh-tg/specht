@@ -383,6 +383,14 @@ releases.
   its branch, or an earlier report on the branch did. Push builds on a branch that
   never named a base, such as `main`, keep counting only findings new to the project.
   `introduced_count` in the ingest response counts the carried findings too.
+- Slack notifications now show the CVE, package, project and severity as attachment fields and
+  link the title to the first advisory reference. Slack ignored the keys sent before, so the
+  channel only saw the titles. The generic webhook payload is unchanged.
+- A cold-start watcher round that creates many findings is sent as several Slack messages of at
+  most 50 attachments, and several webhook deliveries of at most 200 rows, in order. Slack
+  rejects a message with more than 100 attachments, so the whole round used to be dropped.
+- The tracker event sent when a verification marks a finding fixed now carries the project slug,
+  like the created and regression events, so receivers that route by project get it.
 
 ### Security
 
@@ -696,9 +704,3 @@ releases.
 - Slack notifications escape `&`, `<` and `>` in finding titles, package names, CVE ids and project
   names, so a hostile advisory summary such as `<!channel>` is shown as text and no longer pings
   the channel or renders a link.
-- Slack notifications now show the CVE, package, project and severity as attachment fields and
-  link the title to the first advisory reference. Slack ignored the keys sent before, so the
-  channel only saw the titles. The generic webhook payload is unchanged.
-- A cold-start watcher round that creates many findings is sent as several Slack messages of at
-  most 50 attachments, and several webhook deliveries of at most 200 rows, in order. Slack
-  rejects a message with more than 100 attachments, so the whole round used to be dropped.
