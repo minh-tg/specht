@@ -151,7 +151,7 @@ func postNotifications(ctx context.Context, p postRequest, body []byte, count in
 	for attempt := 1; attempt <= notifierMaxAttempts; attempt++ {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.webhookURL, bytes.NewReader(body))
 		if err != nil {
-			logger.Error(channel+" notification request build failed", "error", err)
+			logger.Error(channel+" notification request build failed", "error", netutil.StripURLError(err))
 			return
 		}
 		req.Header.Set("Content-Type", "application/json")
@@ -174,8 +174,10 @@ func postNotifications(ctx context.Context, p postRequest, body []byte, count in
 			logger.Warn(channel+" notification rejected",
 				"attempt", attempt, "status", resp.StatusCode, "body", strings.TrimSpace(string(msg)))
 		default:
+			// The *url.Error from client.Do prints the whole webhook URL,
+			// which is the credential for Slack. Log the cause and the host.
 			logger.Warn(channel+" notification transport error",
-				"attempt", attempt, "error", err)
+				"attempt", attempt, "target", netutil.RedactURL(p.webhookURL), "error", netutil.StripURLError(err))
 		}
 		if attempt < notifierMaxAttempts {
 			if err := p.sleeper(ctx, backoff); err != nil {
