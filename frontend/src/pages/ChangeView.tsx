@@ -365,7 +365,8 @@ export function ChangeView() {
           slug={slug}
           ids={blockedBy}
           floor={gate.policy?.severity_floor}
-          canRequestWaiver={projectQuery.data?.permissions?.request_waiver ?? false}
+          permissions={projectQuery.data?.permissions}
+          permissionsLoading={projectQuery.isPending}
           projectWide={projectWide}
           branch={report.branch}
           watch={watch}

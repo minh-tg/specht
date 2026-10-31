@@ -1,13 +1,17 @@
-import { findingQueryOptions, useWaivers } from "@/api/hooks";
+import { findingQueryOptions, useMe, useWaivers } from "@/api/hooks";
 import { INLINE_LINK } from "@/components/inlineLink";
 import { Ledger } from "@/components/Ledger";
+import { waiverAction } from "@/lib/waiverRequest";
 import { BlockerEntry } from "@/pages/change-view/BlockerEntry";
 import { ChangeAside } from "@/pages/change-view/ChangeAside";
 import { fixesText } from "@/pages/change-view/resolve";
 import { WaiverRequestDialog } from "@/pages/change-view/WaiverRequestDialog";
+import { waiverPathId, waiverViewsByFinding } from "@/pages/change-view/waiverState";
 import type { WatchState } from "@/pages/change-view/WatchStrip";
+import { WithdrawWaiverDialog } from "@/pages/change-view/WithdrawWaiverDialog";
+import type { Project } from "@/types/api";
 import { useQueries } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 /** Entries fetched and rendered before the "Show all" control reveals the rest. */
 export const MAX_BLOCKER_ROWS = 20;
@@ -18,7 +22,9 @@ export interface BlockerSectionProps {
   readonly ids: readonly string[];
   /** The policy severity floor, in words. */
   readonly floor?: string;
-  readonly canRequestWaiver: boolean;
+  /** What the project read says the viewer may do, or absent until it has loaded. */
+  readonly permissions?: Project["permissions"];
+  readonly permissionsLoading?: boolean;
   readonly projectWide?: boolean;
   /** The branch the page watches for the next scan. */
   readonly branch?: string | null;
@@ -36,7 +42,8 @@ export function BlockerSection(
     slug,
     ids,
     floor,
-    canRequestWaiver,
+    permissions,
+    permissionsLoading = false,
     projectWide = false,
     branch,
     watch,
@@ -47,18 +54,35 @@ export function BlockerSection(
   const results = useQueries({
     queries: shown.map((id) => findingQueryOptions(id)),
   });
-  const pending = useWaivers(slug, ["pending"]);
+  const waivers = useWaivers(slug);
+  const { data: me } = useMe();
   const [handled, setHandled] = useState<ReadonlySet<string>>(new Set());
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(ids.slice(0, 1)));
   const [dialog, setDialog] = useState<{ id: string; title: string; } | null>(null);
+  const [withdrawing, setWithdrawing] = useState<
+    { waiverId: string; findingId: string; title: string; } | null
+  >(null);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  // A finding whose request was just sent: focus moves to its waiver block once the list shows it.
+  const focusAfterRequest = useRef<string | null>(null);
 
-  const requested = useMemo(() => {
-    const covered = new Set<string>();
-    for (const waiver of pending.data ?? []) {
-      for (const target of waiver.targets) covered.add(target.finding_id);
-    }
-    return covered;
-  }, [pending.data]);
+  // Expiry is judged as of the last fetch, so a waiver changes state when the data does.
+  const views = useMemo(
+    () =>
+      waiverViewsByFinding(
+        Array.isArray(waivers.data) ? waivers.data : [],
+        new Date(waivers.dataUpdatedAt),
+      ),
+    [waivers.data, waivers.dataUpdatedAt],
+  );
+  const who = useMemo(() => ({ me }), [me]);
+
+  useEffect(() => {
+    const id = focusAfterRequest.current;
+    if (!id || !views.has(id)) return;
+    document.getElementById(waiverPathId(id))?.focus();
+    focusAfterRequest.current = null;
+  }, [views]);
 
   function toggle(set: ReadonlySet<string>, id: string, on: boolean): Set<string> {
     const next = new Set(set);
@@ -106,10 +130,27 @@ export function BlockerSection(
                   handled={handled.has(id)}
                   onHandledChange={(next) => setHandled((set) => toggle(set, id, next))}
                   floor={floor}
-                  waiverRequested={requested.has(id)}
-                  canRequestWaiver={canRequestWaiver}
+                  waiver={views.get(id)}
+                  request={waiverAction({
+                    permissions: permissions?.request_waiver,
+                    loading: permissionsLoading,
+                    pending: false,
+                    // These ids are the ones the gate says block, so the finding blocks.
+                    blocking: { blocks: true },
+                    gateRechecking: false,
+                  })}
+                  canApprove={permissions?.approve_waivers === true}
+                  who={who}
                   onRequestWaiver={() =>
                     setDialog({ id, title: query.data?.current_title ?? "this finding" })}
+                  onWithdrawWaiver={(waiver) => {
+                    setWithdrawing({
+                      waiverId: waiver.id,
+                      findingId: id,
+                      title: query.data?.current_title ?? "this finding",
+                    });
+                    setWithdrawOpen(true);
+                  }}
                 />
               );
             })}
@@ -141,9 +182,18 @@ export function BlockerSection(
           onOpenChange={(next) => {
             if (!next) setDialog(null);
           }}
-          onRequested={() => setDialog(null)}
+          onRequested={() => {
+            focusAfterRequest.current = dialog.id;
+            setDialog(null);
+          }}
         />
       )}
+      <WithdrawWaiverDialog
+        slug={slug}
+        target={withdrawing}
+        open={withdrawOpen}
+        onClose={() => setWithdrawOpen(false)}
+      />
     </>
   );
 }
