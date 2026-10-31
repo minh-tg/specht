@@ -289,6 +289,11 @@ releases.
   the credential, so it stays put when its line moves, a rotated credential is
   a new finding, and the credential itself is never stored. The key is made on
   first use and kept in the database, so it travels with a backup.
+- A Gitleaks scan of a directory (`gitleaks dir`, or `--no-git`) keeps its findings
+  when the checkout moves. Gitleaks writes the file as the path it was given, so a scan
+  of `$CI_PROJECT_DIR` put the runner's directory into the finding's identity and the
+  same secret closed and reopened on every new runner. The file is now relative to the
+  checkout, in the JSON and the SARIF format.
 - The server validates all of its settings at startup and reports every
   problem in one message.
 - Request logs carry a request ID that matches the `X-Request-Id` response
