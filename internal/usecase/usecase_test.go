@@ -1071,7 +1071,7 @@ type mockUserRepo struct {
 	setRoleFn           func(context.Context, string, string) (port.User, error)
 	changeRoleFn        func(context.Context, string, string) (port.User, error)
 	setDisabledFn       func(context.Context, string, bool) (port.User, error)
-	deactivateFn        func(context.Context, string) (port.User, []port.RevokedAPIKey, error)
+	deactivateFn        func(context.Context, string, bool) (port.User, []port.RevokedAPIKey, error)
 	clearPasswordFn     func(context.Context, string) error
 	setPasswordFn       func(context.Context, string, string) error
 	changePasswordFn    func(ctx context.Context, userID, passwordHash, verifiedHash string) (int32, error)
@@ -1181,11 +1181,11 @@ func (m *mockUserRepo) SetDisabled(ctx context.Context, userID string, disabled 
 	return m.setDisabledFn(ctx, userID, disabled)
 }
 
-func (m *mockUserRepo) Deactivate(ctx context.Context, userID string) (port.User, []port.RevokedAPIKey, error) {
+func (m *mockUserRepo) Deactivate(ctx context.Context, userID string, force bool) (port.User, []port.RevokedAPIKey, error) {
 	if m.deactivateFn == nil {
 		return port.User{}, nil, fmt.Errorf("unexpected call to Deactivate")
 	}
-	return m.deactivateFn(ctx, userID)
+	return m.deactivateFn(ctx, userID, force)
 }
 
 func (m *mockUserRepo) SetPassword(ctx context.Context, userID, passwordHash string) error {

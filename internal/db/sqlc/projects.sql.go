@@ -437,6 +437,37 @@ func (q *Queries) LockProjectForMembership(ctx context.Context, id pgtype.UUID) 
 	return id_2, err
 }
 
+const lockProjectsAdministeredBy = `-- name: LockProjectsAdministeredBy :many
+SELECT p.id FROM projects p
+WHERE p.id IN (SELECT pm.project_id FROM project_members pm WHERE pm.user_id = $1 AND pm.role = 'admin')
+ORDER BY p.id
+FOR NO KEY UPDATE OF p
+`
+
+// Takes the membership lock of every project where the user holds an admin
+// row, in id order so two callers cannot wait on each other. A deactivation
+// holds them while it checks for projects it would leave without an admin, so
+// a concurrent removal or deactivation of the other admin waits for it.
+func (q *Queries) LockProjectsAdministeredBy(ctx context.Context, userID pgtype.UUID) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, lockProjectsAdministeredBy, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateProject = `-- name: UpdateProject :one
 UPDATE projects SET name = $2, description = $3, updated_at = NOW()
 WHERE slug = $1

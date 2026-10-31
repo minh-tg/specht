@@ -4,6 +4,7 @@ package repo
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -204,4 +205,81 @@ func TestProjectMembers_DeactivatedAdminDoesNotCount(t *testing.T) {
 	sole, err = ports.ListSoleAdminProjects(ctx, active)
 	require.NoError(t, err)
 	assert.Empty(t, sole)
+}
+
+// Deactivating an account that is the only admin who can sign in of a project
+// is refused unless forced, and a refusal changes nothing.
+func TestDeactivateRefusesTheSoleProjectAdminUnlessForced(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	ports := &pgProjectPort{q: sqlc.New(repos.pool), withTx: repos.WithTx}
+	stores := NewPortStores(repos.pool)
+	newUser(t, repos, "admin@test.com", "admin")
+
+	projectID, admins := projectWithAdmins(t, repos, ports, 2)
+	slug, err := ports.GetByID(ctx, projectID)
+	require.NoError(t, err)
+
+	_, _, err = stores.Users.Deactivate(ctx, admins[0], false)
+	require.NoError(t, err, "a second admin remains")
+
+	_, _, err = stores.Users.Deactivate(ctx, admins[1], false)
+	var sole *port.SoleProjectAdminError
+	require.ErrorAs(t, err, &sole)
+	assert.Equal(t, []string{slug.Slug}, sole.Projects)
+	user, err := stores.Users.GetByID(ctx, admins[1])
+	require.NoError(t, err)
+	assert.Nil(t, user.DisabledAt, "a refused deactivation changes nothing")
+
+	user, _, err = stores.Users.Deactivate(ctx, admins[1], true)
+	require.NoError(t, err)
+	assert.NotNil(t, user.DisabledAt)
+}
+
+// Two deactivations and a removal racing over one project's two admins leave
+// the project with one admin who can sign in.
+func TestConcurrentDeactivationsKeepOneProjectAdmin(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	ports := &pgProjectPort{q: sqlc.New(repos.pool), withTx: repos.WithTx}
+	stores := NewPortStores(repos.pool)
+	newUser(t, repos, "admin@test.com", "admin")
+
+	for round := 0; round < 40; round++ {
+		projectID, admins := projectWithAdmins(t, repos, ports, 2)
+		errs := make([]error, 3)
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		wg.Add(3)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, _, errs[0] = stores.Users.Deactivate(ctx, admins[0], false)
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			_, _, errs[1] = stores.Users.Deactivate(ctx, admins[1], false)
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			errs[2] = ports.DeleteMember(ctx, projectID, admins[1])
+		}()
+		close(start)
+		wg.Wait()
+		for _, err := range errs {
+			if err != nil {
+				var sole *port.SoleProjectAdminError
+				if !errors.As(err, &sole) {
+					require.ErrorIs(t, err, port.ErrLastAdmin, "round %d", round)
+				}
+			}
+		}
+		left, err := ports.CountAdmins(ctx, projectID)
+		require.NoError(t, err)
+		assert.Equal(t, 1, left, "round %d: the project must keep one admin who can sign in", round)
+	}
 }

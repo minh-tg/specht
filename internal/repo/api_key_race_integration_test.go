@@ -42,7 +42,7 @@ func TestCreateAPIKeyRefusesADeactivatedCreator(t *testing.T) {
 	newUser(t, repos, "admin@test.com", "admin")
 	creator := newUser(t, repos, "creator@test.com", "member")
 	project := createTestProject(t, repos)
-	_, _, err := stores.Users.Deactivate(ctx, creator.ID)
+	_, _, err := stores.Users.Deactivate(ctx, creator.ID, true)
 	require.NoError(t, err)
 
 	_, err = stores.APIKeys.Create(ctx, newKeyInput(toUUID(project.ID), creator.ID, "hash-refused"))
@@ -121,7 +121,7 @@ func TestDeactivationWaitsForAnInFlightKeyInsert(t *testing.T) {
 	}
 	done := make(chan result, 1)
 	go func() {
-		_, revoked, err := stores.Users.Deactivate(ctx, creator.ID)
+		_, revoked, err := stores.Users.Deactivate(ctx, creator.ID, true)
 		done <- result{revoked, err}
 	}()
 	select {

@@ -25,14 +25,7 @@ var (
 
 // SoleProjectAdminError is returned when a deactivation would leave projects
 // without an admin who can sign in, and the caller did not confirm it.
-type SoleProjectAdminError struct {
-	// Projects holds the slugs of the affected projects, in name order.
-	Projects []string
-}
-
-func (e *SoleProjectAdminError) Error() string {
-	return "the account is the only active admin of " + strings.Join(e.Projects, ", ")
-}
+type SoleProjectAdminError = port.SoleProjectAdminError
 
 // SystemAccountEmail is the account the server seeds to act for things with no person behind
 // them, such as an API key created before keys recorded their owner. Deactivating it would stop
@@ -116,17 +109,12 @@ func (u *Usecases) DeactivateUser(ctx context.Context, userID string, force bool
 	if isSystemAccount(target.Email) {
 		return nil, nil, ErrSystemAccount
 	}
-	if !force {
-		slugs, err := u.deps.Stores.Projects.ListSoleAdminProjects(ctx, id)
-		if err != nil {
-			return nil, nil, fmt.Errorf("list projects the account administers alone: %w", err)
-		}
-		if len(slugs) > 0 {
-			return nil, nil, &SoleProjectAdminError{Projects: slugs}
-		}
-	}
-	user, revokedKeys, err := u.deps.Stores.Users.Deactivate(ctx, id)
+	user, revokedKeys, err := u.deps.Stores.Users.Deactivate(ctx, id, force)
 	if err != nil {
+		var sole *SoleProjectAdminError
+		if errors.As(err, &sole) {
+			return nil, nil, sole
+		}
 		return nil, nil, fmt.Errorf("deactivate user: %w", err)
 	}
 	if err := u.deps.Stores.RefreshTokens.RevokeAllForUser(ctx, id); err != nil {
