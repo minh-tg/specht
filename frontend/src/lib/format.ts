@@ -55,6 +55,24 @@ export function formatDateTime(iso: string | null | undefined): string {
   return date ? DATE_TIME_FORMATTER.format(date) : EMPTY_VALUE;
 }
 
+const TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+/**
+ * The 24 h time of day, "14:02", for a moment on the same local day as `now`. Any other day gets
+ * the date too, since "14:02" alone would read as today.
+ */
+export function formatClockTime(iso: string | null | undefined, now: Date = new Date()): string {
+  const date = parseDate(iso);
+  if (!date) return EMPTY_VALUE;
+  const sameDay = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()
+    && date.getDate() === now.getDate();
+  return sameDay ? TIME_FORMATTER.format(date) : DATE_TIME_FORMATTER.format(date);
+}
+
 /** Absolute date without the time; see formatDateTime. */
 export function formatDate(iso: string | null | undefined): string {
   const date = parseDate(iso);

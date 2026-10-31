@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { formatAge, formatDate, formatDateTime, formatRelativeTime, pluralize } from "./format";
+import {
+  formatAge,
+  formatClockTime,
+  formatDate,
+  formatDateTime,
+  formatRelativeTime,
+  pluralize,
+} from "./format";
 
 // Fixed reference point so relative formatting never depends on the wall clock.
 const NOW = new Date("2026-10-01T12:00:00Z");
@@ -66,6 +73,25 @@ describe("formatDateTime", () => {
     expect(formatDateTime(null)).toBe("None");
     expect(formatDateTime("")).toBe("None");
     expect(formatDateTime("nonsense")).toBe("None");
+  });
+});
+
+describe("formatClockTime", () => {
+  it("gives only the time for a moment on the same day", () => {
+    const now = new Date(2026, 9, 31, 18, 0);
+    expect(formatClockTime(new Date(2026, 9, 31, 14, 2).toISOString(), now)).toBe("14:02");
+  });
+
+  it("adds the date for another day", () => {
+    const now = new Date(2026, 9, 31, 18, 0);
+    const text = formatClockTime(new Date(2026, 9, 30, 14, 2).toISOString(), now);
+    expect(text).toContain("14:02");
+    expect(text).toMatch(/30/);
+  });
+
+  it("returns the empty value for unparsable input", () => {
+    expect(formatClockTime("nope")).toBe("None");
+    expect(formatClockTime(null)).toBe("None");
   });
 });
 
