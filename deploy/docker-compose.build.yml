@@ -4,4 +4,4 @@ services:
   server:
     build:
       context: ..
-      dockerfile: deploy/Dockerfile
+      dockerfile: ${SPECHT_DOCKERFILE:-deploy/Dockerfile}

@@ -11,6 +11,7 @@
 #                           when one exists, and to a pinned revision otherwise.
 #   UPGRADE_SMOKE_PORT      (default 18084)
 #   UPGRADE_SMOKE_DB_PORT   (default 54333)
+# SPECHT_TEST_POSTGRES_IMAGE replaces the Postgres image (CI points it at a mirror).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -96,7 +97,7 @@ docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 # over TCP waits for the final server.
 docker run -d --name "$CONTAINER" \
   -e POSTGRES_USER=specht -e POSTGRES_PASSWORD=specht -e POSTGRES_DB=postgres \
-  -p "127.0.0.1:$DB_PORT:5432" docker.io/library/postgres:17-alpine >/dev/null
+  -p "127.0.0.1:$DB_PORT:5432" "${SPECHT_TEST_POSTGRES_IMAGE:-docker.io/library/postgres:17-alpine}" >/dev/null
 for _ in $(seq 1 60); do
   docker exec "$CONTAINER" pg_isready -h 127.0.0.1 -U specht >/dev/null 2>&1 && break
   sleep 1

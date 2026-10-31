@@ -11,6 +11,7 @@
 #
 # Optional env: E2E_UI_PORT (default 18081), E2E_UI_DB_PORT (default 54331),
 #   CHROMIUM_BIN, plus any Playwright env (E2E_BASE_URL is set for you).
+# SPECHT_TEST_POSTGRES_IMAGE replaces the Postgres image (CI points it at a mirror).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -40,7 +41,7 @@ echo "== postgres ==" >&2
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
 docker run -d --name "$CONTAINER" \
   -e POSTGRES_USER=specht -e POSTGRES_PASSWORD=specht -e POSTGRES_DB="$DB_NAME" \
-  -p "127.0.0.1:$DB_PORT:5432" docker.io/library/postgres:17-alpine >/dev/null
+  -p "127.0.0.1:$DB_PORT:5432" "${SPECHT_TEST_POSTGRES_IMAGE:-docker.io/library/postgres:17-alpine}" >/dev/null
 ready=0
 for _ in $(seq 1 60); do
   if docker exec "$CONTAINER" pg_isready -U specht -d "$DB_NAME" >/dev/null 2>&1; then

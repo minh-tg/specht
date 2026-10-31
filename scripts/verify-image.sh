@@ -11,6 +11,7 @@
 # Requirements: Docker-compatible CLI, curl, jq, network host mode (Linux).
 #
 # Optional env: VERIFY_PORT (default 18090), VERIFY_DB_PORT (default 54332).
+# SPECHT_TEST_POSTGRES_IMAGE replaces the Postgres image (CI points it at a mirror).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -87,7 +88,7 @@ echo "== postgres ==" >&2
 docker rm -f "$DB_CONTAINER" >/dev/null 2>&1 || true
 docker run -d --name "$DB_CONTAINER" \
   -e POSTGRES_USER=specht -e POSTGRES_PASSWORD=specht -e POSTGRES_DB="$DB_NAME" \
-  -p "127.0.0.1:$DB_PORT:5432" docker.io/library/postgres:17-alpine >/dev/null
+  -p "127.0.0.1:$DB_PORT:5432" "${SPECHT_TEST_POSTGRES_IMAGE:-docker.io/library/postgres:17-alpine}" >/dev/null
 for _ in $(seq 1 60); do
   if docker exec "$DB_CONTAINER" pg_isready -U specht >/dev/null 2>&1; then break; fi
   sleep 1
