@@ -686,3 +686,8 @@ releases.
   that committed right after the change used to leave that session alive under a
   generation the link never expected. The change now answers 409 `account_changed`, issues
   no session, and the caller signs in again.
+- Report upload reserves its share of the ingest memory budget before it reads the
+  body, sized by `Content-Length` (the 25 MiB limit when the length is not declared,
+  shrunk to the bytes that arrive). A request the budget cannot hold now gets
+  `503 ingest_busy` without its body being buffered, so many API keys can no longer
+  hold request bodies in memory outside `INGEST_MEMORY_BUDGET`.
