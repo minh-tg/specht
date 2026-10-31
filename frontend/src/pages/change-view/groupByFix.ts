@@ -108,9 +108,24 @@ export function itemIds(item: BlockerItem): readonly string[] {
   return item.kind === "group" ? item.ids : [item.id];
 }
 
-/** The id of a group's waiver note, so focus can go back to it after a request is sent. */
+/** A short, stable hash (FNV-1a, 32 bits) in hex, to keep slugs of different keys apart. */
+function shortHash(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0").slice(0, 6);
+}
+
+/**
+ * The id of a group's waiver note, so focus can go back to it after a request is sent. It is made
+ * of letters, digits and hyphens, so it works in `#id` selectors and CSS. The hash suffix keeps
+ * apart two keys that slug to the same words (npm "a-b" and "c" against npm "a" and "b-c").
+ */
 export function groupWaiverNoteId(key: string): string {
-  return `group-waiver-${key}`;
+  const slug = key.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return `group-waiver-${slug.replace(/^fix-/, "")}-${shortHash(key)}`;
 }
 
 /** What to do, as one instruction a person can paste. */

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildBlockerItems,
   fixTarget,
+  groupWaiverNoteId,
   itemFixesText,
   itemIds,
   upgradeInstruction,
@@ -233,5 +234,44 @@ describe("upgradeInstruction", () => {
   it("is one instruction a person can paste", () => {
     expect(upgradeInstruction({ packageName: "lodash", ecosystem: "npm", fixedVersion: "4.17.21" }))
       .toBe("Upgrade lodash to 4.17.21");
+  });
+});
+
+describe("groupWaiverNoteId", () => {
+  function keyOf(packageName: string, fixed: string, ecosystem = "npm"): string {
+    const findings = byId(
+      found("a", { suggestion: upgrade(packageName, fixed, { ecosystem }) }),
+      found("b", { suggestion: upgrade(packageName, fixed, { ecosystem }) }),
+    );
+    return buildBlockerItems(["a", "b"], findings)[0].key;
+  }
+
+  it("is made of words, digits and hyphens, so a selector and CSS can use it", () => {
+    const id = groupWaiverNoteId(keyOf("lodash", "4.17.21"));
+
+    expect(id).toMatch(/^group-waiver-npm-lodash-4-17-21-[0-9a-f]{6}$/);
+    document.body.innerHTML = `<p id="${id}"></p>`;
+    expect(document.querySelector(`#${id}`)).not.toBeNull();
+  });
+
+  it("handles scoped packages and odd characters", () => {
+    expect(groupWaiverNoteId(keyOf("@types/node", "20.1.0"))).toMatch(
+      /^group-waiver-npm-types-node-20-1-0-[0-9a-f]{6}$/,
+    );
+    expect(groupWaiverNoteId(keyOf("a b\"c", "1"))).toMatch(/^[a-z0-9-]+$/);
+  });
+
+  it("keeps apart keys that slug to the same words", () => {
+    const first = groupWaiverNoteId(keyOf("a-b", "c"));
+    const second = groupWaiverNoteId(keyOf("a", "b-c"));
+
+    expect(first.replace(/-[0-9a-f]{6}$/, "")).toBe(second.replace(/-[0-9a-f]{6}$/, ""));
+    expect(first).not.toBe(second);
+  });
+
+  it("is the same for the same key", () => {
+    expect(groupWaiverNoteId(keyOf("lodash", "4.17.21"))).toBe(
+      groupWaiverNoteId(keyOf("lodash", "4.17.21")),
+    );
   });
 });
