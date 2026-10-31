@@ -115,6 +115,12 @@ releases.
   whose creator is no longer a direct or team member of the project. Removing
   a person never revokes their keys, so a CI key can outlive them on purpose;
   the field lets a manager see which keys to review.
+- `SSO_ALLOW_PRIVATE_ISSUER=true` lets the server connect to the host of
+  `SSO_ISSUER_URL` when that host resolves to a private, loopback or link-local
+  address, for an identity provider on an internal network. It is off by default
+  and accepts only `true` or `false`; any other value stops startup. Other hosts,
+  including the endpoints the discovery document names, stay blocked, and
+  carrier-grade NAT ranges stay blocked even for the issuer host.
 
 ### Changed
 
@@ -296,6 +302,41 @@ releases.
   every event instead of the newest 20.
 - Roles granted through a linked team now show the controls they allow.
 - Fonts are served as files, which the Content-Security-Policy allows.
+- A rule's numeric `security-severity` now sets a SARIF finding's severity before the
+  result `level`. A score of 9.0 and up is critical, 7.0 to 8.9 high, 4.0 to 6.9 medium,
+  and anything above 0 low. Before, CodeQL's `error` level, set on nearly every security
+  query, made a 6.1 log injection and a 9.8 SQL injection equally high. This changes gate
+  results for CodeQL users: a `warning` rule scored 9.0 is now critical, a policy that
+  blocks on high stops blocking findings scored below 7.0, and a policy that blocks on
+  critical starts blocking the top band. A rule without a valid score uses the result
+  level, then its default level, as before. Semgrep keeps level-based ranking.
+- Findings from OSV-Scanner, CycloneDX SBOMs, Gitleaks SARIF, tfsec, Dependency-Check and
+  Trivy get new identities on the next upload. An open finding from these scanners
+  closes and then reopens once.
+- OSV-Scanner's fingerprint version is 3. A package's purl is built from its ecosystem
+  and installed version, so two copies of one package at different versions no longer
+  share a finding.
+- CycloneDX vulnerability findings drop purl qualifiers such as `type`, `arch` and
+  `distro`, so one package keeps one identity across exports. The SBOM fingerprint
+  version is 2.
+- Gitleaks SARIF reports use the keyed identity of Gitleaks JSON: rule, file and a keyed
+  hash of the secret. Before, every secret of one rule in one file shared one fingerprint.
+- tfsec and Dependency-Check record repo-relative file paths, not absolute checkout
+  paths, so a checkout in another directory keeps its identities. tfsec keys a finding
+  on its rule, resource and file. Dependency-Check keys a dependency with no purl on its
+  CVE and file.
+- Trivy keys a misconfiguration on its rule, resource and file, so one failed resource is
+  one finding. A secret is keyed on its rule, its file and a hash of Trivy's masked match,
+  so it keeps its identity and triage when lines above it move; a match Trivy did not
+  mask falls back to the line (fingerprint version 2).
+- OSV-Scanner writes Go module versions without the `v` (`1.3.1`). Specht now adds it to
+  the purl, the package inventory and the location, so the same module gets the same purl
+  from OSV-Scanner, Grype and Trivy.
+- Single sign-on requires the `issuer` in the provider's discovery document to equal
+  `SSO_ISSUER_URL` exactly, trailing slash included, as OpenID Connect Discovery 1.0
+  section 4.3 requires. A mismatch fails the login with `503`, and the server log names
+  both values. Copy the `issuer` value from `/.well-known/openid-configuration` into
+  `SSO_ISSUER_URL` unchanged.
 
 ### Security
 
