@@ -33,6 +33,11 @@ const (
 // …); the first slice only emits creation batches.
 const WebhookEventCreated = "findings.created"
 
+// webhookMaxRows bounds one delivery so a cold-start round over a large
+// inventory does not produce a multi-megabyte body that receivers reject.
+// Larger batches go out as consecutive deliveries of the same envelope.
+const webhookMaxRows = 200
+
 // webhookPayload is the wire form: event type plus the 1:1 notification
 // rows. Field names are stable API: consumers verify the signature over
 // these exact bytes.
@@ -94,15 +99,20 @@ func (n *WebhookNotifier) Notify(ctx context.Context, notifications []Notificati
 		n.logger.Debug("webhook notification skipped: empty batch")
 		return nil
 	}
-	body, err := BuildWebhookPayload(notifications)
-	if err != nil {
-		n.logger.Error("webhook payload build failed", "error", err, "count", len(notifications))
-		return nil
+	for _, chunk := range chunkNotifications(notifications, webhookMaxRows) {
+		body, err := BuildWebhookPayload(chunk)
+		if err != nil {
+			n.logger.Error("webhook payload build failed", "error", err, "count", len(chunk))
+			continue
+		}
+		postNotifications(ctx, postRequest{
+			logger: n.logger, client: n.client, sleeper: n.sleeper,
+			channel: "webhook", webhookURL: n.webhookURL, secret: n.secret,
+		}, body, len(chunk))
+		if ctx.Err() != nil {
+			return nil
+		}
 	}
-	postNotifications(ctx, postRequest{
-		logger: n.logger, client: n.client, sleeper: n.sleeper,
-		channel: "webhook", webhookURL: n.webhookURL, secret: n.secret,
-	}, body, len(notifications))
 	return nil
 }
 
