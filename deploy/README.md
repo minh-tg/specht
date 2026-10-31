@@ -81,7 +81,7 @@ and `SSO_ALLOW_PRIVATE_ISSUER` accept only the exact words `true` and `false`.
 |----------|---------|---------|
 | `SERVER_ADDR` | `:8080` | HTTP listen address. |
 | `DATABASE_URL` | *required* | Postgres DSN. Append `?sslmode=require` or `verify-full` for a remote database. |
-| `JWT_SECRET` | *required* | HMAC signing key, at least 32 random bytes. Startup fails without it. |
+| `JWT_SECRET` | *required* | HMAC signing key, at least 32 random bytes (`openssl rand -hex 32`). Startup fails without it, and also refuses a secret with fewer than 8 distinct characters or one that contains `change-me` or `changeme`. |
 | `DB_MIGRATE` | `true` | Run migrations at startup. Set `false` to run `specht migrate` as a separately controlled step. |
 | `DB_CONNECT_TIMEOUT` | `30s` | How long startup waits for Postgres to answer, retrying with a growing delay, before the server exits. `0s` tries once. A rejected login fails at once. |
 | `DB_MAX_CONNS` | `20` | The most database connections the server opens. Keep it below Postgres `max_connections` (100 by default), which every client of that database shares. Must be at least 2: an ingest holds two connections at once. |

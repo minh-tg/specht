@@ -23,7 +23,7 @@ func admitFor(t *testing.T, a *ingestAdmission, principal, tenant string, rawByt
 	t.Helper()
 	tk, err := a.enter(context.Background(), principal, tenant)
 	require.NoError(t, err)
-	require.NoError(t, tk.admit(context.Background(), rawBytes), "%s of %s should get a slot", principal, tenant)
+	require.NoError(t, admitTicket(tk, context.Background(), rawBytes), "%s of %s should get a slot", principal, tenant)
 	return tk
 }
 
@@ -47,7 +47,7 @@ func TestIngestAdmission_AProjectHoldsAtMostHalfTheGlobalSlots(t *testing.T) {
 
 	extra, err := a.enter(context.Background(), "key:3", "project-a")
 	require.NoError(t, err, "reading a body costs the project nothing")
-	require.ErrorIs(t, extra.admit(context.Background(), 10), errIngestBusy, "a fifth slot for one project, whoever asks")
+	require.ErrorIs(t, admitTicket(extra, context.Background(), 10), errIngestBusy, "a fifth slot for one project, whoever asks")
 	extra.release()
 	assert.Len(t, a.slots, 4, "the refused ingest left no slot behind")
 
@@ -74,7 +74,7 @@ func TestIngestAdmission_AProjectGetsAProportionalShareOfTheMemory(t *testing.T)
 	// is used up.
 	second, err := a.enter(context.Background(), "key:2", "project-a")
 	require.NoError(t, err)
-	require.ErrorIs(t, second.admit(context.Background(), 100), errIngestBusy)
+	require.ErrorIs(t, admitTicket(second, context.Background(), 100), errIngestBusy)
 	second.release()
 
 	rival := admitFor(t, a, "key:b", "project-b", 3000)

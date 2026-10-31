@@ -112,7 +112,7 @@ func TestIngestAdmission_ACallerWaitingInItsOwnQueueDoesNotBlockOthers(t *testin
 	other, err := a.enter(context.Background(), "user:b", "user:b")
 	require.NoError(t, err)
 	assert.Less(t, time.Since(start), time.Second)
-	require.NoError(t, other.admit(context.Background(), 10), "and takes a global slot while the first caller's second ingest waits")
+	require.NoError(t, admitTicket(other, context.Background(), 10), "and takes a global slot while the first caller's second ingest waits")
 	other.release()
 
 	first.release()
@@ -126,20 +126,20 @@ func TestIngestAdmission_TheGlobalSlotIsTakenOnlyAfterTheBody(t *testing.T) {
 	for _, p := range []string{"user:a", "user:b"} {
 		tk, err := a.enter(context.Background(), p, p)
 		require.NoError(t, err)
-		require.NoError(t, tk.admit(context.Background(), 10))
+		require.NoError(t, admitTicket(tk, context.Background(), 10))
 		admitted = append(admitted, tk)
 	}
 	// A third caller can still enter and read its body: that holds no slot.
 	third, err := a.enter(context.Background(), "user:c", "user:c")
 	require.NoError(t, err, "reading a body does not need a global slot")
 	// It waits for a slot only when its body is in.
-	require.ErrorIs(t, third.admit(context.Background(), 10), errIngestBusy)
+	require.ErrorIs(t, admitTicket(third, context.Background(), 10), errIngestBusy)
 	third.release()
 
 	admitted[0].release()
 	again, err := a.enter(context.Background(), "user:c", "user:c")
 	require.NoError(t, err)
-	require.NoError(t, again.admit(context.Background(), 10), "a freed slot goes to the next caller")
+	require.NoError(t, admitTicket(again, context.Background(), 10), "a freed slot goes to the next caller")
 	again.release()
 	admitted[1].release()
 	assert.True(t, a.idle())
@@ -151,7 +151,7 @@ func TestIngestAdmission_ACallerGetsAProportionalShareOfTheMemory(t *testing.T) 
 
 	big, err := a.enter(context.Background(), "user:a", "user:a")
 	require.NoError(t, err)
-	require.NoError(t, big.admit(context.Background(), 4000), "one caller may use its whole share")
+	require.NoError(t, admitTicket(big, context.Background(), 4000), "one caller may use its whole share")
 
 	more, err := a.enter(context.Background(), "user:a", "user:a")
 	require.NoError(t, err)
@@ -159,12 +159,12 @@ func TestIngestAdmission_ACallerGetsAProportionalShareOfTheMemory(t *testing.T) 
 	_ = short
 	waitCtx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
 	defer cancel()
-	assert.Error(t, more.admit(waitCtx, 100), "the same caller cannot exceed its share")
+	assert.Error(t, admitTicket(more, waitCtx, 100), "the same caller cannot exceed its share")
 	more.release()
 
 	rival, err := a.enter(context.Background(), "user:b", "user:b")
 	require.NoError(t, err)
-	require.NoError(t, rival.admit(context.Background(), 3000), "another caller still has its own share of the budget")
+	require.NoError(t, admitTicket(rival, context.Background(), 3000), "another caller still has its own share of the budget")
 	rival.release()
 	big.release()
 	assert.True(t, a.idle())
@@ -174,11 +174,11 @@ func TestIngestAdmission_ReleaseIsSafeToRepeatAndAfterAFailedAdmit(t *testing.T)
 	a := newIngestAdmission(2, 64*100, 20*time.Millisecond)
 	hold, err := a.enter(context.Background(), "user:a", "user:a")
 	require.NoError(t, err)
-	require.NoError(t, hold.admit(context.Background(), 100))
+	require.NoError(t, admitTicket(hold, context.Background(), 100))
 
 	blocked, err := a.enter(context.Background(), "user:b", "user:b")
 	require.NoError(t, err)
-	require.ErrorIs(t, blocked.admit(context.Background(), 100), errIngestBusy)
+	require.ErrorIs(t, admitTicket(blocked, context.Background(), 100), errIngestBusy)
 	blocked.release()
 	blocked.release()
 
@@ -187,7 +187,7 @@ func TestIngestAdmission_ReleaseIsSafeToRepeatAndAfterAFailedAdmit(t *testing.T)
 	assert.True(t, a.idle(), "a double release must not hand out anything twice")
 	tk, err := a.enter(context.Background(), "user:c", "user:c")
 	require.NoError(t, err)
-	require.NoError(t, tk.admit(context.Background(), 100))
+	require.NoError(t, admitTicket(tk, context.Background(), 100))
 	tk.release()
 }
 
@@ -220,7 +220,7 @@ func TestIngestReport_AbandonedWaitDoesNotRunTheUseCase(t *testing.T) {
 	h.ingest = newIngestAdmission(1, 0, time.Minute)
 	hold, err := h.ingest.enter(context.Background(), "user:other", "user:other")
 	require.NoError(t, err)
-	require.NoError(t, hold.admit(context.Background(), 10))
+	require.NoError(t, admitTicket(hold, context.Background(), 10))
 	defer hold.release()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
@@ -256,4 +256,13 @@ func TestRequestTimeout_IngestGetsALongerBudgetThanOtherRoutes(t *testing.T) {
 	wrongMethod := httptest.NewRecorder()
 	slowHandler.ServeHTTP(wrongMethod, httptest.NewRequest("GET", "/api/v1/reports", nil))
 	assert.Equal(t, http.StatusGatewayTimeout, wrongMethod.Code, "only the ingest call is extended, not report reads")
+}
+
+// admitTicket takes everything an ingest needs once its body is known: the
+// memory reservation, then the place and slot.
+func admitTicket(tk *ingestTicket, ctx context.Context, rawBytes int) error {
+	if err := tk.reserve(ctx, rawBytes); err != nil {
+		return err
+	}
+	return tk.claim(ctx)
 }

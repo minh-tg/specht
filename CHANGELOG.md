@@ -383,6 +383,13 @@ releases.
   its branch, or an earlier report on the branch did. Push builds on a branch that
   never named a base, such as `main`, keep counting only findings new to the project.
   `introduced_count` in the ingest response counts the carried findings too.
+- `LOG_LEVEL` is applied in any letter case. `LOG_LEVEL=WARN` passed validation but the
+  server ran at info.
+- JSON request bodies with content after the first JSON value (such as
+  `{"a":1} GARBAGE`) are refused with 400 instead of being read up to the first value.
+- The web app's HTML, JavaScript and CSS are served with `charset=utf-8`, and its responses
+  carry `Strict-Transport-Security` behind a trusted TLS-terminating proxy, as API
+  responses already did. The first page load used to go out without it.
 
 ### Security
 
@@ -686,3 +693,18 @@ releases.
   that committed right after the change used to leave that session alive under a
   generation the link never expected. The change now answers 409 `account_changed`, issues
   no session, and the caller signs in again.
+- Report upload reserves its share of the ingest memory budget before it reads the
+  body, sized by `Content-Length` (the 25 MiB limit when the length is not declared,
+  shrunk to the bytes that arrive). A request the budget cannot hold now gets
+  `503 ingest_busy` without its body being buffered, so many API keys can no longer
+  hold request bodies in memory outside `INGEST_MEMORY_BUDGET`.
+- The embedded web app compresses each file once and serves the stored gzip bytes with
+  `Content-Length` and an `ETag` (answering `If-None-Match` with 304). It used to gzip
+  every asset on every request, which let one anonymous client keep a CPU core busy.
+- The server refuses a `JWT_SECRET` that is long enough but weak: fewer than 8 distinct
+  characters (such as 32 times `a`), or a value containing `change-me` or `changeme`, which
+  covers the placeholder in `deploy/.env.prod.example`. The error says to generate one with
+  `openssl rand -hex 32`.
+- The server logs a warning at startup when `TRUSTED_PROXIES` contains `0.0.0.0/0` or
+  `::/0`, which makes every client a trusted proxy and lets it forge its address and
+  protocol.

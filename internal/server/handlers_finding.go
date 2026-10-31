@@ -143,13 +143,27 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ticket.release()
 
+	// Reserve the memory for the body before reading any more of it. A body
+	// without a declared length reserves the largest allowed one.
+	declared := r.ContentLength
+	if declared < 0 {
+		declared = maxIngestBodyBytes
+	}
+	if err := ticket.reserve(r.Context(), int(declared)); err != nil {
+		if errors.Is(err, errIngestBusy) {
+			respondIngestBusy(w, adm.queueWait)
+		}
+		return
+	}
+
 	deadlines.armBody(w)
 	data, err := io.ReadAll(rest)
 	if err != nil {
 		h.respondIngestBodyError(w, err, "invalid_json", "invalid request body")
 		return
 	}
-	if err := ticket.admit(r.Context(), len(data)); err != nil {
+	ticket.shrink(len(data))
+	if err := ticket.claim(r.Context()); err != nil {
 		if errors.Is(err, errIngestBusy) {
 			respondIngestBusy(w, adm.queueWait)
 		}

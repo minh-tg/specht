@@ -339,6 +339,13 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	return r
 }
 
+// TrustedProxyHeaders is the router's proxy handling for handlers mounted
+// outside it: it resolves the client address and the secure-transport verdict
+// from the forwarding headers of the configured trusted proxies.
+func TrustedProxyHeaders(trusted []netip.Prefix) func(http.Handler) http.Handler {
+	return realIPMiddleware(trusted)
+}
+
 // realIPMiddleware resolves the client IP behind trusted reverse proxies and
 // records whether the transport is secure (TLS terminated in-process or by a
 // trusted proxy). Forwarding headers are only consulted when the direct peer

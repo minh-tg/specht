@@ -169,6 +169,9 @@ func main() {
 	if warning := insecureDBTransport(cfg.DBURL); warning != "" {
 		slog.Warn(warning)
 	}
+	if warning := catchAllProxyWarning(cfg.TrustedProxies); warning != "" {
+		slog.Warn(warning)
+	}
 	if handled := handleSubcommand(cfg); handled {
 		return
 	}
@@ -264,7 +267,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:         cfg.Addr,
-		Handler:      spaHandler(handler),
+		Handler:      spaHandler(handler, cfg.TrustedProxies),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -304,15 +307,7 @@ func main() {
 
 // setupLogging configures the default slog logger from the configured level.
 func setupLogging(level string) {
-	lvl := slog.LevelInfo
-	switch level {
-	case "debug":
-		lvl = slog.LevelDebug
-	case "warn":
-		lvl = slog.LevelWarn
-	case "error":
-		lvl = slog.LevelError
-	}
+	lvl, _ := config.ParseLogLevel(level)
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: lvl})))
 }
 
