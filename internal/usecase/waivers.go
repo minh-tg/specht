@@ -781,7 +781,7 @@ func (u *Usecases) CheckWaiverMatch(ctx context.Context, projectSlug, findingID 
 	}
 	if fc, ctxErr := u.deps.Stores.Findings.GetFindingContext(ctx, fid.String()); ctxErr == nil {
 		gf.EnvironmentID = fc.EnvironmentID
-		gf.EnvironmentIDs = fc.EnvironmentIDs
+		gf.Observed = gateObservedContexts(fc.Observed)
 		gf.TargetID = fc.TargetID
 		gf.ArtifactID = fc.ArtifactID
 	}

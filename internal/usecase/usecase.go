@@ -256,7 +256,7 @@ func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID st
 			Fingerprint:          c.Fingerprint,
 			CurrentTitle:         c.CurrentTitle,
 			EnvironmentID:        c.Context.EnvironmentID,
-			EnvironmentIDs:       c.Context.EnvironmentIDs,
+			Observed:             gateObservedContexts(c.Context.Observed),
 			TargetID:             c.Context.TargetID,
 			ArtifactID:           c.Context.ArtifactID,
 			AnalysisState:        c.AnalysisState,
@@ -268,6 +268,15 @@ func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID st
 		}
 	}
 	return result, nil
+}
+
+// gateObservedContexts copies a finding's observed contexts into the gate's type.
+func gateObservedContexts(observed []port.ObservedContext) []gate.ObservedContext {
+	out := make([]gate.ObservedContext, len(observed))
+	for i, o := range observed {
+		out[i] = gate.ObservedContext{EnvironmentID: o.EnvironmentID, TargetID: o.TargetID, ArtifactID: o.ArtifactID}
+	}
+	return out
 }
 
 func (a *gateFindingRepo) ListIntroducedGateCandidates(ctx context.Context, projectID, reportID string, minSeverityRank int16) ([]gate.Finding, error) {
@@ -292,7 +301,7 @@ func (a *gateFindingRepo) ListIntroducedGateCandidates(ctx context.Context, proj
 			Fingerprint:          c.Fingerprint,
 			CurrentTitle:         c.CurrentTitle,
 			EnvironmentID:        c.Context.EnvironmentID,
-			EnvironmentIDs:       c.Context.EnvironmentIDs,
+			Observed:             gateObservedContexts(c.Context.Observed),
 			TargetID:             c.Context.TargetID,
 			ArtifactID:           c.Context.ArtifactID,
 			AnalysisState:        c.AnalysisState,

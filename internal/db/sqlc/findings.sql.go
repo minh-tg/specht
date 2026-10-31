@@ -947,37 +947,6 @@ func (q *Queries) ListFindingDisplayContextsByIDs(ctx context.Context, dollar_1 
 	return items, nil
 }
 
-const listFindingEnvironmentIDs = `-- name: ListFindingEnvironmentIDs :many
-SELECT DISTINCT COALESCE(r.environment_id::text, '')::text AS environment_id
-FROM finding_occurrences fo
-JOIN reports r ON fo.report_id = r.id
-WHERE fo.finding_id = $1
-ORDER BY 1
-`
-
-// Every environment whose reports observed the finding; ” stands for a report
-// with no environment. The per-finding counterpart of environment_ids in
-// ListGateCandidates.
-func (q *Queries) ListFindingEnvironmentIDs(ctx context.Context, findingID pgtype.UUID) ([]string, error) {
-	rows, err := q.db.Query(ctx, listFindingEnvironmentIDs, findingID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []string
-	for rows.Next() {
-		var environment_id string
-		if err := rows.Scan(&environment_id); err != nil {
-			return nil, err
-		}
-		items = append(items, environment_id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listFindingEvents = `-- name: ListFindingEvents :many
 SELECT id, finding_id, user_id, event_type, old_value, new_value, comment, changes, created_at FROM finding_events
 WHERE finding_id = $1
@@ -1052,6 +1021,46 @@ func (q *Queries) ListFindingIDsPresentInReport(ctx context.Context, arg ListFin
 			return nil, err
 		}
 		items = append(items, finding_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFindingObservedContexts = `-- name: ListFindingObservedContexts :many
+SELECT DISTINCT
+    COALESCE(r.environment_id::text, '')::text AS environment_id,
+    COALESCE(r.target_id::text, '')::text AS target_id,
+    COALESCE(r.artifact_id::text, '')::text AS artifact_id
+FROM finding_occurrences fo
+JOIN reports r ON fo.report_id = r.id
+WHERE fo.finding_id = $1
+ORDER BY 1, 2, 3
+`
+
+type ListFindingObservedContextsRow struct {
+	EnvironmentID string `json:"environment_id"`
+	TargetID      string `json:"target_id"`
+	ArtifactID    string `json:"artifact_id"`
+}
+
+// Every distinct (environment, target, artifact) whose reports observed the
+// finding; ” stands for a column the report left empty. The per-finding
+// counterpart of the observed_* arrays in ListGateCandidates.
+func (q *Queries) ListFindingObservedContexts(ctx context.Context, findingID pgtype.UUID) ([]ListFindingObservedContextsRow, error) {
+	rows, err := q.db.Query(ctx, listFindingObservedContexts, findingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListFindingObservedContextsRow
+	for rows.Next() {
+		var i ListFindingObservedContextsRow
+		if err := rows.Scan(&i.EnvironmentID, &i.TargetID, &i.ArtifactID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -1478,12 +1487,9 @@ SELECT
     ctx.environment_id,
     ctx.target_id,
     ctx.artifact_id,
-    ARRAY(
-        SELECT DISTINCT COALESCE(er.environment_id::text, '')
-        FROM finding_occurrences eo
-        JOIN reports er ON eo.report_id = er.id
-        WHERE eo.finding_id = f.id
-    )::text[] AS environment_ids,
+    COALESCE(obs.environment_ids, '{}')::text[] AS observed_environment_ids,
+    COALESCE(obs.target_ids, '{}')::text[] AS observed_target_ids,
+    COALESCE(obs.artifact_ids, '{}')::text[] AS observed_artifact_ids,
     ARRAY(SELECT DISTINCT d.dim_value FROM finding_dimensions d
           WHERE d.finding_id = f.id AND d.dim_key = 'alias'
           ORDER BY d.dim_value)::text[] AS aliases
@@ -1496,6 +1502,21 @@ LEFT JOIN LATERAL (
     ORDER BY fo.observed_at DESC, fo.id DESC
     LIMIT 1
 ) ctx ON true
+LEFT JOIN LATERAL (
+    SELECT
+        array_agg(o.environment_id ORDER BY o.environment_id, o.target_id, o.artifact_id) AS environment_ids,
+        array_agg(o.target_id ORDER BY o.environment_id, o.target_id, o.artifact_id) AS target_ids,
+        array_agg(o.artifact_id ORDER BY o.environment_id, o.target_id, o.artifact_id) AS artifact_ids
+    FROM (
+        SELECT DISTINCT
+            COALESCE(er.environment_id::text, '') AS environment_id,
+            COALESCE(er.target_id::text, '') AS target_id,
+            COALESCE(er.artifact_id::text, '') AS artifact_id
+        FROM finding_occurrences eo
+        JOIN reports er ON eo.report_id = er.id
+        WHERE eo.finding_id = f.id
+    ) o
+) obs ON true
 LEFT JOIN LATERAL (
     SELECT ra.state
     FROM reachability_assessments ra
@@ -1515,21 +1536,23 @@ type ListGateCandidatesParams struct {
 }
 
 type ListGateCandidatesRow struct {
-	ID                   pgtype.UUID       `json:"id"`
-	ProjectID            pgtype.UUID       `json:"project_id"`
-	FindingKind          string            `json:"finding_kind"`
-	Fingerprint          string            `json:"fingerprint"`
-	CurrentTitle         string            `json:"current_title"`
-	CurrentSeverityRank  int16             `json:"current_severity_rank"`
-	AnalysisState        string            `json:"analysis_state"`
-	IntroducedByReportID pgtype.UUID       `json:"introduced_by_report_id"`
-	IntroducedCommitSha  pgtype.Text       `json:"introduced_commit_sha"`
-	ReachabilityState    ReachabilityState `json:"reachability_state"`
-	EnvironmentID        pgtype.UUID       `json:"environment_id"`
-	TargetID             pgtype.UUID       `json:"target_id"`
-	ArtifactID           pgtype.UUID       `json:"artifact_id"`
-	EnvironmentIds       []string          `json:"environment_ids"`
-	Aliases              []string          `json:"aliases"`
+	ID                     pgtype.UUID       `json:"id"`
+	ProjectID              pgtype.UUID       `json:"project_id"`
+	FindingKind            string            `json:"finding_kind"`
+	Fingerprint            string            `json:"fingerprint"`
+	CurrentTitle           string            `json:"current_title"`
+	CurrentSeverityRank    int16             `json:"current_severity_rank"`
+	AnalysisState          string            `json:"analysis_state"`
+	IntroducedByReportID   pgtype.UUID       `json:"introduced_by_report_id"`
+	IntroducedCommitSha    pgtype.Text       `json:"introduced_commit_sha"`
+	ReachabilityState      ReachabilityState `json:"reachability_state"`
+	EnvironmentID          pgtype.UUID       `json:"environment_id"`
+	TargetID               pgtype.UUID       `json:"target_id"`
+	ArtifactID             pgtype.UUID       `json:"artifact_id"`
+	ObservedEnvironmentIds []string          `json:"observed_environment_ids"`
+	ObservedTargetIds      []string          `json:"observed_target_ids"`
+	ObservedArtifactIds    []string          `json:"observed_artifact_ids"`
+	Aliases                []string          `json:"aliases"`
 }
 
 // Batch gate-candidate loader: one round trip returns every finding that may
@@ -1537,10 +1560,11 @@ type ListGateCandidatesRow struct {
 // context and latest reachability assessment. The query is a performance
 // prefilter only — gate.Gate.Evaluate is the authoritative policy. Context
 // comes from the most recent occurrence's report; NULL report_id (watcher
-// findings) has no context and joins as NULL. environment_ids lists every
-// environment whose reports observed the finding (” for a report with no
-// environment), so an environment-scoped waiver can be checked against all of
-// them and not only the newest scan.
+// findings) has no context and joins as NULL. The three observed_* arrays are
+// aligned: entry i is the (environment, target, artifact) of one distinct
+// context whose reports observed the finding, ” for a column the report left
+// empty. A context-scoped waiver is checked against every one of them, not
+// only the newest scan.
 func (q *Queries) ListGateCandidates(ctx context.Context, arg ListGateCandidatesParams) ([]ListGateCandidatesRow, error) {
 	rows, err := q.db.Query(ctx, listGateCandidates, arg.ProjectID, arg.CurrentSeverityRank)
 	if err != nil {
@@ -1564,7 +1588,9 @@ func (q *Queries) ListGateCandidates(ctx context.Context, arg ListGateCandidates
 			&i.EnvironmentID,
 			&i.TargetID,
 			&i.ArtifactID,
-			&i.EnvironmentIds,
+			&i.ObservedEnvironmentIds,
+			&i.ObservedTargetIds,
+			&i.ObservedArtifactIds,
 			&i.Aliases,
 		); err != nil {
 			return nil, err
@@ -1592,12 +1618,9 @@ SELECT
     ctx.environment_id,
     ctx.target_id,
     ctx.artifact_id,
-    ARRAY(
-        SELECT DISTINCT COALESCE(er.environment_id::text, '')
-        FROM finding_occurrences eo
-        JOIN reports er ON eo.report_id = er.id
-        WHERE eo.finding_id = f.id
-    )::text[] AS environment_ids,
+    COALESCE(obs.environment_ids, '{}')::text[] AS observed_environment_ids,
+    COALESCE(obs.target_ids, '{}')::text[] AS observed_target_ids,
+    COALESCE(obs.artifact_ids, '{}')::text[] AS observed_artifact_ids,
     ARRAY(SELECT DISTINCT d.dim_value FROM finding_dimensions d
           WHERE d.finding_id = f.id AND d.dim_key = 'alias'
           ORDER BY d.dim_value)::text[] AS aliases,
@@ -1612,6 +1635,21 @@ LEFT JOIN LATERAL (
     ORDER BY fo.observed_at DESC, fo.id DESC
     LIMIT 1
 ) ctx ON true
+LEFT JOIN LATERAL (
+    SELECT
+        array_agg(o.environment_id ORDER BY o.environment_id, o.target_id, o.artifact_id) AS environment_ids,
+        array_agg(o.target_id ORDER BY o.environment_id, o.target_id, o.artifact_id) AS target_ids,
+        array_agg(o.artifact_id ORDER BY o.environment_id, o.target_id, o.artifact_id) AS artifact_ids
+    FROM (
+        SELECT DISTINCT
+            COALESCE(er.environment_id::text, '') AS environment_id,
+            COALESCE(er.target_id::text, '') AS target_id,
+            COALESCE(er.artifact_id::text, '') AS artifact_id
+        FROM finding_occurrences eo
+        JOIN reports er ON eo.report_id = er.id
+        WHERE eo.finding_id = f.id
+    ) o
+) obs ON true
 LEFT JOIN LATERAL (
     SELECT ra.state
     FROM reachability_assessments ra
@@ -1633,22 +1671,24 @@ type ListIntroducedGateCandidatesParams struct {
 }
 
 type ListIntroducedGateCandidatesRow struct {
-	ID                   pgtype.UUID       `json:"id"`
-	ProjectID            pgtype.UUID       `json:"project_id"`
-	FindingKind          string            `json:"finding_kind"`
-	Fingerprint          string            `json:"fingerprint"`
-	CurrentTitle         string            `json:"current_title"`
-	CurrentSeverityRank  int16             `json:"current_severity_rank"`
-	AnalysisState        string            `json:"analysis_state"`
-	IntroducedByReportID pgtype.UUID       `json:"introduced_by_report_id"`
-	IntroducedCommitSha  pgtype.Text       `json:"introduced_commit_sha"`
-	ReachabilityState    ReachabilityState `json:"reachability_state"`
-	EnvironmentID        pgtype.UUID       `json:"environment_id"`
-	TargetID             pgtype.UUID       `json:"target_id"`
-	ArtifactID           pgtype.UUID       `json:"artifact_id"`
-	EnvironmentIds       []string          `json:"environment_ids"`
-	Aliases              []string          `json:"aliases"`
-	ChangeType           string            `json:"change_type"`
+	ID                     pgtype.UUID       `json:"id"`
+	ProjectID              pgtype.UUID       `json:"project_id"`
+	FindingKind            string            `json:"finding_kind"`
+	Fingerprint            string            `json:"fingerprint"`
+	CurrentTitle           string            `json:"current_title"`
+	CurrentSeverityRank    int16             `json:"current_severity_rank"`
+	AnalysisState          string            `json:"analysis_state"`
+	IntroducedByReportID   pgtype.UUID       `json:"introduced_by_report_id"`
+	IntroducedCommitSha    pgtype.Text       `json:"introduced_commit_sha"`
+	ReachabilityState      ReachabilityState `json:"reachability_state"`
+	EnvironmentID          pgtype.UUID       `json:"environment_id"`
+	TargetID               pgtype.UUID       `json:"target_id"`
+	ArtifactID             pgtype.UUID       `json:"artifact_id"`
+	ObservedEnvironmentIds []string          `json:"observed_environment_ids"`
+	ObservedTargetIds      []string          `json:"observed_target_ids"`
+	ObservedArtifactIds    []string          `json:"observed_artifact_ids"`
+	Aliases                []string          `json:"aliases"`
+	ChangeType             string            `json:"change_type"`
 }
 
 func (q *Queries) ListIntroducedGateCandidates(ctx context.Context, arg ListIntroducedGateCandidatesParams) ([]ListIntroducedGateCandidatesRow, error) {
@@ -1674,7 +1714,9 @@ func (q *Queries) ListIntroducedGateCandidates(ctx context.Context, arg ListIntr
 			&i.EnvironmentID,
 			&i.TargetID,
 			&i.ArtifactID,
-			&i.EnvironmentIds,
+			&i.ObservedEnvironmentIds,
+			&i.ObservedTargetIds,
+			&i.ObservedArtifactIds,
 			&i.Aliases,
 			&i.ChangeType,
 		); err != nil {

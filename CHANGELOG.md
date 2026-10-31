@@ -588,6 +588,13 @@ releases.
   also reported. The gate used the environment of the newest scan, so a dev scan after a
   production scan of the same code let a dev waiver cover the production finding. The waiver
   now has to cover every environment that reported the finding.
+- A waiver scoped to an artifact or target, or to a mix of environments and artifacts, no
+  longer covers a finding because of the newest scan. A dev-image scan after a production scan
+  let a dev-image waiver cover the production finding, and a waiver for `{dev}` and
+  `{production, batch image}` covered a production finding on another image. The environment,
+  target and artifact of every scan that reported the finding must now fit one of the waiver's
+  contexts together. A context row that names nothing no longer counts as covering an
+  environment.
 - Creating or updating a waiver checks that every finding, environment, target and artifact
   it names belongs to the project. An id from another project used to be accepted and a
   missing id answered 500. Both now answer the same 404, and a malformed id answers 400.

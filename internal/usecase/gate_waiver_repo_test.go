@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/minh-tg/specht/internal/gate"
 	"github.com/minh-tg/specht/internal/port"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -80,12 +81,16 @@ func TestGateWaiverRepoCarriesScopeAll(t *testing.T) {
 	assert.False(t, got[1].ScopeAll)
 }
 
-// The gate needs every environment that observed a finding, not just the
-// newest scan's, to keep an environment-scoped waiver from covering it.
-func TestGateFindingRepoCarriesObservedEnvironments(t *testing.T) {
+// The gate needs every context that observed a finding, not just the newest
+// scan's, to keep a context-scoped waiver from covering it.
+func TestGateFindingRepoCarriesObservedContexts(t *testing.T) {
+	observed := []port.ObservedContext{
+		{EnvironmentID: "env-dev", ArtifactID: "dev-img"},
+		{EnvironmentID: "env-prod", TargetID: "app", ArtifactID: "prod-img"},
+	}
 	candidate := port.GateCandidate{
 		Finding: port.Finding{ID: "f1"},
-		Context: port.FindingContext{EnvironmentID: "env-dev", EnvironmentIDs: []string{"env-dev", "env-prod"}},
+		Context: port.FindingContext{EnvironmentID: "env-dev", ArtifactID: "dev-img", Observed: observed},
 	}
 	fr := &mockFindingRepo{
 		listGateCandidatesFn: func(context.Context, string, int16) ([]port.GateCandidate, error) {
@@ -96,14 +101,18 @@ func TestGateFindingRepoCarriesObservedEnvironments(t *testing.T) {
 		},
 	}
 	repo := &gateFindingRepo{stores: &port.Stores{Findings: fr}}
+	want := []gate.ObservedContext{
+		{EnvironmentID: "env-dev", ArtifactID: "dev-img"},
+		{EnvironmentID: "env-prod", TargetID: "app", ArtifactID: "prod-img"},
+	}
 
 	all, err := repo.ListBlockingFindings(context.Background(), "project-1", 3)
 	require.NoError(t, err)
 	require.Len(t, all, 1)
-	assert.Equal(t, []string{"env-dev", "env-prod"}, all[0].EnvironmentIDs)
+	assert.Equal(t, want, all[0].Observed)
 
 	introduced, err := repo.ListIntroducedGateCandidates(context.Background(), "project-1", "report-1", 3)
 	require.NoError(t, err)
 	require.Len(t, introduced, 1)
-	assert.Equal(t, []string{"env-dev", "env-prod"}, introduced[0].EnvironmentIDs)
+	assert.Equal(t, want, introduced[0].Observed)
 }

@@ -1051,10 +1051,17 @@ type FindingContext struct {
 	EnvironmentID string
 	TargetID      string
 	ArtifactID    string
-	// EnvironmentIDs lists every environment whose reports observed the
-	// finding, "" standing for a report with no environment. An
-	// environment-scoped waiver has to cover all of them.
-	EnvironmentIDs []string
+	// Observed lists every distinct context whose reports observed the
+	// finding. A context-scoped waiver has to cover all of them.
+	Observed []ObservedContext
+}
+
+// ObservedContext is the environment/target/artifact of reports that
+// observed a finding, with "" for a column the report left empty.
+type ObservedContext struct {
+	EnvironmentID string
+	TargetID      string
+	ArtifactID    string
 }
 
 // FindingDisplayContext is the human-readable deployment context of a

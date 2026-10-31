@@ -71,14 +71,16 @@ type Finding struct {
 	FindingKind         string
 	Fingerprint         string
 	CurrentTitle        string
-	EnvironmentID       string
-	// EnvironmentIDs lists every environment whose scans observed the finding
-	// (an empty string stands for a scan with no environment). A waiver scoped
-	// to an environment covers the finding only when it covers all of them.
-	// Empty means the caller knows only EnvironmentID.
-	EnvironmentIDs []string
-	TargetID       string
-	ArtifactID     string
+	// EnvironmentID, TargetID and ArtifactID are the context of the newest
+	// scan that reported the finding.
+	EnvironmentID string
+	TargetID      string
+	ArtifactID    string
+	// Observed lists every distinct context whose scans reported the finding.
+	// A context-scoped waiver covers the finding only when each of them fits
+	// one of its contexts. Empty means the caller knows only the newest
+	// scan's context.
+	Observed []ObservedContext
 	// AnalysisState is the finding's current analysis state ("" when none
 	// has been recorded — the untriaged marker). Source policies that admit
 	// findings only after triage consult it.
@@ -118,6 +120,14 @@ type WaiverTarget struct {
 // wildcards: a context with only EnvironmentID set applies to any finding in
 // that environment regardless of target or artifact.
 type WaiverContext struct {
+	EnvironmentID string
+	TargetID      string
+	ArtifactID    string
+}
+
+// ObservedContext is the environment, target and artifact of scans that
+// reported a finding, "" for a column the scan left empty.
+type ObservedContext struct {
 	EnvironmentID string
 	TargetID      string
 	ArtifactID    string
@@ -361,45 +371,32 @@ func (g *gate) evaluateFindings(ctx context.Context, projectID string, findings 
 }
 
 // contextMatchesContexts reports whether the waiver's contexts accept the
-// finding. The newest scan's environment, target and artifact must fit one
-// context, and every other environment that observed the finding must fit
-// some context too, so a waiver scoped to dev cannot cover a finding that a
-// production scan also reported.
+// finding. Each context that reported the finding must fit one waiver context
+// as a whole, so the order of scans never matters: a waiver scoped to dev, or
+// to a dev artifact, cannot cover a finding a production scan of another
+// artifact also reported.
 func contextMatchesContexts(f Finding, contexts []WaiverContext) bool {
-	return latestContextMatches(f, contexts) && observedEnvironmentsCovered(f, contexts)
-}
-
-// observedEnvironmentsCovered reports whether each environment that observed
-// the finding is accepted by at least one context. A context with no
-// environment accepts any of them.
-func observedEnvironmentsCovered(f Finding, contexts []WaiverContext) bool {
-	for _, env := range f.EnvironmentIDs {
-		if !slices.ContainsFunc(contexts, func(cx WaiverContext) bool {
-			return cx.EnvironmentID == "" || cx.EnvironmentID == env
-		}) {
+	observed := f.Observed
+	if len(observed) == 0 {
+		observed = []ObservedContext{{EnvironmentID: f.EnvironmentID, TargetID: f.TargetID, ArtifactID: f.ArtifactID}}
+	}
+	for _, o := range observed {
+		if !slices.ContainsFunc(contexts, func(cx WaiverContext) bool { return contextAccepts(cx, o) }) {
 			return false
 		}
 	}
 	return true
 }
 
-func latestContextMatches(f Finding, contexts []WaiverContext) bool {
-	for _, cx := range contexts {
-		if cx.EnvironmentID == "" && cx.TargetID == "" && cx.ArtifactID == "" {
-			continue // names nothing: a leftover row, never a wildcard
-		}
-		if cx.EnvironmentID != "" && cx.EnvironmentID != f.EnvironmentID {
-			continue
-		}
-		if cx.TargetID != "" && cx.TargetID != f.TargetID {
-			continue
-		}
-		if cx.ArtifactID != "" && cx.ArtifactID != f.ArtifactID {
-			continue
-		}
-		return true
+// contextAccepts reports whether one waiver context fits one observed
+// context. Every field the waiver context names must equal the observed one.
+func contextAccepts(cx WaiverContext, o ObservedContext) bool {
+	if cx.EnvironmentID == "" && cx.TargetID == "" && cx.ArtifactID == "" {
+		return false // names nothing: a leftover row, never a wildcard
 	}
-	return false
+	return (cx.EnvironmentID == "" || cx.EnvironmentID == o.EnvironmentID) &&
+		(cx.TargetID == "" || cx.TargetID == o.TargetID) &&
+		(cx.ArtifactID == "" || cx.ArtifactID == o.ArtifactID)
 }
 
 // IsFindingWaived reports whether a single finding is waived by any of the
