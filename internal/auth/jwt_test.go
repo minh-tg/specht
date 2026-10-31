@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -71,6 +72,40 @@ func TestJWT_NewJWTAuthenticator_RejectsWeakSecrets(t *testing.T) {
 			require.Error(t, err)
 			assert.ErrorContains(t, err, "JWT_SECRET must be at least 32 bytes")
 		})
+	}
+}
+
+// A secret long enough but made of a repeated byte, a short pattern or a
+// placeholder from an example file is refused with a message that says what to
+// do.
+func TestJWT_NewJWTAuthenticator_RejectsLowVarietyAndPlaceholderSecrets(t *testing.T) {
+	for name, secret := range map[string]string{
+		"repeated letter":          strings.Repeat("a", 32),
+		"repeated zero":            strings.Repeat("0", 64),
+		"short pattern":            strings.Repeat("abc123", 8),
+		"seven distinct bytes":     strings.Repeat("abcdefg", 6),
+		"prod example":             "CHANGE-ME-64-random-chars-min-32-bytes",
+		"placeholder any case":     "Please-Change-Me-Before-Going-Live-1234",
+		"placeholder without dash": "changeme-changeme-changeme-12345678",
+	} {
+		t.Run(name, func(t *testing.T) {
+			a, err := NewJWTAuthenticator(secret)
+			assert.Nil(t, a)
+			require.Error(t, err)
+			assert.ErrorContains(t, err, "JWT_SECRET is too weak")
+			assert.ErrorContains(t, err, "openssl rand -hex 32")
+		})
+	}
+}
+
+func TestJWT_NewJWTAuthenticator_AcceptsHexAndBase64Secrets(t *testing.T) {
+	for _, secret := range []string{
+		"9f2c1d7e4b8a30c65d1f7a92e4b03c68a1d5f7092b3e4c6d8a0f1e2b3c4d5e6f",
+		"k3Jq9Zr0vXw2Pn7LmTb5Yc8HdGf1Ua4SeVo6iRtNxQ0=",
+		strings.Repeat("abcdefgh", 4),
+	} {
+		_, err := NewJWTAuthenticator(secret)
+		assert.NoError(t, err, secret)
 	}
 }
 
