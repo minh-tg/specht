@@ -509,7 +509,9 @@ test("a bare ? opens the shortcut sheet until the single-key switch is turned of
   await page.keyboard.press("?");
   const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
   await expect(sheet).toBeVisible();
-  await expect(sheet.locator("kbd", { hasText: /^J$/ })).toBeVisible();
+  // J moves the list cursor here and walks the list from a finding page: one key per scope.
+  const listKeys = sheet.getByRole("region", { name: "In a findings list" });
+  await expect(listKeys.locator("kbd", { hasText: /^J$/ })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
 

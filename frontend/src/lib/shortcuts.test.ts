@@ -50,6 +50,19 @@ describe("shortcut registry", () => {
     }
   });
 
+  it("binds a key at most once in a scope, and J and K only where the focus or the page owns them", () => {
+    for (const scope of SHORTCUT_SCOPES) {
+      const combos = shortcutsIn(scope).flatMap((s) => s.combos.map((c) => c.join("+")));
+      expect(new Set(combos).size).toBe(combos.length);
+    }
+    const scopesOf = (key: string) =>
+      SHORTCUTS.filter((s) => s.combos.some((c) => c.length === 1 && c[0] === key)).map((s) =>
+        s.scope
+      );
+    expect(scopesOf("J")).toEqual(["In a findings list", "On a finding"]);
+    expect(scopesOf("K")).toEqual(["In a findings list", "On a finding"]);
+  });
+
   it("marks exactly ?, 1 to 3, J, K and X as single-key combinations", () => {
     const single = SHORTCUTS.flatMap((s) => s.combos.filter(isSingleKeyCombo).map((c) => c[0]));
     expect([...new Set(single)].sort()).toEqual(["1", "2", "3", "?", "J", "K", "X"]);
