@@ -1,4 +1,5 @@
-import { useProjectRole, useTriageFinding } from "@/api/hooks";
+import { useProject, useProjectRole, useTriageFinding } from "@/api/hooks";
+import { DisabledReason } from "@/components/DisabledReason";
 import { SelectField } from "@/components/SelectField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,9 @@ import { useParams } from "react-router-dom";
 import { localDateValue, toExpiryTimestamp } from "./format";
 import { TRIAGE_GLOSSARY, TRIAGE_OPTIONS } from "./options";
 import { OutcomeRegions } from "./OutcomeRegions";
+
+/** The server lets only project managers and admins record a triage decision. */
+const TRIAGE_MANAGER_ONLY = "Only project managers can record a triage decision.";
 
 /** Triage controls and status feedback for one finding. */
 export function TriageSection({
@@ -24,6 +28,7 @@ export function TriageSection({
   const params = useParams<{ slug: string; }>();
   const slug = projectSlug ?? params.slug ?? "";
   const { canTriage, isLoading: roleLoading } = useProjectRole(slug);
+  const { data: project } = useProject(slug);
   const triageMutation = useTriageFinding();
   const [selectedState, setSelectedState] = useState<AnalysisState | "">("");
   const [reason, setReason] = useState("");
@@ -98,17 +103,16 @@ export function TriageSection({
             onChange={(e) => setExpiresAt(e.target.value)}
           />
         )}
-        <Button
-          onClick={handleTriage}
-          disabled={!triageReady || triageMutation.isPending}
-          title={!canTriage ? "Requires Project Manager role" : undefined}
-        >
-          {triageMutation.isPending ? "Saving..." : "Apply"}
-        </Button>
+        <DisabledReason reason={canTriage ? undefined : TRIAGE_MANAGER_ONLY}>
+          <Button onClick={handleTriage} disabled={!triageReady || triageMutation.isPending}>
+            {triageMutation.isPending ? "Saving..." : "Apply"}
+          </Button>
+        </DisabledReason>
       </div>
       {!canTriage && !roleLoading && (
         <p className="text-muted-foreground mt-2 text-meta">
-          Requires Project Manager role to triage findings or request waivers.
+          {TRIAGE_MANAGER_ONLY}
+          {project?.permissions?.request_waiver === true && " You can still request a waiver."}
         </p>
       )}
       {hint && <p id="triage-hint" className="text-muted-foreground mt-2 text-body">{hint}</p>}

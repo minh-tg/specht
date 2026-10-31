@@ -47,7 +47,7 @@ const UNDO_URL = "/api/v1/findings/f1/analysis/undo";
  * names its event, and the undo of that event, which the server may refuse.
  */
 function mockApi(
-  projectRole: "manager" | "member",
+  projectRole: "manager" | "member" | "none",
   undoRefusal?: { code: string; message: string; },
 ): Call[] {
   const calls: Call[] = [];
@@ -65,7 +65,11 @@ function mockApi(
         slug: "core-api",
         name: "core-api",
         role: projectRole,
-        permissions: { triage: manager, manage_members: manager },
+        permissions: {
+          triage: manager,
+          manage_members: manager,
+          request_waiver: projectRole !== "none",
+        },
       });
     }
     if (u.endsWith("/api/v1/findings/f1") && method === "PATCH") {
@@ -105,7 +109,7 @@ describe("TriageSection RBAC permissions", () => {
     );
     await act(async () => {});
     expect(screen.getByLabelText("Triage action")).not.toBeDisabled();
-    expect(screen.queryByText(/Requires Project Manager role to triage findings/))
+    expect(screen.queryByText(/Only project managers can record a triage decision/))
       .not.toBeInTheDocument();
   });
 
@@ -125,22 +129,33 @@ describe("TriageSection RBAC permissions", () => {
     expect(screen.getByRole("button", { name: "Apply" })).not.toBeDisabled();
   });
 
-  it("disables triage controls and shows notice for project member", async () => {
+  it("disables triage for a member, says why, and does not call waivers manager-only", async () => {
     mockApi("member");
 
     renderTriageSection();
 
-    await waitFor(() => {
-      const select = screen.getByLabelText("Triage action");
-      expect(select).toBeDisabled();
-      expect(
-        screen.getByText("Requires Project Manager role to triage findings or request waivers."),
-      ).toBeInTheDocument();
-    });
+    const note = await screen.findByText(/You can still request a waiver\./);
+    expect(note).toHaveTextContent(
+      "Only project managers can record a triage decision. You can still request a waiver.",
+    );
+    expect(screen.getByLabelText("Triage action")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+    // The reason also sits next to the disabled control for keyboard and screen reader users.
+    expect(screen.getByRole("button", { name: "Apply" }).parentElement)
+      .toHaveTextContent("Only project managers can record a triage decision.");
+    expect(document.body).not.toHaveTextContent(/Project Manager role/);
+    expect(document.body).not.toHaveTextContent(/or request waivers/);
+  });
 
-    const applyBtn = screen.getByRole("button", { name: "Apply" });
-    expect(applyBtn).toBeDisabled();
-    expect(applyBtn).toHaveAttribute("title", "Requires Project Manager role");
+  it("does not promise a waiver request to someone who may not make one", async () => {
+    mockApi("none");
+
+    renderTriageSection();
+
+    await waitFor(() => expect(screen.getByLabelText("Triage action")).toBeDisabled());
+    expect(await screen.findAllByText(/Only project managers can record a triage decision\./))
+      .not.toHaveLength(0);
+    expect(screen.queryByText(/request a waiver/)).not.toBeInTheDocument();
   });
 });
 
