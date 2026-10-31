@@ -53,6 +53,10 @@ type adapterFlags struct {
 	help            bool
 	showVersion     bool
 	inGitHubActions bool
+
+	// baseFromDefaultBranch is set when detectCIEnvironment filled baseRef from
+	// the default branch rather than a flag or a pull request base.
+	baseFromDefaultBranch bool
 }
 
 // parseFlags defines and parses the adapter flag set. It returns nil when
@@ -301,7 +305,9 @@ func applyGateFlags(payload *client.IngestPayload, f *adapterFlags) {
 	if f.scanMode != "" {
 		payload.ScanMode = f.scanMode
 	}
-	payload.GateIntroducedOnly = f.introducedOnly.valueOr(f.baseRef != "")
+	// A base taken from the default branch only sets the comparison point; the
+	// gate scope stays project-wide unless -introduced-only asks otherwise.
+	payload.GateIntroducedOnly = f.introducedOnly.valueOr(f.baseRef != "" && !f.baseFromDefaultBranch)
 }
 
 // optionalBool is a boolean flag that remembers whether it was given, so an
@@ -574,7 +580,9 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 	if f.status != "" {
 		writeDiagnosticLine(stderr, "warning: -status is deprecated and ignored; the project policy decides which finding statuses are gated")
 	}
+	flagBase := f.baseRef != ""
 	detectCIEnvironment(&f.baseRef, &f.commit, &f.branch)
+	f.baseFromDefaultBranch = !flagBase && f.baseRef != "" && pullRequestBaseRef() == ""
 
 	apiKey := getEnvAny("API_KEY", "SPECHT_API_KEY")
 	if apiKey == "" && isForkPullRequest() {
@@ -757,11 +765,7 @@ func detectCIEnvironment(baseRef, commit, branch *string) {
 		}
 	}
 	if *baseRef == "" {
-		if v := os.Getenv("GITHUB_BASE_REF"); v != "" {
-			*baseRef = v
-		} else if v := os.Getenv("CI_MERGE_REQUEST_TARGET_BRANCH_NAME"); v != "" {
-			*baseRef = v
-		}
+		*baseRef = pullRequestBaseRef()
 	}
 	if *commit == "" {
 		if v := os.Getenv("GITHUB_SHA"); v != "" {
@@ -777,6 +781,69 @@ func detectCIEnvironment(baseRef, commit, branch *string) {
 			*branch = v
 		}
 	}
+	// A push build has no pull request base, so it compares against the
+	// default branch. This runs last so the built branch is already known.
+	if *baseRef == "" {
+		*baseRef = defaultBranchBase(*branch)
+	}
+}
+
+// pullRequestBaseRef returns the target branch of a GitHub pull request or a
+// GitLab merge request pipeline, or "" for any other build.
+func pullRequestBaseRef() string {
+	if v := os.Getenv("GITHUB_BASE_REF"); v != "" {
+		return v
+	}
+	return os.Getenv("CI_MERGE_REQUEST_TARGET_BRANCH_NAME")
+}
+
+// defaultBranchBase returns the repository default branch for a branch build
+// that is not on the default branch, so the server compares the report with the
+// newest full report there. It returns "" for tag builds, builds of the default
+// branch itself, and when the default branch is unknown. built is the branch
+// the report is for; the result never equals it.
+func defaultBranchBase(built string) string {
+	def, current := os.Getenv("CI_DEFAULT_BRANCH"), os.Getenv("CI_COMMIT_BRANCH")
+	if def == "" {
+		def, current = githubDefaultBranch()
+	}
+	if def == "" || current == "" || current == def || built == def {
+		return ""
+	}
+	return def
+}
+
+// githubRepositoryEvent is the slice of a GitHub event payload that names the
+// repository default branch.
+type githubRepositoryEvent struct {
+	Repository struct {
+		DefaultBranch string `json:"default_branch"`
+	} `json:"repository"`
+}
+
+// githubDefaultBranch returns the repository default branch from the event
+// payload and the branch being built. Both are "" when the ref is not a branch
+// (a tag) or the payload is missing or unreadable; the upload then goes ahead
+// without a default-branch base.
+func githubDefaultBranch() (def, current string) {
+	if os.Getenv("GITHUB_REF_TYPE") == "branch" {
+		current = os.Getenv("GITHUB_REF_NAME")
+	}
+	if ref := os.Getenv("GITHUB_REF"); current == "" && strings.HasPrefix(ref, "refs/heads/") {
+		current = strings.TrimPrefix(ref, "refs/heads/")
+	}
+	if current == "" {
+		return "", ""
+	}
+	raw, err := os.ReadFile(os.Getenv("GITHUB_EVENT_PATH"))
+	if err != nil {
+		return "", ""
+	}
+	var event githubRepositoryEvent
+	if err := json.Unmarshal(raw, &event); err != nil {
+		return "", ""
+	}
+	return event.Repository.DefaultBranch, current
 }
 
 // githubPullRequestEvent is the slice of a GitHub pull_request payload that
@@ -894,11 +961,14 @@ Flags:
   -status string         Deprecated and ignored; the project policy decides
   -file string           Path to scan result file (default: read from stdin)
   -introduced-only[=bool] Gate only on findings this change introduced. Absent,
-                         it is true when a base ref is set or detected and false
-                         otherwise; -introduced-only=false gates the whole
-                         project even on a pull or merge request
+                         it is true when a base ref is set or a pull or merge
+                         request base is detected and false otherwise;
+                         -introduced-only=false gates the whole project even
+                         on a pull or merge request
   -base-ref string       Baseline git ref/branch/commit (auto-detected in CI);
-                         it sets the baseline, -introduced-only sets the scope
+                         it sets the baseline, -introduced-only sets the scope.
+                         A push build of a non-default branch takes the default
+                         branch (GitHub event payload, GitLab CI_DEFAULT_BRANCH)
   -commit string         Current commit SHA (auto-detected in CI)
   -branch string         Current branch name (auto-detected in CI)
   -scan-mode string      Scan mode: full or incremental
