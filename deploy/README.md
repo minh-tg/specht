@@ -353,7 +353,15 @@ Actions, and `CI_PROJECT_PATH`, `CI_COMMIT_SHA`, `CI_COMMIT_REF_NAME` and
 `pull_request_target` events the commit and branch come from the pull request
 head in the event payload, not from `GITHUB_SHA` and `GITHUB_REF_NAME`, which
 name the temporary merge commit there. The report and the check run then name
-the commit the pull request lists. A pull request from a fork
+the commit the pull request lists. A push build of a branch other than the
+default branch sends the default branch as its base revision, so the server
+compares it with the newest full report there: GitHub reads
+`repository.default_branch` from the event payload, GitLab reads
+`CI_DEFAULT_BRANCH` when `CI_COMMIT_BRANCH` names another branch. Tag builds
+and builds of the default branch send no base revision, and `-base-ref` or a
+pull or merge request base takes precedence. The default-branch base does not
+turn on `-introduced-only`; the gate stays project-wide unless you ask for it.
+A pull request from a fork
 has no secrets, so with an empty API key the adapter logs a notice and exits 0.
 
 ### CVE details from external providers
