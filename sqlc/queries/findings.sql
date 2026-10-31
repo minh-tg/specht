@@ -223,10 +223,11 @@ LIMIT $3 OFFSET $4;
 -- context and latest reachability assessment. The query is a performance
 -- prefilter only — gate.Gate.Evaluate is the authoritative policy. Context
 -- comes from the most recent occurrence's report; NULL report_id (watcher
--- findings) has no context and joins as NULL. environment_ids lists every
--- environment whose reports observed the finding ('' for a report with no
--- environment), so an environment-scoped waiver can be checked against all of
--- them and not only the newest scan.
+-- findings) has no context and joins as NULL. The three observed_* arrays are
+-- aligned: entry i is the (environment, target, artifact) of one distinct
+-- context whose reports observed the finding, '' for a column the report left
+-- empty. A context-scoped waiver is checked against every one of them, not
+-- only the newest scan.
 SELECT
     f.id,
     f.project_id,
@@ -241,12 +242,9 @@ SELECT
     ctx.environment_id,
     ctx.target_id,
     ctx.artifact_id,
-    ARRAY(
-        SELECT DISTINCT COALESCE(er.environment_id::text, '')
-        FROM finding_occurrences eo
-        JOIN reports er ON eo.report_id = er.id
-        WHERE eo.finding_id = f.id
-    )::text[] AS environment_ids,
+    COALESCE(obs.environment_ids, '{}')::text[] AS observed_environment_ids,
+    COALESCE(obs.target_ids, '{}')::text[] AS observed_target_ids,
+    COALESCE(obs.artifact_ids, '{}')::text[] AS observed_artifact_ids,
     ARRAY(SELECT DISTINCT d.dim_value FROM finding_dimensions d
           WHERE d.finding_id = f.id AND d.dim_key = 'alias'
           ORDER BY d.dim_value)::text[] AS aliases
@@ -260,6 +258,21 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) ctx ON true
 LEFT JOIN LATERAL (
+    SELECT
+        array_agg(o.environment_id ORDER BY o.environment_id, o.target_id, o.artifact_id) AS environment_ids,
+        array_agg(o.target_id ORDER BY o.environment_id, o.target_id, o.artifact_id) AS target_ids,
+        array_agg(o.artifact_id ORDER BY o.environment_id, o.target_id, o.artifact_id) AS artifact_ids
+    FROM (
+        SELECT DISTINCT
+            COALESCE(er.environment_id::text, '') AS environment_id,
+            COALESCE(er.target_id::text, '') AS target_id,
+            COALESCE(er.artifact_id::text, '') AS artifact_id
+        FROM finding_occurrences eo
+        JOIN reports er ON eo.report_id = er.id
+        WHERE eo.finding_id = f.id
+    ) o
+) obs ON true
+LEFT JOIN LATERAL (
     SELECT ra.state
     FROM reachability_assessments ra
     WHERE ra.finding_id = f.id
@@ -271,15 +284,18 @@ WHERE f.project_id = $1
   AND (f.gate_effect = 'block' OR f.analysis_expires_at <= NOW())
 ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC;
 
--- name: ListFindingEnvironmentIDs :many
--- Every environment whose reports observed the finding; '' stands for a report
--- with no environment. The per-finding counterpart of environment_ids in
--- ListGateCandidates.
-SELECT DISTINCT COALESCE(r.environment_id::text, '')::text AS environment_id
+-- name: ListFindingObservedContexts :many
+-- Every distinct (environment, target, artifact) whose reports observed the
+-- finding; '' stands for a column the report left empty. The per-finding
+-- counterpart of the observed_* arrays in ListGateCandidates.
+SELECT DISTINCT
+    COALESCE(r.environment_id::text, '')::text AS environment_id,
+    COALESCE(r.target_id::text, '')::text AS target_id,
+    COALESCE(r.artifact_id::text, '')::text AS artifact_id
 FROM finding_occurrences fo
 JOIN reports r ON fo.report_id = r.id
 WHERE fo.finding_id = $1
-ORDER BY 1;
+ORDER BY 1, 2, 3;
 
 -- name: GetFindingContext :one
 SELECT r.environment_id, r.target_id, r.artifact_id
@@ -558,12 +574,9 @@ SELECT
     ctx.environment_id,
     ctx.target_id,
     ctx.artifact_id,
-    ARRAY(
-        SELECT DISTINCT COALESCE(er.environment_id::text, '')
-        FROM finding_occurrences eo
-        JOIN reports er ON eo.report_id = er.id
-        WHERE eo.finding_id = f.id
-    )::text[] AS environment_ids,
+    COALESCE(obs.environment_ids, '{}')::text[] AS observed_environment_ids,
+    COALESCE(obs.target_ids, '{}')::text[] AS observed_target_ids,
+    COALESCE(obs.artifact_ids, '{}')::text[] AS observed_artifact_ids,
     ARRAY(SELECT DISTINCT d.dim_value FROM finding_dimensions d
           WHERE d.finding_id = f.id AND d.dim_key = 'alias'
           ORDER BY d.dim_value)::text[] AS aliases,
@@ -578,6 +591,21 @@ LEFT JOIN LATERAL (
     ORDER BY fo.observed_at DESC, fo.id DESC
     LIMIT 1
 ) ctx ON true
+LEFT JOIN LATERAL (
+    SELECT
+        array_agg(o.environment_id ORDER BY o.environment_id, o.target_id, o.artifact_id) AS environment_ids,
+        array_agg(o.target_id ORDER BY o.environment_id, o.target_id, o.artifact_id) AS target_ids,
+        array_agg(o.artifact_id ORDER BY o.environment_id, o.target_id, o.artifact_id) AS artifact_ids
+    FROM (
+        SELECT DISTINCT
+            COALESCE(er.environment_id::text, '') AS environment_id,
+            COALESCE(er.target_id::text, '') AS target_id,
+            COALESCE(er.artifact_id::text, '') AS artifact_id
+        FROM finding_occurrences eo
+        JOIN reports er ON eo.report_id = er.id
+        WHERE eo.finding_id = f.id
+    ) o
+) obs ON true
 LEFT JOIN LATERAL (
     SELECT ra.state
     FROM reachability_assessments ra

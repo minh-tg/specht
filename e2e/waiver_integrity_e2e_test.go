@@ -153,6 +153,110 @@ func TestE2E_EnvironmentWaiverDoesNotCoverTheProductionFinding(t *testing.T) {
 	require.False(t, matched.Matched)
 }
 
+// artifactIDByName returns the id of the project's artifact with that name.
+func artifactIDByName(t *testing.T, slug, name string) string {
+	t.Helper()
+	rows := request[[]artifactRow](t, http.MethodGet, "/api/v1/projects/"+slug+"/artifacts", adminToken, nil, http.StatusOK)
+	for _, a := range rows {
+		if a.Name == name {
+			return a.ID
+		}
+	}
+	require.Failf(t, "artifact missing", "%q not among %d artifacts", name, len(rows))
+	return ""
+}
+
+// findingBySeverity returns the project's only finding at that severity.
+func findingBySeverity(t *testing.T, slug, severity string) findingResponse {
+	t.Helper()
+	var found []findingResponse
+	for _, f := range listFindings(t, slug) {
+		if f.CurrentSeverity == severity {
+			found = append(found, f)
+		}
+	}
+	require.Lenf(t, found, 1, "expected exactly one %s finding", severity)
+	return found[0]
+}
+
+func waiverCheckMatch(t *testing.T, slug, findingID string) bool {
+	t.Helper()
+	return request[checkMatchResponse](t, http.MethodPost,
+		"/api/v1/projects/"+slug+"/waivers/check-match", adminToken,
+		map[string]string{"finding_id": findingID}, http.StatusOK).Matched
+}
+
+// scanArtifact uploads a fixture as a scan of one container image in one
+// environment.
+func scanArtifact(t *testing.T, slug, key, fixture, environment, artifact string) {
+	t.Helper()
+	request[ingestResponse](t, http.MethodPost, "/api/v1/reports", key,
+		ingestBodyWith(t, slug, fixture, map[string]any{
+			"environment": environment, "branch": "main", "commit_sha": baseSHA,
+			"artifact_name": artifact, "artifact_type": "container_image",
+		}), http.StatusCreated)
+}
+
+// TestE2E_ArtifactWaiverDoesNotCoverAnotherArtifactsFinding: a waiver scoped
+// to the dev image covers a finding only that image reported. Once production
+// has reported a finding on its own image, a later dev-image scan of the same
+// code does not let the waiver cover it.
+func TestE2E_ArtifactWaiverDoesNotCoverAnotherArtifactsFinding(t *testing.T) {
+	slug := newProject(t, "waiver-artifact")
+	key := mintKey(t, slug)
+	scanArtifact(t, slug, key, "medium.sarif.json", "dev", "dev-img")
+	devImg := artifactIDByName(t, slug, "dev-img")
+	request[waiverScopeDetail](t, http.MethodPost, "/api/v1/projects/"+slug+"/waivers", adminToken,
+		map[string]any{"name": "dev image", "contexts": []map[string]string{{"artifact_id": devImg}}}, http.StatusCreated)
+	require.True(t, waiverCheckMatch(t, slug, findingBySeverity(t, slug, "medium").ID),
+		"the waiver covers a finding only the dev image reported")
+
+	scanArtifact(t, slug, key, "high.sarif.json", "production", "prod-img")
+	require.True(t, getGate(t, slug, "").ThresholdBreached, "the production finding blocks")
+
+	scanArtifact(t, slug, key, "high.sarif.json", "dev", "dev-img")
+	after := getGate(t, slug, "")
+	require.Truef(t, after.ThresholdBreached,
+		"a dev-image scan must not let the dev-image waiver cover the production finding (waived=%d)", after.WaivedCount)
+	require.EqualValues(t, 1, after.BlockingCount)
+	require.Zero(t, after.WaivedCount)
+	require.False(t, waiverCheckMatch(t, slug, after.BlockedBy[0]), "the per-finding check agrees with the gate")
+}
+
+// TestE2E_MixedWaiverContextsJudgeEachScanWhole: a waiver for {dev} and
+// {production, batch-img} covers what dev and the production batch image
+// report. A finding production reported on another image stays blocked after
+// a dev scan of the same code: each scan's environment and artifact are
+// matched against one context together.
+func TestE2E_MixedWaiverContextsJudgeEachScanWhole(t *testing.T) {
+	slug := newProject(t, "waiver-mixed")
+	key := mintKey(t, slug)
+	scanArtifact(t, slug, key, "medium.sarif.json", "dev", "dev-img")
+	scanArtifact(t, slug, key, "medium.sarif.json", "production", "batch-img")
+	dev := findEnvironment(t, slug, "dev")
+	prod := findEnvironment(t, slug, "production")
+	batch := artifactIDByName(t, slug, "batch-img")
+	request[waiverScopeDetail](t, http.MethodPost, "/api/v1/projects/"+slug+"/waivers", adminToken,
+		map[string]any{"name": "dev, and the production batch image", "contexts": []map[string]string{
+			{"environment_id": dev.ID},
+			{"environment_id": prod.ID, "artifact_id": batch},
+		}}, http.StatusCreated)
+	require.True(t, waiverCheckMatch(t, slug, findingBySeverity(t, slug, "medium").ID),
+		"the waiver covers a finding dev and the production batch image reported")
+
+	scanArtifact(t, slug, key, "high.sarif.json", "production", "web-img")
+	require.True(t, getGate(t, slug, "").ThresholdBreached, "the web-img production finding is not covered")
+
+	scanArtifact(t, slug, key, "high.sarif.json", "dev", "dev-img")
+	after := getGate(t, slug, "")
+	require.Truef(t, after.ThresholdBreached,
+		"a dev scan must not let the waiver cover a finding production reported on web-img (blocking=%d waived=%d)",
+		after.BlockingCount, after.WaivedCount)
+	require.EqualValues(t, 1, after.BlockingCount)
+	require.Zero(t, after.WaivedCount)
+	require.False(t, waiverCheckMatch(t, slug, after.BlockedBy[0]), "the per-finding check agrees with the gate")
+}
+
 // TestE2E_WaiverScopeMustBelongToTheProject: creating or updating a waiver with
 // a finding, environment, target or artifact id of another project answers the
 // same 404 as an id that does not exist, and a malformed id answers 400. None

@@ -140,16 +140,25 @@ func TestEvaluate_ContextWaiver_Matching(t *testing.T) {
 	assert.Equal(t, 3, d.TotalBlocking)
 }
 
+// envs lists observed contexts that differ only by environment.
+func envs(ids ...string) []ObservedContext {
+	out := make([]ObservedContext, len(ids))
+	for i, id := range ids {
+		out[i] = ObservedContext{EnvironmentID: id}
+	}
+	return out
+}
+
 // A waiver scoped to one environment covers a finding only while every
 // environment that observed the finding is inside the waiver's scope. The
 // newest scan alone must not decide it: a dev scan after a production scan of
 // the same code leaves the finding present in production.
 func TestEvaluate_EnvironmentWaiverDoesNotCoverOtherEnvironmentOccurrences(t *testing.T) {
 	findings := []Finding{
-		{ID: "dev-only", CurrentSeverityRank: 4, EnvironmentID: "env-dev", EnvironmentIDs: []string{"env-dev"}},
-		{ID: "dev-latest", CurrentSeverityRank: 4, EnvironmentID: "env-dev", EnvironmentIDs: []string{"env-dev", "env-prod"}},
-		{ID: "prod-latest", CurrentSeverityRank: 4, EnvironmentID: "env-prod", EnvironmentIDs: []string{"env-dev", "env-prod"}},
-		{ID: "unscoped", CurrentSeverityRank: 4, EnvironmentID: "env-dev", EnvironmentIDs: []string{"", "env-dev"}},
+		{ID: "dev-only", CurrentSeverityRank: 4, EnvironmentID: "env-dev", Observed: envs("env-dev")},
+		{ID: "dev-latest", CurrentSeverityRank: 4, EnvironmentID: "env-dev", Observed: envs("env-dev", "env-prod")},
+		{ID: "prod-latest", CurrentSeverityRank: 4, EnvironmentID: "env-prod", Observed: envs("env-dev", "env-prod")},
+		{ID: "unscoped", CurrentSeverityRank: 4, EnvironmentID: "env-dev", Observed: envs("", "env-dev")},
 	}
 	g := New(
 		&mockFindingsRepo{findings: findings},
@@ -166,8 +175,8 @@ func TestEvaluate_EnvironmentWaiverDoesNotCoverOtherEnvironmentOccurrences(t *te
 
 func TestIsFindingWaived_NeedsEveryObservedEnvironmentCovered(t *testing.T) {
 	f := Finding{
-		ID: "f1", CurrentSeverityRank: 4, TargetID: "app-api",
-		EnvironmentID: "env-dev", EnvironmentIDs: []string{"env-dev", "env-prod"},
+		ID: "f1", CurrentSeverityRank: 4, TargetID: "app-api", EnvironmentID: "env-dev",
+		Observed: []ObservedContext{{EnvironmentID: "env-dev", TargetID: "app-api"}, {EnvironmentID: "env-prod", TargetID: "app-api"}},
 	}
 	cases := map[string]struct {
 		contexts []WaiverContext
@@ -177,7 +186,7 @@ func TestIsFindingWaived_NeedsEveryObservedEnvironmentCovered(t *testing.T) {
 		"a context that names no environment": {[]WaiverContext{{TargetID: "app-api"}}, true},
 		"the newest environment only":         {[]WaiverContext{{EnvironmentID: "env-dev"}}, false},
 		"the older environment only":          {[]WaiverContext{{EnvironmentID: "env-prod"}}, false},
-		"one environment and a wildcard":      {[]WaiverContext{{EnvironmentID: "env-dev"}, {}}, true},
+		"one environment and an empty row":    {[]WaiverContext{{EnvironmentID: "env-dev"}, {}}, false},
 		"both environments of another target": {[]WaiverContext{{EnvironmentID: "env-dev", TargetID: "x"}, {EnvironmentID: "env-prod", TargetID: "x"}}, false},
 	}
 	for name, tc := range cases {
@@ -187,11 +196,115 @@ func TestIsFindingWaived_NeedsEveryObservedEnvironmentCovered(t *testing.T) {
 	}
 }
 
+// An artifact-only context applies in every environment, but only to that
+// artifact. A finding production reported on another artifact stays blocked
+// whichever scan came last.
+func TestIsFindingWaived_ArtifactOnlyContextNeedsEveryObservedArtifact(t *testing.T) {
+	waiver := []Waiver{{ID: "w1", Contexts: []WaiverContext{{ArtifactID: "dev-img"}}}}
+	devImg := ObservedContext{EnvironmentID: "env-dev", ArtifactID: "dev-img"}
+	prodImg := ObservedContext{EnvironmentID: "env-prod", ArtifactID: "prod-img"}
+
+	assert.True(t, IsFindingWaived(Finding{ID: "f1", EnvironmentID: "env-dev", ArtifactID: "dev-img", Observed: []ObservedContext{devImg}}, waiver),
+		"a finding seen only on the dev image is waived")
+	assert.True(t, IsFindingWaived(Finding{ID: "f1", EnvironmentID: "env-prod", ArtifactID: "dev-img", Observed: []ObservedContext{
+		devImg, {EnvironmentID: "env-prod", ArtifactID: "dev-img"},
+	}}, waiver), "the dev image deployed to production is still the dev image")
+	for name, latest := range map[string]ObservedContext{"dev scan last": devImg, "production scan last": prodImg} {
+		f := Finding{
+			ID: "f1", EnvironmentID: latest.EnvironmentID, ArtifactID: latest.ArtifactID,
+			Observed: []ObservedContext{prodImg, devImg},
+		}
+		assert.Falsef(t, IsFindingWaived(f, waiver), "%s: production reported the finding on prod-img", name)
+	}
+}
+
+// Each observed context has to fit one waiver context as a whole. A waiver
+// for {dev} and {production, batch-img} covers dev and the production batch
+// image, never a production finding on another image, whatever the scan order.
+func TestIsFindingWaived_MixedContextsJudgeEachObservationWhole(t *testing.T) {
+	waiver := []Waiver{{ID: "w1", Contexts: []WaiverContext{
+		{EnvironmentID: "env-dev"},
+		{EnvironmentID: "env-prod", ArtifactID: "batch-img"},
+	}}}
+	devImg := ObservedContext{EnvironmentID: "env-dev", ArtifactID: "dev-img"}
+	prodBatch := ObservedContext{EnvironmentID: "env-prod", ArtifactID: "batch-img"}
+	prodWeb := ObservedContext{EnvironmentID: "env-prod", ArtifactID: "web-img"}
+	devBatch := ObservedContext{EnvironmentID: "env-dev", ArtifactID: "batch-img"}
+
+	cases := map[string]struct {
+		observed []ObservedContext
+		waived   bool
+	}{
+		"dev and the production batch image":  {[]ObservedContext{devImg, prodBatch}, true},
+		"dev on the batch image":              {[]ObservedContext{devBatch}, true},
+		"production web image, then dev":      {[]ObservedContext{prodWeb, devImg}, false},
+		"dev, then production web image":      {[]ObservedContext{devImg, prodWeb}, false},
+		"production batch and web images":     {[]ObservedContext{prodBatch, prodWeb}, false},
+		"production web image only":           {[]ObservedContext{prodWeb}, false},
+		"an environmentless batch image scan": {[]ObservedContext{{ArtifactID: "batch-img"}, devImg}, false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			for _, latest := range tc.observed {
+				f := Finding{ID: "f1", EnvironmentID: latest.EnvironmentID, ArtifactID: latest.ArtifactID, Observed: tc.observed}
+				assert.Equalf(t, tc.waived, IsFindingWaived(f, waiver), "newest scan %+v", latest)
+			}
+		})
+	}
+}
+
+// The verdict depends on the set of observed contexts, never on which scan
+// came last: both orders of a dev and a production observation give the same
+// answer for each kind of context.
+func TestIsFindingWaived_ScanOrderDoesNotMatter(t *testing.T) {
+	dev := ObservedContext{EnvironmentID: "env-dev", TargetID: "app", ArtifactID: "dev-img"}
+	prod := ObservedContext{EnvironmentID: "env-prod", TargetID: "app", ArtifactID: "prod-img"}
+	waivers := map[string]struct {
+		contexts []WaiverContext
+		waived   bool
+	}{
+		"dev environment":                 {[]WaiverContext{{EnvironmentID: "env-dev"}}, false},
+		"dev artifact":                    {[]WaiverContext{{ArtifactID: "dev-img"}}, false},
+		"dev environment and dev target":  {[]WaiverContext{{EnvironmentID: "env-dev", TargetID: "app"}}, false},
+		"dev, and production on dev-img":  {[]WaiverContext{{EnvironmentID: "env-dev"}, {EnvironmentID: "env-prod", ArtifactID: "dev-img"}}, false},
+		"the target in every environment": {[]WaiverContext{{TargetID: "app"}}, true},
+		"both environments":               {[]WaiverContext{{EnvironmentID: "env-dev"}, {EnvironmentID: "env-prod"}}, true},
+		"both artifacts":                  {[]WaiverContext{{ArtifactID: "dev-img"}, {ArtifactID: "prod-img"}}, true},
+	}
+	orders := map[string][]ObservedContext{
+		"dev then production": {dev, prod},
+		"production then dev": {prod, dev},
+	}
+	for name, w := range waivers {
+		t.Run(name, func(t *testing.T) {
+			for order, observed := range orders {
+				newest := observed[len(observed)-1]
+				f := Finding{
+					ID: "f1", EnvironmentID: newest.EnvironmentID, TargetID: newest.TargetID, ArtifactID: newest.ArtifactID,
+					Observed: observed,
+				}
+				assert.Equalf(t, w.waived, IsFindingWaived(f, []Waiver{{ID: "w1", Contexts: w.contexts}}), order)
+			}
+		})
+	}
+}
+
+// A caller that knows only the newest scan's context (no observed list) is
+// judged on that context alone. A finding with no context at all, such as a
+// watcher finding, is covered by no context-scoped waiver.
+func TestIsFindingWaived_WithoutObservedContextsUsesTheNewestScan(t *testing.T) {
+	w := []Waiver{{ID: "w1", Contexts: []WaiverContext{{EnvironmentID: "env-dev"}}}}
+	assert.True(t, IsFindingWaived(Finding{ID: "f1", EnvironmentID: "env-dev"}, w))
+	assert.False(t, IsFindingWaived(Finding{ID: "f1", EnvironmentID: "env-prod"}, w))
+	assert.False(t, IsFindingWaived(Finding{ID: "f1"}, w))
+	assert.False(t, IsFindingWaived(Finding{ID: "f1"}, []Waiver{{ID: "w1", Contexts: []WaiverContext{{ArtifactID: "img"}}}}))
+}
+
 // A context row that names no environment, target or artifact matches no
 // finding. A deleted environment leaves such a row behind, and it must not
 // widen the waiver to every finding.
 func TestIsFindingWaived_EmptyContextMatchesNothing(t *testing.T) {
-	f := Finding{ID: "f1", CurrentSeverityRank: 4, EnvironmentID: "env-dev", EnvironmentIDs: []string{"env-dev"}}
+	f := Finding{ID: "f1", CurrentSeverityRank: 4, EnvironmentID: "env-dev", Observed: envs("env-dev")}
 	assert.False(t, IsFindingWaived(f, []Waiver{{ID: "w1", Contexts: []WaiverContext{{}}}}))
 	assert.True(t, IsFindingWaived(f, []Waiver{{ID: "w1", Contexts: []WaiverContext{{}, {EnvironmentID: "env-dev"}}}}),
 		"a second, real context still applies")
@@ -201,13 +314,13 @@ func TestIsFindingWaived_EmptyContextMatchesNothing(t *testing.T) {
 func TestIsFindingWaived_TargetOnlyContextApplyInEveryEnvironment(t *testing.T) {
 	w := []Waiver{{ID: "w1", Contexts: []WaiverContext{{TargetID: "app-api"}}}}
 	for _, env := range []string{"", "env-dev", "env-prod"} {
-		f := Finding{ID: "f1", CurrentSeverityRank: 4, TargetID: "app-api", EnvironmentID: env, EnvironmentIDs: []string{env}}
+		f := Finding{ID: "f1", CurrentSeverityRank: 4, TargetID: "app-api", EnvironmentID: env, Observed: []ObservedContext{{EnvironmentID: env, TargetID: "app-api"}}}
 		assert.Truef(t, IsFindingWaived(f, w), "environment %q", env)
 	}
 }
 
 func TestIsFindingWaived_ScopeAllAndEnvironmentlessWaiversApplyEverywhere(t *testing.T) {
-	f := Finding{ID: "f1", CurrentSeverityRank: 4, EnvironmentID: "env-dev", EnvironmentIDs: []string{"env-dev", "env-prod"}}
+	f := Finding{ID: "f1", CurrentSeverityRank: 4, EnvironmentID: "env-dev", Observed: envs("env-dev", "env-prod")}
 	assert.True(t, IsFindingWaived(f, []Waiver{{ID: "all", ScopeAll: true}}))
 	assert.True(t, IsFindingWaived(f, []Waiver{{ID: "target", Targets: []WaiverTarget{{FindingID: "f1"}}}}))
 }

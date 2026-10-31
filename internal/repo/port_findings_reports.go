@@ -1127,15 +1127,19 @@ func (r *pgFindingPort) GetFindingContext(ctx context.Context, findingID string)
 	if err != nil {
 		return port.FindingContext{}, mappingErr(err)
 	}
-	environments, err := r.inner.q.ListFindingEnvironmentIDs(ctx, fid)
+	rows, err := r.inner.q.ListFindingObservedContexts(ctx, fid)
 	if err != nil {
 		return port.FindingContext{}, err
 	}
+	observed := make([]port.ObservedContext, len(rows))
+	for i, o := range rows {
+		observed[i] = port.ObservedContext{EnvironmentID: o.EnvironmentID, TargetID: o.TargetID, ArtifactID: o.ArtifactID}
+	}
 	return port.FindingContext{
-		EnvironmentID:  optionalUUID(row.EnvironmentID),
-		TargetID:       optionalUUID(row.TargetID),
-		ArtifactID:     optionalUUID(row.ArtifactID),
-		EnvironmentIDs: environments,
+		EnvironmentID: optionalUUID(row.EnvironmentID),
+		TargetID:      optionalUUID(row.TargetID),
+		ArtifactID:    optionalUUID(row.ArtifactID),
+		Observed:      observed,
 	}, nil
 }
 
@@ -1250,16 +1254,34 @@ func (r *pgFindingPort) ListGateCandidates(ctx context.Context, projectID string
 				IntroducedCommitSha:  stringFromTextPtr(row.IntroducedCommitSha),
 			},
 			Context: port.FindingContext{
-				EnvironmentID:  optionalUUID(row.EnvironmentID),
-				TargetID:       optionalUUID(row.TargetID),
-				ArtifactID:     optionalUUID(row.ArtifactID),
-				EnvironmentIDs: row.EnvironmentIds,
+				EnvironmentID: optionalUUID(row.EnvironmentID),
+				TargetID:      optionalUUID(row.TargetID),
+				ArtifactID:    optionalUUID(row.ArtifactID),
+				Observed:      zipObservedContexts(row.ObservedEnvironmentIds, row.ObservedTargetIds, row.ObservedArtifactIds),
 			},
 			Reachability: string(row.ReachabilityState),
 			Aliases:      row.Aliases,
 		}
 	}
 	return out, nil
+}
+
+// zipObservedContexts joins the observed_* arrays of a gate candidate row.
+// They come from one aggregate and always have the same length; the bounds
+// check only keeps a malformed row from panicking.
+func zipObservedContexts(environments, targets, artifacts []string) []port.ObservedContext {
+	at := func(xs []string, i int) string {
+		if i < len(xs) {
+			return xs[i]
+		}
+		return ""
+	}
+	n := max(len(environments), len(targets), len(artifacts))
+	out := make([]port.ObservedContext, n)
+	for i := range out {
+		out[i] = port.ObservedContext{EnvironmentID: at(environments, i), TargetID: at(targets, i), ArtifactID: at(artifacts, i)}
+	}
+	return out
 }
 
 func (r *pgFindingPort) ListIntroducedGateCandidates(ctx context.Context, projectID, reportID string, minSeverityRank int16) ([]port.GateCandidate, error) {
@@ -1290,10 +1312,10 @@ func (r *pgFindingPort) ListIntroducedGateCandidates(ctx context.Context, projec
 				IntroducedCommitSha:  stringFromTextPtr(row.IntroducedCommitSha),
 			},
 			Context: port.FindingContext{
-				EnvironmentID:  optionalUUID(row.EnvironmentID),
-				TargetID:       optionalUUID(row.TargetID),
-				ArtifactID:     optionalUUID(row.ArtifactID),
-				EnvironmentIDs: row.EnvironmentIds,
+				EnvironmentID: optionalUUID(row.EnvironmentID),
+				TargetID:      optionalUUID(row.TargetID),
+				ArtifactID:    optionalUUID(row.ArtifactID),
+				Observed:      zipObservedContexts(row.ObservedEnvironmentIds, row.ObservedTargetIds, row.ObservedArtifactIds),
 			},
 			Reachability: string(row.ReachabilityState),
 			Aliases:      row.Aliases,
