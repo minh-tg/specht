@@ -1,3 +1,4 @@
+import type { ActorContext } from "@/api/users";
 import { DisabledReason } from "@/components/DisabledReason";
 import { INLINE_LINK } from "@/components/inlineLink";
 import { LedgerEntry, type LedgerTone } from "@/components/Ledger";
@@ -7,9 +8,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { changeViewState, fromChangePath } from "@/lib/entryMode";
 import { normalizeSeverity } from "@/lib/enums";
 import { useCopyToClipboard } from "@/lib/useCopyToClipboard";
-import { NOT_A_MEMBER_REASON } from "@/lib/waiverRequest";
+import type { WaiverAction } from "@/lib/waiverRequest";
 import { fixSentence, locationLine } from "@/pages/change-view/resolve";
-import type { Finding } from "@/types/api";
+import { WaiverPath } from "@/pages/change-view/WaiverPath";
+import { waiverChip, type WaiverView } from "@/pages/change-view/waiverState";
+import type { Finding, Waiver } from "@/types/api";
 import { Link, useLocation } from "react-router-dom";
 
 function toneFor(severity: string): LedgerTone {
@@ -31,10 +34,15 @@ export interface BlockerEntryProps {
   readonly onHandledChange: (handled: boolean) => void;
   /** The severity floor the finding is judged against, in words. */
   readonly floor?: string;
-  /** A request for this finding is waiting for a decision. */
-  readonly waiverRequested: boolean;
-  readonly canRequestWaiver: boolean;
+  /** The waiver that speaks for this finding, if any request or waiver names it. */
+  readonly waiver?: WaiverView;
+  /** What the "Request waiver" control does for this viewer, and why when it cannot be used. */
+  readonly request: WaiverAction;
+  /** The viewer may approve and reject requests. */
+  readonly canApprove: boolean;
+  readonly who: ActorContext;
   readonly onRequestWaiver: () => void;
+  readonly onWithdrawWaiver: (waiver: Waiver) => void;
 }
 
 /** One blocking finding as a ledger entry, from data the caller already has. */
@@ -76,9 +84,12 @@ function LoadedEntry(
     handled,
     onHandledChange,
     floor,
-    waiverRequested,
-    canRequestWaiver,
+    waiver,
+    request,
+    canApprove,
+    who,
     onRequestWaiver,
+    onWithdrawWaiver,
   }: BlockerEntryProps & { finding: Finding; },
 ) {
   const { status, copy } = useCopyToClipboard();
@@ -109,10 +120,12 @@ function LoadedEntry(
           <span className="min-w-[10rem] font-semibold [overflow-wrap:anywhere] max-sm:min-w-0">
             {finding.current_title}
           </span>
-          {waiverRequested && (
+          {waiver && (
             <>
               {" "}
-              <span className="font-label text-muted-foreground text-label">Waiver requested</span>
+              <span className="font-label text-muted-foreground text-label">
+                {waiverChip(waiver.kind)}
+              </span>
             </>
           )}
           {fix && " "}
@@ -163,6 +176,17 @@ function LoadedEntry(
               </p>
             )}
         </div>
+        {waiver && (
+          <WaiverPath
+            slug={slug}
+            findingId={findingId}
+            title={finding.current_title}
+            view={waiver}
+            who={who}
+            canApprove={canApprove}
+            onWithdraw={onWithdrawWaiver}
+          />
+        )}
         <div className="flex flex-wrap items-center gap-2">
           {fix && (
             <Button
@@ -174,24 +198,18 @@ function LoadedEntry(
               {copyLabel}
             </Button>
           )}
-          {waiverRequested
-            ? (
-              <span className="text-muted-foreground text-meta">
-                Waiting for a manager to decide.
-              </span>
-            )
-            : (
-              <DisabledReason reason={canRequestWaiver ? undefined : NOT_A_MEMBER_REASON}>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!canRequestWaiver}
-                  onClick={onRequestWaiver}
-                >
-                  Request waiver
-                </Button>
-              </DisabledReason>
-            )}
+          {waiver?.kind !== "pending" && waiver?.kind !== "in_force" && (
+            <DisabledReason reason={request.kind === "disabled" ? request.reason : undefined}>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={request.kind !== "available"}
+                onClick={onRequestWaiver}
+              >
+                {waiver ? "Request again" : "Request waiver"}
+              </Button>
+            </DisabledReason>
+          )}
           <label className="ml-auto flex min-h-[34px] cursor-pointer items-center gap-2 px-1.5 text-meta">
             <input
               type="checkbox"

@@ -25,6 +25,9 @@ let findings: Record<string, unknown>;
 let findingFetches: string[];
 let waivers: unknown[];
 let waiverPosts: Array<Record<string, unknown>>;
+let meId: string;
+let withdrawCalls: string[];
+let withdrawFailure: { status: number; code: string; } | null;
 
 function report(overrides: Record<string, unknown> = {}) {
   return {
@@ -109,6 +112,9 @@ beforeEach(() => {
   findingFetches = [];
   waivers = [];
   waiverPosts = [];
+  meId = "u-ada";
+  withdrawCalls = [];
+  withdrawFailure = null;
 
   globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -155,6 +161,25 @@ beforeEach(() => {
         );
       }
       return Promise.resolve(jsonResponse(reports));
+    }
+    if (url === "/api/v1/me") {
+      return Promise.resolve(jsonResponse({ id: meId, email: "ada@example.com", role: "member" }));
+    }
+    const withdraw = /^\/api\/v1\/projects\/acme\/waivers\/([^/]+)\/withdraw$/.exec(url);
+    if (withdraw && init?.method === "POST") {
+      withdrawCalls.push(withdraw[1]);
+      if (withdrawFailure) {
+        const failure = jsonResponse(
+          { error: { code: withdrawFailure.code, message: "refused" } },
+          withdrawFailure.status,
+        );
+        failure.headers.set("X-Request-Id", "req-w1");
+        return Promise.resolve(failure);
+      }
+      waivers = (waivers as Array<Record<string, unknown>>).map((w) =>
+        w.id === withdraw[1] ? { ...w, status: "withdrawn" } : w
+      );
+      return Promise.resolve(jsonResponse({}));
     }
     if (url === "/api/v1/projects/acme/waivers/requests" && init?.method === "POST") {
       const body = JSON.parse(String(init.body)) as { target_ids: string[]; };
@@ -672,7 +697,7 @@ describe("ChangeView waivers", () => {
     });
     expect(typeof waiverPosts[0].expires_at).toBe("string");
     // The request is waiting: the entry says so and the verdict is unchanged.
-    expect(await screen.findByText("Waiting for a manager to decide.")).toBeInTheDocument();
+    expect(await screen.findByText("Waiver requested. Waiting for a manager.")).toBeInTheDocument();
     expect(screen.getByText("Waiver requested")).toBeInTheDocument();
     expect(openEntry().queryByRole("button", { name: "Request waiver" })).not.toBeInTheDocument();
     expect(screen.getByText("BLOCKED")).toBeInTheDocument();
@@ -682,7 +707,7 @@ describe("ChangeView waivers", () => {
     waivers = [pendingWaiver("f1")];
     renderPage();
 
-    expect(await screen.findByText("Waiting for a manager to decide.")).toBeInTheDocument();
+    expect(await screen.findByText("Waiver requested. Waiting for a manager.")).toBeInTheDocument();
     expect(screen.getByText("Waiver requested")).toBeInTheDocument();
   });
 
@@ -745,8 +770,214 @@ describe("ChangeView waivers", () => {
 
     await loadedLedger();
     const entry = openEntry();
-    expect(await entry.findByText("Waiting for a manager to decide.")).toBeInTheDocument();
+    expect(await entry.findByText("Waiver requested. Waiting for a manager.")).toBeInTheDocument();
     expect(entry.queryByRole("button", { name: "Request waiver" })).not.toBeInTheDocument();
+  });
+});
+
+function waiverRow(extra: Record<string, unknown> = {}) {
+  return {
+    ...pendingWaiver("f1"),
+    requested_by: "u-tomas",
+    requested_by_name: "Tomas",
+    requested_at: "2026-10-30T10:00:00Z",
+    created_at: "2026-10-30T10:00:00Z",
+    updated_at: "2026-10-30T10:00:00Z",
+    expires_at: "2099-01-01T00:00:00Z",
+    ...extra,
+  };
+}
+
+function waiverBlock() {
+  return within(openEntry().getByRole("group", { name: "Waiver for Finding f1" }));
+}
+
+describe("ChangeView waiver path", () => {
+  it.each([
+    [
+      "rejected",
+      {
+        status: "rejected",
+        decided_by: "u-kim",
+        decided_by_name: "A. Kim",
+        decision_note: "Too broad.",
+      },
+      "Waiver rejected by A. Kim.",
+      "Waiver rejected",
+    ],
+    [
+      "expired before a decision",
+      {
+        status: "rejected",
+        decision_reason: "expired",
+        decision_note: "expired before a decision",
+      },
+      "The request expired before anyone decided.",
+      "Request expired",
+    ],
+    ["withdrawn", { status: "withdrawn" }, "Request withdrawn.", "Request withdrawn"],
+    ["revoked", { status: "approved", enabled: false }, "Waiver revoked.", "Waiver revoked"],
+    [
+      "approved but expired",
+      { status: "approved", enabled: false, expires_at: "2020-01-01T00:00:00Z" },
+      "Waiver expired on",
+      "Waiver expired",
+    ],
+  ])("shows a %s waiver and offers to ask again", async (_name, extra, headline, chip) => {
+    waivers = [waiverRow(extra)];
+    renderPage();
+    await loadedLedger();
+
+    expect(await waiverBlock().findByText(new RegExp(headline.replace(/\./g, "\\."))))
+      .toBeInTheDocument();
+    expect(screen.getAllByText(chip).length).toBeGreaterThan(0);
+    expect(openEntry().getByRole("button", { name: "Request again" })).toBeEnabled();
+    expect(screen.getByText("BLOCKED")).toBeInTheDocument();
+  });
+
+  it("shows an approved waiver without a request button", async () => {
+    waivers = [waiverRow({ status: "approved", decided_by: "u-kim", decided_by_name: "A. Kim" })];
+    renderPage();
+    await loadedLedger();
+
+    expect(await waiverBlock().findByText("Waiver approved by A. Kim.")).toBeInTheDocument();
+    expect(openEntry().queryByRole("button", { name: /Request/ })).not.toBeInTheDocument();
+  });
+
+  it("shows who asked and who can act on someone else's pending request", async () => {
+    waivers = [waiverRow()];
+    renderPage();
+    await loadedLedger();
+
+    const block = waiverBlock();
+    expect(await block.findByText("Waiver requested. Waiting for a manager.")).toBeInTheDocument();
+    expect(block.getByText(/Tomas asked/)).toBeInTheDocument();
+    expect(block.getByText(/Only Tomas can withdraw it/)).toBeInTheDocument();
+    expect(block.queryByRole("button", { name: /Withdraw/ })).not.toBeInTheDocument();
+  });
+
+  it("says a manager cannot approve their own request", async () => {
+    meId = "u-tomas";
+    permissions = { request_waiver: true, approve_waivers: true };
+    waivers = [waiverRow()];
+    renderPage();
+    await loadedLedger();
+
+    expect(await waiverBlock().findByText(/You cannot approve your own request/))
+      .toBeInTheDocument();
+  });
+
+  it("keeps the request again button disabled, with the reason, for someone who cannot request", async () => {
+    permissions = { request_waiver: false };
+    waivers = [waiverRow({ status: "rejected" })];
+    renderPage();
+    await loadedLedger();
+
+    const entry = openEntry();
+    expect(await entry.findByRole("button", { name: "Request again" })).toBeDisabled();
+    expect(entry.getByText("You are not a member of this project.")).toBeInTheDocument();
+  });
+
+  it("treats a null waiver list as no waivers", async () => {
+    waivers = null as unknown as unknown[];
+    renderPage();
+    await loadedLedger();
+
+    expect(openEntry().getByRole("button", { name: "Request waiver" })).toBeEnabled();
+  });
+
+  it("treats a waiver with a null target list as covering nothing", async () => {
+    waivers = [waiverRow({ targets: null })];
+    renderPage();
+    await loadedLedger();
+
+    expect(openEntry().getByRole("button", { name: "Request waiver" })).toBeEnabled();
+  });
+
+  describe("withdrawing", () => {
+    beforeEach(() => {
+      meId = "u-tomas";
+      waivers = [waiverRow()];
+    });
+
+    it("asks first, withdraws, and puts focus on the waiver block", async () => {
+      renderPage();
+      await loadedLedger();
+      const user = userEvent.setup();
+
+      await user.click(
+        await waiverBlock().findByRole("button", { name: "Withdraw request: Finding f1" }),
+      );
+      const dialog = await screen.findByRole("alertdialog");
+      expect(within(dialog).getByText("Withdraw this request?")).toBeInTheDocument();
+      expect(withdrawCalls).toEqual([]);
+      await user.click(within(dialog).getByRole("button", { name: "Withdraw request" }));
+
+      await waitFor(() => expect(withdrawCalls).toEqual(["w1"]));
+      expect(await waiverBlock().findByText("Request withdrawn by you.")).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+      await waitFor(() =>
+        expect(screen.getByRole("group", { name: "Waiver for Finding f1" })).toHaveFocus()
+      );
+      expect(openEntry().getByRole("button", { name: "Request again" })).toBeEnabled();
+    });
+
+    it("leaves the request alone when the person keeps it", async () => {
+      renderPage();
+      await loadedLedger();
+      const user = userEvent.setup();
+
+      await user.click(
+        await waiverBlock().findByRole("button", { name: "Withdraw request: Finding f1" }),
+      );
+      await user.click(await screen.findByRole("button", { name: "Keep request" }));
+
+      expect(withdrawCalls).toEqual([]);
+      expect(await waiverBlock().findByText("Waiver requested. Waiting for a manager."))
+        .toBeInTheDocument();
+    });
+
+    it("stays open on a failure, shows the request id and lets the person retry", async () => {
+      withdrawFailure = { status: 500, code: "internal_error" };
+      renderPage();
+      await loadedLedger();
+      const user = userEvent.setup();
+
+      await user.click(
+        await waiverBlock().findByRole("button", { name: "Withdraw request: Finding f1" }),
+      );
+      const dialog = await screen.findByRole("alertdialog");
+      await user.click(within(dialog).getByRole("button", { name: "Withdraw request" }));
+
+      expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+        "Could not withdraw the request.",
+      );
+      expect(within(dialog).getByText("req-w1")).toBeInTheDocument();
+
+      withdrawFailure = null;
+      await user.click(within(dialog).getByRole("button", { name: "Try again" }));
+      await waitFor(() => expect(withdrawCalls).toEqual(["w1", "w1"]));
+      expect(await waiverBlock().findByText("Request withdrawn by you.")).toBeInTheDocument();
+    });
+
+    it("says someone decided first, and shows the current state", async () => {
+      withdrawFailure = { status: 409, code: "waiver_not_pending" };
+      renderPage();
+      await loadedLedger();
+      const user = userEvent.setup();
+
+      await user.click(
+        await waiverBlock().findByRole("button", { name: "Withdraw request: Finding f1" }),
+      );
+      // The request is rejected while the dialog is open; the refresh after the 409 shows it.
+      waivers = [waiverRow({ status: "rejected", decision_note: "No." })];
+      const dialog = await screen.findByRole("alertdialog");
+      await user.click(within(dialog).getByRole("button", { name: "Withdraw request" }));
+
+      expect(await within(dialog).findByRole("alert")).toHaveTextContent("already decided");
+      await user.click(within(dialog).getByRole("button", { name: "Close" }));
+      expect(await waiverBlock().findByText("Waiver rejected.")).toBeInTheDocument();
+    });
   });
 });
 
