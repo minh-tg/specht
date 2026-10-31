@@ -13,21 +13,22 @@ import (
 // Checkov names no target, so its reports used to carry target_id NULL and a
 // target-scoped waiver never matched. The repository named in the request is
 // stored as the target, and the same scanner without a repository still
-// leaves the report untargeted.
+// leaves the report untargeted. A target-scoped waiver covers the findings
+// once every report that observed them names the target.
 func TestE2E_CheckovReportTakesTheRequestRepositoryAsItsTarget(t *testing.T) {
 	slug := newProject(t, "repo-target")
 	key := mintKey(t, slug)
 	raw := readFixture(t, "testdata", "checkov-terraform.json")
-	scan := func(extra map[string]any) {
+	scan := func(extra map[string]any) ingestResponse {
 		t.Helper()
 		body := map[string]any{"project": slug, "scanner": "checkov", "raw_data": json.RawMessage(raw)}
 		for k, v := range extra {
 			body[k] = v
 		}
-		request[ingestResponse](t, http.MethodPost, "/api/v1/reports", key, body, http.StatusCreated)
+		return request[ingestResponse](t, http.MethodPost, "/api/v1/reports", key, body, http.StatusCreated)
 	}
 
-	scan(map[string]any{"commit_sha": "1111111111111111111111111111111111111111"})
+	untargeted := scan(map[string]any{"commit_sha": "1111111111111111111111111111111111111111"})
 	targets := request[[]targetRow](t, http.MethodGet, "/api/v1/projects/"+slug+"/targets", adminToken, nil, http.StatusOK)
 	require.Empty(t, targets, "a request that names no repository leaves the target out")
 	before := getGate(t, slug, "")
@@ -45,5 +46,11 @@ func TestE2E_CheckovReportTakesTheRequestRepositoryAsItsTarget(t *testing.T) {
 			"name":     "infra repo",
 			"contexts": []map[string]string{{"target_id": targets[0].ID}},
 		}, http.StatusCreated)
-	require.False(t, getGate(t, slug, "").ThresholdBreached, "the target-scoped waiver now matches the Checkov findings")
+	// The first report observed the findings with no target, so a target-scoped waiver must not cover that observation.
+	require.True(t, getGate(t, slug, "").ThresholdBreached, "the untargeted observation keeps the findings blocked")
+
+	status, body := doJSON(t, http.MethodDelete, "/api/v1/projects/"+slug+"/reports/"+untargeted.ReportID, adminToken, nil)
+	require.Equalf(t, http.StatusNoContent, status, "delete the untargeted report: %s", body)
+	require.Len(t, listFindings(t, slug), 3, "the targeted report still observes the findings")
+	require.False(t, getGate(t, slug, "").ThresholdBreached, "the target-scoped waiver matches the Checkov findings seen only on the repository")
 }
