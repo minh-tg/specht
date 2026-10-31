@@ -699,3 +699,6 @@ releases.
 - Slack notifications now show the CVE, package, project and severity as attachment fields and
   link the title to the first advisory reference. Slack ignored the keys sent before, so the
   channel only saw the titles. The generic webhook payload is unchanged.
+- A cold-start watcher round that creates many findings is sent as several Slack messages of at
+  most 50 attachments, and several webhook deliveries of at most 200 rows, in order. Slack
+  rejects a message with more than 100 attachments, so the whole round used to be dropped.

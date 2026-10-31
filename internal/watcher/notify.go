@@ -128,20 +128,29 @@ func (n *SlackNotifier) Notify(ctx context.Context, notifications []Notification
 		return nil
 	}
 
-	body, err := BuildSlackPayload(notifications)
-	if err != nil {
-		// Un-marshalable values are a programming error, not a transient
-		// condition; retrying cannot fix them. Log and move on.
-		n.logger.Error("slack payload build failed", "error", err, "count", len(notifications))
-		return nil
+	for _, chunk := range chunkNotifications(notifications, slackMaxAttachments) {
+		body, err := BuildSlackPayload(chunk)
+		if err != nil {
+			// Un-marshalable values are a programming error, not a transient
+			// condition; retrying cannot fix them. Log and move on.
+			n.logger.Error("slack payload build failed", "error", err, "count", len(chunk))
+			continue
+		}
+		postNotifications(ctx, postRequest{
+			logger: n.logger, client: n.client, sleeper: n.sleeper,
+			channel: "slack", webhookURL: n.webhookURL, secret: n.secret,
+		}, body, len(chunk))
+		if ctx.Err() != nil {
+			return nil
+		}
 	}
-
-	postNotifications(ctx, postRequest{
-		logger: n.logger, client: n.client, sleeper: n.sleeper,
-		channel: "slack", webhookURL: n.webhookURL, secret: n.secret,
-	}, body, len(notifications))
 	return nil
 }
+
+// slackMaxAttachments is how many attachments one Slack message carries.
+// Slack documents a hard limit of 100 per message and rejects the whole post
+// beyond it; half of that leaves room for the envelope.
+const slackMaxAttachments = 50
 
 // BuildSlackPayload renders one message for the batch:
 //
@@ -157,7 +166,8 @@ func (n *SlackNotifier) Notify(ctx context.Context, notifications []Notification
 //	title_link   first advisory reference URL     (http and https only)
 //	fields       CVE, Package, Project, Severity  (empty values omitted)
 //
-// Every text value is escaped for Slack.
+// Every text value is escaped for Slack. The caller keeps the batch to
+// slackMaxAttachments entries (Notify splits larger ones).
 func BuildSlackPayload(notifications []Notification) ([]byte, error) {
 	payload := slackPayload{
 		Text:        fmt.Sprintf("CVE watcher: %d new finding(s)", len(notifications)),
@@ -222,6 +232,20 @@ func newSlackAttachment(n Notification) slackAttachment {
 func isHTTPLink(raw string) bool {
 	u, err := url.Parse(raw)
 	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
+// chunkNotifications splits a batch into consecutive slices of at most size
+// entries, keeping the order.
+func chunkNotifications(ns []Notification, size int) [][]Notification {
+	var out [][]Notification
+	for len(ns) > size {
+		out = append(out, ns[:size])
+		ns = ns[size:]
+	}
+	if len(ns) > 0 {
+		out = append(out, ns)
+	}
+	return out
 }
 
 var slackEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
