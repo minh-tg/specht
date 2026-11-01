@@ -420,8 +420,8 @@ func publishPreview(ctx context.Context, f *adapterFlags, payload client.IngestP
 }
 
 // isDuplicateReport reports whether ingest failed because the server already
-// holds a byte-identical report (409 duplicate_report). The adapter keeps exit
-// 2: no verdict is available for this run.
+// holds a byte-identical report (409 duplicate_report). The response names no
+// report, so the adapter reads the verdict of the stored data instead.
 func isDuplicateReport(err error) bool {
 	var apiErr *client.Error
 	if !errors.As(err, &apiErr) {
@@ -687,13 +687,23 @@ func failMissingAPIKey(stderr io.Writer) int {
 
 func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, payload client.IngestPayload, apiURL string, stdout, stderr io.Writer, hc *http.Client) int {
 	resp, err := cl.IngestReport(&payload)
+	duplicate := false
 	if err != nil {
-		if isDuplicateReport(err) {
-			writeDiagnosticLine(stderr, "error: duplicate report: an identical report was already ingested for this project, so no new verdict was produced")
+		if !isDuplicateReport(err) {
+			writeDiagnostic(stderr, "error: ingest failed: %v\n", err)
 			return 2
 		}
-		writeDiagnostic(stderr, "error: ingest failed: %v\n", err)
-		return 2
+		// The server holds this exact report already, as when a job runs
+		// again without a code change. Its answer names no report, so the
+		// verdict comes from the stored data: the project gate, or the
+		// change scoped preview for the commit.
+		if payload.GateIntroducedOnly && payload.CommitSha == "" {
+			writeDiagnosticLine(stderr, "error: duplicate report: an identical report was already uploaded, and without a commit the change-scoped verdict cannot be read back")
+			return 2
+		}
+		writeDiagnosticLine(stderr, "notice: an identical report was already uploaded; reading the verdict of the stored report")
+		resp = &client.IngestResponse{Replayed: true}
+		duplicate = true
 	}
 	printChangeLink(stdout, gateChangeURL(apiURL, payload, resp.ReportID, f.severity))
 	if resp.FallbackReason != "" {
@@ -724,12 +734,23 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 			writeDiagnostic(stderr, "⚠️  could not fetch PR check preview: %v\n", err)
 		}
 	}
+	if duplicate && projectGate == nil && preview == nil {
+		// Only the preview can tell this run's verdict, and a stored report
+		// with an unknown verdict must not pass.
+		writeDiagnosticLine(stderr, "error: the report was already uploaded, but its stored verdict could not be read")
+		return 2
+	}
 	if preview != nil {
 		preview.ReportID = resp.ReportID
 		if projectGate != nil {
 			applyProjectVerdict(preview, projectGate)
 		} else {
 			resp.ThresholdBreached = preview.Conclusion == "failure"
+			if duplicate {
+				for _, n := range preview.SummaryCounts {
+					resp.IntroducedCount += n
+				}
+			}
 		}
 	}
 	publishPreview(ctx, f, payload, preview, apiURL, stderr, hc)
@@ -738,7 +759,11 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 		return reportIntroducedGate(resp, preview, payload, stderr)
 	}
 
-	writeDiagnostic(stderr, "report %s ingested, %d finding(s)\n", resp.ReportID, resp.TotalFindings)
+	if duplicate {
+		writeDiagnosticLine(stderr, "report already uploaded; verdict of the stored project data")
+	} else {
+		writeDiagnostic(stderr, "report %s ingested, %d finding(s)\n", resp.ReportID, resp.TotalFindings)
+	}
 	if projectGate.ThresholdBreached {
 		writeDiagnostic(stderr, "gate FAILED: %d blocking finding(s)\n", projectGate.BlockingCount)
 		return 1

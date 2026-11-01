@@ -375,6 +375,7 @@ releases.
 
 ### Fixed
 
+- `specht-adapter` no longer exits 2 when the server answers `409 duplicate_report` (the same report uploaded again, as when a job reruns without a code change). It prints that the report was already uploaded and exits with the stored verdict: the project gate, or the change-scoped verdict for the commit. It still exits 2 when that verdict cannot be read.
 - `specht-adapter` prints the scan filter it declares (`declaring scan filter: severities=..., fixable_only=...`) with the flag or variable each part came from, so a filter taken from `TRIVY_SEVERITY` or `TRIVY_IGNORE_UNFIXED` is visible in the job log.
 - A branch can no longer pass the introduced-only gate by pushing again. When no
   baseline resolves from `base_revision` (the target branch was never scanned, or a
