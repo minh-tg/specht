@@ -49,6 +49,31 @@ func TestE2E_IntroducedCarriesOnBranchWithUnscannedBase(t *testing.T) {
 	require.True(t, gs.ThresholdBreached)
 	require.EqualValues(t, 2, gs.BlockingCount)
 
+	// The check for push 2 annotates the findings its gate blocks on, although
+	// push 1 is the report that first attributed them.
+	plan := request[prCheckPreview](t, http.MethodGet,
+		"/api/v1/projects/"+slug+"/pr-check?commit=a100000000000000000000000000000000000002&report_id="+push2.ReportID,
+		key, nil, http.StatusOK)
+	require.Equal(t, "failure", plan.Conclusion)
+	annotated := map[string]bool{}
+	for _, a := range plan.Annotations {
+		annotated[a.FindingID] = true
+	}
+	for _, id := range gs.BlockedBy {
+		require.Truef(t, annotated[id], "blocking finding %s has no annotation: %+v", id, plan.Annotations)
+	}
+
+	// A replay of push 2 reports the split push 2 recorded.
+	replay := request[ingestResponse](t, http.MethodPost, "/api/v1/reports", key,
+		ingestBodyWith(t, slug, "high-new.sarif.json", map[string]any{
+			"branch": "feat/x", "commit_sha": "a100000000000000000000000000000000000002",
+			"base_revision": "main", "gate_introduced_only": true,
+		}), http.StatusOK)
+	require.True(t, replay.Replayed)
+	require.Equal(t, push2.ReportID, replay.ReportID)
+	require.Equal(t, 2, replay.IntroducedCount)
+	require.Equal(t, 0, replay.PreExistingCount)
+
 	push3 := carryPush(t, slug, key, "high-new.sarif.json", "feat/x",
 		"a100000000000000000000000000000000000003", "")
 	require.True(t, push3.ThresholdBreached,
