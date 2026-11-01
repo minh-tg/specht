@@ -252,7 +252,7 @@ func TestInvites_DeactivationRevokesTheOpenLinksTheAccountMade(t *testing.T) {
 	_, err := f.stores.Invites.AcceptAsUser(ctx, hashOf("leaver-used"), joiner.ID)
 	require.NoError(t, err)
 
-	_, _, err = f.stores.Users.Deactivate(ctx, leaver.ID)
+	_, _, err = f.stores.Users.Deactivate(ctx, leaver.ID, true)
 	require.NoError(t, err)
 
 	var revoked, accepted, open int
