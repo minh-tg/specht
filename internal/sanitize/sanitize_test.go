@@ -36,6 +36,37 @@ func TestText(t *testing.T) {
 	}
 }
 
+func TestLine(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain text is unchanged", "CVE-2024-0001 in libc", "CVE-2024-0001 in libc"},
+		{"newlines become spaces", "libfoo 1.0\n::notice::forged\n::add-mask::x", "libfoo 1.0 ::notice::forged ::add-mask::x"},
+		{"carriage returns and tabs become spaces", "a\r\nb\tc", "a b c"},
+		{"line and paragraph separators become spaces", "a b c\u0085d", "a b c d"},
+		{"runs of whitespace collapse", "a \n\n  b", "a b"},
+		{"ANSI sequences are removed", "x\x1b[2J\x1b[31mred", "xred"},
+		{"bidi overrides are removed", "feat/‮tnirp", "feat/tnirp"},
+		{"a leading workflow command prefix is defused", "::stop-commands::tok", " ::stop-commands::tok"},
+		{"a leading prefix after newlines is defused", "\n\n::notice::x", " ::notice::x"},
+		{"a prefix inside the line is kept", "a ::b", "a ::b"},
+		{"non-Latin text is kept", "日本語 ✓", "日本語 ✓"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Line(tc.in)
+			if got != tc.want {
+				t.Fatalf("Line(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+			if strings.ContainsAny(got, "\n\r\x1b") {
+				t.Fatalf("Line(%q) = %q still holds a line break or escape", tc.in, got)
+			}
+		})
+	}
+}
+
 func TestWriterStripsEachWrite(t *testing.T) {
 	var out bytes.Buffer
 	w := Writer(&out)
