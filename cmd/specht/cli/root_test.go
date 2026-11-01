@@ -35,6 +35,17 @@ func TestNewEnvClientReadsSpechtPrefixedNames(t *testing.T) {
 	}
 }
 
+func TestNewEnvClientRefusesPlainHTTPToARemoteHost(t *testing.T) {
+	env := map[string]string{"API_URL": "http://10.0.0.5:8080", "API_KEY": "vuln_x"}
+	if _, err := newEnvClient(func(name string) string { return env[name] }); err == nil {
+		t.Fatal("expected plain http to a non-loopback host to be refused")
+	}
+	env["SPECHT_ALLOW_INSECURE_HTTP"] = "1"
+	if _, err := newEnvClient(func(name string) string { return env[name] }); err != nil {
+		t.Fatalf("the opt-out must allow it: %v", err)
+	}
+}
+
 func TestNewEnvClientRequiresAKey(t *testing.T) {
 	if _, err := newEnvClient(func(string) string { return "" }); err == nil {
 		t.Fatal("expected a missing key error")
