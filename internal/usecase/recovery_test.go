@@ -153,3 +153,15 @@ func TestGrantAdminByEmail_UnknownAndSystemAccountsAreRefused(t *testing.T) {
 	assert.ErrorIs(t, err, ErrSystemAccount)
 	assert.Empty(t, system.promoted)
 }
+
+func TestGrantAdminByEmail_RefusesADeactivatedAccount(t *testing.T) {
+	disabled := recoveryUser("ada@acme.example", "member")
+	at := time.Now()
+	disabled.DisabledAt = &at
+	h := newRecoveryHarness(disabled)
+
+	_, err := h.uc.GrantAdminByEmail(context.Background(), "ada@acme.example")
+
+	assert.ErrorIs(t, err, ErrAccountDeactivated)
+	assert.Empty(t, h.promoted, "a deactivated account is not promoted")
+}

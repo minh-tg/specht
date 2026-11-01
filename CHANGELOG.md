@@ -396,6 +396,7 @@ releases.
 
 ### Security
 
+- `specht reset-password` and `specht grant-admin` write an audit line (`user.reset_password` or `user.role`, principal `cli`, the account id as target) on success and on failure. `grant-admin` now refuses a deactivated account, as the `ADMIN_EMAILS` bootstrap does.
 - `specht`, `specht-mcp` and `specht-adapter` refuse an `API_URL` with plain `http://` to a host that is not loopback, because the API key or session token would be sent unencrypted. `SPECHT_ALLOW_INSECURE_HTTP=1` allows it for a server on a trusted network.
 - MCP tool results print every scanner- or user-supplied value (titles, paths, names, comments, branch and commit names) as one double-quoted string with newlines escaped, and error messages on one line. A finding title can no longer add list entries or text that looks like the tool's own output to a result.
 - `specht-adapter` and the GitHub Action script print finding titles, file names, branch names and server error messages on one line with terminal escapes and bidirectional overrides removed. A scanner-supplied title can no longer start a line with `::` and forge or hide workflow commands such as `::notice::`, `::add-mask::` or `::stop-commands::` in the CI log.

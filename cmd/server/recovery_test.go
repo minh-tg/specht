@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/minh-tg/specht/internal/audit"
 	"github.com/minh-tg/specht/internal/usecase"
 )
 
@@ -44,9 +46,16 @@ func (f *fakeRecovery) GrantAdminByEmail(ctx context.Context, email string) (*us
 }
 
 func runRecoveryForTest(svc recoveryService, stdin string, args ...string) (code int, stdout, stderr string) {
-	var out, errOut bytes.Buffer
-	code = runRecovery(context.Background(), svc, args, strings.NewReader(stdin), &out, &errOut)
-	return code, out.String(), errOut.String()
+	code, stdout, stderr, _ = runRecoveryAudited(svc, stdin, args...)
+	return code, stdout, stderr
+}
+
+// runRecoveryAudited also returns what the command wrote to the audit log.
+func runRecoveryAudited(svc recoveryService, stdin string, args ...string) (code int, stdout, stderr, auditLog string) {
+	var out, errOut, logOut bytes.Buffer
+	logger := audit.NewLogger(slog.New(slog.NewTextHandler(&logOut, nil)))
+	code = runRecovery(context.Background(), svc, logger, args, strings.NewReader(stdin), &out, &errOut)
+	return code, out.String(), errOut.String(), logOut.String()
 }
 
 func TestRecovery_ResetGeneratesAPasswordAndShowsItOnce(t *testing.T) {
@@ -156,4 +165,60 @@ func TestRecovery_GrantAdminReportsTheNewRole(t *testing.T) {
 	code, _, stderr = runRecoveryForTest(failing, "", "grant-admin", "nobody@acme.example")
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stderr, "no account has that email")
+}
+
+func TestRecovery_ResetPasswordWritesAnAuditLine(t *testing.T) {
+	svc := &fakeRecovery{profile: usecase.UserProfile{ID: "u-42"}}
+
+	code, stdout, stderr, log := runRecoveryAudited(svc, "", "reset-password", "ada@acme.example")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Contains(t, log, "audit=user.reset_password")
+	assert.Contains(t, log, "outcome=success")
+	assert.Contains(t, log, "principal_id=cli")
+	assert.Contains(t, log, "target=u-42")
+	assert.NotContains(t, log, svc.resetPassword, "the new password never reaches the log")
+	assert.Contains(t, stdout, svc.resetPassword)
+}
+
+func TestRecovery_GrantAdminWritesAnAuditLine(t *testing.T) {
+	svc := &fakeRecovery{profile: usecase.UserProfile{ID: "u-42"}}
+
+	code, _, stderr, log := runRecoveryAudited(svc, "", "grant-admin", "ada@acme.example")
+
+	require.Equal(t, 0, code, stderr)
+	assert.Contains(t, log, "audit=user.role")
+	assert.Contains(t, log, "outcome=success")
+	assert.Contains(t, log, "principal_id=cli")
+	assert.Contains(t, log, "target=u-42")
+}
+
+func TestRecovery_FailedCommandsAreAuditedWithTheTypedEmail(t *testing.T) {
+	failing := &fakeRecovery{grantErr: usecase.ErrAccountNotFound, resetErr: usecase.ErrSystemAccount}
+
+	code, _, _, log := runRecoveryAudited(failing, "", "grant-admin", "nobody@acme.example")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, log, "audit=user.role")
+	assert.Contains(t, log, "outcome=failure")
+	assert.Contains(t, log, "target=nobody@acme.example")
+
+	code, _, _, log = runRecoveryAudited(failing, "", "reset-password", "system@specht.local")
+	assert.Equal(t, 1, code)
+	assert.Contains(t, log, "audit=user.reset_password")
+	assert.Contains(t, log, "outcome=failure")
+}
+
+func TestRecovery_UsageErrorsWriteNoAuditLine(t *testing.T) {
+	code, _, _, log := runRecoveryAudited(&fakeRecovery{}, "", "grant-admin")
+	assert.Equal(t, 2, code)
+	assert.Empty(t, log)
+}
+
+func TestRecovery_GrantAdminExplainsADeactivatedAccount(t *testing.T) {
+	svc := &fakeRecovery{grantErr: usecase.ErrAccountDeactivated}
+	code, stdout, stderr := runRecoveryForTest(svc, "", "grant-admin", "ada@acme.example")
+	assert.Equal(t, 1, code)
+	assert.Empty(t, stdout)
+	assert.Contains(t, stderr, "deactivated")
+	assert.Contains(t, stderr, "reactivate")
 }

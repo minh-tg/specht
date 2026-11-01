@@ -5,7 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
 	"testing"
+
+	"github.com/minh-tg/specht/internal/auth"
 )
 
 func TestLoggerEmitsStructuredAuditEvent(t *testing.T) {
@@ -86,5 +89,21 @@ func TestOutcomeString(t *testing.T) {
 		if got := outcomeString(tt.outcome); got != tt.want {
 			t.Errorf("outcomeString(%d) = %q, want %q", tt.outcome, got, tt.want)
 		}
+	}
+}
+
+func TestLogUsesTheActorWhenThereIsNoPrincipal(t *testing.T) {
+	var buf bytes.Buffer
+	logger := NewLogger(slog.New(slog.NewTextHandler(&buf, nil)))
+
+	logger.Log(context.Background(), Event{Name: EventChangeUserRole, Actor: "cli", Target: "u-1"})
+	if !strings.Contains(buf.String(), "principal_id=cli") {
+		t.Fatalf("the actor is not the principal id: %s", buf.String())
+	}
+
+	buf.Reset()
+	logger.Log(context.Background(), Event{Name: EventChangeUserRole, Actor: "cli", Principal: &auth.Identity{UserID: "u-9"}})
+	if !strings.Contains(buf.String(), "principal_id=u-9") || strings.Contains(buf.String(), "principal_id=cli") {
+		t.Fatalf("a real principal must win over the actor: %s", buf.String())
 	}
 }
