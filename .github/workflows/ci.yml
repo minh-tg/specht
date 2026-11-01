@@ -465,9 +465,12 @@ jobs:
       # Pulls from the GHCR mirror when IMAGE_MIRROR is set and complete, else from Docker Hub.
       - uses: ./.github/actions/image-source
 
-      - uses: ./.github/actions/setup-go
+      # Runs on pull requests only, so a cache saved from main would never be written. Build cold
+      # instead of keeping a cache scope that nothing fills.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          scope: release
+          go-version-file: go.mod
+          cache: false
 
       # The same script the tag release runs, with a synthetic version so the
       # packaging path is covered before any tag exists.
@@ -549,11 +552,6 @@ jobs:
           path: dist/
           if-no-files-found: error
           retention-days: 7
-
-      - if: github.ref == 'refs/heads/main'
-        uses: ./.github/actions/save-go-cache
-        with:
-          scope: release
 
   security-scan:
     name: security scan (Semgrep)
