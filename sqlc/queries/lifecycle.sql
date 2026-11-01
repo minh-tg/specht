@@ -1,10 +1,15 @@
 -- name: ExpireFindings :many
+-- One bounded batch. SKIP LOCKED leaves rows that an ingest or a triage holds
+-- for the next sweep, so the sweep never waits behind a transaction and never
+-- takes part in a lock cycle.
 WITH expired AS (
     SELECT id, project_id, analysis_state, gate_effect
     FROM findings
     WHERE analysis_expires_at IS NOT NULL
       AND analysis_expires_at <= NOW()
-    FOR UPDATE
+    ORDER BY id
+    LIMIT $1
+    FOR UPDATE SKIP LOCKED
 )
 UPDATE findings SET
     analysis_state = 'unanalyzed',
