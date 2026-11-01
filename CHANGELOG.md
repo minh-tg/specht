@@ -490,6 +490,9 @@ releases.
   the page works it out now from the report on screen and today's findings and waivers.
 - On a 360 px phone the change page wraps a long branch name and the title and location of an
   earlier blocker instead of scrolling sideways.
+- Verifying a fix now needs the latest report to have covered the finding's kind, the same
+  proof auto-close uses. A Trivy report with no vulnerability result class used to verify a
+  vulnerability finding as fixed; the answer is now inconclusive and the finding stays open.
 
 ### Security
 
