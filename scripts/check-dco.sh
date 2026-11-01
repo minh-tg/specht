@@ -3,13 +3,19 @@
 # request adds (base..head, merge commits excluded). A commit passes when its
 # trailer block holds a well-formed "Signed-off-by: Name <email>" whose email
 # matches the commit's author or committer, compared case-insensitively.
-# Commits authored by GitHub bot accounts (for example Dependabot) are exempt.
 #
-# Usage: scripts/check-dco.sh <base-sha> <head-sha>
+# A pull request opened by a known bot account (for example Dependabot) is exempt as a whole. The
+# workflow passes the pull request author's login in PR_AUTHOR, which comes from GitHub's account
+# data. The script never exempts a commit because of its author name or email, since the committer
+# chooses both.
+#
+# Usage: PR_AUTHOR=<login> scripts/check-dco.sh <base-sha> <head-sha>
 set -euo pipefail
 
 base="${1:?usage: check-dco.sh <base-sha> <head-sha>}"
 head="${2:?usage: check-dco.sh <base-sha> <head-sha>}"
+
+exempt_authors=('dependabot[bot]')
 
 signoff_re='^Signed-off-by: .+ <([^<> ]+@[^<> ]+)>$'
 
@@ -36,13 +42,18 @@ has_valid_signoff() {
 # ignored by `set -e` and let an unresolvable range pass as "nothing to check".
 commits="$(git rev-list --no-merges --reverse "$base..$head")"
 
+pr_author="${PR_AUTHOR:-}"
+for exempt in "${exempt_authors[@]}"; do
+  if [[ -n $pr_author && $pr_author == "$exempt" ]]; then
+    printf 'Pull request opened by %s: sign-off not required.\n' "$exempt"
+    exit 0
+  fi
+done
+
 checked=0
 failed=()
 while IFS= read -r sha; do
   [[ -n $sha ]] || continue
-  case "$(git show -s --format=%ae "$sha")" in
-    *'[bot]@users.noreply.github.com') continue ;;
-  esac
   checked=$((checked + 1))
   if ! has_valid_signoff "$sha"; then
     failed+=("$(git show -s --format='%h %s' "$sha")")
