@@ -64,6 +64,29 @@ func needsStripping(s string) bool {
 	return false
 }
 
+// Line returns s as a single line of plain text that is safe to print into a
+// CI log. It removes ANSI escape sequences, control characters and
+// bidirectional formatting controls as Text does, turns every line break,
+// tab and line or paragraph separator into a space, collapses runs of
+// whitespace, and keeps a leading "::" from reading as a GitHub Actions
+// workflow command by putting a space in front of it. The CI runner parses a
+// line that starts with "::" as a command, so a scanner-supplied title must
+// never open a line that way.
+func Line(s string) string {
+	s = strings.Map(func(r rune) rune {
+		switch r {
+		case '\n', '\r', '\t', '\v', '\f', '\u0085', ' ', ' ':
+			return ' '
+		}
+		return r
+	}, s)
+	s = strings.Join(strings.Fields(Text(s)), " ")
+	if strings.HasPrefix(s, "::") {
+		return " " + s
+	}
+	return s
+}
+
 // Writer returns w wrapped so Text runs on every write before it reaches w.
 // fmt writes a formatted result in one call, so an escape sequence passed as
 // an argument is removed as a whole.

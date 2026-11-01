@@ -129,6 +129,22 @@ expect_exit 2 "SHA256SUMS has no entry for the asset" "$verify" PATH="$work/bin:
 printf '%064d  specht-adapter_1.2.3_linux_amd64.tar.gz\n' 0 >"$work/rel/SHA256SUMS"
 expect_exit 2 "the archive checksum does not match" "$verify" PATH="$work/bin:$PATH"
 
+# Text that reaches the log through an error must not start a second workflow
+# command or carry terminal escapes or bidirectional overrides.
+hostile=$'v1\n::notice::forged\r::add-mask::FAILED\x1b[2J \xe2\x80\xaebidi \xc2\x9bC1 100%'
+got="$(bash -c 'source "$1"; command_data "$2"' _ "$script" "$hostile")"
+check "v1%0A::notice::forged%0D::add-mask::FAILED [2J  bidi  C1 100%25" "$got" "command_data escapes and strips hostile text"
+got="$("${clean_env[@]}" SPECHT_INPUT_VERSION="$hostile" bash -c 'source "$1"; resolve_release' _ "$script" 2>&1 || true)"
+lines="$(printf '%s\n' "$got" | grep -c '' || true)"
+check "1" "$lines" "an error for a hostile version is a single log line"
+case "$got" in
+  "::error::"*) echo "ok: the hostile version error is one ::error line" ;;
+  *)
+    echo "FAIL: the hostile version error is not one ::error line: ${got}" >&2
+    failures=$((failures + 1))
+    ;;
+esac
+
 if [[ "$failures" -ne 0 ]]; then
   echo "::error::${failures} check(s) failed" >&2
   exit 1

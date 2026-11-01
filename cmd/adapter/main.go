@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/minh-tg/specht/internal/client"
+	"github.com/minh-tg/specht/internal/sanitize"
 	"github.com/minh-tg/specht/internal/version"
 )
 
@@ -98,13 +99,38 @@ func parseFlags(args []string, stderr io.Writer, inGitHubActions bool) *adapterF
 
 // writeDiagnostic makes CLI output best-effort; the process exit code carries
 // the gate or input-validation result if the writer itself fails.
+//
+// Every string and error argument is flattened to one line first
+// (sanitize.Line). Finding titles, file names, branch names and server error
+// messages come from scan output or the network, and the CI runner reads any
+// log line that starts with "::" as a workflow command.
 func writeDiagnostic(w io.Writer, format string, args ...any) {
-	_, _ = fmt.Fprintf(w, format, args...)
+	safe := make([]any, len(args))
+	for i, arg := range args {
+		switch v := arg.(type) {
+		case string:
+			safe[i] = sanitize.Line(v)
+		case error:
+			safe[i] = sanitize.Line(v.Error())
+		default:
+			safe[i] = arg
+		}
+	}
+	_, _ = fmt.Fprint(w, noCommandPrefix(fmt.Sprintf(format, safe...)))
 }
 
 // writeDiagnosticLine writes one best-effort CLI diagnostic line.
 func writeDiagnosticLine(w io.Writer, message string) {
-	_, _ = fmt.Fprintln(w, message)
+	_, _ = fmt.Fprintln(w, sanitize.Line(message))
+}
+
+// noCommandPrefix keeps a formatted diagnostic that starts with "::" from
+// reading as a workflow command.
+func noCommandPrefix(s string) string {
+	if strings.HasPrefix(s, "::") {
+		return " " + s
+	}
+	return s
 }
 
 // readRawInput loads the scan result from the file flag or stdin.
@@ -564,6 +590,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, hc *http.Clie
 }
 
 func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, hc *http.Client) int {
+	// Nothing the adapter prints may carry terminal control sequences from
+	// scan output or server messages into the CI log.
+	stdout, stderr = sanitize.Writer(stdout), sanitize.Writer(stderr)
 	inGitHubActions := os.Getenv("GITHUB_ACTIONS") == "true"
 	f := parseFlags(args, stderr, inGitHubActions)
 	if f == nil {
