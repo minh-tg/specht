@@ -417,13 +417,16 @@ describe("ChangeView after a blocked scan", () => {
     expect(screen.getByText(/^Partial scan/)).toBeInTheDocument();
   });
 
-  it("says the verdict is recorded and the PR check reflects it as of upload, never that CI is green", async () => {
+  it("names the scope of the verdict and does not claim the PR check carries it, never that CI is green", async () => {
     findings = { fixed: finding("fixed", { state: "fixed" }) };
     renderPage(previousState(["fixed"]));
 
     await screen.findByRole("heading", { level: 1, name: /^Unblocked/ });
-    expect(screen.getByText(/recorded this verdict when the scan uploaded/)).toBeInTheDocument();
-    expect(screen.getByText(/reflects it as of then/)).toBeInTheDocument();
+    expect(screen.getByText(/This verdict is for the findings this change introduced\./))
+      .toBeInTheDocument();
+    expect(screen.getByText(/check was set when the scan uploaded and may use a different scope/))
+      .toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/reflects it/);
     expect(document.body).not.toHaveTextContent(/\bgreen\b/i);
     expect(document.body).not.toHaveTextContent(/blocks the merge|for this merge|can merge/i);
   });

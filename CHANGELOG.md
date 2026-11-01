@@ -399,6 +399,9 @@ releases.
 - A Trivy document that lists no result class (an empty `Results` array) is stored with
   `scan_completeness` `unknown` instead of `complete`, so the change view no longer says
   it scanned the target in full.
+- The "Unblocked" line on the change page names the scope of its verdict (the findings
+  the change introduced) and says the pull request check was set at upload and may use a
+  different scope. It no longer says the check reflects the page's verdict.
 
 ### Security
 

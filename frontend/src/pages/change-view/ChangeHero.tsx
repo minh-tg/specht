@@ -96,7 +96,8 @@ function subline(
         floorWord(policy) ?? "the severity floor"
       } or above. Nothing to do here.`;
     case "unblocked":
-      return "Specht recorded this verdict when the scan uploaded. The pull request check from that scan reflects it as of then; a check from an older run does not update, so re-run the job if you still see one.";
+      // The page only reaches this state in the introduced-only scope, which is the scope it names.
+      return "This verdict is for the findings this change introduced. The pull request check was set when the scan uploaded and may use a different scope. A check from an older run does not update, so re-run the job if you still see one.";
     case "unconfirmed":
       return "This scan is recorded as passing, but it did not examine the findings below. They blocked the earlier scan and are still open.";
     case "scanning":
