@@ -387,6 +387,11 @@ releases.
   its branch, or an earlier report on the branch did. Push builds on a branch that
   never named a base, such as `main`, keep counting only findings new to the project.
   `introduced_count` in the ingest response counts the carried findings too.
+- The pull request check for one report annotates every finding that report's
+  introduced-only gate blocks on, and a replayed upload returns the introduced count
+  the report recorded. Both used to list only the findings first attributed to that
+  report, so a finding carried from an earlier push failed the check with no
+  annotation and a replay counted it as pre-existing.
 - Slack notifications now show the CVE, package, project and severity as attachment fields and
   link the title to the first advisory reference. Slack ignored the keys sent before, so the
   channel only saw the titles. The generic webhook payload is unchanged.

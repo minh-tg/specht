@@ -369,12 +369,15 @@ WHERE id = $1
 RETURNING *;
 
 -- name: ListFindingsIntroducedByReport :many
--- Findings a single report introduced, for introduced-only gate views and
--- change-scoped triage. Pre-existing findings observed (but not introduced)
--- by the report are excluded by construction.
-SELECT * FROM findings
-WHERE project_id = $1 AND introduced_by_report_id = $2
-ORDER BY current_severity_rank DESC, created_at DESC, id DESC;
+-- Findings a single report introduced, read from the introduced set the
+-- report materialized at ingest, the same set the introduced-only gate
+-- evaluates. A finding a later push carried forward, or one first attributed
+-- to an earlier report, is listed for every report that counted it. Findings
+-- the report observed as pre-existing are excluded by construction.
+SELECT f.* FROM findings f
+JOIN report_introduced_findings rif ON rif.finding_id = f.id
+WHERE f.project_id = sqlc.arg(project_id) AND rif.report_id = sqlc.arg(report_id)
+ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC;
 
 -- name: ReassignFindingIntroducedBy :exec
 -- Duplicate-race cleanup: re-points findings that a losing processing report

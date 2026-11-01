@@ -1036,7 +1036,9 @@ type FindingStore interface {
 	UpsertScopeSeverity(ctx context.Context, input FindingScopeSeverityInput) error
 	// SetFindingIntroducedBy materializes introduced-by-change attribution.
 	SetFindingIntroducedBy(ctx context.Context, findingID, reportID string, commitSha *string) (Finding, error)
-	// ListIntroducedByReport returns findings one report introduced.
+	// ListIntroducedByReport returns the findings one report recorded as
+	// introduced (report_introduced_findings), the set its introduced-only
+	// gate evaluates.
 	ListIntroducedByReport(ctx context.Context, projectID, reportID string) ([]Finding, error)
 	HasDimension(ctx context.Context, findingID, key string) (bool, error)
 	CreateOccurrence(ctx context.Context, input OccurrenceInput) (Occurrence, error)
