@@ -240,9 +240,28 @@ func (r *pgUserPort) setDisabled(ctx context.Context, userID string, disabled, f
 // no other admin who can sign in is left. The check runs under the same locks a
 // member removal takes before it counts the other admins, so a removal and a
 // deactivation of the last two admins cannot both pass.
+//
+// The lock statement picks its projects from the snapshot it started with, and
+// it may wait on a lock for a while. A promotion of the user to admin of another
+// project that commits meanwhile is missed, so the statement runs again, now
+// with a snapshot taken after the locks were granted, until two runs lock the
+// same projects. Locks taken in a later run may not follow id order, so two
+// deactivations racing a promotion can in the worst case deadlock; PostgreSQL
+// then aborts one of them, which stops with an error and changes nothing.
 func guardSoleProjectAdmin(ctx context.Context, q *sqlc.Queries, uid pgtype.UUID) error {
-	if _, err := q.LockProjectsAdministeredBy(ctx, uid); err != nil {
+	locked, err := q.LockProjectsAdministeredBy(ctx, uid)
+	if err != nil {
 		return err
+	}
+	for {
+		again, err := q.LockProjectsAdministeredBy(ctx, uid)
+		if err != nil {
+			return err
+		}
+		if sameProjects(locked, again) {
+			break
+		}
+		locked = again
 	}
 	slugs, err := q.ListProjectsSoleAdminedBy(ctx, uid)
 	if err != nil {
@@ -252,6 +271,19 @@ func guardSoleProjectAdmin(ctx context.Context, q *sqlc.Queries, uid pgtype.UUID
 		return &port.SoleProjectAdminError{Projects: slugs}
 	}
 	return nil
+}
+
+// sameProjects reports whether two id lists, each in id order, are equal.
+func sameProjects(a, b []pgtype.UUID) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Bytes != b[i].Bytes {
+			return false
+		}
+	}
+	return true
 }
 
 // guardLastAdmin locks the active admins and returns ErrLastGlobalAdmin when
