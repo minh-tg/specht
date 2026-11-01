@@ -701,7 +701,8 @@ releases.
   so many API keys can no longer hold request bodies in memory outside
   `INGEST_MEMORY_BUDGET`, and a slow upload does not keep other projects' uploads waiting.
   One upload at a time waits for its decoding charge, so two uploads that cannot both be
-  charged no longer both fail with 503 when either would fit alone.
+  charged no longer both fail with 503 when either would fit alone, and an upload waiting
+  for memory no longer holds up smaller uploads whose memory is free.
 - The embedded web app compresses each file once and serves the stored gzip bytes with
   `Content-Length` and an `ETag` (answering `If-None-Match` with 304). It used to gzip
   every asset on every request, which let one anonymous client keep a CPU core busy.

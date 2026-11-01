@@ -328,19 +328,19 @@ func (t *ingestTicket) raise(ctx context.Context, want memoryHold, deadline time
 	a := t.a
 	t.registerMemory()
 	if more := want.caller - t.held.caller; more > 0 {
-		if err := waitUntil(ctx, deadline, func(ctx context.Context) error { return t.gate.memory.Acquire(ctx, more) }); err != nil {
+		if err := acquirePolling(ctx, t.gate.memory, more, deadline); err != nil {
 			return err
 		}
 		t.held.caller = want.caller
 	}
 	if more := want.tenant - t.held.tenant; more > 0 {
-		if err := waitUntil(ctx, deadline, func(ctx context.Context) error { return t.tenantG.memory.Acquire(ctx, more) }); err != nil {
+		if err := acquirePolling(ctx, t.tenantG.memory, more, deadline); err != nil {
 			return err
 		}
 		t.held.tenant = want.tenant
 	}
 	if more := want.global - t.held.global; more > 0 {
-		if err := waitUntil(ctx, deadline, func(ctx context.Context) error { return a.memory.sem.Acquire(ctx, more) }); err != nil {
+		if err := acquirePolling(ctx, a.memory.sem, more, deadline); err != nil {
 			return err
 		}
 		t.held.global = want.global
@@ -472,6 +472,41 @@ func (a *ingestAdmission) idle() bool {
 	}
 	a.memory.sem.Release(a.memory.size)
 	return true
+}
+
+// pollInterval is how often acquirePolling retries.
+const pollInterval = 10 * time.Millisecond
+
+// acquirePolling takes n from sem, retrying every pollInterval until deadline.
+// It returns errIngestBusy when the deadline passes first and the context's
+// error when ctx ends first.
+//
+// It never waits inside the semaphore. semaphore.Weighted serves waiters in
+// order and refuses TryAcquire while any waits, so one large request waiting for
+// memory would hold up every smaller request behind it, whose memory is free.
+// Polling leaves the semaphore's queue empty, so a request that fits is served
+// at once. A large request can wait longer than it would in the queue, up to
+// its deadline, and is then refused and retries.
+func acquirePolling(ctx context.Context, sem *semaphore.Weighted, n int64, deadline time.Time) error {
+	if sem.TryAcquire(n) {
+		return nil
+	}
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+	timer := time.NewTimer(time.Until(deadline))
+	defer timer.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if sem.TryAcquire(n) {
+				return nil
+			}
+		case <-timer.C:
+			return errIngestBusy
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 // waitUntil runs acquire under a context that ends at deadline. It returns
