@@ -106,9 +106,9 @@ func DefaultDeps() Deps {
 
 // newEnvClient builds the API client from the URL and key in the environment.
 func newEnvClient(getenv func(string) string) (*client.Client, error) {
-	apiURL := client.EnvAPIURL(getenv)
-	if apiURL == "" {
-		apiURL = client.DefaultAPIURL
+	apiURL, err := client.ResolveAPIURL(getenv)
+	if err != nil {
+		return nil, err
 	}
 	token := client.EnvAPIKey(getenv)
 	if token == "" {

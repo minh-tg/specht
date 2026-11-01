@@ -396,6 +396,7 @@ releases.
 
 ### Security
 
+- `specht`, `specht-mcp` and `specht-adapter` refuse an `API_URL` with plain `http://` to a host that is not loopback, because the API key or session token would be sent unencrypted. `SPECHT_ALLOW_INSECURE_HTTP=1` allows it for a server on a trusted network.
 - MCP tool results print every scanner- or user-supplied value (titles, paths, names, comments, branch and commit names) as one double-quoted string with newlines escaped, and error messages on one line. A finding title can no longer add list entries or text that looks like the tool's own output to a result.
 - `specht-adapter` and the GitHub Action script print finding titles, file names, branch names and server error messages on one line with terminal escapes and bidirectional overrides removed. A scanner-supplied title can no longer start a line with `::` and forge or hide workflow commands such as `::notice::`, `::add-mask::` or `::stop-commands::` in the CI log.
 - An invite link works only while the account that made it is active and could still make it: after its creator is deactivated, removed from the project, demoted below the invite's role, or loses global admin, the link answers like an expired one. Deactivating an account also revokes the open links it made.

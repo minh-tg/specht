@@ -23,7 +23,7 @@ release notes describe. `specht-mcp -version` prints the version.
 | Variable | Meaning |
 |---|---|
 | `API_KEY` | A project API key, or a session token. Required. `SPECHT_API_KEY` is read when `API_KEY` is empty. |
-| `API_URL` | Your Specht server. Defaults to `http://localhost:8080`. `SPECHT_API_URL` is read when `API_URL` is empty. |
+| `API_URL` | Your Specht server. Defaults to `http://localhost:8080`. `SPECHT_API_URL` is read when `API_URL` is empty. Plain `http://` is accepted only for `localhost` and other loopback hosts; any other host needs `https://`, or `SPECHT_ALLOW_INSECURE_HTTP=1` to send the key unencrypted. |
 | `MCP_ALLOW_MUTATIONS` | Set to `true` to also offer the tools that change state. Anything but `true` or `false` is an error. |
 
 A project API key (they start with `vuln_`) is enough for the project tools. The

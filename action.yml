@@ -50,7 +50,7 @@ branding:
 
 inputs:
   api-url:
-    description: Base URL of the Specht API, for example https://specht.example.com
+    description: Base URL of the Specht API, for example https://specht.example.com. Plain http is refused for hosts that are not loopback unless SPECHT_ALLOW_INSECURE_HTTP=1 is set in the job environment.
     required: true
   api-key:
     description: Specht API key. May be empty on pull_request events from forks.

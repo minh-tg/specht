@@ -44,9 +44,9 @@ func handleInfoFlags(args []string, out io.Writer) bool {
 // apiConfig reads the server URL and the key, each under its plain name or the
 // SPECHT_ alias, the plain name first.
 func apiConfig(getenv func(string) string) (apiURL, apiKey string, err error) {
-	apiURL = client.EnvAPIURL(getenv)
-	if apiURL == "" {
-		apiURL = client.DefaultAPIURL
+	apiURL, err = client.ResolveAPIURL(getenv)
+	if err != nil {
+		return "", "", err
 	}
 	apiKey = client.EnvAPIKey(getenv)
 	if apiKey == "" {

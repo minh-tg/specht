@@ -338,7 +338,8 @@ Read by `specht-adapter`, `specht` and `specht-mcp`, not by the server.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `API_URL` | `http://localhost:8080` | Specht base URL. |
+| `API_URL` | `http://localhost:8080` | Specht base URL. The CLI, MCP bridge and adapter refuse plain `http://` to any host that is not loopback, because the API key would travel in clear text. |
+| `SPECHT_ALLOW_INSECURE_HTTP` | *(empty)* | Set to `1` to allow plain `http://` to a non-loopback host, for a server on a trusted network. |
 | `API_KEY` | *required* | A project API key, or a session token for admin operations. |
 | `SPECHT_PROJECT` | *(empty)* | Adapter only: project slug, used when the report and `-project` give none. |
 | `SPECHT_API_URL`, `SPECHT_API_KEY` | *(empty)* | Aliases for `API_URL` and `API_KEY`, for runners where those names collide with other tools. Read only when the unprefixed name is empty. |

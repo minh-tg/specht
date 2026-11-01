@@ -752,6 +752,10 @@ func resolveAPIURL(stderr io.Writer) (string, int) {
 		writeDiagnosticLine(stderr, "notice: SPECHT_API_URL is not set, using http://localhost:8080")
 		raw = "http://localhost:8080"
 	}
+	if err := client.CheckAPIURL(raw, os.Getenv); err != nil {
+		writeDiagnostic(stderr, "error: %v\n", err)
+		return "", 2
+	}
 	return strings.TrimRight(raw, "/"), 0
 }
 

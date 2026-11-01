@@ -62,6 +62,17 @@ func TestAPIConfigReadsBothNames(t *testing.T) {
 	}
 }
 
+func TestAPIConfigRefusesPlainHTTPToARemoteHost(t *testing.T) {
+	env := map[string]string{"API_URL": "http://10.0.0.5:8080", "API_KEY": "vuln_x"}
+	if _, _, err := apiConfig(func(name string) string { return env[name] }); err == nil {
+		t.Fatal("expected plain http to a non-loopback host to be refused")
+	}
+	env["SPECHT_ALLOW_INSECURE_HTTP"] = "1"
+	if _, _, err := apiConfig(func(name string) string { return env[name] }); err != nil {
+		t.Fatalf("the opt-out must allow it: %v", err)
+	}
+}
+
 func TestInfoFlagsLeaveEverythingElseToTheServer(t *testing.T) {
 	for _, args := range [][]string{nil, {}, {"serve"}, {"-x"}} {
 		var out bytes.Buffer
