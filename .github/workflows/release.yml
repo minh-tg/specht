@@ -86,17 +86,6 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # go.sum is tracked; resolve the module graph so the Dockerfile's
-      # go.mod-only flow (GOFLAGS=-mod=mod go mod download) is fast and
-      # deterministic in the image build below.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version-file: go.mod
-          cache: false
-
-      - name: Resolve module graph
-        run: go mod tidy
-
       - name: Validate version tag and capture build metadata
         id: tag
         run: |
