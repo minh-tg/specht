@@ -10,17 +10,35 @@ permissions:
   id-token: write
 
 jobs:
-  # A tag publishes a signed image, so it must point at a commit whose CI run passed. The check
-  # reads the ci workflow's push run for this exact commit and waits for it to finish.
+  # A tag publishes a signed image, so it must point at a commit that is already on main and whose
+  # ci run on main passed. Every job that builds or publishes needs this one. The check runs from
+  # the tagged commit's own copy of this file, so it does not stop a writer who edits it; limit who
+  # can create v* tags with a repository tag ruleset as well.
   require-ci:
-    name: require a passing CI run for the tagged commit
+    name: require a main commit with a passing CI run
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
       actions: read
       contents: read
     steps:
-      - name: Wait for the ci workflow on this commit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Require the tagged commit to be on main
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "::error::$SHA is not reachable from main. Merge the change to main, then tag the merged commit."
+            exit 1
+          fi
+          echo "$SHA is on main."
+
+      - name: Wait for the ci workflow on main for this commit
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.sha }}
@@ -28,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in $(seq 1 120); do
-            runs="$(gh run list --repo "$REPO" --workflow ci.yml --commit "$SHA" --event push --json status,conclusion,url)"
+            runs="$(gh run list --repo "$REPO" --workflow ci.yml --branch main --commit "$SHA" --event push --json status,conclusion,url)"
             total="$(jq 'length' <<<"$runs")"
             if [ "$total" -eq 0 ]; then
               echo "No ci run for $SHA yet (attempt $attempt)."

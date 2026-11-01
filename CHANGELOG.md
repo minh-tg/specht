@@ -731,3 +731,6 @@ releases.
 - The EPSS and CISA KEV feed clients now refuse redirects and connections to private,
   link-local and other non-public addresses. A loopback feed URL is still allowed. A
   feed mirror on a private address is refused, and so is egress through `HTTPS_PROXY`.
+- A release tag now publishes only a commit that is reachable from `main` and whose `ci`
+  run on `main` passed. Before, any successful `ci` push run for the commit was enough, so a
+  tag on an unmerged branch commit could publish and sign an image.
