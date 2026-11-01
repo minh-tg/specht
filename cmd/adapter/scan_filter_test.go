@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,6 +18,13 @@ import (
 // ingest request body it sent, decoded loosely so an omitted scan_filter is
 // told apart from an empty one.
 func runForScanFilter(t *testing.T, args ...string) map[string]any {
+	t.Helper()
+	body, _ := runForScanFilterOutput(t, args...)
+	return body
+}
+
+// runForScanFilterOutput also returns what the adapter wrote to stderr.
+func runForScanFilterOutput(t *testing.T, args ...string) (map[string]any, string) {
 	t.Helper()
 	t.Setenv("API_KEY", "test-key")
 	var body map[string]any
@@ -38,7 +46,7 @@ func runForScanFilter(t *testing.T, args ...string) map[string]any {
 	base := []string{"-file=../../internal/parser/trivy/testdata/alpine-scan.json", "-project=my-app"}
 	code := run(append(base, args...), bytes.NewReader(nil), &stdout, &stderr, srv.Client())
 	require.Equal(t, 0, code, stderr.String())
-	return body
+	return body, stderr.String()
 }
 
 func TestRun_ScanFilterFlagsReachTheRequest(t *testing.T) {
@@ -102,7 +110,7 @@ func TestApplyScanFilter_TrivyEnvironmentEdgeCases(t *testing.T) {
 			t.Setenv("TRIVY_SEVERITY", tc.severity)
 			t.Setenv("TRIVY_IGNORE_UNFIXED", tc.unfixed)
 			payload := client.IngestPayload{Scanner: "Trivy"}
-			applyScanFilter(&payload, &adapterFlags{})
+			applyScanFilter(&payload, &adapterFlags{}, io.Discard)
 			assert.Equal(t, tc.want, payload.ScanFilter)
 		})
 	}
@@ -112,4 +120,31 @@ func TestParseFlags_FixableOnlyRejectsNonBoolean(t *testing.T) {
 	clearCIEnvironment(t)
 	var stderr bytes.Buffer
 	assert.Nil(t, parseFlags([]string{"-fixable-only=maybe"}, &stderr, false))
+}
+
+func TestRun_PrintsTheScanFilterItDeclaresFromTheTrivyEnvironment(t *testing.T) {
+	clearCIEnvironment(t)
+	t.Setenv("TRIVY_SEVERITY", "HIGH,CRITICAL")
+	t.Setenv("TRIVY_IGNORE_UNFIXED", "true")
+	_, stderr := runForScanFilterOutput(t, "-tool=trivy")
+	assert.Contains(t, stderr, "declaring scan filter: severities=HIGH,CRITICAL (from TRIVY_SEVERITY), fixable_only=true (from TRIVY_IGNORE_UNFIXED)")
+}
+
+func TestRun_PrintsTheScanFilterItDeclaresFromFlags(t *testing.T) {
+	clearCIEnvironment(t)
+	t.Setenv("TRIVY_SEVERITY", "LOW")
+	_, stderr := runForScanFilterOutput(t, "-tool=trivy", "-scan-severities=critical", "-fixable-only=false")
+	assert.Contains(t, stderr, "declaring scan filter: severities=critical (from -scan-severities), fixable_only=false (from -fixable-only)")
+}
+
+func TestRun_PrintsNoScanFilterLineWhenNothingIsDeclared(t *testing.T) {
+	clearCIEnvironment(t)
+	_, stderr := runForScanFilterOutput(t, "-tool=trivy")
+	assert.NotContains(t, stderr, "declaring scan filter")
+}
+
+func TestRun_PrintsAllSeveritiesWhenOnlyFixableOnlyIsDeclared(t *testing.T) {
+	clearCIEnvironment(t)
+	_, stderr := runForScanFilterOutput(t, "-tool=grype", "-fixable-only")
+	assert.Contains(t, stderr, "declaring scan filter: severities=all (no filter), fixable_only=true (from -fixable-only)")
 }

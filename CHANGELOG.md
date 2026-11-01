@@ -375,6 +375,7 @@ releases.
 
 ### Fixed
 
+- `specht-adapter` prints the scan filter it declares (`declaring scan filter: severities=..., fixable_only=...`) with the flag or variable each part came from, so a filter taken from `TRIVY_SEVERITY` or `TRIVY_IGNORE_UNFIXED` is visible in the job log.
 - A branch can no longer pass the introduced-only gate by pushing again. When no
   baseline resolves from `base_revision` (the target branch was never scanned, or a
   push build sent no base ref), a finding the previous report in the same scan scope

@@ -206,7 +206,7 @@ func buildPayload(rawInput []byte, f *adapterFlags, stderr io.Writer) (client.In
 
 	applyOwnerEnvironment(&payload, f)
 	applyGateFlags(&payload, f)
-	applyScanFilter(&payload, f)
+	applyScanFilter(&payload, f, stderr)
 	return payload, 0
 }
 
@@ -215,13 +215,38 @@ func buildPayload(rawInput []byte, f *adapterFlags, stderr io.Writer) (client.In
 // their reports, and the server closes only findings inside the declared
 // filter, so a filtered scan has to say so. An explicit flag wins, then a
 // filter already in the input envelope, then for trivy its own environment
-// variables TRIVY_SEVERITY and TRIVY_IGNORE_UNFIXED.
-func applyScanFilter(payload *client.IngestPayload, f *adapterFlags) {
+// variables TRIVY_SEVERITY and TRIVY_IGNORE_UNFIXED. The adapter cannot see
+// the flags the scanner ran with, so it prints the filter it declares and
+// where each part came from.
+func applyScanFilter(payload *client.IngestPayload, f *adapterFlags, stderr io.Writer) {
 	var fixable *bool
 	if f.fixableOnly.set {
 		fixable = &f.fixableOnly.value
 	}
 	payload.ScanFilter = client.DeclaredScanFilter(payload.Scanner, f.scanSeverities, fixable, payload.ScanFilter, os.Getenv)
+	if payload.ScanFilter == nil {
+		return
+	}
+	trivy := strings.EqualFold(payload.Scanner, "trivy")
+	severitySource, fixableSource := "the input envelope", "the input envelope"
+	switch {
+	case f.scanSeverities != "":
+		severitySource = "-scan-severities"
+	case trivy && os.Getenv("TRIVY_SEVERITY") != "":
+		severitySource = "TRIVY_SEVERITY"
+	}
+	switch {
+	case f.fixableOnly.set:
+		fixableSource = "-fixable-only"
+	case trivy && os.Getenv("TRIVY_IGNORE_UNFIXED") != "":
+		fixableSource = "TRIVY_IGNORE_UNFIXED"
+	}
+	severities := "all (no filter)"
+	if len(payload.ScanFilter.Severities) > 0 {
+		severities = strings.Join(payload.ScanFilter.Severities, ",") + " (from " + severitySource + ")"
+	}
+	writeDiagnostic(stderr, "declaring scan filter: severities=%s, fixable_only=%t (from %s); the server closes only findings inside it\n",
+		severities, payload.ScanFilter.FixableOnly, fixableSource)
 }
 
 // applyOwnerEnvironment fills the repository owner and the deployment
