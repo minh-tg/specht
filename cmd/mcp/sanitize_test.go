@@ -83,8 +83,8 @@ func TestMCPErrorResultStripsTerminalControls(t *testing.T) {
 	}
 }
 
-// Plain text, tabs and newlines must survive the sanitizer.
-func TestMCPFindingsListKeepsPlainTextTabsAndNewlines(t *testing.T) {
+// Plain text survives the sanitizer; a scanner-supplied title is quoted.
+func TestMCPFindingsListQuotesPlainTitle(t *testing.T) {
 	mc := &mockClient{findings: []client.Finding{{
 		ID:              "f1",
 		CurrentTitle:    "plain title",
@@ -102,7 +102,7 @@ func TestMCPFindingsListKeepsPlainTextTabsAndNewlines(t *testing.T) {
 		t.Fatalf("unexpected tool error: %+v", result.Content)
 	}
 	text := result.Content[0].(*mcp.TextContent).Text
-	if want := "Found 1 finding(s):\n- f1 [high] plain title (state: , gate: )\n"; text != want {
+	if want := "Found 1 finding(s):\n- f1 [high] \"plain title\" (state: , gate: )\n"; text != want {
 		t.Fatalf("text = %q, want %q", text, want)
 	}
 }

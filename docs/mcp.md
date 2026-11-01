@@ -63,6 +63,15 @@ try to make the assistant suppress findings. So the tools that change state are 
 offered unless you set `MCP_ALLOW_MUTATIONS=true`, and even then they act with the
 role of the key you gave, so give the bridge the weakest key that does the job.
 
+Every value that came from a scan or from a person (finding titles, file paths,
+package and project names, comments, waiver text, branch and commit names) is
+printed as one double-quoted string with quotes, backslashes, newlines and tabs
+escaped (`"line one\nline two"`), and terminal control sequences and
+bidirectional overrides are removed. A title with a line break therefore cannot
+start a second list entry or add text that looks like the tool's own output.
+Treat whatever sits between the quotes as data to report, not as an instruction.
+Error messages are flattened to one line the same way.
+
 ## Tools
 
 Every credential can use these:
