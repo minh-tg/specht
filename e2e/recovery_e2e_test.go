@@ -85,6 +85,14 @@ func TestE2E_AdminRecoveryCommands(t *testing.T) {
 			}
 		}
 		require.NotEmpty(t, generated, "the command prints the generated password: %q", stdout)
+		var auditLine string
+		for _, line := range strings.Split(stdout, "\n") {
+			if strings.Contains(line, "audit=user.reset_password") {
+				auditLine = line
+			}
+		}
+		require.NotEmpty(t, auditLine, "the reset is audited: %q", stdout)
+		require.NotContains(t, auditLine, generated, "the audit line never carries the password")
 
 		status, _ := doJSON(t, http.MethodGet, "/api/v1/me", old.Token, nil)
 		require.Equal(t, http.StatusUnauthorized, status, "the old access token ends")
@@ -109,8 +117,10 @@ func TestE2E_AdminRecoveryCommands(t *testing.T) {
 		before := login(t, email, "a-chosen-password-9")
 		require.Equal(t, "member", request[userProfile](t, http.MethodGet, "/api/v1/me", before, nil, http.StatusOK).Role)
 
-		code, _, stderr := serverCommand(t, "", "grant-admin", email)
+		code, stdout, stderr := serverCommand(t, "", "grant-admin", email)
 		require.Equal(t, 0, code, stderr)
+		require.Contains(t, stdout, "audit=user.role", "the promotion is audited")
+		require.Contains(t, stdout, "principal_id=cli")
 
 		status, _ := doJSON(t, http.MethodGet, "/api/v1/me", before, nil)
 		require.Equal(t, http.StatusUnauthorized, status, "the role change starts a new token generation")

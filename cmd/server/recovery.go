@@ -12,7 +12,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/minh-tg/specht/internal/audit"
 	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/config"
 	"github.com/minh-tg/specht/internal/db"
@@ -63,26 +65,45 @@ func runRecoveryCommand(cfg *config.Server, args []string) int {
 		Stores:    repo.NewPortStores(pool),
 		Passwords: auth.NewPasswordHasher(),
 	})
-	return runRecovery(ctx, uc, args, os.Stdin, os.Stdout, os.Stderr)
+	return runRecovery(ctx, uc, audit.NewLogger(nil), args, os.Stdin, os.Stdout, os.Stderr)
+}
+
+// recoveryActor is the principal id on the audit line of a recovery command.
+// The command takes no caller identity; whoever ran it has host access.
+const recoveryActor = "cli"
+
+// auditRecovery writes the audit line for one recovery command. On success the
+// target is the account id; on a failure that never resolved an account it is
+// the email the operator typed.
+func auditRecovery(ctx context.Context, log *audit.Logger, name string, profile *usecase.UserProfile, email string, err error) {
+	event := audit.Event{Name: name, Outcome: audit.OutcomeSuccess, Actor: recoveryActor, Target: email, StartedAt: time.Now()}
+	if profile != nil {
+		event.Target = profile.ID
+	}
+	if err != nil {
+		event.Outcome = audit.OutcomeFailure
+		event.Error = err.Error()
+	}
+	log.Log(ctx, event)
 }
 
 // runRecovery parses one recovery command and runs it. Exit codes: 0 done,
 // 1 the command failed, 2 the command line was wrong.
-func runRecovery(ctx context.Context, svc recoveryService, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+func runRecovery(ctx context.Context, svc recoveryService, auditLog *audit.Logger, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		return recoveryUsageError(stderr, "a command is required")
 	}
 	switch args[0] {
 	case "reset-password":
-		return resetPasswordCommand(ctx, svc, args[1:], stdin, stdout, stderr)
+		return resetPasswordCommand(ctx, svc, auditLog, args[1:], stdin, stdout, stderr)
 	case "grant-admin":
-		return grantAdminCommand(ctx, svc, args[1:], stdout, stderr)
+		return grantAdminCommand(ctx, svc, auditLog, args[1:], stdout, stderr)
 	default:
 		return recoveryUsageError(stderr, fmt.Sprintf("unknown command %q", args[0]))
 	}
 }
 
-func resetPasswordCommand(ctx context.Context, svc recoveryService, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+func resetPasswordCommand(ctx context.Context, svc recoveryService, auditLog *audit.Logger, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	var email string
 	fromStdin := false
 	for _, a := range args {
@@ -124,6 +145,7 @@ func resetPasswordCommand(ctx context.Context, svc recoveryService, args []strin
 	}
 
 	profile, err := svc.ResetPasswordByEmail(ctx, email, password)
+	auditRecovery(ctx, auditLog, audit.EventResetPassword, profile, email, err)
 	if err != nil {
 		return reportRecoveryError(stderr, err)
 	}
@@ -137,7 +159,7 @@ func resetPasswordCommand(ctx context.Context, svc recoveryService, args []strin
 	return 0
 }
 
-func grantAdminCommand(ctx context.Context, svc recoveryService, args []string, stdout, stderr io.Writer) int {
+func grantAdminCommand(ctx context.Context, svc recoveryService, auditLog *audit.Logger, args []string, stdout, stderr io.Writer) int {
 	var email string
 	for _, a := range args {
 		switch {
@@ -153,6 +175,7 @@ func grantAdminCommand(ctx context.Context, svc recoveryService, args []string, 
 		return recoveryUsageError(stderr, "an email address is required")
 	}
 	profile, err := svc.GrantAdminByEmail(ctx, email)
+	auditRecovery(ctx, auditLog, audit.EventChangeUserRole, profile, email, err)
 	if err != nil {
 		return reportRecoveryError(stderr, err)
 	}
@@ -168,6 +191,8 @@ func reportRecoveryError(stderr io.Writer, err error) int {
 		fmt.Fprintln(stderr, "error: no account has that email address")
 	case errors.Is(err, usecase.ErrSystemAccount):
 		fmt.Fprintln(stderr, "error: the system account cannot be changed")
+	case errors.Is(err, usecase.ErrAccountDeactivated):
+		fmt.Fprintln(stderr, "error: that account is deactivated; reactivate it from the admin area before granting admin")
 	case errors.Is(err, usecase.ErrInvalidCredentialInput):
 		fmt.Fprintf(stderr, "error: %s\n", err.Error())
 	default:
