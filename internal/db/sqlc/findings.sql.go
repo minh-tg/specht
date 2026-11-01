@@ -1410,21 +1410,24 @@ func (q *Queries) ListFindingsIntroducedByCommit(ctx context.Context, arg ListFi
 }
 
 const listFindingsIntroducedByReport = `-- name: ListFindingsIntroducedByReport :many
-SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version, introduced_by_report_id, introduced_commit_sha FROM findings
-WHERE project_id = $1 AND introduced_by_report_id = $2
-ORDER BY current_severity_rank DESC, created_at DESC, id DESC
+SELECT f.id, f.project_id, f.finding_kind, f.fingerprint, f.current_title, f.current_severity, f.current_severity_rank, f.current_score, f.state, f.triage_status, f.assignee_id, f.first_seen_at, f.last_seen_at, f.fixed_at, f.created_at, f.updated_at, f.analysis_state, f.gate_effect, f.analysis_expires_at, f.analysis_reason, f.analysis_source, f.analysis_updated_at, f.analysis_updated_by, f.manual_override, f.review_required, f.fingerprint_version, f.introduced_by_report_id, f.introduced_commit_sha FROM findings f
+JOIN report_introduced_findings rif ON rif.finding_id = f.id
+WHERE f.project_id = $1 AND rif.report_id = $2
+ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 `
 
 type ListFindingsIntroducedByReportParams struct {
-	ProjectID            pgtype.UUID `json:"project_id"`
-	IntroducedByReportID pgtype.UUID `json:"introduced_by_report_id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+	ReportID  pgtype.UUID `json:"report_id"`
 }
 
-// Findings a single report introduced, for introduced-only gate views and
-// change-scoped triage. Pre-existing findings observed (but not introduced)
-// by the report are excluded by construction.
+// Findings a single report introduced, read from the introduced set the
+// report materialized at ingest, the same set the introduced-only gate
+// evaluates. A finding a later push carried forward, or one first attributed
+// to an earlier report, is listed for every report that counted it. Findings
+// the report observed as pre-existing are excluded by construction.
 func (q *Queries) ListFindingsIntroducedByReport(ctx context.Context, arg ListFindingsIntroducedByReportParams) ([]Finding, error) {
-	rows, err := q.db.Query(ctx, listFindingsIntroducedByReport, arg.ProjectID, arg.IntroducedByReportID)
+	rows, err := q.db.Query(ctx, listFindingsIntroducedByReport, arg.ProjectID, arg.ReportID)
 	if err != nil {
 		return nil, err
 	}

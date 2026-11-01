@@ -255,8 +255,8 @@ func (r *pgFindingRepo) SetIntroducedBy(ctx context.Context, findingID, reportID
 
 func (r *pgFindingRepo) ListIntroducedByReport(ctx context.Context, projectID, reportID pgtype.UUID) ([]sqlc.Finding, error) {
 	return r.q.ListFindingsIntroducedByReport(ctx, sqlc.ListFindingsIntroducedByReportParams{
-		ProjectID:            projectID,
-		IntroducedByReportID: reportID,
+		ProjectID: projectID,
+		ReportID:  reportID,
 	})
 }
 
