@@ -11,6 +11,20 @@
 -- authenticated with.
 SELECT token_version FROM users WHERE id = $1 AND disabled_at IS NULL FOR SHARE;
 
+-- name: GetLiveAPIKeyCreator :one
+-- The creator of an unrevoked, unexpired key, read without a lock so the caller can lock
+-- the creator's account row before the key row, the order a deactivation
+-- updates them in. created_by is null for a key that predates creator tracking.
+SELECT created_by FROM api_keys
+WHERE key_hash = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW());
+
+-- name: LockLiveAPIKey :one
+-- Takes a share lock on an unrevoked key for the rest of the transaction, so a
+-- revocation waits for a writer that checked the key before it.
+SELECT id FROM api_keys
+WHERE key_hash = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())
+FOR SHARE;
+
 -- name: CreateAPIKey :one
 INSERT INTO api_keys (project_id, name, key_prefix, key_hash, last_four, scopes, created_by, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

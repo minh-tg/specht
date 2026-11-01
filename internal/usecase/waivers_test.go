@@ -472,6 +472,7 @@ func TestUpdateWaiverReplacesProvidedDetailsAndRecordsActor(t *testing.T) {
 	environmentID := "00000000-0000-0000-0000-0000000000c1"
 	findingID := "00000000-0000-0000-0000-0000000000d1"
 	wr := &mockWaiverRepo{
+		getByIDFn: waiverExists,
 		updateWithDetailsFn: func(_ context.Context, waiver port.Waiver, expiry *port.WaiverExpiry, conditions *[]port.WaiverCondition, contexts *[]port.WaiverContext, targets *[]port.WaiverFindingTarget, event port.WaiverEventInput) (port.Waiver, error) {
 			_ = expiry
 			assert.Equal(t, waiverID, waiver.ID)
@@ -510,6 +511,7 @@ func TestUpdateWaiverPreservesOmittedDetailsAndClearsExplicitEmptyDetails(t *tes
 	project := makeProject(true)
 	waiverID := "00000000-0000-0000-0000-0000000000b1"
 	wr := &mockWaiverRepo{
+		getByIDFn: waiverExists,
 		updateWithDetailsFn: func(_ context.Context, _ port.Waiver, _ *port.WaiverExpiry, conditions *[]port.WaiverCondition, contexts *[]port.WaiverContext, targets *[]port.WaiverFindingTarget, _ port.WaiverEventInput) (port.Waiver, error) {
 			assert.Nil(t, conditions)
 			require.NotNil(t, contexts)
@@ -615,7 +617,7 @@ func TestWaiverContextReadsTheDocumentedKeys(t *testing.T) {
 func TestWaiverRefusesAContextThatNamesNothing(t *testing.T) {
 	project := makeProject(true)
 	admin := sessionCtx("admin", auth.RoleAdmin)
-	uc := waiverUsecaseForProject(project, &mockWaiverRepo{}, "")
+	uc := waiverUsecaseForProject(project, &mockWaiverRepo{getByIDFn: waiverExists}, "")
 
 	_, err := uc.CreateWaiver(admin, CreateWaiverInput{
 		ProjectSlug: "my-app", Name: "everything", Contexts: []CreateWaiverContextInput{{}},
@@ -662,6 +664,7 @@ func TestWaiverConditionsTheGateCannotMatchAreRefused(t *testing.T) {
 	project := makeProject(true)
 	bad := []CreateWaiverConditionInput{{Field: "severity", Operator: "eq", Value: "HIGH"}}
 	wr := &mockWaiverRepo{
+		getByIDFn: waiverExists,
 		createWithDetailsFn: func(context.Context, port.CreateWaiverInput) (port.Waiver, error) {
 			t.Fatal("a refused waiver must not reach the store")
 			return port.Waiver{}, nil
@@ -682,4 +685,9 @@ func TestWaiverConditionsTheGateCannotMatchAreRefused(t *testing.T) {
 		WaiverID: "00000000-0000-0000-0000-0000000000b1", ProjectSlug: "my-app", Conditions: bad,
 	})
 	require.ErrorIs(t, err, ErrInvalidWaiverRequest)
+}
+
+// waiverExists answers a lookup of a waiver that is in the project.
+func waiverExists(_ context.Context, id, projectID string) (port.Waiver, error) {
+	return port.Waiver{ID: id, ProjectID: projectID}, nil
 }

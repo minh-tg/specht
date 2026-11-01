@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -91,6 +92,22 @@ var ErrPasswordStale = errors.New("password changed since it was verified")
 // deactivated under its row lock, so it neither links nor proves the address.
 var ErrAccountDeactivated = errors.New("account is deactivated")
 
+// SoleProjectAdminError is returned when a deactivation would leave projects
+// without an admin who can sign in, and the caller did not confirm it.
+type SoleProjectAdminError struct {
+	// Projects holds the slugs of the affected projects, in name order.
+	Projects []string
+}
+
+func (e *SoleProjectAdminError) Error() string {
+	return "the account is the only active admin of " + strings.Join(e.Projects, ", ")
+}
+
+// ErrIngestCallerInactive is returned when the key or session an ingest
+// authenticated with is no longer live before the write it started could
+// commit: the key was revoked or expired, or the account deactivated.
+var ErrIngestCallerInactive = errors.New("api key or session is no longer live")
+
 // ErrCreatorInactive is returned when an API key would be created by an account
 // that is deactivated or does not exist.
 var ErrCreatorInactive = errors.New("key creator is not an active account")
@@ -111,8 +128,24 @@ var ErrFindingSuppressed = errors.New("finding already exists")
 // finding, occurrence, inventory, audit and completion writes together. The
 // callback receives transaction-bound stores. Processing report rows are
 // created separately so a rolled-back attempt can still be recorded as failed.
+//
+// A caller that authenticated with an API key passes the key's hash, and one
+// that authenticated with a session passes the account's id. Run then locks the
+// key and its creator's account row, or the account row, for the transaction
+// and returns ErrIngestCallerInactive when the key was revoked or expired, or
+// the account deactivated, after the request authenticated. A deactivation
+// therefore cannot interleave with a write the caller started earlier. An empty
+// IngestCaller skips the check.
 type IngestTransaction interface {
-	Run(ctx context.Context, projectID string, fn func(*Stores) error) error
+	Run(ctx context.Context, projectID string, caller IngestCaller, fn func(*Stores) error) error
+}
+
+// IngestCaller names who an ingest transaction writes for.
+type IngestCaller struct {
+	// KeyHash is the SHA-256 of the API key the request authenticated with.
+	KeyHash string
+	// UserID is the account of a session the request authenticated with.
+	UserID string
 }
 
 // ---------- Projects ----------
@@ -270,8 +303,11 @@ type UserStore interface {
 	// Deactivate is SetDisabled(true) that also reports the API keys it
 	// revoked. Deactivating revokes every key the account created, in the
 	// same transaction, so a refused deactivation (the last active admin)
-	// revokes nothing. Reactivating does not bring the keys back.
-	Deactivate(ctx context.Context, userID string) (User, []RevokedAPIKey, error)
+	// revokes nothing. Reactivating does not bring the keys back. Unless
+	// force is set, the projects where the account is the only admin who can
+	// sign in are checked in the same transaction, under their membership
+	// locks, and a *SoleProjectAdminError names them.
+	Deactivate(ctx context.Context, userID string, force bool) (User, []RevokedAPIKey, error)
 	// ClearPassword removes the account's password hash so it can no longer
 	// sign in with a password. It is idempotent.
 	ClearPassword(ctx context.Context, userID string) error

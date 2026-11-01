@@ -104,7 +104,7 @@ func TestCreateWaiverRefusesFindingsAndScopesOutsideTheProject(t *testing.T) {
 func TestUpdateWaiverRefusesFindingsAndScopesOutsideTheProject(t *testing.T) {
 	for name, tc := range scopeCases() {
 		t.Run(name, func(t *testing.T) {
-			wr := &mockWaiverRepo{}
+			wr := &mockWaiverRepo{getByIDFn: waiverExists}
 			_, err := waiverScopeUsecase(t, wr).UpdateWaiver(sessionCtx("admin", auth.RoleAdmin), UpdateWaiverInput{
 				ProjectSlug: "my-app", WaiverID: scopeWaiverID, TargetIDs: tc.targets, Contexts: tc.contexts,
 			})
@@ -145,7 +145,7 @@ func TestCreateWaiverAcceptsScopesInsideTheProject(t *testing.T) {
 
 // An id that is not a UUID is the caller's mistake: a 400, not a server error.
 func TestWaiverScopeWithAMalformedIDIsAnInvalidRequest(t *testing.T) {
-	uc := waiverScopeUsecase(t, &mockWaiverRepo{})
+	uc := waiverScopeUsecase(t, &mockWaiverRepo{getByIDFn: waiverExists})
 	admin := sessionCtx("admin", auth.RoleAdmin)
 	_, err := uc.CreateWaiver(admin, CreateWaiverInput{ProjectSlug: "my-app", Name: "w", TargetIDs: []string{"nope"}})
 	require.ErrorIs(t, err, ErrInvalidWaiverRequest)

@@ -110,6 +110,21 @@ func (q *Queries) GetAPIKeyByHash(ctx context.Context, keyHash string) (ApiKey, 
 	return i, err
 }
 
+const getLiveAPIKeyCreator = `-- name: GetLiveAPIKeyCreator :one
+SELECT created_by FROM api_keys
+WHERE key_hash = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())
+`
+
+// The creator of an unrevoked, unexpired key, read without a lock so the caller can lock
+// the creator's account row before the key row, the order a deactivation
+// updates them in. created_by is null for a key that predates creator tracking.
+func (q *Queries) GetLiveAPIKeyCreator(ctx context.Context, keyHash string) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, getLiveAPIKeyCreator, keyHash)
+	var created_by pgtype.UUID
+	err := row.Scan(&created_by)
+	return created_by, err
+}
+
 const listAPIKeysByProject = `-- name: ListAPIKeysByProject :many
 SELECT
     ak.id,
@@ -196,6 +211,21 @@ func (q *Queries) LockKeyCreator(ctx context.Context, id pgtype.UUID) (int32, er
 	var token_version int32
 	err := row.Scan(&token_version)
 	return token_version, err
+}
+
+const lockLiveAPIKey = `-- name: LockLiveAPIKey :one
+SELECT id FROM api_keys
+WHERE key_hash = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())
+FOR SHARE
+`
+
+// Takes a share lock on an unrevoked key for the rest of the transaction, so a
+// revocation waits for a writer that checked the key before it.
+func (q *Queries) LockLiveAPIKey(ctx context.Context, keyHash string) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, lockLiveAPIKey, keyHash)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const revokeAPIKey = `-- name: RevokeAPIKey :one

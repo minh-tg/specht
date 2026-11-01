@@ -58,7 +58,7 @@ func TestDeactivateRevokesEveryKeyTheAccountCreated(t *testing.T) {
 	require.NoError(t, err)
 	others, _ := newKeyBy(t, repos, projectA, admin.ID, "someone-elses")
 
-	user, revoked, err := stores.Users.Deactivate(ctx, leaver.ID)
+	user, revoked, err := stores.Users.Deactivate(ctx, leaver.ID, true)
 	require.NoError(t, err)
 	require.NotNil(t, user.DisabledAt)
 
@@ -70,7 +70,7 @@ func TestDeactivateRevokesEveryKeyTheAccountCreated(t *testing.T) {
 	assert.True(t, keyRevoked(t, repos, inB))
 	assert.False(t, keyRevoked(t, repos, others), "another person's key is left alone")
 
-	again, revokedAgain, err := stores.Users.Deactivate(ctx, leaver.ID)
+	again, revokedAgain, err := stores.Users.Deactivate(ctx, leaver.ID, true)
 	require.NoError(t, err, "deactivating twice is harmless")
 	assert.Empty(t, revokedAgain)
 	assert.Equal(t, user.DisabledAt.Unix(), again.DisabledAt.Unix())
@@ -104,7 +104,7 @@ func TestRefusedDeactivationRevokesNothing(t *testing.T) {
 	only := newUser(t, repos, "only@test.com", "admin")
 	key, _ := newKeyBy(t, repos, createTestProject(t, repos), only.ID, "ci")
 
-	_, _, err := stores.Users.Deactivate(ctx, only.ID)
+	_, _, err := stores.Users.Deactivate(ctx, only.ID, true)
 	require.ErrorIs(t, err, port.ErrLastGlobalAdmin)
 	assert.False(t, keyRevoked(t, repos, key), "the refusal and the revocation are one transaction")
 }

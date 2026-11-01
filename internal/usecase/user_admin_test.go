@@ -94,7 +94,7 @@ func TestDeactivateUser(t *testing.T) {
 		getByIDFn: func(_ context.Context, id string) (port.User, error) {
 			return port.User{ID: id, Email: "t@example.com", Role: auth.RoleMember}, nil
 		},
-		deactivateFn: func(_ context.Context, id string) (port.User, []port.RevokedAPIKey, error) {
+		deactivateFn: func(_ context.Context, id string, _ bool) (port.User, []port.RevokedAPIKey, error) {
 			return port.User{ID: id, Email: "t@example.com", Role: auth.RoleMember, DisabledAt: &disabledAt, CreatedAt: time.Now()}, keys, nil
 		},
 	}
@@ -119,7 +119,7 @@ func TestDeactivateUserRefusesYourself(t *testing.T) {
 func TestDeactivateUserSurfacesTheLastAdminGuard(t *testing.T) {
 	users := &mockUserRepo{getByIDFn: func(_ context.Context, id string) (port.User, error) {
 		return port.User{ID: id, Email: "t@example.com", Role: auth.RoleAdmin}, nil
-	}, deactivateFn: func(context.Context, string) (port.User, []port.RevokedAPIKey, error) {
+	}, deactivateFn: func(context.Context, string, bool) (port.User, []port.RevokedAPIKey, error) {
 		return port.User{}, nil, port.ErrLastGlobalAdmin
 	}}
 	_, _, err := userAdminUsecase(users, &mockRefreshTokenRepo{}).DeactivateUser(sessionCtx(adminUserID, auth.RoleAdmin), targetUserID, false)
@@ -197,7 +197,7 @@ func TestTheSystemAccountCannotBeChanged(t *testing.T) {
 			changed = true
 			return port.User{}, nil
 		},
-		deactivateFn: func(context.Context, string) (port.User, []port.RevokedAPIKey, error) {
+		deactivateFn: func(context.Context, string, bool) (port.User, []port.RevokedAPIKey, error) {
 			changed = true
 			return port.User{}, nil, nil
 		},
@@ -216,16 +216,15 @@ func TestDeactivateUserRefusesTheOnlyActiveAdminOfAProjectUnlessForced(t *testin
 	deactivated := 0
 	users := &mockUserRepo{getByIDFn: func(_ context.Context, id string) (port.User, error) {
 		return port.User{ID: id, Email: "t@example.com", Role: auth.RoleMember}, nil
-	}, deactivateFn: func(_ context.Context, id string) (port.User, []port.RevokedAPIKey, error) {
+	}, deactivateFn: func(_ context.Context, id string, force bool) (port.User, []port.RevokedAPIKey, error) {
+		if !force {
+			return port.User{}, nil, &port.SoleProjectAdminError{Projects: []string{"alpha", "beta"}}
+		}
 		deactivated++
 		now := time.Now()
 		return port.User{ID: id, Role: auth.RoleMember, DisabledAt: &now, CreatedAt: now}, nil, nil
 	}}
-	projects := &mockProjectRepo{soleAdminProjectsFn: func(_ context.Context, id string) ([]string, error) {
-		require.Equal(t, targetUserID, id)
-		return []string{"alpha", "beta"}, nil
-	}}
-	uc := New(Deps{Stores: &port.Stores{Users: users, RefreshTokens: &mockRefreshTokenRepo{}, Projects: projects}})
+	uc := New(Deps{Stores: &port.Stores{Users: users, RefreshTokens: &mockRefreshTokenRepo{}}})
 	ctx := sessionCtx(adminUserID, auth.RoleAdmin)
 
 	_, _, err := uc.DeactivateUser(ctx, targetUserID, false)

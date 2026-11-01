@@ -167,16 +167,18 @@ func (r *pgUserPort) ChangeRole(ctx context.Context, userID, role string) (port.
 // SetDisabled deactivates or reactivates an account, refusing to deactivate
 // the last active admin. Deactivating also revokes the account's API keys.
 func (r *pgUserPort) SetDisabled(ctx context.Context, userID string, disabled bool) (port.User, error) {
-	user, _, err := r.setDisabled(ctx, userID, disabled)
+	user, _, err := r.setDisabled(ctx, userID, disabled, true)
 	return user, err
 }
 
-// Deactivate is SetDisabled(true) that returns the keys it revoked.
-func (r *pgUserPort) Deactivate(ctx context.Context, userID string) (port.User, []port.RevokedAPIKey, error) {
-	return r.setDisabled(ctx, userID, true)
+// Deactivate is SetDisabled(true) that returns the keys it revoked. Unless
+// force is set it also refuses, with a *port.SoleProjectAdminError, when the
+// account is the only admin who can sign in of some project.
+func (r *pgUserPort) Deactivate(ctx context.Context, userID string, force bool) (port.User, []port.RevokedAPIKey, error) {
+	return r.setDisabled(ctx, userID, true, force)
 }
 
-func (r *pgUserPort) setDisabled(ctx context.Context, userID string, disabled bool) (port.User, []port.RevokedAPIKey, error) {
+func (r *pgUserPort) setDisabled(ctx context.Context, userID string, disabled, force bool) (port.User, []port.RevokedAPIKey, error) {
 	uid, err := parseID(userID)
 	if err != nil {
 		return port.User{}, nil, err
@@ -189,6 +191,14 @@ func (r *pgUserPort) setDisabled(ctx context.Context, userID string, disabled bo
 			return err
 		}
 		if disabled {
+			// The project locks come before the admin locks: a membership write
+			// holds its project lock while its foreign key check waits on a user
+			// row, so taking them the other way round could deadlock.
+			if !force {
+				if err := guardSoleProjectAdmin(ctx, q, uid); err != nil {
+					return err
+				}
+			}
 			if err := guardLastAdmin(ctx, q, target); err != nil {
 				return err
 			}
@@ -223,6 +233,57 @@ func (r *pgUserPort) setDisabled(ctx context.Context, userID string, disabled bo
 		return port.User{}, nil, mappingErr(err)
 	}
 	return out, revoked, nil
+}
+
+// guardSoleProjectAdmin locks the membership of every project the user
+// administers and returns a *port.SoleProjectAdminError naming the ones where
+// no other admin who can sign in is left. The check runs under the same locks a
+// member removal takes before it counts the other admins, so a removal and a
+// deactivation of the last two admins cannot both pass.
+//
+// The lock statement picks its projects from the snapshot it started with, and
+// it may wait on a lock for a while. A promotion of the user to admin of another
+// project that commits meanwhile is missed, so the statement runs again, now
+// with a snapshot taken after the locks were granted, until two runs lock the
+// same projects. Locks taken in a later run may not follow id order, so two
+// deactivations racing a promotion can in the worst case deadlock; PostgreSQL
+// then aborts one of them, which stops with an error and changes nothing.
+func guardSoleProjectAdmin(ctx context.Context, q *sqlc.Queries, uid pgtype.UUID) error {
+	locked, err := q.LockProjectsAdministeredBy(ctx, uid)
+	if err != nil {
+		return err
+	}
+	for {
+		again, err := q.LockProjectsAdministeredBy(ctx, uid)
+		if err != nil {
+			return err
+		}
+		if sameProjects(locked, again) {
+			break
+		}
+		locked = again
+	}
+	slugs, err := q.ListProjectsSoleAdminedBy(ctx, uid)
+	if err != nil {
+		return err
+	}
+	if len(slugs) > 0 {
+		return &port.SoleProjectAdminError{Projects: slugs}
+	}
+	return nil
+}
+
+// sameProjects reports whether two id lists, each in id order, are equal.
+func sameProjects(a, b []pgtype.UUID) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Bytes != b[i].Bytes {
+			return false
+		}
+	}
+	return true
 }
 
 // guardLastAdmin locks the active admins and returns ErrLastGlobalAdmin when

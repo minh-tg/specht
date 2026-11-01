@@ -669,6 +669,21 @@ releases.
   Deactivating an account that is the only active admin of a project now
   answers 409 `sole_project_admin` and lists the projects; send `{"force":
   true}` (or `specht users deactivate --force`) to go ahead.
+- The sole-admin check on deactivation now runs in the deactivation's transaction,
+  under the membership lock of each project the account administers. Before, two
+  deactivations of a project's two admins, or a removal racing a deactivation, could
+  both pass the check and leave the project with no admin who can sign in. A promotion
+  to admin of another project that commits while the deactivation waits is locked too.
+- A report upload no longer lands when its API key is revoked or expires, or its creator
+  or, for a session upload, the signed-in account is deactivated, before the body finishes
+  arriving. The ingest transaction now locks the key and the account and answers `401`
+  as a revoked key does. Before, such an upload was stored with `201`.
+- `PUT /api/v1/projects/{slug}/waivers/{id}` answers `404` for a waiver of another project
+  and for an id that does not exist, whatever the body holds. Before, an emptied
+  `conditions` list gave `404` for the first and `400` for the second.
+- The `waiver_deletions` archive now refuses `DELETE` and `TRUNCATE` as well as `UPDATE`,
+  including from the application's own database role. Deleting a project still removes
+  its archived records.
 - A person whose manager or admin rank on a project comes only from a linked
   team can no longer grant manager or admin through a member row, a team link
   or an invite. Before, they could write a direct admin row for themselves and
