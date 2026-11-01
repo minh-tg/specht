@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -334,4 +335,51 @@ func TestIngestReport_StalledDeclaredUploadsOfTwoTenantsDoNotBlockAThird(t *test
 	stallDeclaredUploads(t, srv, "other", "other-app", 10, 40)
 
 	assert.Equal(t, http.StatusCreated, postBody(t, srv, "third-1", "third-app", 1<<20), "1 MiB")
+}
+
+// Two uploads whose full charges cannot both fit, each alone could: one gets
+// the charge and runs, the other is refused and retries. Both used to hold
+// their raw bytes while waiting for the difference and both timed out.
+func TestIngestReport_OfTwoUploadsThatCannotBothBeChargedExactlyOneRuns(t *testing.T) {
+	payload := strings.Repeat("z", 2000)
+	bodyA := `{"project":"my-app","scanner":"trivy","raw_data":"` + payload + `"}`
+	bodyB := `{"project":"other-app","scanner":"trivy","raw_data":"` + payload[3:] + `"}`
+	require.Equal(t, len(bodyA), len(bodyB))
+	// The budget is exactly one full charge.
+	adm := newIngestAdmission(8, int64(64*len(bodyA)), 400*time.Millisecond)
+	var bytesRead atomic.Int64
+	srv := ingestPrincipalServer(t, adm, okIngest(), &bytesRead)
+
+	send := func(key, body string) net.Conn {
+		conn, err := net.Dial("tcp", strings.TrimPrefix(srv.URL, "http://"))
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = conn.Close() })
+		_, err = fmt.Fprintf(conn, "POST /api/v1/reports HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s",
+			key, len(body), body[:len(body)-1])
+		require.NoError(t, err)
+		return conn
+	}
+	a, b := send("key-1", bodyA), send("other-1", bodyB)
+	time.Sleep(200 * time.Millisecond) // both hold everything but the last byte
+	_, _ = a.Write([]byte(bodyA[len(bodyA)-1:]))
+	_, _ = b.Write([]byte(bodyB[len(bodyB)-1:]))
+
+	status := func(conn net.Conn) string {
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		line, _ := bufio.NewReader(conn).ReadString('\n')
+		return line
+	}
+	statuses := []string{status(a), status(b)}
+	created, busy := 0, 0
+	for _, s := range statuses {
+		switch {
+		case strings.Contains(s, " 201 "):
+			created++
+		case strings.Contains(s, " 503 "):
+			busy++
+		}
+	}
+	assert.Equal(t, 1, created, "statuses: %q", statuses)
+	assert.Equal(t, 1, busy, "statuses: %q", statuses)
+	assert.Eventually(t, adm.idle, time.Second, 5*time.Millisecond, "nothing stays reserved")
 }
