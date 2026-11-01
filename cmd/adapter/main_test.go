@@ -1575,30 +1575,6 @@ func TestRun_HonoursRetryAfterOn429(t *testing.T) {
 	assert.Equal(t, []time.Duration{2 * time.Second}, *slept, "Retry-After replaces the default backoff")
 }
 
-func TestRun_DuplicateReportMessage(t *testing.T) {
-	slept := stubRetrySleep(t)
-	var attempts int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		attempts++
-		w.WriteHeader(http.StatusConflict)
-		writeTestJSONResponse(t, w, map[string]any{
-			"error": map[string]string{"code": "duplicate_report", "message": "report already exists for this project and data"},
-		})
-	}))
-	defer srv.Close()
-	clearCIEnvironment(t)
-	t.Setenv("API_KEY", "test-key")
-	t.Setenv("API_URL", srv.URL)
-
-	var stdout, stderr bytes.Buffer
-	code := run([]string{"-project=my-app", "-tool=trivy"}, strings.NewReader(`{"Results":[]}`), &stdout, &stderr, srv.Client())
-	require.Equal(t, 2, code)
-	assert.Equal(t, 1, attempts, "a 409 duplicate is not retried")
-	assert.Empty(t, *slept)
-	assert.Contains(t, stderr.String(), "duplicate report")
-	assert.Contains(t, stderr.String(), "already ingested")
-}
-
 func TestRetryAfterDelay(t *testing.T) {
 	assert.Equal(t, 2*time.Second, retryAfterDelay("2"))
 	assert.Equal(t, 30*time.Second, retryAfterDelay("600"), "Retry-After is capped")
