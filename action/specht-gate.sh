@@ -42,8 +42,34 @@ OIDC_ISSUER_DEFAULT="https://token.actions.githubusercontent.com"
 # code, so a caller never reads a failed download or signature check as 1,
 # the code for a gate blocked by findings.
 error() {
-  echo "::error::$*" >&2
+  echo "::error::$(command_data "$*")" >&2
   exit 2
+}
+
+# command_data makes text safe to print as the data of a workflow command or
+# into the log: it escapes %, CR and LF the way the runner expects, so the text
+# cannot open a second command line, and replaces the remaining control
+# characters (C0, DEL, C1) and the Unicode bidirectional overrides and isolates
+# with a space.
+# Inputs such as the version or a download URL can carry text that is not ours.
+command_data() {
+  local text="$1" seq
+  text="${text//'%'/%25}"
+  text="${text//$'\r'/%0D}"
+  text="${text//$'\n'/%0A}"
+  text="$(LC_ALL=C printf '%s' "$text" | LC_ALL=C tr '\000-\037\177' ' ')"
+  local i
+  for ((i = 0x80; i <= 0x9f; i++)); do
+    printf -v seq '\\xc2\\x%02x' "$i"
+    printf -v seq "$seq"
+    text="${text//"$seq"/ }"
+  done
+  for seq in '\xe2\x80\xaa' '\xe2\x80\xab' '\xe2\x80\xac' '\xe2\x80\xad' '\xe2\x80\xae' \
+    '\xe2\x81\xa6' '\xe2\x81\xa7' '\xe2\x81\xa8' '\xe2\x81\xa9'; do
+    printf -v seq "$seq"
+    text="${text//"$seq"/ }"
+  done
+  printf '%s' "$text"
 }
 
 # require fails when any of the named variables is empty. It stands in for
@@ -174,7 +200,7 @@ download_release() {
   fi
   local f
   for f in "${files[@]}"; do
-    echo "downloading ${base}/${tag}/${f}"
+    echo "downloading $(command_data "${base}/${tag}/${f}")"
     curl --fail --location --retry 3 --retry-delay 2 --silent --show-error \
       --proto "$proto" --proto-redir "$proto" \
       --output "$tmp/$f" "${base}/${tag}/${f}" ||

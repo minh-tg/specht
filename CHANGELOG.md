@@ -421,6 +421,7 @@ releases.
   or object is replaced whole, so `db_password: [{"value": "..."}]` no longer keeps its value.
   Trivy image reports also lose the values of `Metadata.ImageConfig.config.Env` (the `NAME=` part
   stays) and every `history[].created_by` command.
+- `specht-adapter` and the GitHub Action script print finding titles, file names, branch names and server error messages on one line with terminal escapes and bidirectional overrides removed. A scanner-supplied title can no longer start a line with `::` and forge or hide workflow commands such as `::notice::`, `::add-mask::` or `::stop-commands::` in the CI log.
 - An invite link works only while the account that made it is active and could still make it: after its creator is deactivated, removed from the project, demoted below the invite's role, or loses global admin, the link answers like an expired one. Deactivating an account also revokes the open links it made.
 - Self-service registration is closed unless `REGISTRATION_ENABLED=true`.
 - An SSO exchange code works only in the browser that started the login. The
