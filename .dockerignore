@@ -5,3 +5,5 @@ frontend/dist
 frontend/demo-dist
 cmd/server/dist/dist
 website
+# Operator secrets, copied from deploy/.env.prod.example
+deploy/.env.prod
