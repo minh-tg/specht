@@ -20,13 +20,17 @@ import (
 func SweepExpiredFindings(ctx context.Context, store port.AnalysisExpiryStore, logger *slog.Logger) (int, error) {
 	expired, err := store.ExpireExpired(ctx)
 	if err != nil {
-		return 0, err
+		return len(expired), err
 	}
 	if len(expired) > 0 {
 		logger.Info("expired findings reset", "count", len(expired))
 	}
 	return len(expired), nil
 }
+
+// analysisSweepTimeout caps one sweep. Batches that committed before the cap
+// stay committed; the next sweep continues with the rest.
+const analysisSweepTimeout = 2 * time.Minute
 
 // RunAnalysisExpiry starts a background goroutine that periodically sweeps
 // findings with expired analysis_expires_at, resetting them to unanalyzed.
@@ -46,7 +50,10 @@ func RunAnalysisExpiry(ctx context.Context, store port.AnalysisExpiryStore, inte
 				logger.Info("analysis expiry daemon stopped")
 				return
 			case <-ticker.C:
-				if _, err := SweepExpiredFindings(ctx, store, logger); err != nil {
+				sweepCtx, cancel := context.WithTimeout(ctx, analysisSweepTimeout)
+				_, err := SweepExpiredFindings(sweepCtx, store, logger)
+				cancel()
+				if err != nil {
 					logger.Error("analysis expiry sweep failed", "error", err)
 				}
 			}

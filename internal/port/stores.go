@@ -1635,9 +1635,10 @@ type AdminStore interface {
 // sweep: find expired findings and reset them to unanalyzed/block inside the
 // same transaction the caller drives through Do.
 type AnalysisExpiryStore interface {
-	// ExpireExpired runs one transaction that finds findings whose analysis
-	// window expired, resets each to unanalyzed/block, logs the
-	// analysis_changed event, and reports the findings it reset.
+	// ExpireExpired finds findings whose analysis window expired, resets
+	// each to unanalyzed/block, logs the analysis_changed event, and reports
+	// the findings it reset. It works in short batches and skips rows another
+	// transaction holds; those are reset by the next call.
 	ExpireExpired(ctx context.Context) ([]Finding, error)
 }
 

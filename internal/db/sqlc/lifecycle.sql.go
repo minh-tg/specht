@@ -17,7 +17,9 @@ WITH expired AS (
     FROM findings
     WHERE analysis_expires_at IS NOT NULL
       AND analysis_expires_at <= NOW()
-    FOR UPDATE
+    ORDER BY id
+    LIMIT $1
+    FOR UPDATE SKIP LOCKED
 )
 UPDATE findings SET
     analysis_state = 'unanalyzed',
@@ -42,8 +44,11 @@ type ExpireFindingsRow struct {
 	GateEffect       string      `json:"gate_effect"`
 }
 
-func (q *Queries) ExpireFindings(ctx context.Context) ([]ExpireFindingsRow, error) {
-	rows, err := q.db.Query(ctx, expireFindings)
+// One bounded batch. SKIP LOCKED leaves rows that an ingest or a triage holds
+// for the next sweep, so the sweep never waits behind a transaction and never
+// takes part in a lock cycle.
+func (q *Queries) ExpireFindings(ctx context.Context, limit int32) ([]ExpireFindingsRow, error) {
+	rows, err := q.db.Query(ctx, expireFindings, limit)
 	if err != nil {
 		return nil, err
 	}

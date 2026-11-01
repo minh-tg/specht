@@ -375,6 +375,10 @@ releases.
 
 ### Fixed
 
+- The analysis expiry sweep works in batches of 500 findings, skips rows an upload or a
+  triage holds, and no longer deadlocks with a report upload or delays other projects'
+  rows. Skipped rows are reset by the next sweep. A new index on `findings.analysis_expires_at`
+  keeps the sweep from scanning the whole table.
 - A branch can no longer pass the introduced-only gate by pushing again. When no
   baseline resolves from `base_revision` (the target branch was never scanned, or a
   push build sent no base ref), a finding the previous report in the same scan scope
