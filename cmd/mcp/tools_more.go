@@ -137,7 +137,7 @@ func handleProjectsList(api API) (*mcp.CallToolResult, any, error) {
 	var text strings.Builder
 	fmt.Fprintf(&text, "%d project(s):\n", len(projects))
 	for _, p := range projects {
-		fmt.Fprintf(&text, "- %s (%s)\n", p.Slug, p.Name)
+		fmt.Fprintf(&text, "- %s (%s)\n", p.Slug, untrusted(p.Name))
 	}
 	return textToolResult(strings.TrimSpace(text.String()))
 }
@@ -150,9 +150,9 @@ func handleProjectGet(api API, input projectInput) (*mcp.CallToolResult, any, er
 	if err != nil {
 		return nil, nil, err
 	}
-	text := fmt.Sprintf("Project: %s (%s)", p.Slug, p.Name)
+	text := fmt.Sprintf("Project: %s (%s)", p.Slug, untrusted(p.Name))
 	if p.Description != nil && *p.Description != "" {
-		text += "\nDescription: " + *p.Description
+		text += "\nDescription: " + untrusted(*p.Description)
 	}
 	if p.Role != "" {
 		text += "\nYour role: " + p.Role
@@ -199,7 +199,7 @@ func handleProjectAging(api API, input projectInput) (*mcp.CallToolResult, any, 
 		fmt.Fprintf(&text, "\n  %s: %d (%d overdue)", b.Bucket, b.Count, b.Overdue)
 	}
 	for _, f := range a.Overdue {
-		fmt.Fprintf(&text, "\n  overdue: %s [%s] %s, %d days old, SLA %d", f.ID, f.Severity, f.Title, f.AgeDays, f.SLADays)
+		fmt.Fprintf(&text, "\n  overdue: %s [%s] %s, %d days old, SLA %d", f.ID, f.Severity, untrusted(f.Title), f.AgeDays, f.SLADays)
 	}
 	if a.Truncated {
 		text.WriteString("\n(the project has more open findings than this report covers; these are the oldest)")
@@ -225,12 +225,12 @@ func handleReportsList(api API, input reportsListInput) (*mcp.CallToolResult, an
 	var text strings.Builder
 	fmt.Fprintf(&text, "%d report(s):\n", len(reports))
 	for _, r := range reports {
-		fmt.Fprintf(&text, "- %s %s (%s) %s", r.ID, r.ToolName, r.ScanType, r.Status)
+		fmt.Fprintf(&text, "- %s %s (%s) %s", r.ID, untrusted(r.ToolName), untrusted(r.ScanType), r.Status)
 		if r.TotalFindings != nil {
 			fmt.Fprintf(&text, ", %d finding(s)", *r.TotalFindings)
 		}
 		if r.CommitSha != nil && *r.CommitSha != "" {
-			fmt.Fprintf(&text, ", commit %s", *r.CommitSha)
+			fmt.Fprintf(&text, ", commit %s", untrusted(*r.CommitSha))
 		}
 		text.WriteString("\n")
 	}
@@ -245,18 +245,18 @@ func handleReportGet(api API, input reportInput) (*mcp.CallToolResult, any, erro
 	if err != nil {
 		return nil, nil, err
 	}
-	text := fmt.Sprintf("Report: %s\nTool: %s\nScan type: %s\nStatus: %s\nCreated: %s", r.ID, r.ToolName, r.ScanType, r.Status, r.CreatedAt.Format(time.RFC3339))
+	text := fmt.Sprintf("Report: %s\nTool: %s\nScan type: %s\nStatus: %s\nCreated: %s", r.ID, untrusted(r.ToolName), untrusted(r.ScanType), r.Status, r.CreatedAt.Format(time.RFC3339))
 	if r.TotalFindings != nil {
 		text += fmt.Sprintf("\nFindings: %d", *r.TotalFindings)
 	}
 	if r.Branch != nil && *r.Branch != "" {
-		text += "\nBranch: " + *r.Branch
+		text += "\nBranch: " + untrusted(*r.Branch)
 	}
 	if r.CommitSha != nil && *r.CommitSha != "" {
-		text += "\nCommit: " + *r.CommitSha
+		text += "\nCommit: " + untrusted(*r.CommitSha)
 	}
 	if r.ScanTarget != nil && *r.ScanTarget != "" {
-		text += "\nTarget: " + *r.ScanTarget
+		text += "\nTarget: " + untrusted(*r.ScanTarget)
 	}
 	return textToolResult(text)
 }
@@ -278,7 +278,7 @@ func handleEnvironmentsList(api API, input projectInput) (*mcp.CallToolResult, a
 		if e.InternetFacing {
 			exposure = "internet facing"
 		}
-		fmt.Fprintf(&text, "- %s: tier %s, %s, data %s\n", e.Name, e.Tier, exposure, e.DataSensitivity)
+		fmt.Fprintf(&text, "- %s: tier %s, %s, data %s\n", untrusted(e.Name), e.Tier, exposure, e.DataSensitivity)
 	}
 	return textToolResult(strings.TrimSpace(text.String()))
 }
@@ -296,7 +296,7 @@ func handleTargetsList(api API, input projectInput) (*mcp.CallToolResult, any, e
 	}
 	var text strings.Builder
 	for _, t := range targets {
-		fmt.Fprintf(&text, "- %s (%s) %s\n", t.Name, t.Kind, t.Locator)
+		fmt.Fprintf(&text, "- %s (%s) %s\n", untrusted(t.Name), untrusted(t.Kind), untrusted(t.Locator))
 	}
 	return textToolResult(strings.TrimSpace(text.String()))
 }
@@ -314,7 +314,7 @@ func handleArtifactsList(api API, input projectInput) (*mcp.CallToolResult, any,
 	}
 	var text strings.Builder
 	for _, a := range artifacts {
-		fmt.Fprintf(&text, "- %s (%s) %s\n", a.Name, a.ArtifactType, a.Version)
+		fmt.Fprintf(&text, "- %s (%s) %s\n", untrusted(a.Name), untrusted(a.ArtifactType), untrusted(a.Version))
 	}
 	return textToolResult(strings.TrimSpace(text.String()))
 }
@@ -346,12 +346,12 @@ func handleFindingEvents(api API, input findingEventsInput) (*mcp.CallToolResult
 		if who == "" {
 			who = e.UserID
 		}
-		fmt.Fprintf(&text, "- %s %s by %s", e.CreatedAt.Format(time.RFC3339), e.EventType, who)
+		fmt.Fprintf(&text, "- %s %s by %s", e.CreatedAt.Format(time.RFC3339), e.EventType, untrusted(who))
 		if e.OldValue != nil || e.NewValue != nil {
-			fmt.Fprintf(&text, ": %s -> %s", deref(e.OldValue), deref(e.NewValue))
+			fmt.Fprintf(&text, ": %s -> %s", untrusted(deref(e.OldValue)), untrusted(deref(e.NewValue)))
 		}
 		if e.Comment != nil && *e.Comment != "" {
-			fmt.Fprintf(&text, " (%s)", *e.Comment)
+			fmt.Fprintf(&text, " (%s)", untrusted(*e.Comment))
 		}
 		text.WriteString("\n")
 	}
@@ -469,5 +469,5 @@ func handleEnvironmentsUpdate(api API, input environmentUpdateInput) (*mcp.CallT
 	if updated.InternetFacing {
 		exposure = "internet facing"
 	}
-	return textToolResult(fmt.Sprintf("environment %s: tier %s, %s, data %s", updated.Name, updated.Tier, exposure, updated.DataSensitivity))
+	return textToolResult(fmt.Sprintf("environment %s: tier %s, %s, data %s", untrusted(updated.Name), updated.Tier, exposure, updated.DataSensitivity))
 }

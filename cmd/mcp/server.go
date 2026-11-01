@@ -254,14 +254,15 @@ func sanitizeCallErrors(next mcp.MethodHandler) mcp.MethodHandler {
 }
 
 // sanitizeToolError strips terminal control characters from an error message
-// while keeping the original error reachable for errors.Is and errors.As. An
+// and puts it on one line, because it can echo scanner or user text, while
+// keeping the original error reachable for errors.Is and errors.As. An
 // error with nothing to strip is returned unchanged.
 func sanitizeToolError(err error) error {
 	if err == nil {
 		return nil
 	}
 	message := err.Error()
-	if clean := sanitize.Text(message); clean != message {
+	if clean := sanitize.Line(message); clean != message {
 		return sanitizedError{err: err}
 	}
 	return err
@@ -271,9 +272,19 @@ type sanitizedError struct {
 	err error
 }
 
-func (e sanitizedError) Error() string { return sanitize.Text(e.err.Error()) }
+func (e sanitizedError) Error() string { return sanitize.Line(e.err.Error()) }
 
 func (e sanitizedError) Unwrap() error { return e.err }
+
+// untrusted renders a field that came from scan output or from a user as one
+// double-quoted string. Terminal controls and bidirectional overrides are
+// removed first, and strconv.Quote then escapes quotes, backslashes, newlines
+// and tabs, so the value cannot end its line, forge a list entry or pass as
+// text the tool wrote itself. The quotes mark where untrusted text starts and
+// ends; what lies between them is data to report, never an instruction.
+func untrusted(s string) string {
+	return strconv.Quote(sanitize.Text(s))
+}
 
 func textToolResult(text string) (*mcp.CallToolResult, any, error) {
 	// Findings and reports carry scanner-supplied titles, paths and names; strip
@@ -303,7 +314,7 @@ func handleFindingsList(api API, input findingsListInput) (*mcp.CallToolResult, 
 	var text strings.Builder
 	fmt.Fprintf(&text, "Found %d finding(s):\n", len(findings))
 	for _, finding := range findings {
-		fmt.Fprintf(&text, "- %s [%s] %s (state: %s, gate: %s)\n", finding.ID, finding.CurrentSeverity, finding.CurrentTitle, finding.AnalysisState, finding.GateEffect)
+		fmt.Fprintf(&text, "- %s [%s] %s (state: %s, gate: %s)\n", finding.ID, finding.CurrentSeverity, untrusted(finding.CurrentTitle), finding.AnalysisState, finding.GateEffect)
 	}
 	return textToolResult(text.String())
 }
@@ -320,9 +331,9 @@ func handleFindingsGet(api API, input findingInput) (*mcp.CallToolResult, any, e
 	if finding.CurrentScore != nil {
 		score = fmt.Sprintf("%.1f", *finding.CurrentScore)
 	}
-	text := fmt.Sprintf("Finding: %s\nTitle: %s\nSeverity: %s\nScore: %s\nState: %s\nAnalysis: %s\nGate Effect: %s\nFingerprint: %s\nKind: %s", finding.ID, finding.CurrentTitle, finding.CurrentSeverity, score, finding.State, finding.AnalysisState, finding.GateEffect, finding.Fingerprint, finding.FindingKind)
+	text := fmt.Sprintf("Finding: %s\nTitle: %s\nSeverity: %s\nScore: %s\nState: %s\nAnalysis: %s\nGate Effect: %s\nFingerprint: %s\nKind: %s", finding.ID, untrusted(finding.CurrentTitle), finding.CurrentSeverity, score, finding.State, finding.AnalysisState, finding.GateEffect, untrusted(finding.Fingerprint), finding.FindingKind)
 	if finding.IntroducedCommitSha != nil && *finding.IntroducedCommitSha != "" {
-		text += fmt.Sprintf("\nIntroduced: %s", *finding.IntroducedCommitSha)
+		text += fmt.Sprintf("\nIntroduced: %s", untrusted(*finding.IntroducedCommitSha))
 	} else {
 		text += "\nIntroduced: unattributed"
 	}
@@ -371,9 +382,9 @@ func handlePRPreview(api API, input prPreviewInput) (*mcp.CallToolResult, any, e
 	if err != nil {
 		return nil, nil, err
 	}
-	text := fmt.Sprintf("check %s: %s\n%s", preview.Conclusion, preview.Title, preview.Summary)
+	text := fmt.Sprintf("check %s: %s\n%s", preview.Conclusion, untrusted(preview.Title), untrusted(preview.Summary))
 	for _, annotation := range preview.Annotations {
-		text += fmt.Sprintf("\n  %s:%d %s", annotation.File, annotation.StartLine, annotation.Title)
+		text += fmt.Sprintf("\n  %s:%d %s", untrusted(annotation.File), annotation.StartLine, untrusted(annotation.Title))
 	}
 	return textToolResult(text)
 }
@@ -387,12 +398,12 @@ func handlePatchPreview(api API, input findingInput) (*mcp.CallToolResult, any, 
 		return nil, nil, err
 	}
 	if !outcome.Supported || outcome.Proposal == nil {
-		return textToolResult(fmt.Sprintf("no patch: %s", outcome.Reason))
+		return textToolResult(fmt.Sprintf("no patch: %s", untrusted(outcome.Reason)))
 	}
 	proposal := outcome.Proposal
-	text := fmt.Sprintf("patch %s (%s, confidence %s)\n%s", proposal.ID, proposal.Class, proposal.Confidence, proposal.Rationale)
+	text := fmt.Sprintf("patch %s (%s, confidence %s)\n%s", proposal.ID, proposal.Class, proposal.Confidence, untrusted(proposal.Rationale))
 	for _, edit := range proposal.Edits {
-		text += fmt.Sprintf("\n  %s %s %s %s -> %s", edit.Operation, edit.File, edit.Package, edit.FromVersion, edit.ToVersion)
+		text += fmt.Sprintf("\n  %s %s %s %s -> %s", edit.Operation, untrusted(edit.File), untrusted(edit.Package), untrusted(edit.FromVersion), untrusted(edit.ToVersion))
 	}
 	text += fmt.Sprintf("\nverify: %s", proposal.VerifyBy)
 	return textToolResult(text)
@@ -413,10 +424,10 @@ func handleNotifyPreview(api API, input notifyPreviewInput) (*mcp.CallToolResult
 		return nil, nil, err
 	}
 	if !outcome.Supported || outcome.Plan == nil {
-		return textToolResult(fmt.Sprintf("no notification: %s", outcome.Reason))
+		return textToolResult(fmt.Sprintf("no notification: %s", untrusted(outcome.Reason)))
 	}
 	plan := outcome.Plan
-	return textToolResult(fmt.Sprintf("notify %s (%s -> %s): %s\n%s\ndedupe: %s", plan.ID, plan.Channel, plan.Target, plan.Title, plan.Body, plan.DedupeKey))
+	return textToolResult(fmt.Sprintf("notify %s (%s -> %s): %s\n%s\ndedupe: %s", plan.ID, plan.Channel, untrusted(plan.Target), untrusted(plan.Title), untrusted(plan.Body), untrusted(plan.DedupeKey)))
 }
 
 func handleAdminStatus(api API) (*mcp.CallToolResult, any, error) {
@@ -448,7 +459,7 @@ func handlePolicyEffective(api API, input projectInput) (*mcp.CallToolResult, an
 	}
 	template := "(none)"
 	if effective.TemplateName != nil {
-		template = fmt.Sprintf("%s v%d", *effective.TemplateName, effective.TemplateVersion)
+		template = fmt.Sprintf("%s v%d", untrusted(*effective.TemplateName), effective.TemplateVersion)
 	}
 	return textToolResult(fmt.Sprintf("template: %s\nfloor=%s (%s) watcher=%s (%s)", template, effective.SeverityFloor, effective.SeveritySource, effective.WatcherGate, effective.WatcherSource))
 }
@@ -463,7 +474,7 @@ func handleTeamsList(api API) (*mcp.CallToolResult, any, error) {
 	}
 	var text strings.Builder
 	for _, team := range teams {
-		fmt.Fprintf(&text, "%s (%s)\n", team.Name, team.ID)
+		fmt.Fprintf(&text, "%s (%s)\n", untrusted(team.Name), team.ID)
 	}
 	return textToolResult(strings.TrimSpace(text.String()))
 }
@@ -481,7 +492,7 @@ func handleProjectTeams(api API, input projectInput) (*mcp.CallToolResult, any, 
 	}
 	var text strings.Builder
 	for _, link := range links {
-		fmt.Fprintf(&text, "%s (%s) as %s\n", link.TeamName, link.TeamID, link.Role)
+		fmt.Fprintf(&text, "%s (%s) as %s\n", untrusted(link.TeamName), link.TeamID, link.Role)
 	}
 	return textToolResult(strings.TrimSpace(text.String()))
 }
@@ -516,7 +527,7 @@ func handleWatcherStatus(api API) (*mcp.CallToolResult, any, error) {
 		text += fmt.Sprintf("\nlast poll attempt: %s", status.LastPollAttemptAt)
 	}
 	if status.LastError != "" {
-		text += fmt.Sprintf("\nlast error: %s", status.LastError)
+		text += fmt.Sprintf("\nlast error: %s", untrusted(status.LastError))
 	}
 	text += fmt.Sprintf("\nconsecutive failures: %d", status.ConsecutiveFailures)
 	switch {
@@ -548,7 +559,7 @@ func handleWaiversList(api API, input projectInput) (*mcp.CallToolResult, any, e
 		if !waiver.Enabled {
 			status = "disabled"
 		}
-		fmt.Fprintf(&text, "- %s [%s] %s\n", waiver.ID, status, waiver.Name)
+		fmt.Fprintf(&text, "- %s [%s] %s\n", waiver.ID, status, untrusted(waiver.Name))
 	}
 	return textToolResult(text.String())
 }
@@ -565,7 +576,7 @@ func handleWaiversGet(api API, input waiverInput) (*mcp.CallToolResult, any, err
 	if !waiver.Enabled {
 		status = "disabled"
 	}
-	return textToolResult(fmt.Sprintf("Waiver: %s\nName: %s\nDescription: %s\nStatus: %s\nConditions: %d\nContexts: %d\nTargets: %d", waiver.ID, waiver.Name, waiver.Description, status, len(waiver.Conditions), len(waiver.Contexts), len(waiver.Targets)))
+	return textToolResult(fmt.Sprintf("Waiver: %s\nName: %s\nDescription: %s\nStatus: %s\nConditions: %d\nContexts: %d\nTargets: %d", waiver.ID, untrusted(waiver.Name), untrusted(waiver.Description), status, len(waiver.Conditions), len(waiver.Contexts), len(waiver.Targets)))
 }
 
 func handleWaiversCreate(api API, input waiverCreateInput) (*mcp.CallToolResult, any, error) {
@@ -584,7 +595,7 @@ func handleWaiversCreate(api API, input waiverCreateInput) (*mcp.CallToolResult,
 	if err != nil {
 		return nil, nil, err
 	}
-	return textToolResult(fmt.Sprintf("Waiver created: %s (%s)", waiver.ID, waiver.Name))
+	return textToolResult(fmt.Sprintf("Waiver created: %s (%s)", waiver.ID, untrusted(waiver.Name)))
 }
 
 func handleWaiversToggle(api API, input waiverInput) (*mcp.CallToolResult, any, error) {
