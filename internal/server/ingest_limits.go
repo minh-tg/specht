@@ -79,11 +79,12 @@ const ingestPath = "/api/v1/reports"
 //     queue and never delays another caller.
 //  2. reserve: while the body is read, one byte of the memory budget per byte
 //     of body, against the caller's allowance, the project's, then the whole
-//     budget. A body with a declared length reserves it before the first byte
-//     is read; one without reserves a chunk ahead of the bytes that arrived.
+//     budget, a chunk ahead of the bytes that arrived. A declared length only
+//     bounds the read: it is a claim, not a payment, so connections that
+//     declare a large body and send nothing hold a chunk each, not the body.
 //     No body byte is buffered outside the budget, and a slow upload holds
-//     only the bytes it declared or sent, never the charge for decoding. A
-//     request the budget cannot hold is refused unread.
+//     only the bytes it sent, never the charge for decoding. A request the
+//     budget cannot hold is refused unread.
 //  3. charge, then claim: once the whole body is in memory, the hold is raised
 //     to the full decoding charge (the same three levels, in the same order),
 //     then the project's place and a global slot are taken. These are held
@@ -291,29 +292,24 @@ func (t *ingestTicket) raise(ctx context.Context, want memoryHold) error {
 // bodyChunk is how much of a body is read, and held, at a time.
 const bodyChunk = 64 << 10
 
-// readBody reads the request body into memory it has reserved first. A body
-// with a declared length reserves all of it before reading; one without
-// reserves a chunk ahead of the bytes read so far, up to the largest body
-// allowed. It returns the chunks read; join them after charge, so the copy is
-// inside the full charge. The error is errIngestBusy or the context's error
-// when the budget refused a reservation, and a *bodyReadError when reading
-// failed.
+// readBody reads the request body into memory it has reserved first: before
+// each chunk it holds a chunk ahead of the bytes read so far. A declared length
+// only bounds the read. It is a claim, not a payment, so a connection that
+// declares 25 MiB and sends nothing holds one chunk, not 25 MiB. It returns the
+// chunks read; join them after charge, so the copy is inside the full charge.
+// The error is errIngestBusy or the context's error when the budget refused a
+// reservation, and a *bodyReadError when reading failed.
 func (t *ingestTicket) readBody(ctx context.Context, src io.Reader, declared int64) ([][]byte, int, error) {
 	limit := int64(maxIngestBodyBytes)
 	if declared >= 0 {
 		limit = declared
-		if err := t.reserve(ctx, int(declared)); err != nil {
-			return nil, 0, err
-		}
 	}
 	var chunks [][]byte
 	total := 0
 	for {
 		size := int(max(1, min(bodyChunk, limit-int64(total))))
-		if declared < 0 {
-			if err := t.reserve(ctx, total+size); err != nil {
-				return nil, 0, err
-			}
+		if err := t.reserve(ctx, total+size); err != nil {
+			return nil, 0, err
 		}
 		buf := make([]byte, size)
 		filled := 0

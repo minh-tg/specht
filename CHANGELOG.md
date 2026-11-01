@@ -694,9 +694,9 @@ releases.
   generation the link never expected. The change now answers 409 `account_changed`, issues
   no session, and the caller signs in again.
 - Report upload holds one byte of the ingest memory budget per byte of body while the
-  body is read: all of `Content-Length` up front, or a chunk ahead of the bytes that have
-  arrived when no length is declared. The 64x charge for decoding is taken once the whole
-  body is in memory. A request the budget cannot hold gets `503 ingest_busy` without its
+  body is read, a 64 KiB chunk ahead of the bytes that have arrived. A declared
+  `Content-Length` only bounds the read, so idle connections that declare a large body hold
+  a chunk each. The 64x charge for decoding is taken once the whole body is in memory. A request the budget cannot hold gets `503 ingest_busy` without its
   body being buffered, so many API keys can no longer hold request bodies in memory
   outside `INGEST_MEMORY_BUDGET`, and a slow upload does not keep other projects' uploads
   waiting.

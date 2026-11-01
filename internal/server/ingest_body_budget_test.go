@@ -21,8 +21,8 @@ import (
 )
 
 // ingestPrincipalServer serves the ingest handler and maps "key-N" bearers to
-// N distinct ingest keys of one project ("my-app") and "other-N" bearers to
-// keys of a second project ("other-app"). bytesRead counts the body bytes the
+// N distinct ingest keys of one project ("my-app"), "other-N" bearers to
+// keys of a second project ("other-app") and "third-N" to a third ("third-app"). bytesRead counts the body bytes the
 // handler consumed, across requests.
 func ingestPrincipalServer(t *testing.T, adm *ingestAdmission, mock *mockUsecases, bytesRead *atomic.Int64) *httptest.Server {
 	t.Helper()
@@ -30,6 +30,9 @@ func ingestPrincipalServer(t *testing.T, adm *ingestAdmission, mock *mockUsecase
 	mock.getProjectFn = func(_ context.Context, slug string) (*usecase.ProjectResponse, error) {
 		if slug == "other-app" {
 			return &usecase.ProjectResponse{ID: otherProjectID, Slug: slug}, nil
+		}
+		if slug == "third-app" {
+			return &usecase.ProjectResponse{ID: thirdProjectID, Slug: slug}, nil
 		}
 		return &usecase.ProjectResponse{ID: fairnessProjectID, Slug: slug}, nil
 	}
@@ -40,6 +43,9 @@ func ingestPrincipalServer(t *testing.T, adm *ingestAdmission, mock *mockUsecase
 		projectID := fairnessProjectID
 		if strings.HasPrefix(token, "other-") {
 			projectID = otherProjectID
+		}
+		if strings.HasPrefix(token, "third-") {
+			projectID = thirdProjectID
 		}
 		ident := &auth.Identity{UserID: "creator", ProjectID: projectID, KeyHash: "hash-" + token, IsAPIKey: true, Scopes: []string{auth.ScopeIngest}}
 		cr := &countingReader{r: r.Body}
@@ -54,7 +60,10 @@ func ingestPrincipalServer(t *testing.T, adm *ingestAdmission, mock *mockUsecase
 	return srv
 }
 
-const otherProjectID = "00000000-0000-0000-0000-000000000002"
+const (
+	otherProjectID = "00000000-0000-0000-0000-000000000002"
+	thirdProjectID = "00000000-0000-0000-0000-000000000003"
+)
 
 // blockingMock holds every ingest inside the use case until release closes.
 func blockingMock(entered chan<- struct{}, release <-chan struct{}) *mockUsecases {
@@ -285,4 +294,44 @@ func TestIngestReport_UploadsThatCannotBothBeChargedDoNotDeadlock(t *testing.T) 
 	close(release)
 	assert.Equal(t, http.StatusCreated, <-first)
 	assert.Eventually(t, adm.idle, time.Second, 5*time.Millisecond, "nothing stays reserved")
+}
+
+// stallDeclaredUploads opens count connections for project, spread over the
+// keys named prefix-0 ... prefix-(keys-1), each declaring the largest body and
+// sending only the head.
+func stallDeclaredUploads(t *testing.T, srv *httptest.Server, prefix, project string, keys, count int) {
+	t.Helper()
+	head := `{"project":"` + project + `","scanner":"trivy","raw_data":"`
+	for i := 0; i < count; i++ {
+		conn, err := net.Dial("tcp", strings.TrimPrefix(srv.URL, "http://"))
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = conn.Close() })
+		_, err = fmt.Fprintf(conn, "POST /api/v1/reports HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer %s-%d\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s",
+			prefix, i%keys, maxIngestBodyBytes, head)
+		require.NoError(t, err)
+	}
+	time.Sleep(500 * time.Millisecond) // every handler has read its head and is waiting for the rest
+}
+
+// A declared Content-Length is a claim, not a payment: 40 stalled uploads that
+// each declare 25 MiB from one project hold a chunk each, so another project's
+// large report still gets in.
+func TestIngestReport_StalledDeclaredUploadsOfOneTenantDoNotBlockAnother(t *testing.T) {
+	adm := newIngestAdmission(8, 0, 300*time.Millisecond)
+	var bytesRead atomic.Int64
+	srv := ingestPrincipalServer(t, adm, okIngest(), &bytesRead)
+	stallDeclaredUploads(t, srv, "key", "my-app", 10, 40)
+
+	assert.Equal(t, http.StatusCreated, postBody(t, srv, "other-1", "other-app", 17<<20), "17 MiB")
+	assert.Equal(t, http.StatusCreated, postBody(t, srv, "other-2", "other-app", 16<<20), "16 MiB")
+}
+
+func TestIngestReport_StalledDeclaredUploadsOfTwoTenantsDoNotBlockAThird(t *testing.T) {
+	adm := newIngestAdmission(8, 0, 300*time.Millisecond)
+	var bytesRead atomic.Int64
+	srv := ingestPrincipalServer(t, adm, okIngest(), &bytesRead)
+	stallDeclaredUploads(t, srv, "key", "my-app", 10, 40)
+	stallDeclaredUploads(t, srv, "other", "other-app", 10, 40)
+
+	assert.Equal(t, http.StatusCreated, postBody(t, srv, "third-1", "third-app", 1<<20), "1 MiB")
 }
