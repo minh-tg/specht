@@ -2,7 +2,7 @@ module github.com/minh-tg/specht
 
 go 1.26.0
 
-toolchain go1.26.10
+toolchain go1.27.2
 
 require (
 	github.com/go-chi/chi/v5 v5.5.0

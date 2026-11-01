@@ -734,3 +734,7 @@ releases.
 - A release tag now publishes only a commit that is reachable from `main` and whose `ci`
   run on `main` passed. Before, any successful `ci` push run for the commit was enough, so a
   tag on an unmerged branch commit could publish and sign an image.
+- The adapter image is built with the same Go release as the server image (1.27.2). It was
+  still built with Go 1.26.9, which has fixed standard library advisories. A CI check now fails
+  when the Dockerfiles use different Go builder images or when go.mod's `toolchain` line, which
+  CI installs, differs from them.

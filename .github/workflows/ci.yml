@@ -339,6 +339,11 @@ jobs:
         with:
           scope: lint
 
+      # The Dockerfiles decide which Go compiler ships. go.mod's toolchain line is what setup-go
+      # installs, so CI tests the release the images use.
+      - name: Go builder images match go.mod
+        run: bash scripts/check-go-builder.sh
+
       - name: Resolve module graph
         run: go mod tidy
 
