@@ -28,10 +28,11 @@ report() {
   fi
 }
 
-# expect_check <name> <pass|fail> <base> <head>
+# expect_check <name> <pass|fail> <base> <head>. PR_AUTHOR passes through from the caller's
+# environment and is empty by default.
 expect_check() {
   local got=pass
-  "$scripts/check-dco.sh" "$3" "$4" >/dev/null 2>&1 || got=fail
+  PR_AUTHOR="${PR_AUTHOR:-}" "$scripts/check-dco.sh" "$3" "$4" >/dev/null 2>&1 || got=fail
   report "$1" "$got" "$2"
 }
 
@@ -72,7 +73,11 @@ expect_check "sign-off outside the trailer block fails" fail "$base" HEAD
 
 reset
 GIT_AUTHOR_EMAIL='49699333+dependabot[bot]@users.noreply.github.com' git commit -q --allow-empty -m "build(deps): bump x"
-expect_check "bot commits are exempt" pass "$base" HEAD
+expect_check "a bot-looking author email does not exempt an unsigned commit" fail "$base" HEAD
+PR_AUTHOR=mallory expect_check "a bot-looking author email on a human pull request fails" fail "$base" HEAD
+PR_AUTHOR='dependabot-fake[bot]' expect_check "an unlisted bot pull request author fails" fail "$base" HEAD
+PR_AUTHOR='dependabot[bot]' expect_check "a pull request opened by dependabot is exempt" pass "$base" HEAD
+PR_AUTHOR='dependabot[bot]' expect_check "an unresolvable range still fails for a bot pull request" fail 0000000000000000000000000000000000000000 HEAD
 
 reset
 git commit -q --allow-empty -m "$signed"
