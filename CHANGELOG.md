@@ -696,10 +696,12 @@ releases.
 - Report upload holds one byte of the ingest memory budget per byte of body while the
   body is read, a 64 KiB chunk ahead of the bytes that have arrived. A declared
   `Content-Length` only bounds the read, so idle connections that declare a large body hold
-  a chunk each. The 64x charge for decoding is taken once the whole body is in memory. A request the budget cannot hold gets `503 ingest_busy` without its
-  body being buffered, so many API keys can no longer hold request bodies in memory
-  outside `INGEST_MEMORY_BUDGET`, and a slow upload does not keep other projects' uploads
-  waiting.
+  a chunk each. The 64x charge for decoding is taken once the whole body is in memory. A
+  request the budget cannot hold gets `503 ingest_busy` without its body being buffered,
+  so many API keys can no longer hold request bodies in memory outside
+  `INGEST_MEMORY_BUDGET`, and a slow upload does not keep other projects' uploads waiting.
+  One upload at a time waits for its decoding charge, so two uploads that cannot both be
+  charged no longer both fail with 503 when either would fit alone.
 - The embedded web app compresses each file once and serves the stored gzip bytes with
   `Content-Length` and an `ETag` (answering `If-None-Match` with 304). It used to gzip
   every asset on every request, which let one anonymous client keep a CPU core busy.
