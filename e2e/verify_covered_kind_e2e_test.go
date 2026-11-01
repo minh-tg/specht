@@ -57,3 +57,28 @@ func TestE2E_VerifyFixNeedsTheReportToHaveCoveredTheFindingKind(t *testing.T) {
 		})
 	}
 }
+
+// A Trivy document that lists no result class vouches for no finding kind, so
+// the report does not claim to be a complete scan.
+func TestE2E_TrivyReportWithNoResultClassIsNotComplete(t *testing.T) {
+	slug := newProject(t, "trivy-no-class")
+	res := request[ingestResponse](t, http.MethodPost, "/api/v1/reports", adminToken,
+		trivyDocBody(slug, "main", "9000000000000000000000000000000000000001", map[string]any{
+			"SchemaVersion": 2, "ArtifactName": "alpine:3.20", "ArtifactType": "container_image",
+			"Results": []any{},
+		}), http.StatusCreated)
+	var report struct {
+		ScanCompleteness string `json:"scan_completeness"`
+	}
+	status, raw := doJSON(t, http.MethodGet, "/api/v1/reports/"+res.ReportID, adminToken, nil)
+	require.Equal(t, http.StatusOK, status, "%s", raw)
+	require.NoError(t, json.Unmarshal(raw, &report))
+	require.Equal(t, "unknown", report.ScanCompleteness)
+
+	full := ingestRaw(t, slug, "trivy", "trivy-alpine-scan.json",
+		map[string]any{"branch": "main", "commit_sha": "9000000000000000000000000000000000000002"})
+	status, raw = doJSON(t, http.MethodGet, "/api/v1/reports/"+full.ReportID, adminToken, nil)
+	require.Equal(t, http.StatusOK, status, "%s", raw)
+	require.NoError(t, json.Unmarshal(raw, &report))
+	require.Equal(t, "complete", report.ScanCompleteness)
+}

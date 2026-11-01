@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/minh-tg/specht/internal/domain"
 )
 
 func TestParseRecordsTheClassesTheScanExamined(t *testing.T) {
@@ -26,11 +28,18 @@ func TestParseRecordsTheClassesTheScanExamined(t *testing.T) {
 		{"secrets", []map[string]any{{"Target": "Dockerfile", "Class": "secret"}}, []string{"secret"}},
 		{"configuration", []map[string]any{{"Target": "main.tf", "Class": "config"}}, []string{"iac"}},
 		{"no result class", nil, nil},
+		{"unrecognized result class", []map[string]any{{"Target": "x", "Class": "license"}}, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			parsed, err := NewScanner().Parse(context.Background(), report(tc.results))
 			require.NoError(t, err)
 			require.Equal(t, tc.want, parsed.CoveredFindingKinds)
+			if len(tc.want) == 0 {
+				require.Equal(t, domain.CompletenessUnknown, parsed.Completeness,
+					"a document that lists no result class does not show the scan was complete")
+			} else {
+				require.Equal(t, domain.CompletenessComplete, parsed.Completeness)
+			}
 		})
 	}
 }
