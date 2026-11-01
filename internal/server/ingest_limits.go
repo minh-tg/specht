@@ -88,10 +88,12 @@ const ingestPath = "/api/v1/reports"
 //  3. charge, then claim: once the whole body is in memory, the hold is raised
 //     to the full decoding charge (the same three levels, in the same order),
 //     then the project's place and a global slot are taken. These are held
-//     while the report is decoded and stored. A request that cannot get the
-//     difference within one queue wait is refused and gives back its raw hold,
-//     so two uploads that each hold part of what the other needs wait at most
-//     one queue wait and cannot block each other for good.
+//     while the report is decoded and stored. One request at a time waits for
+//     the difference; a request that cannot take it at once queues for that
+//     place for at most half a queue wait, and one that does not get the
+//     difference within a queue wait is refused. Either way it gives back its
+//     raw hold, so two uploads that each hold part of what the other needs
+//     do not both time out.
 //  4. release: everything is given back, in reverse order, on every path.
 //
 // The project gate is what keeps one tenant from filling every global slot:
@@ -114,6 +116,8 @@ type ingestAdmission struct {
 	memoryShare  int64
 	tenantShare  int64
 	queueWait    time.Duration
+	// upgrading admits one request at a time to wait for its decoding charge.
+	upgrading chan struct{}
 
 	mu         sync.Mutex
 	principals map[string]*gate
@@ -148,6 +152,7 @@ func newIngestAdmission(concurrency int, memoryBudget int64, queueWait time.Dura
 		memoryShare:  max(1, memory.size/int64(concurrency)*int64(perPrincipal)),
 		tenantShare:  max(1, memory.size/int64(concurrency)*int64(perTenant)),
 		queueWait:    queueWait,
+		upgrading:    make(chan struct{}, 1),
 		principals:   map[string]*gate{},
 		tenants:      map[string]*gate{},
 	}
@@ -239,35 +244,89 @@ func (t *ingestTicket) fullHold(rawBytes int) memoryHold {
 // decoding. It only raises the hold; asking for less than is held does
 // nothing. The wait is bounded by one queue wait.
 func (t *ingestTicket) reserve(ctx context.Context, rawBytes int) error {
-	return t.raise(ctx, t.rawHold(rawBytes))
+	return t.raise(ctx, t.rawHold(rawBytes), time.Now().Add(t.a.queueWait))
 }
 
 // charge raises the hold to the full charge for a report of rawBytes, once its
 // body is in memory. If the budget cannot give the difference within the queue
 // wait it returns errIngestBusy and the caller releases the ticket, which gives
-// the raw hold back: a request never waits for more while others wait for what
-// it holds longer than one queue wait.
+// the raw hold back.
+//
+// Only one request at a time waits for the difference. Two uploads whose full
+// charges do not both fit each hold their raw bytes, and each would wait for
+// memory the other holds: both would time out although either alone fits. The
+// request that cannot take the difference at once queues for the single waiting
+// place, at most half the queue wait; one that does not get it in that time is
+// refused and gives its raw hold back, which lets the waiter in front finish.
 func (t *ingestTicket) charge(ctx context.Context, rawBytes int) error {
-	return t.raise(ctx, t.fullHold(rawBytes))
+	a := t.a
+	want := t.fullHold(rawBytes)
+	deadline := time.Now().Add(a.queueWait)
+	if t.tryRaise(want) {
+		return nil
+	}
+	grace := time.NewTimer(a.queueWait / 2)
+	defer grace.Stop()
+	select {
+	case a.upgrading <- struct{}{}:
+		defer func() { <-a.upgrading }()
+	case <-grace.C:
+		return errIngestBusy
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return t.raise(ctx, want, deadline)
+}
+
+// registerMemory queues the release of everything held, once.
+func (t *ingestTicket) registerMemory() {
+	if t.memoryRegistered {
+		return
+	}
+	t.memoryRegistered = true
+	a := t.a
+	t.releases = append(t.releases, func() {
+		a.memory.sem.Release(t.held.global)
+		t.tenantG.memory.Release(t.held.tenant)
+		t.gate.memory.Release(t.held.caller)
+		t.held = memoryHold{}
+	})
+}
+
+// tryRaise takes what is free of the difference to want without waiting, in
+// the same order as raise, and reports whether it got all of it. What it took
+// stays held.
+func (t *ingestTicket) tryRaise(want memoryHold) bool {
+	t.registerMemory()
+	if more := want.caller - t.held.caller; more > 0 {
+		if !t.gate.memory.TryAcquire(more) {
+			return false
+		}
+		t.held.caller = want.caller
+	}
+	if more := want.tenant - t.held.tenant; more > 0 {
+		if !t.tenantG.memory.TryAcquire(more) {
+			return false
+		}
+		t.held.tenant = want.tenant
+	}
+	if more := want.global - t.held.global; more > 0 {
+		if !t.a.memory.sem.TryAcquire(more) {
+			return false
+		}
+		t.held.global = want.global
+	}
+	return true
 }
 
 // raise grows the hold to want, in a fixed order that every request follows:
 // the caller's allowance, then the project's, then the whole budget. A request
 // waits on one of these while holding only those before it, and the holders of
 // the last one are running ingests that wait on nothing, so waits do not form
-// a cycle. A wait that outlasts the queue wait ends in errIngestBusy.
-func (t *ingestTicket) raise(ctx context.Context, want memoryHold) error {
+// a cycle. A wait that outlasts the deadline ends in errIngestBusy.
+func (t *ingestTicket) raise(ctx context.Context, want memoryHold, deadline time.Time) error {
 	a := t.a
-	if !t.memoryRegistered {
-		t.memoryRegistered = true
-		t.releases = append(t.releases, func() {
-			a.memory.sem.Release(t.held.global)
-			t.tenantG.memory.Release(t.held.tenant)
-			t.gate.memory.Release(t.held.caller)
-			t.held = memoryHold{}
-		})
-	}
-	deadline := time.Now().Add(a.queueWait)
+	t.registerMemory()
 	if more := want.caller - t.held.caller; more > 0 {
 		if err := waitUntil(ctx, deadline, func(ctx context.Context) error { return t.gate.memory.Acquire(ctx, more) }); err != nil {
 			return err
