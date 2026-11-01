@@ -763,3 +763,6 @@ releases.
 - The server logs a warning at startup when `TRUSTED_PROXIES` contains `0.0.0.0/0` or
   `::/0`, which makes every client a trusted proxy and lets it forge its address and
   protocol.
+- A release tag now publishes only a commit that is reachable from `main` and whose `ci`
+  run on `main` passed. Before, any successful `ci` push run for the commit was enough, so a
+  tag on an unmerged branch commit could publish and sign an image.
