@@ -63,7 +63,13 @@ report omits it, and verifying such a finding by hand stays inconclusive.
 For `-tool=trivy`, the adapter and `specht reports upload` read `TRIVY_SEVERITY`
 (for example `HIGH,CRITICAL`) and `TRIVY_IGNORE_UNFIXED=true` when the flags are
 absent, so a step that sets Trivy's own variables needs nothing more. An explicit
-flag wins over the variable. The API takes the same declaration as the
+flag wins over the variable. The adapter cannot see the flags Trivy actually
+ran with, so it trusts the variable and prints
+`declaring scan filter: severities=..., fixable_only=...` on stderr with the
+source of each value. A variable that is set for another step of the same job,
+or a `--severity` flag that differs from it, makes that declaration wrong, and a
+declaration wider than the real scan lets the server close findings the scan
+never examined. Check the line in the job log. The API takes the same declaration as the
 `scan_filter` object of the ingest request, with `severities` and `fixable_only`;
 a severity other than `critical`, `high`, `medium`, `low` or `unknown` is refused
 with `400 invalid_field`. The report API returns it as `scan_filter`.
