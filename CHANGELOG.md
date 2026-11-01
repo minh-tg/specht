@@ -663,11 +663,12 @@ releases.
 - The sole-admin check on deactivation now runs in the deactivation's transaction,
   under the membership lock of each project the account administers. Before, two
   deactivations of a project's two admins, or a removal racing a deactivation, could
-  both pass the check and leave the project with no admin who can sign in.
-- A report upload that authenticated with an API key no longer lands when the key is
-  revoked, or its creator deactivated, before the body finishes arriving. The ingest
-  transaction now locks the key and its creator's account and answers `401` as a
-  revoked key does. Before, such an upload was stored with `201`.
+  both pass the check and leave the project with no admin who can sign in. A promotion
+  to admin of another project that commits while the deactivation waits is locked too.
+- A report upload no longer lands when its API key is revoked or expires, or its creator
+  or, for a session upload, the signed-in account is deactivated, before the body finishes
+  arriving. The ingest transaction now locks the key and the account and answers `401`
+  as a revoked key does. Before, such an upload was stored with `201`.
 - `PUT /api/v1/projects/{slug}/waivers/{id}` answers `404` for a waiver of another project
   and for an id that does not exist, whatever the body holds. Before, an emptied
   `conditions` list gave `404` for the first and `400` for the second.

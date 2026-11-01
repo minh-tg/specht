@@ -223,7 +223,7 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 			h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
 			return
 		}
-		if errors.Is(err, usecase.ErrAPIKeyInactive) {
+		if errors.Is(err, usecase.ErrIngestCallerInactive) {
 			respondError(w, http.StatusUnauthorized, "invalid_token", "invalid or expired token")
 			h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
 			return

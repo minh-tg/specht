@@ -23,7 +23,7 @@ func TestIngestTransactionRefusesAKeyThatIsNoLongerLive(t *testing.T) {
 	project := createTestProject(t, repos)
 	projectID := uuid.UUID(project.ID.Bytes).String()
 	runs := func(hash string) (entered bool, err error) {
-		err = stores.Ingest.Run(ctx, projectID, hash, func(*port.Stores) error {
+		err = stores.Ingest.Run(ctx, projectID, port.IngestCaller{KeyHash: hash}, func(*port.Stores) error {
 			entered = true
 			return nil
 		})
@@ -43,7 +43,7 @@ func TestIngestTransactionRefusesAKeyThatIsNoLongerLive(t *testing.T) {
 	_, err = repos.pool.Exec(ctx, "UPDATE api_keys SET revoked_at = now() WHERE id = $1", revoked)
 	require.NoError(t, err)
 	entered, err = runs(revokedHash)
-	require.ErrorIs(t, err, port.ErrAPIKeyInactive)
+	require.ErrorIs(t, err, port.ErrIngestCallerInactive)
 	assert.False(t, entered, "a revoked key does not write")
 
 	// A key that slipped past revocation still stops with its creator.
@@ -52,11 +52,83 @@ func TestIngestTransactionRefusesAKeyThatIsNoLongerLive(t *testing.T) {
 	_, err = repos.pool.Exec(ctx, "UPDATE users SET disabled_at = now() WHERE id = $1", gone.ID)
 	require.NoError(t, err)
 	entered, err = runs(orphanHash)
-	require.ErrorIs(t, err, port.ErrAPIKeyInactive)
+	require.ErrorIs(t, err, port.ErrIngestCallerInactive)
 	assert.False(t, entered, "a key of a deactivated creator does not write")
 
 	_, err = runs("hash-nobody-minted")
-	require.ErrorIs(t, err, port.ErrAPIKeyInactive)
+	require.ErrorIs(t, err, port.ErrIngestCallerInactive)
+
+	// A key whose expiry passed while the upload was in flight stops too.
+	expired, expiredHash := newKeyBy(t, repos, project, creator.ID, "expired")
+	_, err = repos.pool.Exec(ctx, "UPDATE api_keys SET expires_at = now() - interval '1 second' WHERE id = $1", expired)
+	require.NoError(t, err)
+	entered, err = runs(expiredHash)
+	require.ErrorIs(t, err, port.ErrIngestCallerInactive)
+	assert.False(t, entered, "an expired key does not write")
+}
+
+func TestIngestTransactionRefusesASessionOfADeactivatedAccount(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(repos.pool)
+	newUser(t, repos, "admin@test.com", "admin")
+	project := createTestProject(t, repos)
+	projectID := uuid.UUID(project.ID.Bytes).String()
+	person := newUser(t, repos, "person@test.com", "member")
+	runs := func() (entered bool, err error) {
+		err = stores.Ingest.Run(ctx, projectID, port.IngestCaller{UserID: person.ID}, func(*port.Stores) error {
+			entered = true
+			return nil
+		})
+		return entered, err
+	}
+
+	entered, err := runs()
+	require.NoError(t, err)
+	assert.True(t, entered, "an active account writes")
+
+	_, err = repos.pool.Exec(ctx, "UPDATE users SET disabled_at = now() WHERE id = $1", person.ID)
+	require.NoError(t, err)
+	entered, err = runs()
+	require.ErrorIs(t, err, port.ErrIngestCallerInactive)
+	assert.False(t, entered, "a deactivated account does not write")
+}
+
+// A deactivation that starts while a session's ingest is open waits for it.
+func TestDeactivationWaitsForASessionIngest(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(repos.pool)
+	newUser(t, repos, "admin@test.com", "admin")
+	person := newUser(t, repos, "person@test.com", "member")
+	project := createTestProject(t, repos)
+	projectID := uuid.UUID(project.ID.Bytes).String()
+
+	entered, release, ingested := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		ingested <- stores.Ingest.Run(ctx, projectID, port.IngestCaller{UserID: person.ID}, func(*port.Stores) error {
+			close(entered)
+			<-release
+			return nil
+		})
+	}()
+	<-entered
+
+	deactivated := make(chan error, 1)
+	go func() {
+		_, _, err := stores.Users.Deactivate(ctx, person.ID, true)
+		deactivated <- err
+	}()
+	select {
+	case err := <-deactivated:
+		t.Fatalf("the deactivation finished while the account's ingest was open: %v", err)
+	case <-time.After(500 * time.Millisecond):
+	}
+	close(release)
+	require.NoError(t, <-ingested)
+	require.NoError(t, <-deactivated)
 }
 
 // A deactivation that starts while an ingest holds the key waits for it, then
@@ -75,7 +147,7 @@ func TestDeactivationWaitsForAnIngestHoldingTheKey(t *testing.T) {
 
 	entered, release, ingested := make(chan struct{}), make(chan struct{}), make(chan error, 1)
 	go func() {
-		ingested <- stores.Ingest.Run(ctx, projectID, hash, func(*port.Stores) error {
+		ingested <- stores.Ingest.Run(ctx, projectID, port.IngestCaller{KeyHash: hash}, func(*port.Stores) error {
 			close(entered)
 			<-release
 			return nil
@@ -105,9 +177,9 @@ func TestDeactivationWaitsForAnIngestHoldingTheKey(t *testing.T) {
 	}
 	assert.True(t, keyRevoked(t, repos, keyID))
 
-	err := stores.Ingest.Run(ctx, projectID, hash, func(*port.Stores) error {
+	err := stores.Ingest.Run(ctx, projectID, port.IngestCaller{KeyHash: hash}, func(*port.Stores) error {
 		t.Error("an ingest started after the deactivation")
 		return nil
 	})
-	require.ErrorIs(t, err, port.ErrAPIKeyInactive)
+	require.ErrorIs(t, err, port.ErrIngestCallerInactive)
 }

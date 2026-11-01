@@ -103,9 +103,10 @@ func (e *SoleProjectAdminError) Error() string {
 	return "the account is the only active admin of " + strings.Join(e.Projects, ", ")
 }
 
-// ErrAPIKeyInactive is returned when an API key that authenticated is revoked,
-// or its creator deactivated, before the write it started could commit.
-var ErrAPIKeyInactive = errors.New("api key is revoked or its creator is deactivated")
+// ErrIngestCallerInactive is returned when the key or session an ingest
+// authenticated with is no longer live before the write it started could
+// commit: the key was revoked or expired, or the account deactivated.
+var ErrIngestCallerInactive = errors.New("api key or session is no longer live")
 
 // ErrCreatorInactive is returned when an API key would be created by an account
 // that is deactivated or does not exist.
@@ -128,13 +129,23 @@ var ErrFindingSuppressed = errors.New("finding already exists")
 // callback receives transaction-bound stores. Processing report rows are
 // created separately so a rolled-back attempt can still be recorded as failed.
 //
-// A caller that authenticated with an API key passes the key's hash. Run then
-// locks the key and its creator's account row for the transaction and returns
-// ErrAPIKeyInactive when the key was revoked or the creator deactivated after
-// the request authenticated, so a deactivation cannot interleave with a write
-// the key started earlier. An empty hash skips the check.
+// A caller that authenticated with an API key passes the key's hash, and one
+// that authenticated with a session passes the account's id. Run then locks the
+// key and its creator's account row, or the account row, for the transaction
+// and returns ErrIngestCallerInactive when the key was revoked or expired, or
+// the account deactivated, after the request authenticated. A deactivation
+// therefore cannot interleave with a write the caller started earlier. An empty
+// IngestCaller skips the check.
 type IngestTransaction interface {
-	Run(ctx context.Context, projectID, keyHash string, fn func(*Stores) error) error
+	Run(ctx context.Context, projectID string, caller IngestCaller, fn func(*Stores) error) error
+}
+
+// IngestCaller names who an ingest transaction writes for.
+type IngestCaller struct {
+	// KeyHash is the SHA-256 of the API key the request authenticated with.
+	KeyHash string
+	// UserID is the account of a session the request authenticated with.
+	UserID string
 }
 
 // ---------- Projects ----------
