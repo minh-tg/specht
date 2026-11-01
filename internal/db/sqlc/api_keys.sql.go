@@ -111,10 +111,11 @@ func (q *Queries) GetAPIKeyByHash(ctx context.Context, keyHash string) (ApiKey, 
 }
 
 const getLiveAPIKeyCreator = `-- name: GetLiveAPIKeyCreator :one
-SELECT created_by FROM api_keys WHERE key_hash = $1 AND revoked_at IS NULL
+SELECT created_by FROM api_keys
+WHERE key_hash = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())
 `
 
-// The creator of an unrevoked key, read without a lock so the caller can lock
+// The creator of an unrevoked, unexpired key, read without a lock so the caller can lock
 // the creator's account row before the key row, the order a deactivation
 // updates them in. created_by is null for a key that predates creator tracking.
 func (q *Queries) GetLiveAPIKeyCreator(ctx context.Context, keyHash string) (pgtype.UUID, error) {
@@ -213,7 +214,9 @@ func (q *Queries) LockKeyCreator(ctx context.Context, id pgtype.UUID) (int32, er
 }
 
 const lockLiveAPIKey = `-- name: LockLiveAPIKey :one
-SELECT id FROM api_keys WHERE key_hash = $1 AND revoked_at IS NULL FOR SHARE
+SELECT id FROM api_keys
+WHERE key_hash = $1 AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())
+FOR SHARE
 `
 
 // Takes a share lock on an unrevoked key for the rest of the transaction, so a
