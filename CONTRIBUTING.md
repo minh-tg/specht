@@ -27,7 +27,7 @@ contribution you did not author or do not have permission to submit.
 
 The `dco` check on every pull request fails when a commit has no
 `Signed-off-by` trailer whose email matches the commit's author or committer.
-Commits by bot accounts such as Dependabot are exempt. To sign off a branch
+Pull requests opened by Dependabot are exempt. To sign off a branch
 that is missing it:
 
 ```bash
