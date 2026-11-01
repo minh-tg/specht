@@ -92,6 +92,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
+          cache: false
 
       - name: Resolve module graph
         run: go mod tidy
@@ -254,6 +255,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
+          cache: false
 
       # The script rejects a tag that is not vMAJOR.MINOR.PATCH, so a bad tag
       # builds nothing and the release job below publishes nothing.
