@@ -46,6 +46,8 @@ var ciEnvVars = []string{
 	"SPECHT_OWNER", "SPECHT_ENVIRONMENT",
 	// The scan filter trivy declares through its own variables.
 	"TRIVY_SEVERITY", "TRIVY_IGNORE_UNFIXED",
+	// The opt-out for plain http to a non-loopback API URL.
+	"SPECHT_ALLOW_INSECURE_HTTP",
 }
 
 // clearCIEnvironment isolates a test from the ambient environment. A test that
@@ -811,6 +813,21 @@ func TestRun_MissingAPIURLOutsideCIWarns(t *testing.T) {
 }
 
 func TestResolveAPIURL(t *testing.T) {
+	t.Run("plain http to a remote host is refused unless opted out", func(t *testing.T) {
+		clearCIEnvironment(t)
+		t.Setenv("API_URL", "http://10.0.0.5:8080")
+		var stderr bytes.Buffer
+		_, code := resolveAPIURL(&stderr)
+		assert.Equal(t, 2, code)
+		assert.Contains(t, stderr.String(), "SPECHT_ALLOW_INSECURE_HTTP")
+
+		t.Setenv("SPECHT_ALLOW_INSECURE_HTTP", "1")
+		stderr.Reset()
+		gotURL, code := resolveAPIURL(&stderr)
+		require.Zero(t, code)
+		assert.Equal(t, "http://10.0.0.5:8080", gotURL)
+	})
+
 	t.Run("API_URL wins over the alias and drops a trailing slash", func(t *testing.T) {
 		clearCIEnvironment(t)
 		t.Setenv("API_URL", "https://a.example.com/")
@@ -1087,7 +1104,7 @@ func TestRun_IntroducedOnly_Pass(t *testing.T) {
 func TestRunWithContextCancelsAPIRequest(t *testing.T) {
 	clearCIEnvironment(t)
 	t.Setenv("API_KEY", "test-key")
-	t.Setenv("API_URL", "http://test")
+	t.Setenv("API_URL", "http://localhost")
 	requestStarted := make(chan struct{})
 	transport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		close(requestStarted)
