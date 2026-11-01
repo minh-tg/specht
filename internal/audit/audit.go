@@ -98,6 +98,10 @@ type Event struct {
 	Name      string
 	Outcome   Outcome
 	Principal *auth.Identity
+	// Actor names a caller that is not an authenticated request, such as the
+	// host-side recovery command. It stands in for the principal id when
+	// Principal is nil.
+	Actor     string
 	Project   string
 	Target    string
 	RequestID string
@@ -127,7 +131,7 @@ func (a *Logger) Log(ctx context.Context, event Event) {
 	fields := []any{
 		"audit", event.Name,
 		"outcome", outcomeString(event.Outcome),
-		"principal_id", principalID(event.Principal),
+		"principal_id", principalLabel(event),
 		"is_api_key", isAPIKey(event.Principal),
 		"project", clean(event.Project),
 		"target", clean(event.Target),
@@ -223,6 +227,15 @@ func outcomeString(o Outcome) string {
 	default:
 		return "unknown"
 	}
+}
+
+// principalLabel is the id of the authenticated principal, or the Actor of a
+// caller that has none.
+func principalLabel(event Event) string {
+	if event.Principal == nil {
+		return clean(event.Actor)
+	}
+	return principalID(event.Principal)
 }
 
 func principalID(ident *auth.Identity) string {
