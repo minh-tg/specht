@@ -250,10 +250,9 @@ func convert(budget *parseutil.Budget, report trivyReport) (*domain.NormalizedRe
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
 		FingerprintVersion: fingerprintVersion,
-		// Trivy scans its whole target (every result class covers the
-		// target it ran against), so absence in a rescan is meaningful:
-		// VerifyFix can treat newer complete trivy reports as proof a
-		// finding is gone. Unknown-completeness reports never verify.
+		// Trivy scans its whole target, so a result class it listed is
+		// examined in full. Completeness is settled below from the classes
+		// the document actually lists.
 		Completeness: domain.CompletenessComplete,
 		ScanType:     domain.ScanTypeImage,
 		Findings:     nil,
@@ -291,6 +290,9 @@ func convert(budget *parseutil.Budget, report trivyReport) (*domain.NormalizedRe
 	// A result class is the only evidence Trivy gives that a category was
 	// scanned. Without one, an empty report proves no category is clean.
 	nr.CoveredFindingKinds = trivyCoveredKinds(covered)
+	if len(nr.CoveredFindingKinds) == 0 {
+		nr.Completeness = domain.CompletenessUnknown
+	}
 
 	return nr, nil
 }

@@ -396,6 +396,9 @@ releases.
 - Verifying a fix now needs the latest report to have covered the finding's kind, the same
   proof auto-close uses. A Trivy report with no vulnerability result class used to verify a
   vulnerability finding as fixed; the answer is now inconclusive and the finding stays open.
+- A Trivy document that lists no result class (an empty `Results` array) is stored with
+  `scan_completeness` `unknown` instead of `complete`, so the change view no longer says
+  it scanned the target in full.
 
 ### Security
 
