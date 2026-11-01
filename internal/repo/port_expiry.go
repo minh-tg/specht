@@ -12,20 +12,40 @@ import (
 	"github.com/minh-tg/specht/internal/port"
 )
 
+// defaultExpiryBatchSize bounds how many findings one sweep transaction locks.
+const defaultExpiryBatchSize = 500
+
 // pgAnalysisExpiryStore implements port.AnalysisExpiryStore. ExpireExpired
-// runs one transaction that resets every expired analysis window back to
-// unanalyzed/block and logs the analysis_changed event per finding, mirroring
-// the original lifecycle.SweepExpiredFindings behavior.
+// resets expired analysis windows back to unanalyzed/block in batches of
+// batchSize, one short transaction per batch, and logs the
+// analysis_changed event per finding. A batch skips rows another transaction
+// holds, so the sweep never waits behind an ingest and never joins a lock
+// cycle; skipped rows are expired by the next sweep.
 type pgAnalysisExpiryStore struct {
-	pool *pgxpool.Pool
+	pool      *pgxpool.Pool
+	batchSize int32
 }
 
 // NewAnalysisExpiryStore builds the PostgreSQL analysis-expiry store.
 func NewAnalysisExpiryStore(pool *pgxpool.Pool) port.AnalysisExpiryStore {
-	return &pgAnalysisExpiryStore{pool: pool}
+	return &pgAnalysisExpiryStore{pool: pool, batchSize: defaultExpiryBatchSize}
 }
 
 func (s *pgAnalysisExpiryStore) ExpireExpired(ctx context.Context) ([]port.Finding, error) {
+	var out []port.Finding
+	for {
+		batch, err := s.expireBatch(ctx)
+		out = append(out, batch...)
+		if err != nil {
+			return out, err
+		}
+		if int32(len(batch)) < s.batchSize {
+			return out, nil
+		}
+	}
+}
+
+func (s *pgAnalysisExpiryStore) expireBatch(ctx context.Context) ([]port.Finding, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -36,7 +56,7 @@ func (s *pgAnalysisExpiryStore) ExpireExpired(ctx context.Context) ([]port.Findi
 	}()
 
 	q := sqlc.New(tx)
-	expired, err := q.ExpireFindings(ctx)
+	expired, err := q.ExpireFindings(ctx, s.batchSize)
 	if err != nil {
 		return nil, err
 	}
