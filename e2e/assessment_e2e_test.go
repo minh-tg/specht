@@ -455,7 +455,7 @@ func TestE2E_AssessmentFlows(t *testing.T) {
 			"/api/v1/findings/"+high.ID+"/verify", adminToken, nil, http.StatusOK)
 		require.Equal(t, "inconclusive", inconclusive.Outcome,
 			"a scan without complete scope cannot settle a fix")
-		require.Contains(t, inconclusive.Detail, "not complete")
+		require.Contains(t, inconclusive.Detail, "does not show it examined this one")
 
 		status, raw = doJSON(t, http.MethodPost, "/api/v1/findings/"+high.ID+"/verify", key, nil)
 		require.Equal(t, http.StatusForbidden, status)
