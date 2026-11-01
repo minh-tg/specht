@@ -393,6 +393,9 @@ releases.
   like the created and regression events, so receivers that route by project get it.
 - An OSV answer over 32 MiB now fails with a size error. It used to be cut at 32 MiB and
   parsed or stored as evidence as if it were complete.
+- Verifying a fix now needs the latest report to have covered the finding's kind, the same
+  proof auto-close uses. A Trivy report with no vulnerability result class used to verify a
+  vulnerability finding as fixed; the answer is now inconclusive and the finding stays open.
 
 ### Security
 

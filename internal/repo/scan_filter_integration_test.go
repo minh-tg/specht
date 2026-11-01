@@ -88,10 +88,16 @@ func newFilterScenario(t *testing.T, findings ...seeded) (*filterScenario, func(
 // finding, with the given filter.
 func (s *filterScenario) scan(t *testing.T, hash string, severities []string, fixableOnly bool) string {
 	t.Helper()
+	return s.scanCovering(t, hash, []string{"sca"}, severities, fixableOnly)
+}
+
+// scanCovering is scan with the finding kinds the report says it examined.
+func (s *filterScenario) scanCovering(t *testing.T, hash string, kinds, severities []string, fixableOnly bool) string {
+	t.Helper()
 	r, err := s.stores.Reports.Create(s.ctx, port.CreateReportInput{
 		ProjectID: s.projectID, ToolName: "trivy", ScanType: "image", ScanScopeHash: "main",
 		ScanScope: []byte(`{}`), RawReportHash: hash, ScanMode: "full",
-		ScanCompleteness: "complete", CoveredFindingKinds: []string{"sca"},
+		ScanCompleteness: "complete", CoveredFindingKinds: kinds,
 		FilterSeverities: severities, FilterFixableOnly: fixableOnly,
 	})
 	require.NoError(t, err)
@@ -201,6 +207,33 @@ func TestScanFilterVerifyRefusesAFindingOutsideTheFilter(t *testing.T) {
 	_, err = s.stores.Findings.MarkFixedWithEvent(s.ctx, s.ids["high-1"], basis, port.FindingEventInput{FindingID: s.ids["high-1"], EventType: "verified_fixed"})
 	require.NoError(t, err)
 	assert.Equal(t, "fixed", s.state(t, "high-1"))
+}
+
+func TestVerifyRefusesACompleteReportThatCoveredNoKindOfTheFinding(t *testing.T) {
+	cases := map[string][]string{
+		"no kind at all": nil,
+		"another kind":   {"iac"},
+	}
+	for name, kinds := range cases {
+		t.Run(name, func(t *testing.T) {
+			s, cleanup := newFilterScenario(t, seeded{fingerprint: "sca-1", severity: "high", rank: 3})
+			defer cleanup()
+			basis := s.scanCovering(t, "uncovered", kinds, nil, false)
+
+			_, err := s.stores.Findings.MarkFixedWithEvent(s.ctx, s.ids["sca-1"], basis, port.FindingEventInput{FindingID: s.ids["sca-1"], EventType: "verified_fixed"})
+			require.ErrorIs(t, err, port.ErrFindingStillObserved, "complete is not enough when the report never covered the kind")
+			assert.Equal(t, "open", s.state(t, "sca-1"))
+			assert.Equal(t, 1, s.scopeRows(t, "sca-1"))
+
+			user, err := s.stores.Users.Create(s.ctx, "verifier@example.test", nil, nil)
+			require.NoError(t, err)
+			got, err := usecase.New(usecase.Deps{Stores: s.stores}).VerifyFix(globalAdminCtx(user.ID), s.ids["sca-1"])
+			require.NoError(t, err)
+			assert.Equal(t, usecase.VerifyInconclusive, got.Outcome)
+			assert.Contains(t, got.Detail, "does not cover this kind of finding")
+			assert.Equal(t, "open", s.state(t, "sca-1"))
+		})
+	}
 }
 
 func TestScanFilterVerifyFixAnswersInconclusiveOutsideTheFilter(t *testing.T) {

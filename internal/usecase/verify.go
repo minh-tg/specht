@@ -94,16 +94,16 @@ func (u *Usecases) VerifyFix(ctx context.Context, findingID string) (*VerifyResp
 			Detail: "latest completed report predates the last observation",
 		}, nil
 	}
-	// A complete report vouches for everything it covers. A report that is not
-	// complete (SARIF and Checkov stay unknown) still settles a finding its
-	// own output proves it looked for: a listed rule that found nothing, or a
-	// passed check. The proof test is the one auto-fix uses. A report the
-	// uploader declared filtered by severity or fixability is complete only
-	// inside its filter, so it needs the proof like any other.
-	if (report.Completeness != "complete" || report.Filtered) && !report.ExaminedFinding {
+	// Absence settles a finding only when the report shows it looked for it.
+	// The proof is the one auto-fix uses: a complete report must cover the
+	// finding's kind, and a report that is not complete (SARIF and Checkov
+	// stay unknown) or was declared filtered must have listed the rule or
+	// passed the check. Completeness alone is not proof, because a complete
+	// report can cover no kind at all.
+	if !report.ExaminedFinding {
 		return &VerifyResponse{
 			FindingID: fid.String(), Outcome: VerifyInconclusive, ReportID: &reportID,
-			Detail: fmt.Sprintf("latest report scope is %q, not complete, and it does not show it examined this finding", report.Completeness),
+			Detail: "latest completed report does not cover this kind of finding and does not show it examined this one",
 		}, nil
 	}
 
