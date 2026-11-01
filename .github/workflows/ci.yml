@@ -344,8 +344,10 @@ jobs:
       - name: Go builder images match go.mod
         run: bash scripts/check-go-builder.sh
 
-      - name: Resolve module graph
-        run: go mod tidy
+      # Prints the changes go mod tidy would make to go.mod and go.sum and exits non-zero when
+      # there are any, so a drifted dependency list fails here instead of being repaired quietly.
+      - name: go.mod and go.sum are tidy
+        run: go mod tidy -diff
 
       - name: gofumpt
         run: |
