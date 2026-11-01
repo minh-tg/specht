@@ -426,15 +426,23 @@ release workflow. Install `cosign`, then verify an image before deployment:
 
 ```bash
 IMAGE=ghcr.io/minh-tg/specht:v0.1.0
+DIGEST="$(docker buildx imagetools inspect "$IMAGE" --format '{{.Manifest.Digest}}')"
 cosign verify \
-  --certificate-identity-regexp 'https://github.com/minh-tg/specht/.github/workflows/release.yml@refs/tags/v.*' \
+  --certificate-identity-regexp '^https://github\.com/minh-tg/specht/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  "$IMAGE"
+  "ghcr.io/minh-tg/specht@$DIGEST"
 ```
 
 The command verifies the certificate issuer and that the signing workflow ran
-from this repository's release tag; replace the image with the exact version
-you intend to deploy.
+from this repository's release tag. The expression is anchored, so only a
+`vMAJOR.MINOR.PATCH` tag of this repository's `release.yml` matches. Replace
+the image with the exact version you intend to deploy.
+
+A tag can be moved after you verify it, and the signature belongs to a digest.
+Pull and deploy that digest (`docker pull "ghcr.io/minh-tg/specht@$DIGEST"`),
+or check before each deploy that the tag you run still resolves to it. The
+Compose file builds its image name from `SPECHT_VERSION` as a tag, so it
+cannot take a digest.
 
 ## 5. First admin
 
