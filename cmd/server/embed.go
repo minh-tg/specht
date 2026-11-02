@@ -58,7 +58,11 @@ func setSPAHeaders(w http.ResponseWriter, cleanPath string) {
 	} else if mimeType := mime.TypeByExtension(ext); mimeType != "" {
 		w.Header().Set("Content-Type", mimeType)
 	}
-	if ext != "" && ext != ".html" && cleanPath != "session-refresh.js" {
+	// Only the Vite asset directory holds content-hashed names. Files copied
+	// from frontend/public (theme-init.js, the manifest, icons) and the
+	// session refresh worker keep a fixed URL while their content changes, so
+	// they revalidate.
+	if ext != "" && ext != ".html" && strings.HasPrefix(cleanPath, "assets/") {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	} else {
 		w.Header().Set("Cache-Control", "no-cache")

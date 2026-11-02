@@ -386,6 +386,9 @@ releases.
 
 ### Fixed
 
+- The server marks only the hashed files under `/assets/` as cached for a year. Root files
+  such as `/theme-init.js`, the web manifest and the icons keep a fixed URL across releases and
+  are now revalidated, so a browser no longer keeps an old copy after an upgrade.
 - `TRACKER_PROVIDER` is read the same way at startup validation and at dispatch. A value such
   as `Webhook` passed validation and then ran no tracker without a message. The server now
   uses the lowercased, trimmed value, and logs an error for a provider it does not know.
