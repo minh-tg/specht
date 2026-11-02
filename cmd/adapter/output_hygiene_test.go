@@ -92,7 +92,7 @@ func TestBannerStripsBidiControlsFromBranch(t *testing.T) {
 	t.Setenv("GITHUB_BASE_REF", "main")
 	t.Setenv("GITHUB_EVENT_PATH", writeEventFile(t, map[string]any{
 		"pull_request": map[string]any{
-			"head": map[string]any{"sha": "abcdef1234567", "ref": "feat/‮tnirp", "repo": map[string]any{"full_name": "org/repo"}},
+			"head": map[string]any{"sha": "abcdef1234567", "ref": "feat/\u202etnirp", "repo": map[string]any{"full_name": "org/repo"}},
 			"base": map[string]any{"repo": map[string]any{"full_name": "org/repo"}},
 		},
 	}))
@@ -116,7 +116,7 @@ func TestBannerStripsBidiControlsFromBranch(t *testing.T) {
 	require.Equal(t, 0, code, stderr.String())
 	assert.True(t, sent.GateIntroducedOnly, "a pull request base makes the gate change-scoped")
 	assert.Contains(t, stderr.String(), "Branch: feat/tnirp -> ")
-	assert.NotContains(t, stderr.String(), "‮")
+	assert.NotContains(t, stderr.String(), "\u202e")
 }
 
 func TestServerErrorMessagesStayOnOneLine(t *testing.T) {
