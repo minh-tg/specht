@@ -48,7 +48,7 @@ func TestLine(t *testing.T) {
 		{"line and paragraph separators become spaces", "a b c\u0085d", "a b c d"},
 		{"runs of whitespace collapse", "a \n\n  b", "a b"},
 		{"ANSI sequences are removed", "x\x1b[2J\x1b[31mred", "xred"},
-		{"bidi overrides are removed", "feat/‮tnirp", "feat/tnirp"},
+		{"bidi overrides are removed", "feat/\u202etnirp", "feat/tnirp"},
 		{"a leading workflow command prefix is defused", "::stop-commands::tok", ": :stop-commands::tok"},
 		{"a leading prefix after newlines is defused", "\n\n::notice::x", ": :notice::x"},
 		{"the legacy command form is defused anywhere", "libfoo ##[warning]forged ##[group]x", "libfoo ## [warning]forged ## [group]x"},
