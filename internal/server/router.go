@@ -133,7 +133,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	r.Use(LoggerMiddleware)
 	r.Use(middleware.Recoverer)
 	r.Use(requestTimeout(defaultRequestTimeout, ingestBodyWindow+ingestWindow+ingestWriteSlack))
-	var revoker auth.TokenRevoker = cfg.Revoker
+	revoker := cfg.Revoker
 	if revoker == nil {
 		revoker, _ = cfg.JWTAuth.(auth.TokenRevoker)
 	}
