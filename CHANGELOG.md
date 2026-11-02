@@ -704,7 +704,9 @@ releases.
   under the membership lock of each project the account administers. Before, two
   deactivations of a project's two admins, or a removal racing a deactivation, could
   both pass the check and leave the project with no admin who can sign in. A promotion
-  to admin of another project that commits while the deactivation waits is locked too.
+  of the account to admin of a project now waits for its deactivation, and the other way
+  round, so it cannot slip in between the checks. Accepting an invite no longer deadlocks
+  with a deactivation or a role change when the creator and the invitee are both admins.
 - A report upload no longer lands when its API key is revoked or expires, or its creator
   or, for a session upload, the signed-in account is deactivated, before the body finishes
   arriving. The ingest transaction now locks the key and the account and answers `401`
