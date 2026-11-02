@@ -190,7 +190,7 @@ func TestResetPasswordByEmail_RefusesAListedOrAccountPassword(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			h := newRecoveryHarness(recoveryUser("ada.lovelace@acme.example", "member"))
-			_, err := h.uc.ResetPasswordByEmail(context.Background(), "ada.lovelace@acme.example", tc.password)
+			_, err := h.uc.ResetPasswordByEmail(context.Background(), "ada.lovelace@acme.example", tc.password, false)
 			assert.ErrorIs(t, err, tc.want)
 			assert.Empty(t, h.stored)
 		})

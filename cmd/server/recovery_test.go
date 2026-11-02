@@ -20,18 +20,25 @@ type fakeRecovery struct {
 	grantEmail                string
 	resetErr, grantErr        error
 	profile                   usecase.UserProfile
+	// ssoOnly makes the account one without a local password: the reset is
+	// refused unless the override was given.
+	ssoOnly    bool
+	allowedSSO bool
 }
 
-func (f *fakeRecovery) ResetPasswordByEmail(ctx context.Context, email, password string) (*usecase.UserProfile, error) {
-	f.resetEmail, f.resetPassword = email, password
+func (f *fakeRecovery) ResetPasswordByEmail(ctx context.Context, email, password string, allowSSOAccount bool) (*usecase.RecoveryReset, error) {
+	f.resetEmail, f.resetPassword, f.allowedSSO = email, password, allowSSOAccount
 	if f.resetErr != nil {
 		return nil, f.resetErr
+	}
+	if f.ssoOnly && !allowSSOAccount {
+		return nil, usecase.ErrNoLocalPassword
 	}
 	p := f.profile
 	if p.Email == "" {
 		p.Email = email
 	}
-	return &p, nil
+	return &usecase.RecoveryReset{Profile: p, WasSSOOnly: f.ssoOnly}, nil
 }
 
 func (f *fakeRecovery) GrantAdminByEmail(ctx context.Context, email string) (*usecase.UserProfile, error) {
@@ -206,6 +213,53 @@ func TestRecovery_FailedCommandsAreAuditedWithTheTypedEmail(t *testing.T) {
 	assert.Equal(t, 1, code)
 	assert.Contains(t, log, "audit=user.reset_password")
 	assert.Contains(t, log, "outcome=failure")
+}
+
+func TestRecovery_ResetRefusesAnSSOOnlyAccountAndNamesTheOverride(t *testing.T) {
+	svc := &fakeRecovery{ssoOnly: true, profile: usecase.UserProfile{ID: "u-42"}}
+
+	code, stdout, stderr, log := runRecoveryAudited(svc, "", "reset-password", "ada@acme.example")
+
+	assert.Equal(t, 1, code)
+	assert.False(t, svc.allowedSSO)
+	assert.Contains(t, stderr, "identity provider")
+	assert.Contains(t, stderr, "--allow-sso-account")
+	assert.NotContains(t, stdout, svc.resetPassword, "a refused reset prints no password")
+	assert.Contains(t, log, "outcome=failure")
+	assert.NotContains(t, log, "detail=")
+}
+
+func TestRecovery_TheOverrideResetsAnSSOOnlyAccountAndIsAudited(t *testing.T) {
+	svc := &fakeRecovery{ssoOnly: true, profile: usecase.UserProfile{ID: "u-42"}}
+
+	code, stdout, stderr, log := runRecoveryAudited(svc, "", "reset-password", "--allow-sso-account", "ada@acme.example")
+
+	require.Equal(t, 0, code, stderr)
+	assert.True(t, svc.allowedSSO)
+	assert.Contains(t, stdout, svc.resetPassword)
+	assert.Contains(t, stdout, "now also has a local password")
+	assert.Contains(t, log, "audit=user.reset_password")
+	assert.Contains(t, log, "outcome=success")
+	assert.Contains(t, log, `detail="allow-sso-account: an sso-only account got a local password"`)
+}
+
+func TestRecovery_TheOverrideOnAPasswordAccountIsStillAudited(t *testing.T) {
+	svc := &fakeRecovery{profile: usecase.UserProfile{ID: "u-42"}}
+
+	code, stdout, stderr, log := runRecoveryAudited(svc, "", "reset-password", "ada@acme.example", "-allow-sso-account")
+
+	require.Equal(t, 0, code, stderr)
+	assert.NotContains(t, stdout, "now also has a local password")
+	assert.Contains(t, log, "detail=allow-sso-account")
+}
+
+func TestRecovery_ARaceWithAnSSOLinkAsksForARerun(t *testing.T) {
+	svc := &fakeRecovery{resetErr: usecase.ErrRecoveryAccountChanged}
+
+	code, _, stderr := runRecoveryForTest(svc, "", "reset-password", "ada@acme.example")
+
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "run the command again")
 }
 
 func TestRecovery_UsageErrorsWriteNoAuditLine(t *testing.T) {

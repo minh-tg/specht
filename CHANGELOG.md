@@ -505,6 +505,12 @@ releases.
   `audit=user.role` line with `principal_id=sso`. Admins that existed before this release
   count as granted by hand; to hand such an account over to the IdP, demote it and let
   its next SSO login promote it again.
+- `specht reset-password` refuses an account that signs in only through SSO and has no
+  local password, as the reset link on the Admin page already did. It used to give such an
+  account a password. `--allow-sso-account` does it anyway, for an identity provider that
+  is down; the command then says the account now has a local password, and the audit line
+  carries `detail="allow-sso-account: ..."`. A reset that races the account's first SSO
+  link writes nothing and asks to run the command again.
 - `specht`, `specht-mcp` and `specht-adapter` no longer follow a redirect that changes the
   scheme or host of the API request. An `https` server that answered with a redirect to
   `http://` on the same host name used to get the API key resent in clear text.

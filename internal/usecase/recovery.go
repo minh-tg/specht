@@ -34,11 +34,32 @@ func recoveryEmail(raw string) (string, error) {
 	return email, nil
 }
 
+// ErrRecoveryAccountChanged means the account's password changed, or an SSO
+// link cleared it, while a recovery command ran. Nothing was written; running
+// the command again decides on the account as it is now.
+var ErrRecoveryAccountChanged = errors.New("the account changed while the command ran")
+
+// RecoveryReset is the outcome of ResetPasswordByEmail.
+type RecoveryReset struct {
+	Profile UserProfile
+	// WasSSOOnly is true when the account had no local password, so it signed
+	// in only through the identity provider, and now has one.
+	WasSSOOnly bool
+}
+
 // ResetPasswordByEmail sets a new password for the account and ends every
 // session it has. The store does both in one transaction under the account row
 // lock, as in ChangePassword, and starts a new token generation. A deactivated
 // account stays deactivated; the returned profile says so.
-func (u *Usecases) ResetPasswordByEmail(ctx context.Context, email, password string) (*UserProfile, error) {
+//
+// An account with no local password signs in through the identity provider,
+// and the HTTP reset path refuses it. This one does too, with
+// ErrNoLocalPassword, unless allowSSOAccount is set: that is the way in when
+// the provider is down. Without the override the store checks that the
+// password read here is still the account's, so an SSO link that clears it in
+// between makes the call fail with ErrRecoveryAccountChanged instead of giving
+// the linked account a password.
+func (u *Usecases) ResetPasswordByEmail(ctx context.Context, email, password string, allowSSOAccount bool) (*RecoveryReset, error) {
 	email, err := recoveryEmail(email)
 	if err != nil {
 		return nil, err
@@ -47,6 +68,10 @@ func (u *Usecases) ResetPasswordByEmail(ctx context.Context, email, password str
 	if err != nil {
 		return nil, err
 	}
+	ssoOnly := user.PasswordHash == ""
+	if ssoOnly && !allowSSOAccount {
+		return nil, ErrNoLocalPassword
+	}
 	if err := checkPassword(password, user.Email, derefStr(user.DisplayName)); err != nil {
 		return nil, err
 	}
@@ -54,11 +79,17 @@ func (u *Usecases) ResetPasswordByEmail(ctx context.Context, email, password str
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
-	if _, err := u.deps.Stores.Users.ChangePasswordAndRevoke(ctx, user.ID, hash, ""); err != nil {
+	verified := user.PasswordHash
+	if allowSSOAccount {
+		verified = ""
+	}
+	if _, err := u.deps.Stores.Users.ChangePasswordAndRevoke(ctx, user.ID, hash, verified); err != nil {
+		if errors.Is(err, port.ErrPasswordStale) {
+			return nil, ErrRecoveryAccountChanged
+		}
 		return nil, fmt.Errorf("change password: %w", err)
 	}
-	profile := toUserProfile(user)
-	return &profile, nil
+	return &RecoveryReset{Profile: toUserProfile(user), WasSSOOnly: ssoOnly}, nil
 }
 
 // GrantAdminByEmail makes the account a global admin. Changing the role starts

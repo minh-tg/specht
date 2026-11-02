@@ -82,7 +82,7 @@ func TestRecovery_AnAmbiguousAddressIsRefused(t *testing.T) {
 	_, err := uc.GrantAdminByEmail(context.Background(), kelvinKate)
 	assert.ErrorIs(t, err, ErrInvalidCredentialInput)
 	assert.EqualError(t, err, "invalid email address")
-	_, err = uc.ResetPasswordByEmail(context.Background(), kelvinKate, "a long enough password")
+	_, err = uc.ResetPasswordByEmail(context.Background(), kelvinKate, "a long enough password", false)
 	assert.ErrorIs(t, err, ErrInvalidCredentialInput)
 	assert.EqualError(t, err, "invalid email address")
 }
