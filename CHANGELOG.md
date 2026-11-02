@@ -392,6 +392,7 @@ releases.
 - `TRACKER_PROVIDER` is read the same way at startup validation and at dispatch. A value such
   as `Webhook` passed validation and then ran no tracker without a message. The server now
   uses the lowercased, trimmed value, and logs an error for a provider it does not know.
+- The seeded system account can no longer be added to a project or team by user id (adding it by email was already refused), and the last-admin check no longer counts it as an admin who can sign in. A project whose only other admin seat was the system account is guarded like one with a single admin.
 - A refresh token that is used twice (the sign-in it belonged to is revoked) and a wrong setup token each write an audit line (`auth.refresh`, `setup.complete` with outcome `failure`) with the client address. Token values are never logged.
 - `SETUP_TOKEN` gets the refusal `JWT_SECRET` already has: a placeholder such as `change-me` or a token of a few repeated characters is refused like a short one: the startup log names the reason and first-run setup is not offered until the token is replaced.
 - Deactivating an account revokes its refresh tokens in the same transaction, and reactivating it starts a new token generation, so a session from before the deactivation never works again.
