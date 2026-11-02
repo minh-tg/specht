@@ -1317,6 +1317,22 @@ func TestCreateProject_InvalidSlug(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "reserved")
 }
 
+func TestCreateProject_ACreatorDeactivatedMidRequestIsUnauthorized(t *testing.T) {
+	mock := &mockUsecases{
+		createProjectFn: func(context.Context, string, string, string, string) (*usecase.ProjectResponse, error) {
+			return nil, usecase.ErrAccountDeactivated
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("POST", "/api/v1/projects", strings.NewReader(`{"name":"API","slug":"my-api"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Contains(t, w.Body.String(), `"code":"unauthorized"`)
+}
+
 func TestUpdateProject_Success(t *testing.T) {
 	mock := &mockUsecases{
 		updateProjectFn: func(ctx context.Context, slug string, name, description, defaultBranch *string) (*usecase.ProjectResponse, error) {

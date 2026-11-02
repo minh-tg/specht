@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 	"unicode"
@@ -394,21 +393,22 @@ func (u *Usecases) CreateProject(ctx context.Context, name, slug, description, c
 		Description:         description,
 		DeploymentThreshold: "high",
 		Settings:            []byte("{}"),
+		// The creator becomes the first admin in the same transaction,
+		// under a lock on the creator's account, so a deactivation that
+		// races the request leaves either no project or a project whose
+		// admin row it found and handled.
+		AdminID: creatorID,
 	})
 	if err != nil {
-		if errors.Is(err, port.ErrSlugTaken) {
+		switch {
+		case errors.Is(err, port.ErrSlugTaken):
 			return nil, ErrSlugTaken
+		case errors.Is(err, port.ErrAccountDeactivated), errors.Is(err, port.ErrNotFound):
+			// Deactivated after the token was checked: the same answer
+			// the account's next request gets.
+			return nil, ErrAccountDeactivated
 		}
 		return nil, fmt.Errorf("create project %q: %w", slug, err)
-	}
-	if _, err := u.deps.Stores.Projects.UpsertMember(ctx, p.ID, creatorID, auth.RoleAdmin); err != nil {
-		// No transaction spans project creation and member grant, so remove
-		// the orphaned project: an admin-less project would be unreachable
-		// to every non-global-admin.
-		if delErr := u.deleteProjectBySlug(ctx, p.Slug); delErr != nil {
-			slog.Error("rollback project after admin-grant failure", "slug", p.Slug, "error", delErr)
-		}
-		return nil, fmt.Errorf("grant creator admin membership: %w", err)
 	}
 	resp := toProject(p)
 	return &resp, nil
@@ -511,14 +511,6 @@ func (u *Usecases) DeleteProject(ctx context.Context, slug string) (*ProjectResp
 	}
 	resp := toProject(deleted)
 	return &resp, nil
-}
-
-// deleteProjectBySlug removes a project without access checks. It is the
-// compensating action for CreateProject: only the creator flow uses it,
-// immediately after creating a project whose admin grant failed.
-func (u *Usecases) deleteProjectBySlug(ctx context.Context, slug string) error {
-	_, err := u.deps.Stores.Projects.Delete(ctx, slug)
-	return err
 }
 
 // ListProjects returns the projects the caller's identity may see.

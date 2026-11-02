@@ -388,6 +388,11 @@ releases.
 
 ### Fixed
 
+- Creating a project and making its creator the first admin is one transaction that
+  share-locks the creator's account first. A deactivation of that account at the same
+  moment either finishes first, and `POST /api/v1/projects` answers `401 unauthorized`
+  without creating anything, or waits and then sees the new project. A project could
+  end up with a deactivated account as its admin before.
 - The server marks only the hashed files under `/assets/` as cached for a year. Root files
   such as `/theme-init.js`, the web manifest and the icons keep a fixed URL across releases and
   are now revalidated, so a browser no longer keeps an old copy after an upgrade.
