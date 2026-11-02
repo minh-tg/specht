@@ -12,6 +12,7 @@ import {
   registerPerson,
   requestWaiver,
   seedProject,
+  settle,
   uiLogin,
   uniq,
 } from "./helpers";
@@ -32,44 +33,6 @@ interface Finding {
 
 const findings: Finding[] = [];
 let audits = 0;
-
-/**
- * Entrance animations (dialogs, tooltips, toasts) blend colours while they run, so audit the
- * settled state. Two frames let a transition that starts on the next render begin before the
- * wait; the loop then repeats until nothing is running.
- */
-async function settle(page: Page): Promise<void> {
-  const looping = await page.evaluate(async () => {
-    // Waits up to 10 rounds, each capped so the whole wait stays under 5 s. A one-shot transition that
-    // keeps restarting (a toast stack settling) is tolerated as before; only an animation that loops
-    // forever fails the audit, since it would otherwise use up the whole test timeout.
-    const deadline = Date.now() + 5_000;
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      const running = document.getAnimations();
-      if (running.length === 0) return [];
-      const left = deadline - Date.now();
-      if (left <= 0) break;
-      await Promise.race([
-        Promise.all(running.map((animation) => animation.finished.catch(() => undefined))),
-        new Promise((resolve) => setTimeout(resolve, left)),
-      ]);
-    }
-    return document.getAnimations()
-      .filter((animation) => animation.effect?.getTiming().iterations === Infinity)
-      .map((animation) => {
-        const target = (animation.effect as KeyframeEffect | null)?.target;
-        const name = animation instanceof CSSAnimation
-          ? animation.animationName
-          : animation.id || "animation";
-        const where = target
-          ? `${target.tagName.toLowerCase()}${[...target.classList].map((c) => `.${c}`).join("")}`
-          : "no target";
-        return `${name} on ${where}`;
-      });
-  });
-  expect(looping, "looping animations on a page that should be settled").toEqual([]);
-}
 
 async function audit(page: Page, name: string): Promise<void> {
   await page.waitForLoadState("networkidle");
