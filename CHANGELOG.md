@@ -407,6 +407,9 @@ releases.
 - The change page no longer says a passing scan "found no new finding" at the severity floor
   when waivers or dismissals made it pass. It says no new finding at the floor is left
   blocking the change, and names the waived count.
+- The change page no longer says Specht recorded its verdict when the scan uploaded, or that a
+  passing scan "did not examine" earlier blockers. The server stores no per-report verdict:
+  the page works it out now from the report on screen and today's findings and waivers.
 
 ### Security
 

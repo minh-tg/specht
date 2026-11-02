@@ -115,7 +115,7 @@ export interface ClearedEndProps {
 
 /**
  * What became of the findings that blocked the earlier scan. Anything still open is listed first
- * and says the passing verdict did not examine it; the rest each say how they cleared, from the
+ * and says the passing verdict does not count it; the rest each say how they cleared, from the
  * finding's state, the gate's waivers and the analysis state, and nothing more.
  */
 export function ClearedEnd(
@@ -138,7 +138,7 @@ export function ClearedEnd(
             Still open from the earlier scan
           </h2>
           <p className="max-w-[68ch] text-body">
-            The passing verdict did not examine{" "}
+            The passing verdict does not count{" "}
             {openIds.length === 1 ? "this finding" : "these findings"}.{" "}
             {openIds.length === 1 ? "It is" : "They are"}{" "}
             open and would still block the earlier scan. Fix {openIds.length === 1 ? "it" : "each"}
