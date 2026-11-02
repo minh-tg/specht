@@ -19,7 +19,8 @@ import { type SubmitEvent, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 /**
- * The project's settings for its admins: the details (name and description) and the delete area.
+ * The project's settings for its admins: the details (name, description and default branch) and
+ * the delete area.
  * Everyone else sees a line saying the page is for project admins.
  */
 export function ProjectSettings() {
@@ -55,19 +56,23 @@ export function ProjectSettings() {
 }
 
 /**
- * Name and description. The form is keyed on the project's last update, so a saved change resets
- * it to what the server now holds.
+ * Name, description and default branch. The form is keyed on the project's last update, so a saved
+ * change resets it to what the server now holds.
  */
 function DetailsForm({ project }: { project: Project; }) {
   const update = useUpdateProject(project.slug);
   const [name, setName] = useState(project.name);
   const [description, setDescription] = useState(project.description ?? "");
+  const [defaultBranch, setDefaultBranch] = useState(project.default_branch ?? "");
 
   const trimmedName = name.trim();
   const nameError = trimmedName === "" ? "Enter a name." : null;
   const change: ProjectChange = {};
   if (trimmedName !== project.name) change.name = trimmedName;
   if (description.trim() !== (project.description ?? "")) change.description = description.trim();
+  if (defaultBranch.trim() !== (project.default_branch ?? "")) {
+    change.default_branch = defaultBranch.trim();
+  }
   const dirty = Object.keys(change).length > 0;
 
   function save(event: SubmitEvent<HTMLFormElement>) {
@@ -111,6 +116,27 @@ function DetailsForm({ project }: { project: Project; }) {
             value={description}
             onChange={(event) => setDescription(event.target.value)}
           />
+        </div>
+
+        <div className="grid gap-1.5">
+          <label htmlFor="settings-default-branch" className="text-body font-medium">
+            Default branch
+          </label>
+          <Input
+            id="settings-default-branch"
+            value={defaultBranch}
+            placeholder="main"
+            maxLength={255}
+            autoComplete="off"
+            spellCheck={false}
+            className="font-mono"
+            aria-describedby="settings-default-branch-help"
+            onChange={(event) => setDefaultBranch(event.target.value)}
+          />
+          <p id="settings-default-branch-help" className="text-muted-foreground text-meta">
+            Reports on this branch count as the baseline for pull requests. Leave it empty to let
+            Specht decide from the branch's own reports.
+          </p>
         </div>
 
         {update.isError && (

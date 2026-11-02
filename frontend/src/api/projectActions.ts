@@ -7,6 +7,8 @@ import { queryKeys } from "./hooks";
 export interface ProjectChange {
   name?: string;
   description?: string;
+  /** An empty string clears the default branch. */
+  default_branch?: string;
 }
 
 /**

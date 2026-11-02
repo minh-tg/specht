@@ -28,8 +28,8 @@ then classified as if its base had never been scanned: findings new to the
 project are introduced, and a finding the previous report in the same scan
 scope introduced stays introduced.
 
-A project admin sets the default branch with `default_branch` on
-`PUT /api/v1/projects/{slug}`. Reports on it count as
+A project admin sets the default branch under **Settings** on the project, or
+with `default_branch` on `PUT /api/v1/projects/{slug}`. Reports on it count as
 the baseline for pull requests even if the branch was once the head of a pull
 request, for example a `main` that was merged into a release branch, and its own
 push builds never carry introduced findings forward. Other branches are judged
