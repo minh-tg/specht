@@ -596,7 +596,7 @@ describe("ChangeView", () => {
     );
     expect(
       screen.getByText(
-        "The scan of abcdef1 found no new finding at High or above. Nothing to do here.",
+        "No new finding at High or above is left blocking this change in the scan of abcdef1. Nothing to do here.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("PASSING")).toBeInTheDocument();
