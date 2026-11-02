@@ -1641,7 +1641,7 @@ export interface paths {
     put?: never;
     /**
      * Add or re-role a team member
-     * @description Needs team admin or global admin. A caller who cannot see the team gets `404 not_found`, the answer for a team that does not exist; a caller who can see it but does not administer it gets 403.
+     * @description Needs team admin or global admin. A caller who cannot see the team gets `404 not_found`, the answer for a team that does not exist; a caller who can see it but does not administer it gets 403. A team role is `admin` or `member`; any other role is `400 invalid_member_role`. Adding someone hands them every role the team is linked at, so a caller who is not a global admin must hold each linked role above member through a direct project membership, or gets 403.
      */
     post: operations["addTeamMember"];
     delete?: never;
@@ -3334,6 +3334,19 @@ export interface components {
       email?: string;
       /** @enum {string} */
       role: "admin" | "manager" | "member";
+    };
+    /**
+     * @description Names the person by account id or by email address; send exactly one.
+     *     An address with no account answers 404 `user_not_found`, the same as an
+     *     unknown id.
+     */
+    TeamMemberGrantRequest: {
+      /** Format: uuid */
+      user_id?: string;
+      /** Format: email */
+      email?: string;
+      /** @enum {string} */
+      role: "admin" | "member";
     };
     ProjectTeam: {
       /** Format: uuid */
@@ -6695,7 +6708,7 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["MemberGrantRequest"];
+        "application/json": components["schemas"]["TeamMemberGrantRequest"];
       };
     };
     responses: {
