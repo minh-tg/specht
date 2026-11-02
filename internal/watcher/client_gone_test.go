@@ -11,13 +11,13 @@ import (
 
 func TestQueryBatchSkipsAnAdvisoryTheFeedNoLongerHas(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/querybatch":
+		switch r.URL.Path {
+		case "/querybatch":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"results":[{"vulns":[{"id":"GHSA-gone"},{"id":"GHSA-live"}]}]}`))
-		case r.URL.Path == "/vulns/GHSA-gone":
+		case "/vulns/GHSA-gone":
 			http.NotFound(w, r)
-		case r.URL.Path == "/vulns/GHSA-live":
+		case "/vulns/GHSA-live":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"id":"GHSA-live","summary":"still here"}`))
 		default:
