@@ -334,6 +334,32 @@ type UpdateWaiverDetailsParams struct {
 	Event      WaiverEventInput
 }
 
+// rejectPendingWaiverOverlap enforces one pending request per finding. It takes
+// the project's row lock, so two requests for the project queue up, and counts
+// the pending targets once the lock is held: the request that waited sees the
+// one that committed before it. The lock is the project row only, so it fits
+// the global order (account rows, then project rows).
+func rejectPendingWaiverOverlap(ctx context.Context, q *sqlc.Queries, arg CreateWaiverDetailsParams) error {
+	if len(arg.Targets) == 0 {
+		return nil
+	}
+	if _, err := q.LockProjectForMembership(ctx, arg.ProjectID); err != nil {
+		return fmt.Errorf("lock project: %w", err)
+	}
+	ids := make([]pgtype.UUID, len(arg.Targets))
+	for i, t := range arg.Targets {
+		ids[i] = t.FindingID
+	}
+	n, err := q.CountPendingWaiverTargets(ctx, sqlc.CountPendingWaiverTargetsParams{ProjectID: arg.ProjectID, FindingIds: ids})
+	if err != nil {
+		return fmt.Errorf("count pending waiver targets: %w", err)
+	}
+	if n > 0 {
+		return port.ErrWaiverRequestExists
+	}
+	return nil
+}
+
 // CreateWithDetails inserts a waiver together with its conditions, contexts,
 // finding targets, and a creation event inside one transaction. The child
 // rows are derived from the new waiver's ID.
@@ -348,6 +374,11 @@ func (r *pgWaiverRepo) CreateWithDetails(ctx context.Context, arg CreateWaiverDe
 	}()
 
 	q := sqlc.New(tx)
+	if arg.Status == "pending" {
+		if err := rejectPendingWaiverOverlap(ctx, q, arg); err != nil {
+			return sqlc.Waiver{}, err
+		}
+	}
 	w, err := q.CreateWaiver(ctx, sqlc.CreateWaiverParams{
 		ProjectID:   arg.ProjectID,
 		Name:        arg.Name,
