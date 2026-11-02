@@ -45,7 +45,7 @@ builds the squash message from the commit messages. Leave that setting as is.
 
 ## Development
 
-You need Go 1.26, Node.js 26, pnpm, Make and Docker. The optional `nix develop` shell
+You need Go 1.27, Node.js 26, pnpm, Make and Docker. The optional `nix develop` shell
 supplies the build tools (Go, gopls, the SonarQube scanner and the frontend toolchain);
 Docker still needs to be running. Run `prek install` once to enable the commit hooks.
 
