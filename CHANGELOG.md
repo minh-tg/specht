@@ -392,6 +392,7 @@ releases.
 - `TRACKER_PROVIDER` is read the same way at startup validation and at dispatch. A value such
   as `Webhook` passed validation and then ran no tracker without a message. The server now
   uses the lowercased, trimmed value, and logs an error for a provider it does not know.
+- `SETUP_TOKEN` gets the refusal `JWT_SECRET` already has: a placeholder such as `change-me` or a token of a few repeated characters is refused like a short one: the startup log names the reason and first-run setup is not offered until the token is replaced.
 - Deactivating an account revokes its refresh tokens in the same transaction, and reactivating it starts a new token generation, so a session from before the deactivation never works again.
 - `specht-adapter` no longer exits 2 when the server answers `409 duplicate_report` (the same report uploaded again, as when a job reruns without a code change). It prints that the report was already uploaded and exits with the stored verdict: the project gate, or the change-scoped verdict for the commit. It still exits 2 when that verdict cannot be read.
 - `specht-adapter` prints the scan filter it declares (`declaring scan filter: severities=..., fixable_only=...`) with the flag or variable each part came from, so a filter taken from `TRIVY_SEVERITY` or `TRIVY_IGNORE_UNFIXED` is visible in the job log.
