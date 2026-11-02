@@ -445,6 +445,39 @@ WHERE project_id = $1
   AND finding_kind = $2
   AND fingerprint = ANY($3::text[]);
 
+-- name: ListFindingIDsOnTrunk :many
+-- The given findings the project's trunk still has: a scan scope of a trunk
+-- report holds a severity row for the finding, which a complete scan of that
+-- scope that no longer finds it retires. With a default branch set, the trunk
+-- is that branch alone. Without one, it is every branch no report ever
+-- compared against a base other than the branch itself, plus reports without
+-- a branch, the same reports acceptBaseline accepts then.
+SELECT DISTINCT s.finding_id
+FROM finding_scope_severities s
+JOIN findings f ON f.id = s.finding_id
+WHERE f.project_id = sqlc.arg(project_id)
+  AND s.finding_id = ANY(sqlc.arg(finding_ids)::uuid[])
+  AND EXISTS (
+      SELECT 1 FROM reports r
+      WHERE r.project_id = sqlc.arg(project_id)
+        AND COALESCE(r.scan_scope_hash, '') = s.scope_hash
+        AND r.status = 'completed'
+        AND (
+            (sqlc.narg(default_branch)::text IS NOT NULL AND r.branch = sqlc.narg(default_branch)::text)
+            OR (sqlc.narg(default_branch)::text IS NULL AND (
+                r.branch IS NULL OR r.branch = ''
+                OR NOT EXISTS (
+                    SELECT 1 FROM reports c
+                    WHERE c.project_id = r.project_id
+                      AND c.branch = r.branch
+                      AND c.base_revision IS NOT NULL
+                      AND c.base_revision <> ''
+                      AND c.base_revision <> c.branch
+                )
+            ))
+        )
+  );
+
 -- name: ListBaselineEvidence :many
 -- What the baseline of an introduced-only classification can say about each
 -- of the given findings. The answer comes from the newest of the baseline and

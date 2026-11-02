@@ -690,6 +690,7 @@ type mockFindingRepo struct {
 	listFindingsByFingerprintsFn      func(context.Context, string, string, []string) ([]port.Finding, error)
 	listFindingIDsPresentInReportFn   func(context.Context, string, []string) ([]string, error)
 	baselineEvidenceFn                func(context.Context, string, []string) (map[string]bool, error)
+	onTrunkFn                         func(context.Context, string, *string, []string) (map[string]bool, error)
 	recordReportIntroducedFindingsFn  func(context.Context, string, *string, []port.IntroducedFindingEntry) error
 	listReportIntroducedChangeTypesFn func(context.Context, string, []string) (map[string]string, error)
 	listFindingsIntroducedByCommitFn  func(context.Context, string, string) ([]port.Finding, error)
@@ -894,6 +895,15 @@ func (m *mockFindingRepo) ListFindingsByFingerprints(ctx context.Context, projec
 		return res, nil
 	}
 	return nil, nil
+}
+
+// ListFindingIDsOnTrunk reports no finding on the trunk unless onTrunkFn is
+// set.
+func (m *mockFindingRepo) ListFindingIDsOnTrunk(ctx context.Context, projectID string, defaultBranch *string, findingIDs []string) (map[string]bool, error) {
+	if m.onTrunkFn != nil {
+		return m.onTrunkFn(ctx, projectID, defaultBranch, findingIDs)
+	}
+	return map[string]bool{}, nil
 }
 
 // ListBaselineEvidence answers like an unfiltered baseline unless

@@ -1076,6 +1076,66 @@ func (q *Queries) ListFindingEvents(ctx context.Context, arg ListFindingEventsPa
 	return items, nil
 }
 
+const listFindingIDsOnTrunk = `-- name: ListFindingIDsOnTrunk :many
+SELECT DISTINCT s.finding_id
+FROM finding_scope_severities s
+JOIN findings f ON f.id = s.finding_id
+WHERE f.project_id = $1
+  AND s.finding_id = ANY($2::uuid[])
+  AND EXISTS (
+      SELECT 1 FROM reports r
+      WHERE r.project_id = $1
+        AND COALESCE(r.scan_scope_hash, '') = s.scope_hash
+        AND r.status = 'completed'
+        AND (
+            ($3::text IS NOT NULL AND r.branch = $3::text)
+            OR ($3::text IS NULL AND (
+                r.branch IS NULL OR r.branch = ''
+                OR NOT EXISTS (
+                    SELECT 1 FROM reports c
+                    WHERE c.project_id = r.project_id
+                      AND c.branch = r.branch
+                      AND c.base_revision IS NOT NULL
+                      AND c.base_revision <> ''
+                      AND c.base_revision <> c.branch
+                )
+            ))
+        )
+  )
+`
+
+type ListFindingIDsOnTrunkParams struct {
+	ProjectID     pgtype.UUID   `json:"project_id"`
+	FindingIds    []pgtype.UUID `json:"finding_ids"`
+	DefaultBranch pgtype.Text   `json:"default_branch"`
+}
+
+// The given findings the project's trunk still has: a scan scope of a trunk
+// report holds a severity row for the finding, which a complete scan of that
+// scope that no longer finds it retires. With a default branch set, the trunk
+// is that branch alone. Without one, it is every branch no report ever
+// compared against a base other than the branch itself, plus reports without
+// a branch, the same reports acceptBaseline accepts then.
+func (q *Queries) ListFindingIDsOnTrunk(ctx context.Context, arg ListFindingIDsOnTrunkParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listFindingIDsOnTrunk, arg.ProjectID, arg.FindingIds, arg.DefaultBranch)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var finding_id pgtype.UUID
+		if err := rows.Scan(&finding_id); err != nil {
+			return nil, err
+		}
+		items = append(items, finding_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFindingObservedContexts = `-- name: ListFindingObservedContexts :many
 SELECT DISTINCT
     COALESCE(r.environment_id::text, '')::text AS environment_id,
