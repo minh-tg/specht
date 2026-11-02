@@ -708,8 +708,8 @@ releases.
   round, so it cannot slip in between the checks. Accepting an invite no longer deadlocks
   with a deactivation or a role change when the creator and the invitee are both admins.
 - A report upload no longer lands when its API key is revoked or expires, or its creator
-  or, for a session upload, the signed-in account is deactivated, before the body finishes
-  arriving. The ingest transaction now locks the key and the account and answers `401`
+  or, for a session upload, the signed-in account is deactivated or its session ended
+  (a password change, a reactivation), before the body finishes arriving. The ingest transaction now locks the key and the account and answers `401`
   as a revoked key does. Before, such an upload was stored with `201`.
 - `PUT /api/v1/projects/{slug}/waivers/{id}` answers `404` for a waiver of another project
   and for an id that does not exist, whatever the body holds. Before, an emptied

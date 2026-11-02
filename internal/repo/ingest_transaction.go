@@ -33,7 +33,7 @@ func (r *pgIngestTransaction) Run(ctx context.Context, projectID string, caller 
 			return err
 		}
 	case caller.UserID != "":
-		if err := lockIngestUser(ctx, q, caller.UserID); err != nil {
+		if err := lockIngestUser(ctx, q, caller.UserID, caller.TokenVersion); err != nil {
 			return err
 		}
 	}
@@ -77,17 +77,23 @@ func lockIngestKey(ctx context.Context, q *sqlc.Queries, keyHash string) error {
 }
 
 // lockIngestUser holds a session's account row for the rest of the transaction
-// and fails with port.ErrIngestCallerInactive when the account is deactivated.
-// A deactivation that comes later waits for this transaction.
-func lockIngestUser(ctx context.Context, q *sqlc.Queries, userID string) error {
+// and fails with port.ErrIngestCallerInactive when the account is deactivated
+// or, when the session's token generation is known, when that generation is no
+// longer the account's. A deactivation or password change that comes later
+// waits for this transaction.
+func lockIngestUser(ctx context.Context, q *sqlc.Queries, userID string, tokenVersion *int32) error {
 	uid, err := parseID(userID)
 	if err != nil {
 		return err
 	}
-	if _, err := q.LockKeyCreator(ctx, uid); errors.Is(err, pgx.ErrNoRows) {
+	current, err := q.LockKeyCreator(ctx, uid)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return port.ErrIngestCallerInactive
 	} else if err != nil {
 		return err
+	}
+	if tokenVersion != nil && *tokenVersion != current {
+		return port.ErrIngestCallerInactive
 	}
 	return nil
 }
