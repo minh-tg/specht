@@ -257,6 +257,8 @@ describe("ApiKeys", () => {
     expect(screen.getByText("Never")).toBeInTheDocument();
     expect(screen.getByText(new Date("2027-01-01T00:00:00Z").toLocaleDateString()))
       .toBeInTheDocument();
+    expect(screen.getAllByText(/^Ends\s*$/), "only keys that still work say when they end")
+      .toHaveLength(2);
     const expired = screen.getByText(/^Expired /);
     expect(expired).toHaveTextContent(new Date("2026-01-01T00:00:00Z").toLocaleDateString());
     expect(expired).toHaveClass("text-destructive");

@@ -648,12 +648,17 @@ func (u *Usecases) ListAPIKeys(ctx context.Context, projectSlug string) ([]APIKe
 			lf = *k.LastFour
 		}
 		creatorIsMember := k.CreatorIsMember
+		var expiresAt *string
+		if k.ExpiresAt != nil {
+			expiresAt = strPtr(k.ExpiresAt.Format(time.RFC3339))
+		}
 		resp[i] = APIKeyResponse{
 			ID:              k.ID,
 			Name:            k.Name,
 			KeyPrefix:       k.KeyPrefix,
 			LastFour:        strPtr(lf),
 			CreatedAt:       k.CreatedAt.Format(time.RFC3339),
+			ExpiresAt:       expiresAt,
 			CreatorIsMember: &creatorIsMember,
 		}
 	}

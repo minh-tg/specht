@@ -36,7 +36,9 @@ UPDATE api_keys SET last_used_at = NOW() WHERE id = $1 AND revoked_at IS NULL;
 -- name: ListAPIKeysByProject :many
 -- creator_is_member is false once the account that created the key no longer
 -- holds a direct project_members row or a seat in a linked team. The key is
--- still live: a CI key may outlive the person on purpose.
+-- still live: a CI key may outlive the person on purpose. expires_at is
+-- returned for every key; one past its expiry no longer authenticates but stays
+-- listed until it is revoked, so the list can say it has expired.
 SELECT
     ak.id,
     ak.name,
@@ -44,6 +46,7 @@ SELECT
     ak.last_four,
     ak.scopes,
     ak.created_at,
+    ak.expires_at,
     ak.revoked_at,
     (
         EXISTS (
