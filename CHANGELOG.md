@@ -402,6 +402,9 @@ releases.
 - A refresh token that is used twice (the sign-in it belonged to is revoked) and a wrong setup token each write an audit line (`auth.refresh`, `setup.complete` with outcome `failure`) with the client address. Token values are never logged.
 - `SETUP_TOKEN` gets the refusal `JWT_SECRET` already has: a placeholder such as `change-me` or a token of a few repeated characters is refused like a short one: the startup log names the reason and first-run setup is not offered until the token is replaced.
 - Deactivating an account revokes its refresh tokens in the same transaction, and reactivating it starts a new token generation, so a session from before the deactivation never works again.
+- A report that names one triaged finding many times now writes one material-change
+  event and one review flag for it, and reads its fixed version once. Each entry
+  used to write its own event, so one report could flood the finding's history.
 - A pull request no longer counts a finding of one trunk image as introduced
   because the trunk's newest scan was of another image. The baseline is now the
   newest trunk report of the uploaded report's scan scope (same scanner, target,
