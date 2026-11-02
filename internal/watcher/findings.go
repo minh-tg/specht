@@ -302,11 +302,11 @@ func assembleCreatedDecision(input DecideInput, primary string, aliases []string
 // must not produce oversized rows or notification payloads.
 func hardenPayload(f FindingPayload) FindingPayload {
 	f.Title = parseutil.SanitizeText(f.Title, parseutil.MaxTitleLength)
-	f.Description = parseutil.SanitizeText(f.Description, parseutil.MaxDescriptionLength)
-	f.Remediation = parseutil.SanitizeText(f.Remediation, parseutil.MaxDescriptionLength)
+	f.Description = parseutil.SanitizeMultiline(f.Description, parseutil.MaxDescriptionLength)
+	f.Remediation = parseutil.SanitizeMultiline(f.Remediation, parseutil.MaxDescriptionLength)
 	for i := range f.Dimensions {
-		f.Dimensions[i].Key = parseutil.SanitizeText(f.Dimensions[i].Key, 64)
-		f.Dimensions[i].Value = parseutil.SanitizeText(f.Dimensions[i].Value, parseutil.MaxDimensionValueLength)
+		f.Dimensions[i].Key = parseutil.SanitizeIdentifier(f.Dimensions[i].Key, 64)
+		f.Dimensions[i].Value = parseutil.SanitizeIdentifier(f.Dimensions[i].Value, parseutil.MaxDimensionValueLength)
 	}
 	f.Display = parseutil.HardenExtensions(f.Display)
 	f.Metadata = parseutil.HardenExtensions(f.Metadata)

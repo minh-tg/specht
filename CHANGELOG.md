@@ -467,6 +467,14 @@ releases.
 
 ### Security
 
+- Finding titles and other one-line scanner text lose ANSI escape sequences and
+  control characters, and CR and LF become a space, before they are stored. A
+  scanner title could clear the adapter's log line or a GitHub annotation line
+  and print a forged gate verdict. Descriptions, fix descriptions and code
+  snippets keep their line breaks. Fingerprints, target names and dimension
+  values keep their spelling, so no finding or scan scope changes identity.
+  Findings stored before this release keep their titles until a scan reports
+  them again.
 - A change can no longer shed its blockers by pushing again under another
   environment, artifact name or branch name, or with no base. Carrying introduced
   findings forward depended on the previous report in the same scan scope, which
