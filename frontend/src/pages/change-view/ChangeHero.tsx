@@ -161,7 +161,9 @@ export function ChangeHero(
         {branch && (
           <>
             <span aria-hidden="true">·</span>
-            <code className="text-foreground text-code">{branch}</code>
+            <code className="text-foreground min-w-0 text-code [overflow-wrap:anywhere]">
+              {branch}
+            </code>
           </>
         )}
       </p>

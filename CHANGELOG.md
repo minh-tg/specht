@@ -401,6 +401,8 @@ releases.
 - The change page no longer says Specht recorded its verdict when the scan uploaded, or that a
   passing scan "did not examine" earlier blockers. The server stores no per-report verdict:
   the page works it out now from the report on screen and today's findings and waivers.
+- On a 360 px phone the change page wraps a long branch name and the title and location of an
+  earlier blocker instead of scrolling sideways.
 
 ### Security
 
