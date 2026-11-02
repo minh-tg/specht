@@ -906,17 +906,20 @@ type ingestOutcome struct {
 // prefetched known findings, baseline occurrences, introduced entries, and
 // outcome tallies.
 type ingestFindingsState struct {
-	project      port.Project
-	input        IngestReportInput
-	report       port.Report
-	baselineID   string
-	nowTime      time.Time
-	known        map[string]port.Finding
-	knownIDs     []string
-	baselineSeen map[string]bool
+	project    port.Project
+	input      IngestReportInput
+	report     port.Report
+	baselineID string
+	nowTime    time.Time
+	known      map[string]port.Finding
+	knownIDs   []string
+	// baselineEvidence maps a known finding the baseline can speak for to
+	// whether it observed it (see ListBaselineEvidence). A known finding
+	// missing from it is classified as if no baseline resolved.
+	baselineEvidence map[string]bool
 	// carried maps a known finding to the change type the previous report in
-	// this scan scope recorded for it as introduced. It is filled only when
-	// no baseline resolved and the branch is a change branch (see
+	// this scan scope recorded for it as introduced. It is filled only for
+	// findings classified without a baseline on a change branch (see
 	// carryIntroducedEligible).
 	carried map[string]string
 	// reported holds the finding keys an earlier entry of this report already
@@ -951,7 +954,6 @@ func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Projec
 		baselineID:     baselineID,
 		nowTime:        now(),
 		known:          make(map[string]port.Finding),
-		baselineSeen:   make(map[string]bool),
 		reported:       make(map[string]bool),
 		seenIntroduced: make(map[string]bool),
 		batchStore:     batchStore,
@@ -1018,31 +1020,53 @@ func (u *Usecases) prefetchKnownFindings(ctx context.Context, st *ingestFindings
 	return nil
 }
 
-// prefetchBaselineOccurrences marks which known findings the baseline report
-// already saw (empty baselineID skips the query).
+// prefetchBaselineOccurrences records what the baseline can say about each
+// known finding (empty baselineID skips the query). A trunk scan declared
+// filtered cannot say that a finding its filter may have hidden is absent, so
+// an earlier full scan of the trunk answers for it, and a finding none of them
+// speaks for falls back to the rules for a report without a baseline instead
+// of counting as introduced.
 func (u *Usecases) prefetchBaselineOccurrences(ctx context.Context, st *ingestFindingsState) error {
 	if st.baselineID == "" || len(st.knownIDs) == 0 {
 		return nil
 	}
-	presentIDs, err := u.deps.Stores.Findings.ListFindingIDsPresentInReport(ctx, st.baselineID, st.knownIDs)
+	evidence, err := u.deps.Stores.Findings.ListBaselineEvidence(ctx, st.baselineID, st.knownIDs)
 	if err != nil {
 		slog.Error("pre-fetch baseline occurrences failed", "scanner", st.input.Scanner, "error", err)
 		return fmt.Errorf("scanner %s: pre-fetch baseline occurrences: %w", st.input.Scanner, err)
 	}
-	for _, id := range presentIDs {
-		st.baselineSeen[id] = true
-	}
+	st.baselineEvidence = evidence
 	return nil
 }
 
-// carryIntroducedEligible reports whether a report without a baseline may
-// carry introduced findings forward from the previous report in its scope.
-// The branch must be a change branch: this report or an earlier one on the
-// branch named a base revision other than the branch. A trunk that only gets
-// push builds never names a base, so its first-scan backlog is never carried.
+// withoutBaselineEvidence lists the known findings the classification treats
+// as having no baseline: all of them when none resolved, else those the
+// baseline cannot speak for.
+func (st *ingestFindingsState) withoutBaselineEvidence() []string {
+	if st.baselineID == "" {
+		return st.knownIDs
+	}
+	var ids []string
+	for _, id := range st.knownIDs {
+		if _, ok := st.baselineEvidence[id]; !ok {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// carryIntroducedEligible reports whether findings classified without a
+// baseline may carry introduced findings forward from the previous report in
+// its scope. The branch must be a change branch: this report or an earlier one
+// on the branch named a base revision other than the branch. A trunk that only
+// gets push builds never names a base, so its first-scan backlog is never
+// carried. A report whose baseline resolved names another branch as its base.
 func (u *Usecases) carryIntroducedEligible(ctx context.Context, st *ingestFindingsState) (bool, error) {
-	if st.baselineID != "" || st.input.Branch == "" {
+	if st.input.Branch == "" {
 		return false, nil
+	}
+	if st.baselineID != "" {
+		return true, nil
 	}
 	if st.input.BaseRevision != "" && !sameRevision(st.input.BaseRevision, st.input.Branch) {
 		return true, nil
@@ -1050,13 +1074,14 @@ func (u *Usecases) carryIntroducedEligible(ctx context.Context, st *ingestFindin
 	return u.deps.Stores.Reports.BranchHasChangeReport(ctx, st.project.ID, st.input.Branch)
 }
 
-// prefetchCarriedIntroductions loads, for a report with no baseline on a
-// change branch, the known findings that the previous completed report in the
-// same scan scope recorded as introduced. Without it a branch whose base was
-// never scanned would shed an introduced blocker by pushing again: the second
-// push sees the finding as known and stops counting it.
+// prefetchCarriedIntroductions loads, for the known findings classified
+// without a baseline on a change branch, those that the previous completed
+// report in the same scan scope recorded as introduced. Without it a branch
+// whose base was never scanned would shed an introduced blocker by pushing
+// again: the second push sees the finding as known and stops counting it.
 func (u *Usecases) prefetchCarriedIntroductions(ctx context.Context, st *ingestFindingsState) error {
-	if len(st.knownIDs) == 0 {
+	ids := st.withoutBaselineEvidence()
+	if len(ids) == 0 {
 		return nil
 	}
 	eligible, err := u.carryIntroducedEligible(ctx, st)
@@ -1073,7 +1098,7 @@ func (u *Usecases) prefetchCarriedIntroductions(ctx context.Context, st *ingestF
 	if err != nil {
 		return fmt.Errorf("scanner %s: find previous report in scope: %w", st.input.Scanner, err)
 	}
-	carried, err := u.deps.Stores.Findings.ListReportIntroducedChangeTypes(ctx, previousID, st.knownIDs)
+	carried, err := u.deps.Stores.Findings.ListReportIntroducedChangeTypes(ctx, previousID, ids)
 	if err != nil {
 		return fmt.Errorf("scanner %s: list carried introduced findings: %w", st.input.Scanner, err)
 	}
@@ -1141,12 +1166,18 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 
 	regression := !repeat && exists && existing.State == string(finding.TechFixed)
 	carriedType := ""
+	baselineID, baselineSeen := st.baselineID, false
 	if known {
 		carriedType = st.carried[existing.ID]
+		var spoke bool
+		baselineSeen, spoke = st.baselineEvidence[existing.ID]
+		if !spoke {
+			// The baseline cannot say whether it had this finding.
+			baselineID = ""
+		}
 	}
 	introduced, changeType := classifyIngestChange(
-		known, regression, st.baselineID,
-		known && st.baselineSeen[existing.ID], carriedType,
+		known, regression, baselineID, baselineSeen, carriedType,
 	)
 	// A repeated entry counts toward the total as pre-existing, the split a
 	// replay of this report computes from the distinct introduced findings.

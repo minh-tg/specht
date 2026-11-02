@@ -445,10 +445,48 @@ WHERE project_id = $1
   AND finding_kind = $2
   AND fingerprint = ANY($3::text[]);
 
--- name: ListFindingIDsPresentInReport :many
-SELECT finding_id FROM finding_occurrences
-WHERE report_id = $1
-  AND finding_id = ANY($2::uuid[]);
+-- name: ListBaselineEvidence :many
+-- What the baseline of an introduced-only classification can say about each
+-- of the given findings. The answer comes from the newest of the baseline and
+-- the 19 completed full reports before it on the baseline's branch and from
+-- its scanner that observed the finding or could have: a report filtered by
+-- severity, or fixable-only for a finding without a fix, cannot say a finding
+-- it omits is absent (report_filter_admits_absence). observed is whether that
+-- report observed the finding. A finding no such report speaks for has no row,
+-- and the caller classifies it as if there were no baseline. A baseline
+-- without a branch speaks only for itself.
+WITH base AS (
+    SELECT b.id, b.project_id, b.tool_name, b.branch, b.created_at
+    FROM reports b
+    WHERE b.id = sqlc.arg(baseline_id)
+), history AS (
+    SELECT r.id, r.filter_severities, r.filter_fixable_only, r.created_at
+    FROM reports r, base
+    WHERE r.project_id = base.project_id
+      AND r.tool_name = base.tool_name
+      AND (r.id = base.id OR (base.branch IS NOT NULL AND r.branch = base.branch))
+      AND r.status = 'completed'
+      AND r.scan_mode = 'full'
+      AND (r.created_at, r.id) <= (base.created_at, base.id)
+    ORDER BY r.created_at DESC, r.id DESC
+    LIMIT 20
+)
+SELECT c.finding_id::uuid AS finding_id, ev.observed::boolean AS observed
+FROM unnest(sqlc.arg(finding_ids)::uuid[]) AS c(finding_id)
+CROSS JOIN LATERAL (
+    SELECT EXISTS (
+        SELECT 1 FROM finding_occurrences o
+        WHERE o.finding_id = c.finding_id AND o.report_id = h.id
+    ) AS observed
+    FROM history h
+    WHERE EXISTS (
+        SELECT 1 FROM finding_occurrences o
+        WHERE o.finding_id = c.finding_id AND o.report_id = h.id
+    )
+       OR report_filter_admits_absence(h.filter_severities, h.filter_fixable_only, c.finding_id)
+    ORDER BY h.created_at DESC, h.id DESC
+    LIMIT 1
+) ev;
 
 -- name: BulkUpsertFindings :many
 WITH input_rows AS (

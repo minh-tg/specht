@@ -1060,7 +1060,12 @@ type FindingStore interface {
 	// another tenant's rows into a gate evaluation.
 	ListIntroducedGateCandidates(ctx context.Context, projectID, reportID string, minSeverityRank int16) ([]GateCandidate, error)
 	ListFindingsByFingerprints(ctx context.Context, projectID, findingKind string, fingerprints []string) ([]Finding, error)
-	ListFindingIDsPresentInReport(ctx context.Context, reportID string, findingIDs []string) ([]string, error)
+	// ListBaselineEvidence maps each of findingIDs that the baseline report,
+	// or failing that an earlier full report on its branch, can speak for to
+	// whether that report observed it. A report filtered by severity or
+	// fixability cannot speak for a finding its filter may have hidden. Findings
+	// nothing speaks for are absent from the map.
+	ListBaselineEvidence(ctx context.Context, baselineID string, findingIDs []string) (map[string]bool, error)
 	RecordReportIntroducedFindings(ctx context.Context, reportID string, baselineReportID *string, entries []IntroducedFindingEntry) error
 	// ListReportIntroducedChangeTypes maps each of findingIDs that the report
 	// recorded as introduced to its change type. Others are absent.
