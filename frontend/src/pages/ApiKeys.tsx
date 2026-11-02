@@ -153,7 +153,7 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
                     {new Date(k.created_at).toLocaleDateString()}
                   </p>
                   <p className="text-meta">
-                    <span className="text-muted-foreground">Ends</span>
+                    {!end.expired && <span className="text-muted-foreground">Ends{" "}</span>}
                     <span className={end.expired ? "text-destructive font-medium" : undefined}>
                       {end.label}
                     </span>

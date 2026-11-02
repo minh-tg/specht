@@ -133,6 +133,7 @@ SELECT
     ak.last_four,
     ak.scopes,
     ak.created_at,
+    ak.expires_at,
     ak.revoked_at,
     (
         EXISTS (
@@ -156,13 +157,16 @@ type ListAPIKeysByProjectRow struct {
 	LastFour        pgtype.Text        `json:"last_four"`
 	Scopes          []byte             `json:"scopes"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
 	RevokedAt       pgtype.Timestamptz `json:"revoked_at"`
 	CreatorIsMember bool               `json:"creator_is_member"`
 }
 
 // creator_is_member is false once the account that created the key no longer
 // holds a direct project_members row or a seat in a linked team. The key is
-// still live: a CI key may outlive the person on purpose.
+// still live: a CI key may outlive the person on purpose. expires_at is
+// returned for every key; one past its expiry no longer authenticates but stays
+// listed until it is revoked, so the list can say it has expired.
 func (q *Queries) ListAPIKeysByProject(ctx context.Context, projectID pgtype.UUID) ([]ListAPIKeysByProjectRow, error) {
 	rows, err := q.db.Query(ctx, listAPIKeysByProject, projectID)
 	if err != nil {
@@ -179,6 +183,7 @@ func (q *Queries) ListAPIKeysByProject(ctx context.Context, projectID pgtype.UUI
 			&i.LastFour,
 			&i.Scopes,
 			&i.CreatedAt,
+			&i.ExpiresAt,
 			&i.RevokedAt,
 			&i.CreatorIsMember,
 		); err != nil {
