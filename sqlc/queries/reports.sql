@@ -51,7 +51,7 @@ UPDATE reports SET
     total_findings = $3,
     completed_at = CASE WHEN $2 = 'completed' OR $2 = 'failed' THEN NOW() ELSE completed_at END,
     error_message = $4
-WHERE id = $1 AND project_id = $5
+WHERE id = $1 AND project_id = $5 AND status = 'processing'
 RETURNING *;
 -- name: LatestCompletedReportByScanner :one
 SELECT id, tool_name, branch, commit_sha, scan_completeness, created_at
@@ -156,13 +156,15 @@ LIMIT 1;
 -- A report stays in processing only while its ingest request runs. One that
 -- is still there well after the ingest window means the server stopped under
 -- it, so it is settled as failed and a retry can ingest the same content. The
--- ids come back so the findings it left half written can be settled too.
+-- ids come back so the findings it left half written can be settled too. The
+-- age is measured on the database clock, the one that stamps created_at, so
+-- a replica with a skewed clock cannot fail a running ingest.
 UPDATE reports SET
     status = 'failed',
     completed_at = NOW(),
-    error_message = $2
+    error_message = sqlc.arg(error_message)
 WHERE status = 'processing'
-  AND created_at < $1
+  AND created_at < NOW() - make_interval(secs => sqlc.arg(older_than_seconds)::float8)
 RETURNING id, project_id;
 
 -- name: DeleteFindingsOfFailedReport :many

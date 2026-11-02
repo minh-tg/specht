@@ -1086,6 +1086,29 @@ func TestIngestReport_Duplicate(t *testing.T) {
 	assert.Equal(t, "duplicate_report", resp.Error.Code)
 }
 
+func TestIngestReport_InterruptedReportIsAConflict(t *testing.T) {
+	mock := &mockUsecases{
+		ingestReportFn: func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error) {
+			return nil, fmt.Errorf("scanner trivy: %w", usecase.ErrReportInterrupted)
+		},
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"project":"my-app","scanner":"trivy","raw_data":{"image":"myapp:latest"}}`)
+	req := httptest.NewRequest("POST", "/api/v1/reports", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+	var resp struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "report_interrupted", resp.Error.Code)
+}
+
 func testRouter(mock *mockUsecases) http.Handler {
 	r := chi.NewRouter()
 	h := NewHandler(mock)

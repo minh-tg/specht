@@ -1172,9 +1172,11 @@ paths:
               example: { error: { code: request_timeout, message: the request body did not arrive in time } }
         "409":
           description: |
-            Identical report bytes for the same commit, but the stored report
-            could not be found for a replay (for example, a concurrent retention
-            purge removed it).
+            `duplicate_report`: identical report bytes for the same commit, but the
+            stored report could not be found for a replay (for example, a concurrent
+            retention purge removed it). `report_interrupted`: the upload ran so long
+            that the server marked its report failed before it finished; upload the
+            scan again.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

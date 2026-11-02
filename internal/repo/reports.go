@@ -172,12 +172,13 @@ func (r *pgReportRepo) CountStaleReports(ctx context.Context, cutoff time.Time) 
 	return r.q.CountStaleReports(ctx, uuidFromTime(cutoff))
 }
 
-// FailStaleReports settles the reports still processing since before the cutoff as failed,
-// settles the half-written findings each one left, and returns how many reports it changed.
-func (r *pgReportRepo) FailStaleReports(ctx context.Context, cutoff time.Time, reason string) (int64, error) {
+// FailStaleReports settles the reports that have been processing for longer than olderThan as
+// failed, settles the half-written findings each one left, and returns how many reports it
+// changed. The age is measured on the database clock.
+func (r *pgReportRepo) FailStaleReports(ctx context.Context, olderThan time.Duration, reason string) (int64, error) {
 	stale, err := r.q.FailStaleReports(ctx, sqlc.FailStaleReportsParams{
-		CreatedAt:    uuidFromTime(cutoff),
-		ErrorMessage: pgtype.Text{String: reason, Valid: true},
+		OlderThanSeconds: olderThan.Seconds(),
+		ErrorMessage:     pgtype.Text{String: reason, Valid: true},
 	})
 	if err != nil {
 		return 0, err

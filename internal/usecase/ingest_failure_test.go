@@ -103,3 +103,43 @@ func TestReportFailureReasonForResponse_KeepsTheCompletionReason(t *testing.T) {
 	reason := reportFailureCompletion
 	assert.Equal(t, &reason, reportFailureReasonForResponse(&reason))
 }
+
+// The stale report sweep can fail a report while its ingest is still running.
+// The late completion is refused by the store; the ingest answers
+// ErrReportInterrupted and leaves the report alone instead of writing a second
+// failure or settling findings the sweep already settled.
+func TestIngestReport_LateCompletionOfAReapedReportIsAConflict(t *testing.T) {
+	uc, _, rr := autofixHarness(t, "")
+	var statuses []string
+	settled := false
+	rr.updateStatusFn = func(_ context.Context, _, _ string, status string, _ int32, _ *string) (port.Report, error) {
+		statuses = append(statuses, status)
+		return port.Report{}, port.ErrReportNotProcessing
+	}
+	rr.settleFailedFn = func(context.Context, string, string) error { settled = true; return nil }
+
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{ProjectSlug: "my-app", Scanner: "trivy", RawData: json.RawMessage(`{"a":1}`)})
+
+	require.ErrorIs(t, err, ErrReportInterrupted)
+	assert.Equal(t, []string{"completed"}, statuses, "the report is not failed a second time")
+	assert.False(t, settled)
+}
+
+// A failing ingest whose report the sweep already failed leaves it as the
+// sweep left it.
+func TestIngestReport_FailureOfAReapedReportSettlesNothingTwice(t *testing.T) {
+	uc, fr, rr := autofixHarness(t, "")
+	fr.upsertFn = func(context.Context, port.UpsertFindingInput) (port.Finding, error) {
+		return port.Finding{}, errors.New("connection reset")
+	}
+	rr.updateStatusFn = func(context.Context, string, string, string, int32, *string) (port.Report, error) {
+		return port.Report{}, port.ErrReportNotProcessing
+	}
+	settled := false
+	rr.settleFailedFn = func(context.Context, string, string) error { settled = true; return nil }
+
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{ProjectSlug: "my-app", Scanner: "trivy", RawData: json.RawMessage(`{"a":1}`)})
+
+	require.Error(t, err)
+	assert.False(t, settled)
+}

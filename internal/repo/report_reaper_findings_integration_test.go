@@ -45,7 +45,7 @@ func TestFailStale_SettlesTheHalfWrittenFindingsOfTheReport(t *testing.T) {
 	inFlight := s.finding(t, "created-by-running")
 	s.introducedBy(t, inFlight, running, "running")
 
-	n, err := s.stores.Reports.FailStale(ctx, time.Now().Add(-10*time.Minute), "interrupted")
+	n, err := s.stores.Reports.FailStale(ctx, 10*time.Minute, "interrupted")
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, n)
 
@@ -60,7 +60,7 @@ func TestFailStale_SettlesTheHalfWrittenFindingsOfTheReport(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, events, 1, "the archive is recorded")
 
-	n, err = s.stores.Reports.FailStale(ctx, time.Now().Add(-10*time.Minute), "interrupted")
+	n, err = s.stores.Reports.FailStale(ctx, 10*time.Minute, "interrupted")
 	require.NoError(t, err)
 	assert.Zero(t, n, "a second sweep finds nothing")
 }

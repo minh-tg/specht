@@ -42,7 +42,7 @@ func TestFailStale_SettlesOnlyOldProcessingReports(t *testing.T) {
 	running := newReport("running", "processing", time.Minute)
 	done := newReport("done", "completed", 3*time.Hour)
 
-	n, err := stores.Reports.FailStale(ctx, time.Now().Add(-15*time.Minute), "interrupted")
+	n, err := stores.Reports.FailStale(ctx, 15*time.Minute, "interrupted")
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, n)
 
@@ -60,7 +60,7 @@ func TestFailStale_SettlesOnlyOldProcessingReports(t *testing.T) {
 	got, _ = status(done)
 	assert.Equal(t, "completed", got, "settled reports are never touched")
 
-	n, err = stores.Reports.FailStale(ctx, time.Now().Add(-15*time.Minute), "interrupted")
+	n, err = stores.Reports.FailStale(ctx, 15*time.Minute, "interrupted")
 	require.NoError(t, err)
 	assert.Zero(t, n, "a second sweep finds nothing")
 }

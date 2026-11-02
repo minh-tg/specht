@@ -258,6 +258,11 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 			h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
 			return
 		}
+		if errors.Is(err, usecase.ErrReportInterrupted) {
+			respondError(w, http.StatusConflict, "report_interrupted", "the report was marked failed before the upload finished; upload the scan again")
+			h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
+			return
+		}
 		code, message := ingestFailure(req.Scanner, err)
 		respondError(w, http.StatusUnprocessableEntity, code, message)
 		h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
