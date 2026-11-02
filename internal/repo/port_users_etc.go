@@ -219,6 +219,12 @@ func (r *pgUserPort) setDisabled(ctx context.Context, userID string, disabled, f
 		if !disabled {
 			return nil
 		}
+		// The account row is locked, so a refresh in flight has committed its
+		// successor and a sign-in waits; every live token is revoked here, not
+		// in a step after the commit that a failure could skip.
+		if err := q.RevokeUserRefreshTokens(ctx, uid); err != nil {
+			return err
+		}
 		// A reset link is a way to set a password on the account, so it ends
 		// with the account's access. Reactivating must not bring it back.
 		if err := q.RevokePendingPasswordResets(ctx, uid); err != nil {
