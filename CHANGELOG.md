@@ -393,6 +393,8 @@ releases.
   like the created and regression events, so receivers that route by project get it.
 - An OSV answer over 32 MiB now fails with a size error. It used to be cut at 32 MiB and
   parsed or stored as evidence as if it were complete.
+- The sign-in page now ignores a `redirect` that holds a control character or a backslash. A
+  value such as `/<tab>/host` was accepted, and browsers read it as `//host`.
 
 ### Security
 
