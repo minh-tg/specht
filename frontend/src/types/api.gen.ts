@@ -449,7 +449,9 @@ export interface paths {
     post?: never;
     /**
      * Revoke an API key
-     * @description Needs the manager or admin role on the project.
+     * @description Needs the manager or admin role on the project. A key that is already
+     *     revoked answers 404, like one that does not exist, and keeps the time of
+     *     its first revocation.
      */
     delete: operations["revokeApiKey"];
     options?: never;
