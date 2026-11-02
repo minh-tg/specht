@@ -939,3 +939,22 @@ func TestLoad_ReadsTrackerWebhookSettings(t *testing.T) {
 	assert.Equal(t, "webhook", s.Watcher.TrackerProvider)
 	assert.Equal(t, []string{"https://a.example.com/x", "https://b.example.com/y"}, s.Watcher.TrackerWebhookURLs)
 }
+
+func TestMigrationURL(t *testing.T) {
+	t.Setenv("WATCHER_ENABLE", "")
+	t.Setenv("DATABASE_URL", "postgres://specht_app:app@db:5432/specht")
+
+	t.Run("falls back to DATABASE_URL", func(t *testing.T) {
+		t.Setenv("MIGRATE_DATABASE_URL", "")
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Equal(t, "postgres://specht_app:app@db:5432/specht", cfg.MigrationURL())
+	})
+	t.Run("uses MIGRATE_DATABASE_URL when set", func(t *testing.T) {
+		t.Setenv("MIGRATE_DATABASE_URL", "postgres://specht:owner@db:5432/specht")
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Equal(t, "postgres://specht:owner@db:5432/specht", cfg.MigrationURL())
+		assert.Equal(t, "postgres://specht_app:app@db:5432/specht", cfg.DBURL, "queries keep DATABASE_URL")
+	})
+}
