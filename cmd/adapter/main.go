@@ -427,6 +427,13 @@ func isDuplicateReport(err error) bool {
 	return apiErr.StatusCode == http.StatusConflict && (apiErr.Code == "duplicate_report" || apiErr.Code == "")
 }
 
+// isIngestTimeout reports whether ingest failed because the server ran out of
+// its processing window (503 ingest_timeout).
+func isIngestTimeout(err error) bool {
+	var apiErr *client.Error
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusServiceUnavailable && apiErr.Code == codeIngestTimeout
+}
+
 // retryBackoff holds the wait before each retry. A transient failure is
 // retried at most len(retryBackoff) times.
 var retryBackoff = []time.Duration{time.Second, 3 * time.Second}
@@ -503,17 +510,49 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 // retryableAttempt reports whether the attempt may be repeated. A canceled
 // context is not retried: shutdown must stay prompt. An attempt that ran out
 // its own timeout is not retried either: the server outlived its whole window,
-// and a repeated upload would only wait that long again.
+// and a repeated upload would only wait that long again. The same holds for a
+// 503 ingest_timeout: the server spent its whole processing window on the
+// report, so two more tries would cost two more windows and likely end the same
+// way. The caller sees the error and decides.
 func retryableAttempt(req *http.Request, resp *http.Response, err error) bool {
 	if err != nil {
 		return req.Context().Err() == nil && !errors.Is(err, context.DeadlineExceeded)
 	}
 	switch resp.StatusCode {
-	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+	case http.StatusServiceUnavailable:
+		return responseCode(resp) != codeIngestTimeout
+	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusGatewayTimeout:
 		return true
 	default:
 		return false
 	}
+}
+
+// codeIngestTimeout is the error code of an ingest the server stopped at its
+// processing window.
+const codeIngestTimeout = "ingest_timeout"
+
+// responseCode returns the error.code of an API error response, or "" when the
+// body is not one. It reads at most 4 KiB and puts the bytes back, so the
+// caller still gets the whole body.
+func responseCode(resp *http.Response) string {
+	if resp.Body == nil {
+		return ""
+	}
+	head, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+	resp.Body = struct {
+		io.Reader
+		io.Closer
+	}{io.MultiReader(bytes.NewReader(head), resp.Body), resp.Body}
+	var envelope struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(head, &envelope) != nil {
+		return ""
+	}
+	return envelope.Error.Code
 }
 
 // replayRequest copies req with a fresh body for the next attempt. It reports
@@ -691,6 +730,9 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 	if err != nil {
 		if !isDuplicateReport(err) {
 			writeDiagnostic(stderr, "error: ingest failed: %v\n", err)
+			if isIngestTimeout(err) {
+				writeDiagnosticLine(stderr, "hint: the server stopped processing the report at its time limit and marked it failed; run the job again, and split the report if it keeps happening")
+			}
 			return 2
 		}
 		// The server holds this exact report already, as when a job runs
