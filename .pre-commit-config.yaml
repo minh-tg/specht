@@ -24,11 +24,11 @@ repos:
         files: \.go$
 
   - repo: https://github.com/golangci/golangci-lint
-    rev: v1.64.8
+    rev: v2.15.0
     hooks:
-      - id: golangci-lint
+      - id: golangci-lint-full
         name: staticcheck
-        args: [--disable-all, --enable=staticcheck, ./...]
+        args: [--fix=false]
         pass_filenames: false
         files: \.go$
 
