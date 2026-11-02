@@ -11,6 +11,7 @@ import {
   FIXTURE_HIGH_NEW,
   ingestFixture,
   seedProject,
+  settle,
   uiLogin,
   uniq,
 } from "./helpers";
@@ -20,17 +21,6 @@ import {
 // The axe runner and the rule set match frontend/e2e/a11y.spec.ts.
 
 const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
-
-async function settle(page: Page): Promise<void> {
-  await page.evaluate(async () => {
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      const running = document.getAnimations();
-      if (running.length === 0) return;
-      await Promise.all(running.map((animation) => animation.finished.catch(() => undefined)));
-    }
-  });
-}
 
 async function auditPhone(page: Page, name: string): Promise<void> {
   await page.waitForLoadState("networkidle");
@@ -130,6 +120,9 @@ test("a blocked change with a long branch name fits a 360px phone and passes axe
     gate_introduced_only: true,
   });
   await uiLogin(page);
+  // A report with a branch makes the page watch for the next scan, and the watch strip's drum loops
+  // until one arrives. Reduced motion stills it, so the audit sees a settled page.
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(`/${slug}/changes/${CHANGE_SHA.slice(0, 7)}`);
   await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
   await auditPhone(page, "change view");
