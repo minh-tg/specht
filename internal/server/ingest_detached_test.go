@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -106,4 +108,48 @@ func TestIngestReport_WritePhaseEndsWithinTheProcessingWindow(t *testing.T) {
 	require.True(t, hasDeadline)
 	assert.LessOrEqual(t, remaining, ingestWindow, "the write phase may not run past the processing window")
 	assert.Greater(t, remaining, ingestWindow-10*time.Second)
+}
+
+func ingestTimeoutRequest(t *testing.T) *http.Request {
+	t.Helper()
+	req := httptest.NewRequest("POST", "/api/v1/reports",
+		strings.NewReader(`{"project":"my-app","scanner":"trivy","raw_data":{"a":1}}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+testToken(t))
+	return req
+}
+
+// An ingest cut off by the processing window leaves its report failed, but the
+// request is not at fault. The answer is 503 with Retry-After, which a CI
+// client retries, not the 422 it reads as a bad report.
+func TestIngestReport_AnswersAnExpiredProcessingWindowWith503(t *testing.T) {
+	mock := &mockUsecases{
+		ingestReportFn: func(ctx context.Context, _ usecase.IngestReportInput) (*usecase.IngestReportOutput, error) {
+			<-ctx.Done()
+			return nil, fmt.Errorf("scanner trivy: upsert finding: %w", ctx.Err())
+		},
+	}
+	w := httptest.NewRecorder()
+	NewRouter(RouterConfig{Usecases: mock, JWTAuth: testJWTAuth, ingestWindow: 50 * time.Millisecond}).
+		ServeHTTP(w, ingestTimeoutRequest(t))
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code, "body: %s", w.Body.String())
+	assert.Equal(t, "30", w.Header().Get("Retry-After"))
+	assert.Contains(t, w.Body.String(), `"code":"ingest_timeout"`)
+}
+
+// A failure that is not the window keeps its 422, even while a window is set.
+func TestIngestReport_OtherFailuresStay422(t *testing.T) {
+	mock := &mockUsecases{
+		ingestReportFn: func(context.Context, usecase.IngestReportInput) (*usecase.IngestReportOutput, error) {
+			return nil, errors.New("bad revision")
+		},
+	}
+	w := httptest.NewRecorder()
+	NewRouter(RouterConfig{Usecases: mock, JWTAuth: testJWTAuth, ingestWindow: 50 * time.Millisecond}).
+		ServeHTTP(w, ingestTimeoutRequest(t))
+
+	require.Equal(t, http.StatusUnprocessableEntity, w.Code)
+	assert.Empty(t, w.Header().Get("Retry-After"))
+	assert.Contains(t, w.Body.String(), `"code":"ingest_failed"`)
 }

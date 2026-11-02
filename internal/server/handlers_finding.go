@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -103,7 +104,8 @@ func unrecognizedMessage(e *scanner.UnrecognizedFormatError) string {
 //  4. Decode and ingest, on a context a hang-up cannot cancel.
 func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 	adm := h.ingestAdmission()
-	deadlines := ingestDeadlines{body: ingestBodyWindow, window: ingestWindow, writeSlack: ingestWriteSlack}
+	window := cmp.Or(h.ingestWindow, ingestWindow)
+	deadlines := ingestDeadlines{body: ingestBodyWindow, window: window, writeSlack: ingestWriteSlack}
 	deadlines.armBody(w)
 	if r.Body == nil {
 		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
@@ -269,6 +271,14 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		code, message := ingestFailure(req.Scanner, err)
+		if code == "ingest_failed" && errors.Is(ingestCtx.Err(), context.DeadlineExceeded) {
+			// The processing window ended the ingest and the report is marked
+			// failed. The report may be fine: the server was too slow, so the
+			// caller is told to upload again, not that the report is bad.
+			respondIngestTimeout(w)
+			h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
+			return
+		}
 		respondError(w, http.StatusUnprocessableEntity, code, message)
 		h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
 		return
