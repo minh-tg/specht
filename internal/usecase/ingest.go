@@ -983,6 +983,11 @@ type ingestFindingsState struct {
 	// this scan scope recorded for it as introduced. It only names the change
 	// type of a finding that is introduced because the trunk lacks it.
 	carried map[string]string
+	// priorFix holds, per finding key, whether the finding had a fixed version
+	// before this report wrote any, read once on the first entry that names a
+	// fix. sawFix holds the keys whose entries named a fix.
+	priorFix map[string]bool
+	sawFix   map[string]bool
 	// reported holds the finding keys an earlier entry of this report already
 	// ingested. A repeated entry adds an occurrence but no second created or
 	// regression event and no second introduced count.
@@ -1032,6 +1037,8 @@ func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Projec
 		upserts:           make(map[string]findingUpsert),
 		attributed:        make(map[string]bool),
 		dimensionsWritten: make(map[string]bool),
+		priorFix:          make(map[string]bool),
+		sawFix:            make(map[string]bool),
 		seenIntroduced:    make(map[string]bool),
 		batchStore:        batchStore,
 		scopeHash:         scanScopeHash(input, nr),
@@ -1304,23 +1311,33 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 			st.occurrences = append(st.occurrences, findingOccurrenceInput(st, upserted, f))
 		}
 	}
-	// Read whether the fix already existed before the new dimensions are
-	// written. applyMaterialChange compares against this to report a fix that
-	// became available for the first time.
-	var priorFix *bool
-	if exists && hasFixDimension(f) {
+	// Read whether the fix already existed before this report writes one. The
+	// first entry that names a fix reads it; a later entry would see the fix an
+	// earlier entry wrote. applyMaterialChange compares against it to report a
+	// fix that became available for the first time.
+	if exists && hasFixDimension(f) && !st.sawFix[key] {
 		hadFix, err := u.deps.Stores.Findings.HasDimension(ctx, existing.ID, domain.DimFixedVersion)
 		if err != nil {
 			return fmt.Errorf("check previous fixed version for finding %q: %w", upserted.ID, err)
 		}
-		priorFix = &hadFix
+		st.priorFix[key] = hadFix
+	}
+	if hasFixDimension(f) {
+		st.sawFix[key] = true
 	}
 	if err := u.upsertFindingDimensions(ctx, st, upserted, f); err != nil {
 		return err
 	}
 
-	if exists && (existing.AnalysisState != string(finding.StateUnanalyzed) || existing.GateEffect == string(finding.EffectIgnore)) {
-		return u.applyMaterialChange(ctx, st.input, upserted, f,
+	// A report may name one finding many times. The material change is judged
+	// once, on its last entry, against the row before this report and the
+	// severity the report leaves, like the row write itself.
+	if final && exists && (existing.AnalysisState != string(finding.StateUnanalyzed) || existing.GateEffect == string(finding.EffectIgnore)) {
+		var priorFix *bool
+		if hadFix, ok := st.priorFix[key]; ok {
+			priorFix = &hadFix
+		}
+		return u.applyMaterialChange(ctx, st.input, upserted, f, st.sawFix[key],
 			existing.CurrentSeverityRank, project.rank, existing.GateEffect, existing.AnalysisState, priorFix)
 	}
 	return nil
@@ -1569,10 +1586,9 @@ func (u *Usecases) recordIntroducedFindings(ctx context.Context, st *ingestFindi
 
 // applyMaterialChange runs finding.EvaluateChange on a previously-known
 // finding and, when the change demands review, marks review_required and logs
-// the material-change event.
-func (u *Usecases) applyMaterialChange(ctx context.Context, input IngestReportInput, upserted port.Finding, f domain.NormalizedFinding, oldRank, newRank int16, oldGateEffect, oldAnalysisState string, priorFix *bool) error {
-	hasNewFix := hasFixDimension(f)
-
+// the material-change event. hasNewFix is set when any entry of this report
+// named a fixed version for the finding.
+func (u *Usecases) applyMaterialChange(ctx context.Context, input IngestReportInput, upserted port.Finding, f domain.NormalizedFinding, hasNewFix bool, oldRank, newRank int16, oldGateEffect, oldAnalysisState string, priorFix *bool) error {
 	var hadOldFix bool
 	if hasNewFix {
 		if priorFix != nil {

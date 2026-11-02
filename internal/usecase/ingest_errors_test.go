@@ -39,6 +39,7 @@ func TestApplyMaterialChangePropagatesPreviousFixLookupError(t *testing.T) {
 				Key: domain.DimFixedVersion, Value: "2.0.0",
 			}},
 		},
+		true,
 		int16(domain.SeverityMedium), int16(domain.SeverityMedium), "block", "in_triage", nil,
 	)
 
