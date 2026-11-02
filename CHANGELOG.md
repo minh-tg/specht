@@ -402,6 +402,8 @@ releases.
 - The web app's HTML, JavaScript and CSS are served with `charset=utf-8`, and its responses
   carry `Strict-Transport-Security` behind a trusted TLS-terminating proxy, as API
   responses already did. The first page load used to go out without it.
+- The sign-in page now ignores a `redirect` that holds a control character or a backslash. A
+  value such as `/<tab>/host` was accepted, and browsers read it as `//host`.
 
 ### Security
 
