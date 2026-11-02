@@ -395,6 +395,9 @@ releases.
   parsed or stored as evidence as if it were complete.
 - The sign-in page now ignores a `redirect` that holds a control character or a backslash. A
   value such as `/<tab>/host` was accepted, and browsers read it as `//host`.
+- The change page no longer says a passing scan "found no new finding" at the severity floor
+  when waivers or dismissals made it pass. It says no new finding at the floor is left
+  blocking the change, and names the waived count.
 
 ### Security
 

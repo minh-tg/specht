@@ -86,15 +86,20 @@ function subline(
   projectWide: boolean,
   commit: string,
   policy: PolicyEffective | undefined,
+  waived: number,
 ): string {
   switch (state) {
     case "blocked":
       return "Fix the findings and send a fresh scanner report, or request a waiver.";
     case "passing":
       if (projectWide) return "No project findings block this gate at the selected severity floor.";
-      return `The scan of ${shortCommit(commit)} found no new finding at ${
+      return `No new finding at ${
         floorWord(policy) ?? "the severity floor"
-      } or above. Nothing to do here.`;
+      } or above is left blocking this change in the scan of ${shortCommit(commit)}.${
+        waived > 0
+          ? ` The ${pluralize(waived, "waived finding")} ${waived === 1 ? "does" : "do"} not count.`
+          : ""
+      } Nothing to do here.`;
     case "unblocked":
       return "Specht recorded this verdict when the scan uploaded. The pull request check from that scan reflects it as of then; a check from an older run does not update, so re-run the job if you still see one.";
     case "unconfirmed":
@@ -167,7 +172,7 @@ export function ChangeHero(
             {headline(state, blockers, projectWide, commit, earlierOpen)}
           </h1>
           <p className="max-w-[58ch] text-section font-normal leading-snug">
-            {subline(state, report, projectWide, commit, policy)}
+            {subline(state, report, projectWide, commit, policy, waived)}
           </p>
           {watch}
         </div>
