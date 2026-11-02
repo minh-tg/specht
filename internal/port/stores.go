@@ -179,8 +179,11 @@ type Project struct {
 	// object holds per-key policy overrides.
 	Settings         json.RawMessage
 	PolicyTemplateID *string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	// DefaultBranch is the branch a project manager named as the trunk; nil
+	// when unset.
+	DefaultBranch *string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // CreateProjectInput carries the create-project fields.
@@ -218,7 +221,9 @@ type ProjectStore interface {
 	ListByIDs(ctx context.Context, ids []string) ([]Project, error)
 	GetBySlug(ctx context.Context, slug string) (Project, error)
 	GetByID(ctx context.Context, id string) (Project, error)
-	Update(ctx context.Context, slug, name string, description *string) (Project, error)
+	// Update writes name, description and default branch; a nil description
+	// or default branch clears it.
+	Update(ctx context.Context, slug, name string, description, defaultBranch *string) (Project, error)
 	Delete(ctx context.Context, slug string) (Project, error)
 	// UpdateSettings replaces the namespaced project configuration
 	// document (policy overrides live under "policy").

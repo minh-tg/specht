@@ -21,7 +21,7 @@ VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
 -- name: UpdateProject :one
-UPDATE projects SET name = $2, description = $3, updated_at = NOW()
+UPDATE projects SET name = $2, description = $3, default_branch = sqlc.narg(default_branch), updated_at = NOW()
 WHERE slug = $1
 RETURNING *;
 

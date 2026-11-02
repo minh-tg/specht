@@ -42,6 +42,8 @@ export interface Project {
   slug: string;
   name: string;
   description: string | null;
+  /** The branch whose reports are the baseline for pull requests; null when unset. */
+  default_branch?: string | null;
   created_at: string;
   updated_at: string;
   /** The signed-in caller's effective role. Present when a person reads a single project. */

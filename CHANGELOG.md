@@ -12,6 +12,12 @@ releases.
 
 - The API keys page marks a key as "Created by a former member" when its creator has left
   the project, and shows a Revoke button on that row. The key still works until it is revoked.
+- A project can name its default branch. A project admin sets it with
+  `default_branch` on `PUT /api/v1/projects/{slug}`, and the project response
+  returns it. Reports on that branch count as the baseline for
+  pull requests even after the branch was the head of a pull request, and its push
+  builds no longer carry introduced findings forward. Without it, a default branch
+  that was once a pull request head is not a baseline.
 - Report responses carry `scan_completeness` (`complete`, `partial` or `unknown`), the value
   stored for the report. `unknown` means the scanner output does not say whether the scan was
   complete, and a declared `scan_filter` is separate.

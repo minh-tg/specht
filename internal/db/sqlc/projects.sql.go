@@ -48,7 +48,7 @@ func (q *Queries) CountProjectAdmins(ctx context.Context, projectID pgtype.UUID)
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (slug, name, description, deployment_threshold, settings)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id
+RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id, default_branch
 `
 
 type CreateProjectParams struct {
@@ -81,13 +81,14 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.CveWatcherEnabled,
 		&i.CveWatcherIntervalSeconds,
 		&i.PolicyTemplateID,
+		&i.DefaultBranch,
 	)
 	return i, err
 }
 
 const deleteProject = `-- name: DeleteProject :one
 DELETE FROM projects WHERE slug = $1
-RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id
+RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id, default_branch
 `
 
 func (q *Queries) DeleteProject(ctx context.Context, slug string) (Project, error) {
@@ -106,6 +107,7 @@ func (q *Queries) DeleteProject(ctx context.Context, slug string) (Project, erro
 		&i.CveWatcherEnabled,
 		&i.CveWatcherIntervalSeconds,
 		&i.PolicyTemplateID,
+		&i.DefaultBranch,
 	)
 	return i, err
 }
@@ -126,7 +128,7 @@ func (q *Queries) DeleteProjectMember(ctx context.Context, arg DeleteProjectMemb
 }
 
 const getProjectByID = `-- name: GetProjectByID :one
-SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id FROM projects
+SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id, default_branch FROM projects
 WHERE id = $1 LIMIT 1
 `
 
@@ -146,12 +148,13 @@ func (q *Queries) GetProjectByID(ctx context.Context, id pgtype.UUID) (Project, 
 		&i.CveWatcherEnabled,
 		&i.CveWatcherIntervalSeconds,
 		&i.PolicyTemplateID,
+		&i.DefaultBranch,
 	)
 	return i, err
 }
 
 const getProjectBySlug = `-- name: GetProjectBySlug :one
-SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id FROM projects
+SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id, default_branch FROM projects
 WHERE slug = $1 LIMIT 1
 `
 
@@ -171,6 +174,7 @@ func (q *Queries) GetProjectBySlug(ctx context.Context, slug string) (Project, e
 		&i.CveWatcherEnabled,
 		&i.CveWatcherIntervalSeconds,
 		&i.PolicyTemplateID,
+		&i.DefaultBranch,
 	)
 	return i, err
 }
@@ -315,7 +319,7 @@ func (q *Queries) ListProjectMembersWithUsers(ctx context.Context, projectID pgt
 }
 
 const listProjects = `-- name: ListProjects :many
-SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id FROM projects
+SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id, default_branch FROM projects
 ORDER BY created_at DESC, id DESC
 `
 
@@ -341,6 +345,7 @@ func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
 			&i.CveWatcherEnabled,
 			&i.CveWatcherIntervalSeconds,
 			&i.PolicyTemplateID,
+			&i.DefaultBranch,
 		); err != nil {
 			return nil, err
 		}
@@ -353,7 +358,7 @@ func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
 }
 
 const listProjectsByIDs = `-- name: ListProjectsByIDs :many
-SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id FROM projects
+SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id, default_branch FROM projects
 WHERE id = ANY($1::uuid[])
 ORDER BY created_at DESC, id DESC
 `
@@ -380,6 +385,7 @@ func (q *Queries) ListProjectsByIDs(ctx context.Context, dollar_1 []pgtype.UUID)
 			&i.CveWatcherEnabled,
 			&i.CveWatcherIntervalSeconds,
 			&i.PolicyTemplateID,
+			&i.DefaultBranch,
 		); err != nil {
 			return nil, err
 		}
@@ -469,19 +475,25 @@ func (q *Queries) LockProjectsAdministeredBy(ctx context.Context, userID pgtype.
 }
 
 const updateProject = `-- name: UpdateProject :one
-UPDATE projects SET name = $2, description = $3, updated_at = NOW()
+UPDATE projects SET name = $2, description = $3, default_branch = $4, updated_at = NOW()
 WHERE slug = $1
-RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id
+RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id, default_branch
 `
 
 type UpdateProjectParams struct {
-	Slug        string      `json:"slug"`
-	Name        string      `json:"name"`
-	Description pgtype.Text `json:"description"`
+	Slug          string      `json:"slug"`
+	Name          string      `json:"name"`
+	Description   pgtype.Text `json:"description"`
+	DefaultBranch pgtype.Text `json:"default_branch"`
 }
 
 func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error) {
-	row := q.db.QueryRow(ctx, updateProject, arg.Slug, arg.Name, arg.Description)
+	row := q.db.QueryRow(ctx, updateProject,
+		arg.Slug,
+		arg.Name,
+		arg.Description,
+		arg.DefaultBranch,
+	)
 	var i Project
 	err := row.Scan(
 		&i.ID,
@@ -496,6 +508,7 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		&i.CveWatcherEnabled,
 		&i.CveWatcherIntervalSeconds,
 		&i.PolicyTemplateID,
+		&i.DefaultBranch,
 	)
 	return i, err
 }
@@ -503,7 +516,7 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 const updateProjectSettings = `-- name: UpdateProjectSettings :one
 UPDATE projects SET settings = $2, updated_at = NOW()
 WHERE id = $1
-RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id
+RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id, default_branch
 `
 
 type UpdateProjectSettingsParams struct {
@@ -527,6 +540,7 @@ func (q *Queries) UpdateProjectSettings(ctx context.Context, arg UpdateProjectSe
 		&i.CveWatcherEnabled,
 		&i.CveWatcherIntervalSeconds,
 		&i.PolicyTemplateID,
+		&i.DefaultBranch,
 	)
 	return i, err
 }

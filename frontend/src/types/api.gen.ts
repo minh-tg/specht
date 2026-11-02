@@ -494,7 +494,8 @@ export interface paths {
     get: operations["getProject"];
     /**
      * Update a project
-     * @description Both fields are pointers; omit one to leave it unchanged.
+     * @description Omit a field to leave it unchanged. Only a global admin or an admin of
+     *     the project may update it; anyone else gets 403.
      */
     put: operations["updateProject"];
     post?: never;
@@ -2389,6 +2390,14 @@ export interface components {
       slug: string;
       name: string;
       description?: string | null;
+      /**
+       * @description The branch whose reports serve as the baseline for pull requests,
+       *     set by a project admin. A report on it is a baseline for the
+       *     introduced-only gate even if the branch was once the head of a pull
+       *     request. Null when unset; the server then trusts only a branch that
+       *     never compared its reports against another base.
+       */
+      default_branch?: string | null;
       /** Format: date-time */
       created_at: string;
       /** Format: date-time */
@@ -2438,6 +2447,12 @@ export interface components {
       name?: string | null;
       /** @description Omit to leave unchanged. */
       description?: string | null;
+      /**
+       * @description Omit to leave unchanged; an empty string clears it. Surrounding
+       *     spaces are trimmed. More than 255 bytes or a control character is
+       *     refused with 400 `invalid_field`.
+       */
+      default_branch?: string | null;
     };
     Scanner: {
       /**

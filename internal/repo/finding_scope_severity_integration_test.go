@@ -107,7 +107,11 @@ func TestMigration000058_BackfillsScopeSeverities(t *testing.T) {
 	defer func() { _, _ = m.Close() }()
 	require.NoError(t, m.Migrate(57))
 
-	project := createTestProject(t, repos)
+	// The schema is at 000057, so the project row is written by hand: the
+	// generated queries name columns later migrations add.
+	var project struct{ ID pgtype.UUID }
+	require.NoError(t, pool.QueryRow(ctx, `INSERT INTO projects (slug, name, deployment_threshold, settings)
+		VALUES ('backfill', 'Backfill', 'high', '{}') RETURNING id`).Scan(&project.ID))
 	now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
 	finding, err := repos.Findings.Upsert(ctx, UpsertFindingParams{
 		ProjectID: project.ID, FindingKind: "sast", Fingerprint: "fp-backfill", CurrentTitle: "Path traversal",

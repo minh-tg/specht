@@ -342,6 +342,7 @@ type Project struct {
 	CveWatcherEnabled         bool               `json:"cve_watcher_enabled"`
 	CveWatcherIntervalSeconds int32              `json:"cve_watcher_interval_seconds"`
 	PolicyTemplateID          pgtype.UUID        `json:"policy_template_id"`
+	DefaultBranch             pgtype.Text        `json:"default_branch"`
 }
 
 type ProjectMember struct {
