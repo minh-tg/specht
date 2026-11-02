@@ -2495,7 +2495,7 @@ export interface components {
       raw_data: Record<string, never> | unknown[];
       branch?: string;
       commit_sha?: string;
-      /** @description Required when `scan_mode` is `incremental`; the revision to compare against. */
+      /** @description Required when `scan_mode` is `incremental`; the revision to compare against, a commit or a branch name. Only a report on another branch that never named a base other than itself (a trunk) serves as the baseline; any other match is treated as no baseline. */
       base_revision?: string;
       changed_files?: string[];
       /**
