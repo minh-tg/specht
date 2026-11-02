@@ -50,13 +50,15 @@ error() {
 # into the log: it escapes %, CR and LF the way the runner expects, so the text
 # cannot open a second command line, and replaces the remaining control
 # characters (C0, DEL, C1) and the Unicode bidirectional overrides and isolates
-# with a space.
+# with a space. The runner also reads the legacy "##[command]" form anywhere in
+# a line, so every "##[" becomes "## [".
 # Inputs such as the version or a download URL can carry text that is not ours.
 command_data() {
   local text="$1" seq
   text="${text//'%'/%25}"
   text="${text//$'\r'/%0D}"
   text="${text//$'\n'/%0A}"
+  text="${text//'##['/'## ['}"
   text="$(LC_ALL=C printf '%s' "$text" | LC_ALL=C tr '\000-\037\177' ' ')"
   local i
   for ((i = 0x80; i <= 0x9f; i++)); do

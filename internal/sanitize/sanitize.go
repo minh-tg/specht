@@ -68,10 +68,9 @@ func needsStripping(s string) bool {
 // CI log. It removes ANSI escape sequences, control characters and
 // bidirectional formatting controls as Text does, turns every line break,
 // tab and line or paragraph separator into a space, collapses runs of
-// whitespace, and keeps a leading "::" from reading as a GitHub Actions
-// workflow command by putting a space in front of it. The CI runner parses a
-// line that starts with "::" as a command, so a scanner-supplied title must
-// never open a line that way.
+// whitespace, and defuses GitHub Actions workflow command syntax as
+// NoWorkflowCommand does. A scanner-supplied title must never read as a
+// command in a CI log.
 func Line(s string) string {
 	s = strings.Map(func(r rune) rune {
 		switch r {
@@ -80,9 +79,19 @@ func Line(s string) string {
 		}
 		return r
 	}, s)
-	s = strings.Join(strings.Fields(Text(s)), " ")
-	if strings.HasPrefix(s, "::") {
-		return " " + s
+	return NoWorkflowCommand(strings.Join(strings.Fields(Text(s)), " "))
+}
+
+// NoWorkflowCommand rewrites the two forms the GitHub Actions runner parses
+// as a workflow command on stdout and stderr. The runner trims leading
+// whitespace and reads a line starting with "::" as a command, so a leading
+// "::" becomes ": :". It also reads the legacy "##[command]" form anywhere in
+// a line, so every "##[" becomes "## [".
+func NoWorkflowCommand(s string) string {
+	s = strings.ReplaceAll(s, "##[", "## [")
+	rest := strings.TrimLeftFunc(s, unicode.IsSpace)
+	if strings.HasPrefix(rest, "::") {
+		return s[:len(s)-len(rest)] + ": :" + rest[2:]
 	}
 	return s
 }
