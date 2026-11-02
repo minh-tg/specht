@@ -101,9 +101,9 @@ function subline(
           : ""
       } Nothing to do here.`;
     case "unblocked":
-      return "Specht recorded this verdict when the scan uploaded. The pull request check from that scan reflects it as of then; a check from an older run does not update, so re-run the job if you still see one.";
+      return "Specht works out this verdict now, from the report on this page and today's findings and waivers, so it counts anything waived or decided since the scan uploaded. The check CI posted for an older run does not update; re-run the job if it still shows failed.";
     case "unconfirmed":
-      return "This scan is recorded as passing, but it did not examine the findings below. They blocked the earlier scan and are still open.";
+      return "This verdict counts only the findings this scan introduced. The findings below blocked the earlier scan and are still open.";
     case "scanning":
       return "The verdict updates when the scan finishes.";
     case "processing":
