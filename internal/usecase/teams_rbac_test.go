@@ -11,6 +11,52 @@ import (
 	"github.com/minh-tg/specht/internal/port"
 )
 
+// A project manager cannot link a team they cannot see: it answers like a
+// missing team, returns no team name and links nothing. A team they can see
+// links as before, and a global admin sees every team.
+func TestLinkProjectTeam_RefusesATeamTheCallerCannotSee(t *testing.T) {
+	uc, pr, tr, _ := teamHarness()
+	p := rbacTestProject()
+	pr.getBySlugFn = func(context.Context, string) (port.Project, error) { return p, nil }
+	pr.effectiveRoleFn = func(_ context.Context, _, userID string) (string, error) {
+		if userID == "mgr-1" {
+			return auth.RoleManager, nil
+		}
+		return auth.RoleAdmin, nil
+	}
+	pr.getMemberFn = func(_ context.Context, projectID, userID string) (port.ProjectMember, error) {
+		return port.ProjectMember{ProjectID: projectID, UserID: userID, Role: auth.RoleManager}, nil
+	}
+	teamID := "11111111-1111-1111-1111-111111111111"
+	tr.getByIDFn = func(context.Context, string) (port.Team, error) {
+		return port.Team{ID: teamID, Name: "another tenant's team"}, nil
+	}
+	tr.listLinksFn = func(context.Context, string) ([]port.ProjectTeam, error) { return nil, nil }
+	linked := 0
+	tr.linkFn = func(_ context.Context, projectID, teamID, role string) (port.ProjectTeam, error) {
+		linked++
+		return port.ProjectTeam{ProjectID: projectID, TeamID: teamID, Role: role}, nil
+	}
+	visible := false
+	tr.isVisibleFn = func(context.Context, string, string) (bool, error) { return visible, nil }
+	manager := projectRoleCtx("mgr-1", auth.RoleManager)
+
+	resp, err := uc.LinkProjectTeam(manager, "rbac-test", teamID, auth.RoleMember)
+	require.ErrorIs(t, err, ErrTeamNotFound)
+	assert.Nil(t, resp, "the team name is not returned")
+	assert.Zero(t, linked)
+
+	visible = true
+	_, err = uc.LinkProjectTeam(manager, "rbac-test", teamID, auth.RoleMember)
+	require.NoError(t, err)
+	assert.Equal(t, 1, linked)
+
+	visible = false
+	_, err = uc.LinkProjectTeam(adminCtx(), "rbac-test", teamID, auth.RoleMember)
+	require.NoError(t, err, "a global admin sees every team")
+	assert.Equal(t, 2, linked)
+}
+
 func TestLinkProjectTeam_DelegationCeilingAndPeerProtection(t *testing.T) {
 	uc, pr, tr, _ := teamHarness()
 	p := rbacTestProject()

@@ -347,6 +347,9 @@ func (u *Usecases) LinkProjectTeam(ctx context.Context, projectSlug, teamID, rol
 	if _, err := u.deps.Stores.Teams.GetTeamByID(ctx, teamID); err != nil {
 		return nil, notFoundAsTeam(err)
 	}
+	if err := u.requireTeamVisible(ctx, teamID); err != nil {
+		return nil, err
+	}
 	link, err := u.deps.Stores.Teams.LinkProjectTeam(ctx, project.ID, teamID, role)
 	if err != nil {
 		return nil, fmt.Errorf("link project team: %w", err)
@@ -356,6 +359,29 @@ func (u *Usecases) LinkProjectTeam(ctx context.Context, projectSlug, teamID, rol
 		return nil, fmt.Errorf("lookup team: %w", err)
 	}
 	return &ProjectTeamResponse{ProjectID: link.ProjectID, TeamID: link.TeamID, TeamName: team.Name, Role: normalizeMemberRole(link.Role)}, nil
+}
+
+// requireTeamVisible lets a caller act on a team only when they can see it:
+// they belong to it or it is linked to a project they reach. Global admins see
+// every team. A team the caller cannot see answers like a missing one, so a
+// project manager cannot give another tenant's team access to their project,
+// or read its name, by supplying an id.
+func (u *Usecases) requireTeamVisible(ctx context.Context, teamID string) error {
+	ident := auth.ContextIdentity(ctx)
+	if ident == nil || ident.IsAPIKey {
+		return ErrProjectAccessDenied
+	}
+	if ident.Role == auth.RoleAdmin {
+		return nil
+	}
+	visible, err := u.deps.Stores.Teams.IsTeamVisibleTo(ctx, teamID, ident.UserID)
+	if err != nil {
+		return fmt.Errorf("check team visibility: %w", err)
+	}
+	if !visible {
+		return ErrTeamNotFound
+	}
+	return nil
 }
 
 // checkExistingLinkPermission ensures non-admin callers cannot rewrite or

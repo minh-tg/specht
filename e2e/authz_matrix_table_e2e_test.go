@@ -546,9 +546,24 @@ func authzRows() []authzRow {
 		{
 			Method: "POST", Pattern: "/api/v1/projects/{slug}/teams", Path: inProject("/teams"),
 			Body: func(_ *authzFixtures, a *authzAttempt) any {
-				return map[string]string{"team_id": a.T.TeamLinkTarget, "role": "member"}
+				return map[string]string{"team_id": a.Obj["team"], "role": "member"}
 			},
-			Want: sessionManagers, Audit: audit.EventLinkProjectTeam,
+			// A fresh team per attempt, so an earlier cell's link cannot make it
+			// visible to a later caller.
+			Prepare: func(t *testing.T, f *authzFixtures, a *authzAttempt) { a.Obj["team"] = azTeam(t, f) },
+			// The fresh team is linked to no project and nobody in the matrix
+			// belongs to it, so only an instance admin sees it; a manager who
+			// cannot see the team gets the answer for a missing one.
+			Want: with(sessionManagers, outcomeDeny404, func() []authzCaller {
+				var cs []authzCaller
+				for c, o := range sessionManagers {
+					if o == outcomeAllow && c != callerInstanceAdmin {
+						cs = append(cs, c)
+					}
+				}
+				return cs
+			}()...),
+			Audit: audit.EventLinkProjectTeam,
 		},
 		{
 			Method: "DELETE", Pattern: "/api/v1/projects/{slug}/teams/{teamID}", Path: projectObj("/teams/", "team", ""),
