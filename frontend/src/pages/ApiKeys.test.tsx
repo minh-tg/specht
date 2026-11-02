@@ -1,7 +1,7 @@
 import { AuthContext, type AuthContextValue } from "@/auth/context";
 import { chooseOption, createTestQueryClient, jsonResponse, listOptions } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
@@ -313,6 +313,35 @@ describe("ApiKeys", () => {
 
     expect(screen.getByText("Confirm")).toBeInTheDocument();
     expect(screen.getByText("Cancel")).toBeInTheDocument();
+  });
+
+  it("flags a key whose creator left the project and offers Revoke on that row", async () => {
+    keys = [
+      { ...MY_KEY, id: "k1", name: "Orphan Key", creator_is_member: false },
+      { ...MY_KEY, id: "k2", name: "Member Key", creator_is_member: true },
+      { ...MY_KEY, id: "k3", name: "Legacy Key" },
+    ];
+    renderApiKeys();
+    const user = userEvent.setup();
+
+    await chooseOption(
+      user,
+      await screen.findByRole("combobox", { name: /project/i }),
+      "Test Project",
+    );
+    await screen.findByText("Orphan Key");
+
+    expect(screen.getAllByText("Created by a former member")).toHaveLength(1);
+    const orphanRow = screen.getByText("Orphan Key").closest("div.bg-card") as HTMLElement;
+    expect(within(orphanRow).getByText("Created by a former member")).toBeInTheDocument();
+    await user.click(within(orphanRow).getByRole("button", { name: "Revoke" }));
+    expect(within(orphanRow).getByText("Confirm")).toBeInTheDocument();
+
+    for (const name of ["Member Key", "Legacy Key"]) {
+      const row = screen.getByText(name).closest("div.bg-card") as HTMLElement;
+      expect(within(row).queryByText("Created by a former member")).not.toBeInTheDocument();
+      expect(within(row).getByRole("button", { name: "Revoke" })).toBeInTheDocument();
+    }
   });
 
   it("clears displayed keys when project selection is reset", async () => {

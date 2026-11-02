@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { INLINE_LINK } from "@/components/inlineLink";
 import { SelectField } from "@/components/SelectField";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -134,11 +135,19 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
       <div className="space-y-2">
         {keys.map((k) => {
           const end = keyEndLabel(k.expires_at, now);
+          const formerMember = k.creator_is_member === false;
+          const startRevoke = () => {
+            setConfirmRevoke(k.id);
+            setRevokeError(null);
+          };
           return (
             <div key={k.id} className="bg-card rounded-lg border p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-body font-medium">{k.name}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-body font-medium">{k.name}</p>
+                    {formerMember && <Badge variant="outline">Created by a former member</Badge>}
+                  </div>
                   <p className="text-muted-foreground text-meta">
                     {k.key_prefix}...{k.last_four ?? ""} &middot; created{" "}
                     {new Date(k.created_at).toLocaleDateString()}
@@ -171,13 +180,16 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
                       </button>
                     </div>
                   )
+                  : formerMember
+                  ? (
+                    <Button variant="destructive" size="sm" onClick={startRevoke}>
+                      Revoke
+                    </Button>
+                  )
                   : (
                     <button
                       className="text-destructive hover:text-destructive/80 text-meta font-medium"
-                      onClick={() => {
-                        setConfirmRevoke(k.id);
-                        setRevokeError(null);
-                      }}
+                      onClick={startRevoke}
                     >
                       Revoke
                     </button>
