@@ -178,6 +178,8 @@ func TestMembershipIntegrity_TeamOnlyCallerCannotWriteElevatedRows(t *testing.T)
 	// Member-level writes stay open to the effective role.
 	status, code := miAddMember(t, ta.Token, x, other.ID, "member")
 	require.Equalf(t, http.StatusCreated, status, "code %s", code)
+	// A team is linked by someone who can see it: here the caller belongs to it.
+	require.Equal(t, http.StatusCreated, miTeamAdd(t, adminToken, otherTeam, ta.ID, "member"))
 	require.Equal(t, http.StatusCreated, miLink(t, ta.Token, x, otherTeam, "member"))
 	status, _ = doJSON(t, http.MethodPost, "/api/v1/projects/"+x+"/invites", ta.Token, map[string]any{"role": "member"})
 	require.Equal(t, http.StatusCreated, status)
@@ -211,6 +213,7 @@ func TestMembershipIntegrity_DirectRoleStillDelegates(t *testing.T) {
 	status, _ = doJSON(t, http.MethodPost, "/api/v1/projects/"+x+"/invites", adm.Token, map[string]any{"role": "manager"})
 	require.Equal(t, http.StatusCreated, status)
 	other := miTeam(t, "direct-other")
+	require.Equal(t, http.StatusCreated, miTeamAdd(t, adminToken, other, adm.ID, "member"))
 	require.Equal(t, http.StatusCreated, miLink(t, adm.Token, x, other, "manager"))
 }
 

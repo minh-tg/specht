@@ -386,6 +386,9 @@ releases.
 - `POST /api/v1/projects/{slug}/waivers/check-match` answers 404 for a finding id that
   does not exist or belongs to another project (it answered 500 and 403), and 400 for a
   malformed id.
+- Linking a team to a project now requires that the caller can see the team (they belong
+  to it, it is linked to a project they reach, or they are a global admin). A team they
+  cannot see answers 404 and its name is not returned.
 - The stale report sweep measures a report's age on the database clock, so a server
   whose clock runs ahead no longer fails an upload that is still running. A report that
   was already marked failed can no longer be set back to completed by a late upload;
