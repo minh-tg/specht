@@ -91,7 +91,7 @@ func SafeDialContext(dialer *net.Dialer, allowLoopback bool) func(context.Contex
 			return nil, fmt.Errorf("resolve %q: no addresses", host)
 		}
 		for _, ip := range ips {
-			if IsBlockedIP(ip) && !(allowLoopback && ip.IsLoopback()) {
+			if IsBlockedIP(ip) && (!allowLoopback || !ip.IsLoopback()) {
 				return nil, fmt.Errorf("refusing connection to non-public address %q", ip)
 			}
 		}
