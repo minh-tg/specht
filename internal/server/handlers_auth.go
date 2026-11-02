@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -122,7 +123,10 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		// the only actionable response is to re-authenticate. Detail is logged.
 		if errors.Is(err, usecase.ErrRefreshReused) {
 			// The token was already spent, so the server revoked the sign-in it
-			// belongs to. The client must sign the user out and say why.
+			// belongs to. The client must sign the user out and say why. The
+			// audit line is the operator's only sign that a token was replayed;
+			// it names the client address, never a token.
+			h.audit.HTTP(r, audit.EventRefresh, audit.OutcomeFailure, "", remoteHost(r), err)
 			respondError(w, http.StatusUnauthorized, "refresh_reused", "refresh token was already used")
 			return
 		}
@@ -621,6 +625,7 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, "not_found", "not found")
 		return
 	case errors.Is(err, usecase.ErrInvalidSetupToken):
+		h.audit.HTTP(r, audit.EventSetupComplete, audit.OutcomeFailure, "", remoteHost(r), err)
 		respondError(w, http.StatusForbidden, "invalid_setup_token", "the setup token is wrong")
 		return
 	case errors.Is(err, usecase.ErrSetupEmailTaken):
@@ -660,4 +665,15 @@ func (h *Handler) setupRequired(ctx context.Context) bool {
 		return false
 	}
 	return required
+}
+
+// remoteHost is the caller's address without the port, for audit lines about
+// requests that carry no identity. Behind a trusted proxy the router has
+// already replaced RemoteAddr with the forwarded client.
+func remoteHost(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
