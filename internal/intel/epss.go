@@ -5,6 +5,7 @@ package intel
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/url"
@@ -88,8 +89,9 @@ func (p *EPSSProvider) fetchBatch(ctx context.Context, cveIDs []string, out map[
 		if !IsCVE(d.CVE) {
 			continue
 		}
-		var score float64
-		if _, err := fmt.Sscanf(d.EPSS, "%f", &score); err != nil {
+		score, err := strconv.ParseFloat(strings.TrimSpace(d.EPSS), 64)
+		if err != nil || !validProbability(score) {
+			slog.Warn("epss feed row skipped: score is not a number in [0, 1]", "cve", d.CVE)
 			continue
 		}
 		out[d.CVE] = Record{CVEID: d.CVE, EPSS: &score, EPSSPercentile: parsePercentile(d.Percentile), EPSSDate: d.Date}
@@ -102,8 +104,15 @@ func (p *EPSSProvider) fetchBatch(ctx context.Context, cveIDs []string, out map[
 // reaches the API as a fake rank.
 func parsePercentile(raw string) float64 {
 	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
-	if err != nil || math.IsNaN(v) || v < 0 || v > 1 {
+	if err != nil || !validProbability(v) {
 		return 0
 	}
 	return v
+}
+
+// validProbability reports whether v is a finite number in [0, 1]. NaN and
+// the infinities fail the range test, and json.Marshal refuses them, so a
+// stored one would blank the whole finding response.
+func validProbability(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0 && v <= 1
 }
