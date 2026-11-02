@@ -10,6 +10,8 @@ releases.
 
 ### Added
 
+- The API keys page marks a key as "Created by a former member" when its creator has left
+  the project, and shows a Revoke button on that row. The key still works until it is revoked.
 - Report responses carry `scan_completeness` (`complete`, `partial` or `unknown`), the value
   stored for the report. `unknown` means the scanner output does not say whether the scan was
   complete, and a declared `scan_filter` is separate.
