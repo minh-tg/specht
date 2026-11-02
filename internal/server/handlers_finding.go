@@ -215,6 +215,11 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 	// written. Waiting for memory above still stops when the client leaves.
 	ingestCtx, cancelIngest := detachedContext(r.Context())
 	defer cancelIngest()
+	// The request deadline counts from the first byte of the body, so it ends
+	// the ingest after the response deadline armed above has passed, and the
+	// failure answer would be lost. The write phase gets its own window.
+	ingestCtx, cancelWindow := context.WithTimeout(ingestCtx, deadlines.window)
+	defer cancelWindow()
 	result, err := h.usecase.IngestReport(ingestCtx, usecase.IngestReportInput{
 		ProjectSlug:        req.Project,
 		Scanner:            req.Scanner,
