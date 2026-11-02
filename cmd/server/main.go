@@ -207,7 +207,7 @@ func main() {
 	cveDetailStore := repo.NewCVEDetailStore(pool)
 	cveDetail, cveResolver := buildCVEDetail(cfg.CVEDetail, cveDetailStore, intelStore)
 
-	dispatcher := buildTrackerDispatcher()
+	dispatcher := buildTrackerDispatcher(cfg.Watcher.TrackerProvider)
 	defer func() {
 		if err := dispatcher.Close(); err != nil {
 			slog.Error("close tracker", "error", err)
@@ -358,14 +358,15 @@ func buildIntelStore(cfg config.IntelConfig) usecase.IntelStore {
 		&intel.KEVProvider{CatalogURL: cfg.KEVCatalogURL, TTL: cfg.TTL})
 }
 
-// buildTrackerDispatcher wires the tracker event dispatcher from env config.
-// Disabled by default (TRACKER_PROVIDER=noop); a no-op dispatcher is returned
-// when no provider is configured, so core use cases never need nil checks
-// beyond the optional Tracker field.
-func buildTrackerDispatcher() *tracker.Dispatcher {
-	cfg := tracker.ResolveConfig()
+// buildTrackerDispatcher wires the tracker event dispatcher. provider is the
+// value internal/config already lowercased and trimmed from TRACKER_PROVIDER,
+// the same one it validated WATCHER_WEBHOOK_URLS against. Disabled by default
+// (TRACKER_PROVIDER=noop); a no-op dispatcher is returned when no provider is
+// configured, so core use cases never need nil checks beyond the optional
+// Tracker field.
+func buildTrackerDispatcher(provider string) *tracker.Dispatcher {
 	var tr tracker.Tracker = tracker.NoopTracker{}
-	switch cfg.Provider {
+	switch provider {
 	case "inprocess":
 		tr = tracker.NewInProcessTracker(func(msg string, args ...any) {
 			slog.Debug(msg, args...)
@@ -383,6 +384,8 @@ func buildTrackerDispatcher() *tracker.Dispatcher {
 		}
 	case "noop", "":
 		tr = tracker.NoopTracker{}
+	default:
+		slog.Error("unknown TRACKER_PROVIDER; no tracker runs (use noop, inprocess or webhook)", "provider", provider)
 	}
 	return tracker.NewDispatcher(tr, slog.Default())
 }
