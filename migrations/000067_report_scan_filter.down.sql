@@ -23,6 +23,16 @@ CREATE FUNCTION report_examined_finding(
         FALSE)
 $$;
 
+-- The declared scan filters are kept so that applying 000067 again restores
+-- them. Without the copy a Trivy --severity HIGH,CRITICAL report would come
+-- back with no filter and claim to have examined every severity. The up
+-- migration restores from this table and drops it.
+DROP TABLE IF EXISTS migration_000067_report_filters;
+CREATE TABLE migration_000067_report_filters AS
+SELECT id, filter_severities, filter_fixable_only
+FROM reports
+WHERE filter_severities IS NOT NULL OR filter_fixable_only;
+
 ALTER TABLE reports
     DROP CONSTRAINT IF EXISTS reports_filter_severities_check,
     DROP COLUMN IF EXISTS filter_fixable_only,

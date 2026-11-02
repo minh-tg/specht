@@ -14,6 +14,21 @@ ALTER TABLE reports
         )
     );
 
+-- Applying this migration again after its down restores the filters the down
+-- kept in migration_000067_report_filters, then drops that table. Reports
+-- uploaded while the migration was rolled back have no filter on record.
+DO $$
+BEGIN
+    IF to_regclass('migration_000067_report_filters') IS NOT NULL THEN
+        UPDATE reports r
+        SET filter_severities = b.filter_severities,
+            filter_fixable_only = b.filter_fixable_only
+        FROM migration_000067_report_filters b
+        WHERE r.id = b.id;
+        DROP TABLE migration_000067_report_filters;
+    END IF;
+END $$;
+
 -- The examined test now also asks whether the finding is inside the report's
 -- filter. The severity is the one the finding has in the report's scan scope,
 -- or the finding's current severity when the scope holds no row for it. The
