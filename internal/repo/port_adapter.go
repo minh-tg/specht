@@ -238,15 +238,32 @@ func (r *pgProjectPort) GetByID(ctx context.Context, id string) (port.Project, e
 // serializes concurrent membership writes for one project, so a check such as
 // "is this the last admin" and the write that follows it cannot interleave
 // with another writer's.
-func (r *pgProjectPort) inMembershipTx(ctx context.Context, pid pgtype.UUID, fn func(q *sqlc.Queries) error) error {
+//
+// A write for a person (target valid) share-locks the person's account row
+// before the project lock, and fn learns whether the account is deactivated.
+// A deactivation locks the account first and the projects after, so with this
+// order a deactivation and a promotion of the same account wait for each other
+// instead of passing each other's checks, and the foreign key check of a new
+// member row never waits on an account a deactivation holds while that
+// deactivation waits for the project. A missing account answers
+// port.ErrNotFound.
+func (r *pgProjectPort) inMembershipTx(ctx context.Context, pid, target pgtype.UUID, fn func(q *sqlc.Queries, targetDisabled bool) error) error {
 	if r.withTx == nil {
 		return errors.New("project port: transactions unavailable")
 	}
 	return r.withTx(ctx, func(q *sqlc.Queries) error {
+		disabled := false
+		if target.Valid {
+			disabledAt, err := q.LockUserForMembership(ctx, target)
+			if err != nil {
+				return mappingErr(err)
+			}
+			disabled = disabledAt.Valid
+		}
 		if _, err := q.LockProjectForMembership(ctx, pid); err != nil {
 			return mappingErr(err)
 		}
-		return fn(q)
+		return fn(q, disabled)
 	})
 }
 
@@ -283,7 +300,12 @@ func (r *pgProjectPort) UpsertMemberChecked(ctx context.Context, projectID, user
 		return port.ProjectMember{}, err
 	}
 	var row sqlc.ProjectMember
-	err = r.inMembershipTx(ctx, pid, func(q *sqlc.Queries) error {
+	err = r.inMembershipTx(ctx, pid, uid, func(q *sqlc.Queries, targetDisabled bool) error {
+		if targetDisabled && role == "admin" {
+			// A deactivated account holds no admin seat that counts, and the
+			// deactivation that raced this write must not be undone by it.
+			return port.ErrNotFound
+		}
 		existing, err := q.GetProjectMember(ctx, sqlc.GetProjectMemberParams{ProjectID: pid, UserID: uid})
 		switch {
 		case err == nil:
@@ -371,7 +393,7 @@ func (r *pgProjectPort) DeleteMemberChecked(ctx context.Context, projectID, user
 	if err != nil {
 		return err
 	}
-	return r.inMembershipTx(ctx, pid, func(q *sqlc.Queries) error {
+	return r.inMembershipTx(ctx, pid, pgtype.UUID{}, func(q *sqlc.Queries, _ bool) error {
 		existing, err := q.GetProjectMember(ctx, sqlc.GetProjectMemberParams{ProjectID: pid, UserID: uid})
 		switch {
 		case err == nil:

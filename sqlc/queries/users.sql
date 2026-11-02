@@ -41,8 +41,30 @@ RETURNING *;
 
 -- name: LockActiveAdmins :many
 -- Locks the active global admins for the rest of the transaction, so two
--- concurrent demotions cannot each see another admin and leave none.
-SELECT id FROM users WHERE role = 'admin' AND disabled_at IS NULL FOR UPDATE;
+-- concurrent demotions cannot each see another admin and leave none. Rows are
+-- locked in id order, the order every other statement that locks several
+-- accounts uses, so two of them cannot wait on each other.
+SELECT id FROM users WHERE role = 'admin' AND disabled_at IS NULL ORDER BY id FOR UPDATE;
+
+-- name: LockUserAndActiveAdmins :many
+-- The first lock of a deactivation: the account and the active global admins,
+-- in id order. A write that grants the account a project admin role share-locks
+-- its row before it takes the project lock, so it either committed before this
+-- statement or waits until the deactivation ends. Without that, the account
+-- could become a project's admin between the deactivation's checks.
+SELECT id FROM users WHERE id = $1 OR (role = 'admin' AND disabled_at IS NULL) ORDER BY id FOR UPDATE;
+
+-- name: LockUsersShared :many
+-- Share-locks accounts in id order, the order a deactivation locks them in, so
+-- a transaction that holds some of them and waits for another cannot meet a
+-- deactivation that holds that one and waits for the first.
+SELECT id FROM users WHERE id = ANY($1::uuid[]) ORDER BY id FOR SHARE;
+
+-- name: LockUserForMembership :one
+-- Share-locks an account before a membership write takes the project lock, and
+-- tells whether the account is deactivated. A deactivation updates the row, so
+-- it waits for the write, or the write waits for it.
+SELECT disabled_at FROM users WHERE id = $1 FOR SHARE;
 
 -- name: AcquireSetupLock :exec
 SELECT pg_advisory_xact_lock($1::bigint);

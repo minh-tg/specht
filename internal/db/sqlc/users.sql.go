@@ -310,11 +310,13 @@ func (q *Queries) ListUsersByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([
 }
 
 const lockActiveAdmins = `-- name: LockActiveAdmins :many
-SELECT id FROM users WHERE role = 'admin' AND disabled_at IS NULL FOR UPDATE
+SELECT id FROM users WHERE role = 'admin' AND disabled_at IS NULL ORDER BY id FOR UPDATE
 `
 
 // Locks the active global admins for the rest of the transaction, so two
-// concurrent demotions cannot each see another admin and leave none.
+// concurrent demotions cannot each see another admin and leave none. Rows are
+// locked in id order, the order every other statement that locks several
+// accounts uses, so two of them cannot wait on each other.
 func (q *Queries) LockActiveAdmins(ctx context.Context) ([]pgtype.UUID, error) {
 	rows, err := q.db.Query(ctx, lockActiveAdmins)
 	if err != nil {
@@ -348,6 +350,35 @@ func (q *Queries) LockFamilyOwner(ctx context.Context, familyID pgtype.UUID) (pg
 	var id pgtype.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const lockUserAndActiveAdmins = `-- name: LockUserAndActiveAdmins :many
+SELECT id FROM users WHERE id = $1 OR (role = 'admin' AND disabled_at IS NULL) ORDER BY id FOR UPDATE
+`
+
+// The first lock of a deactivation: the account and the active global admins,
+// in id order. A write that grants the account a project admin role share-locks
+// its row before it takes the project lock, so it either committed before this
+// statement or waits until the deactivation ends. Without that, the account
+// could become a project's admin between the deactivation's checks.
+func (q *Queries) LockUserAndActiveAdmins(ctx context.Context, id pgtype.UUID) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, lockUserAndActiveAdmins, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockUserForLink = `-- name: LockUserForLink :one
@@ -385,6 +416,20 @@ func (q *Queries) LockUserForLogin(ctx context.Context, id pgtype.UUID) (LockUse
 	var i LockUserForLoginRow
 	err := row.Scan(&i.PasswordHash, &i.DisabledAt, &i.TokenVersion)
 	return i, err
+}
+
+const lockUserForMembership = `-- name: LockUserForMembership :one
+SELECT disabled_at FROM users WHERE id = $1 FOR SHARE
+`
+
+// Share-locks an account before a membership write takes the project lock, and
+// tells whether the account is deactivated. A deactivation updates the row, so
+// it waits for the write, or the write waits for it.
+func (q *Queries) LockUserForMembership(ctx context.Context, id pgtype.UUID) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, lockUserForMembership, id)
+	var disabled_at pgtype.Timestamptz
+	err := row.Scan(&disabled_at)
+	return disabled_at, err
 }
 
 const lockUserForRefresh = `-- name: LockUserForRefresh :one
@@ -438,6 +483,33 @@ func (q *Queries) LockUserPasswordHash(ctx context.Context, id pgtype.UUID) (pgt
 	var password_hash pgtype.Text
 	err := row.Scan(&password_hash)
 	return password_hash, err
+}
+
+const lockUsersShared = `-- name: LockUsersShared :many
+SELECT id FROM users WHERE id = ANY($1::uuid[]) ORDER BY id FOR SHARE
+`
+
+// Share-locks accounts in id order, the order a deactivation locks them in, so
+// a transaction that holds some of them and waits for another cannot meet a
+// deactivation that holds that one and waits for the first.
+func (q *Queries) LockUsersShared(ctx context.Context, dollar_1 []pgtype.UUID) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, lockUsersShared, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const setUserDisabled = `-- name: SetUserDisabled :one

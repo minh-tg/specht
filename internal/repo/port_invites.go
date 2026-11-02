@@ -135,7 +135,7 @@ func (r *pgInvitePort) Lookup(ctx context.Context, tokenHash string) (port.Invit
 }
 
 func (r *pgInvitePort) AcceptWithNewAccount(ctx context.Context, tokenHash string, account port.InviteeAccount) (port.AcceptedInvite, error) {
-	return r.accept(ctx, tokenHash, func(q *sqlc.Queries, inv sqlc.Invite) (sqlc.User, error) {
+	return r.accept(ctx, tokenHash, pgtype.UUID{}, func(q *sqlc.Queries, inv sqlc.Invite) (sqlc.User, error) {
 		if inv.Email.Valid && !strings.EqualFold(inv.Email.String, account.Email) {
 			return sqlc.User{}, port.ErrInviteEmailMismatch
 		}
@@ -159,10 +159,15 @@ func (r *pgInvitePort) AcceptAsUser(ctx context.Context, tokenHash, userID strin
 	if err != nil {
 		return port.AcceptedInvite{}, err
 	}
-	return r.accept(ctx, tokenHash, func(q *sqlc.Queries, inv sqlc.Invite) (sqlc.User, error) {
+	return r.accept(ctx, tokenHash, uid, func(q *sqlc.Queries, inv sqlc.Invite) (sqlc.User, error) {
 		user, err := q.GetUserByID(ctx, uid)
 		if err != nil {
 			return sqlc.User{}, mappingErr(err)
+		}
+		if inv.Role == "admin" && user.DisabledAt.Valid {
+			// The account was deactivated after the request signed in; the
+			// link looks as dead as one whose creator can no longer grant it.
+			return sqlc.User{}, port.ErrNotFound
 		}
 		if inv.Email.Valid && !strings.EqualFold(inv.Email.String, user.Email) {
 			return sqlc.User{}, port.ErrInviteEmailMismatch
@@ -217,7 +222,7 @@ func creatorMayGrant(ctx context.Context, q *sqlc.Queries, projectID, createdBy 
 // stays usable. The claim goes through only while the creator may still hand
 // out the invite's role, checked under locks in the same transaction. The
 // creator is locked before the invite row, the order a deactivation takes.
-func (r *pgInvitePort) accept(ctx context.Context, tokenHash string, resolve func(q *sqlc.Queries, inv sqlc.Invite) (sqlc.User, error)) (port.AcceptedInvite, error) {
+func (r *pgInvitePort) accept(ctx context.Context, tokenHash string, existing pgtype.UUID, resolve func(q *sqlc.Queries, inv sqlc.Invite) (sqlc.User, error)) (port.AcceptedInvite, error) {
 	var out port.AcceptedInvite
 	err := r.withTx(ctx, func(q *sqlc.Queries) error {
 		open, err := q.GetPendingInviteByHash(ctx, tokenHash)
@@ -225,6 +230,20 @@ func (r *pgInvitePort) accept(ctx context.Context, tokenHash string, resolve fun
 			return port.ErrNotFound
 		}
 		if err != nil {
+			return err
+		}
+		// The accounts this claim rests on are share-locked together, in id
+		// order, before anything else: the creator, whose authority is checked,
+		// and an existing invitee, whose member row is inserted below. A
+		// deactivation or demotion locks accounts in id order too, so the two
+		// cannot hold one each and wait for the other, and a link that makes
+		// the invitee a project admin cannot land between a deactivation's
+		// checks. Project rows come after, as everywhere.
+		accounts := []pgtype.UUID{open.CreatedBy}
+		if existing.Valid {
+			accounts = append(accounts, existing)
+		}
+		if _, err := q.LockUsersShared(ctx, accounts); err != nil {
 			return err
 		}
 		ok, reason, err := creatorMayGrant(ctx, q, open.ProjectID, open.CreatedBy, open.Role)
