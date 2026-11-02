@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"github.com/minh-tg/specht/internal/auth"
@@ -117,16 +116,12 @@ func (u *Usecases) DeactivateUser(ctx context.Context, userID string, force bool
 		}
 		return nil, nil, fmt.Errorf("deactivate user: %w", err)
 	}
-	if err := u.deps.Stores.RefreshTokens.RevokeAllForUser(ctx, id); err != nil {
-		// The new token generation and the sign-in checks already stop the
-		// account; revoking its refresh tokens is cleanup.
-		slog.Error("deactivate user: revoke refresh tokens", "user_id", id, "error", err)
-	}
 	profile := toUserProfile(user)
 	return &profile, revokedKeys, nil
 }
 
-// ReactivateUser lets a deactivated account sign in again.
+// ReactivateUser lets a deactivated account sign in again. It starts a new
+// token generation, so a token from before the deactivation stays dead.
 func (u *Usecases) ReactivateUser(ctx context.Context, userID string) (*UserProfile, error) {
 	if _, err := requireInstanceAdmin(ctx); err != nil {
 		return nil, err

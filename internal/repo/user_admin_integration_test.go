@@ -66,7 +66,7 @@ func TestUserRoleChangeAndDeactivation(t *testing.T) {
 	assert.Nil(t, enabled.DisabledAt)
 	regen, err := stores.Users.TokenVersion(ctx, member.ID)
 	require.NoError(t, err)
-	assert.Equal(t, gen+1, regen, "the generation counts the second deactivation but not the reactivation")
+	assert.Equal(t, gen+2, regen, "the generation counts the second deactivation and the reactivation")
 	_ = admin
 }
 
