@@ -900,6 +900,7 @@ func authzRows() []authzRow {
 			Tenants: onlyX,
 		},
 	}
+	rows = append(rows, roleGrantRows()...)
 	// ID-addressed findings hide inaccessible projects. Scope middleware still
 	// refuses keys on session-only actions, and visible members without the
 	// required action role still get 403.
