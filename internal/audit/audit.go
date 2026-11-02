@@ -107,6 +107,10 @@ type Event struct {
 	Target    string
 	RequestID string
 	Error     string
+	// Detail records how the operation was asked for when that matters to a
+	// reader of the log, such as an override flag a host command was given.
+	// Empty leaves it off the line.
+	Detail    string
 	StartedAt time.Time
 }
 
@@ -141,6 +145,9 @@ func (a *Logger) Log(ctx context.Context, event Event) {
 	}
 	if event.Error != "" {
 		fields = append(fields, "error", clean(event.Error))
+	}
+	if event.Detail != "" {
+		fields = append(fields, "detail", clean(event.Detail))
 	}
 	a.logger.InfoContext(ctx, "audit", fields...)
 }

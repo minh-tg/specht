@@ -574,7 +574,13 @@ docker compose -f deploy/docker-compose.yml exec server specht grant-admin ada@e
 `reset-password` prints a generated 24-character password once and ends every
 session of the account. Add `--password-stdin` to set a password you chose
 instead; it is read from standard input and never printed. A deactivated
-account stays deactivated, and the command says so. `grant-admin` makes the
+account stays deactivated, and the command says so. An account that signs in
+only through SSO has no local password, and `reset-password` refuses it, as the
+reset link does. When the identity provider is down and such an account has to
+get in, add `--allow-sso-account`: the account then has a local password next to
+its SSO link, password sign-in works for it, and `SSO_ADMIN_GROUPS` no longer
+grants it admin. The command says so, and its audit line carries
+`detail="allow-sso-account: an sso-only account got a local password"`. `grant-admin` makes the
 account a global admin and refuses a deactivated account (reactivate it first);
 a session the person already has picks the role up at the next sign-in. Neither command touches the seeded `system@specht.local` account. Both write an
 audit line (`audit=user.reset_password` or `audit=user.role`, with

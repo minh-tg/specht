@@ -92,6 +92,22 @@ func TestOutcomeString(t *testing.T) {
 	}
 }
 
+func TestLogWritesTheDetailOnlyWhenSet(t *testing.T) {
+	var buf bytes.Buffer
+	logger := NewLogger(slog.New(slog.NewTextHandler(&buf, nil)))
+
+	logger.Log(context.Background(), Event{Name: EventResetPassword, Actor: "cli"})
+	if strings.Contains(buf.String(), "detail=") {
+		t.Fatalf("an empty detail is left off the line: %s", buf.String())
+	}
+
+	buf.Reset()
+	logger.Log(context.Background(), Event{Name: EventResetPassword, Actor: "cli", Detail: "allow-sso-account\nforged=1"})
+	if !strings.Contains(buf.String(), `detail="allow-sso-account\\nforged=1"`) {
+		t.Fatalf("the detail is written and escaped: %s", buf.String())
+	}
+}
+
 func TestLogUsesTheActorWhenThereIsNoPrincipal(t *testing.T) {
 	var buf bytes.Buffer
 	logger := NewLogger(slog.New(slog.NewTextHandler(&buf, nil)))

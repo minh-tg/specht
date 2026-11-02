@@ -27,7 +27,7 @@ import (
 func recoveryUsage() string {
 	prog := filepath.Base(os.Args[0])
 	return fmt.Sprintf(`usage:
-  %[1]s reset-password <email> [--password-stdin]
+  %[1]s reset-password <email> [--password-stdin] [--allow-sso-account]
   %[1]s grant-admin <email>
 
 These commands act directly on the database, so they are the way back in when
@@ -36,12 +36,19 @@ for example:
   docker compose exec server %[1]s reset-password ada@example.com
 
 reset-password prints a generated password once. With --password-stdin it reads
-the new password from standard input instead and prints nothing secret.`, prog)
+the new password from standard input instead and prints nothing secret.
+An account that signs in only through the identity provider has no local
+password and is refused; --allow-sso-account gives it one anyway, for when the
+provider is down.`, prog)
 }
+
+// allowSSOAccountFlag is the reset-password override for an SSO-only account.
+// The audit line names it when it was given.
+const allowSSOAccountFlag = "--allow-sso-account"
 
 // recoveryService is the part of the use cases the recovery commands call.
 type recoveryService interface {
-	ResetPasswordByEmail(ctx context.Context, email, password string) (*usecase.UserProfile, error)
+	ResetPasswordByEmail(ctx context.Context, email, password string, allowSSOAccount bool) (*usecase.RecoveryReset, error)
 	GrantAdminByEmail(ctx context.Context, email string) (*usecase.UserProfile, error)
 }
 
@@ -74,9 +81,10 @@ const recoveryActor = "cli"
 
 // auditRecovery writes the audit line for one recovery command. On success the
 // target is the account id; on a failure that never resolved an account it is
-// the email the operator typed.
-func auditRecovery(ctx context.Context, log *audit.Logger, name string, profile *usecase.UserProfile, email string, err error) {
-	event := audit.Event{Name: name, Outcome: audit.OutcomeSuccess, Actor: recoveryActor, Target: email, StartedAt: time.Now()}
+// the email the operator typed. detail, when not empty, names an override the
+// command was given.
+func auditRecovery(ctx context.Context, log *audit.Logger, name string, profile *usecase.UserProfile, email, detail string, err error) {
+	event := audit.Event{Name: name, Outcome: audit.OutcomeSuccess, Actor: recoveryActor, Target: email, Detail: detail, StartedAt: time.Now()}
 	if profile != nil {
 		event.Target = profile.ID
 	}
@@ -105,11 +113,13 @@ func runRecovery(ctx context.Context, svc recoveryService, auditLog *audit.Logge
 
 func resetPasswordCommand(ctx context.Context, svc recoveryService, auditLog *audit.Logger, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	var email string
-	fromStdin := false
+	fromStdin, allowSSO := false, false
 	for _, a := range args {
 		switch {
 		case a == "--password-stdin" || a == "-password-stdin":
 			fromStdin = true
+		case a == allowSSOAccountFlag || a == allowSSOAccountFlag[1:]:
+			allowSSO = true
 		case strings.HasPrefix(a, "-"):
 			return recoveryUsageError(stderr, fmt.Sprintf("unknown option %q", a))
 		case email == "":
@@ -144,8 +154,12 @@ func resetPasswordCommand(ctx context.Context, svc recoveryService, auditLog *au
 		password = generated
 	}
 
-	profile, err := svc.ResetPasswordByEmail(ctx, email, password)
-	auditRecovery(ctx, auditLog, audit.EventResetPassword, profile, email, err)
+	reset, err := svc.ResetPasswordByEmail(ctx, email, password, allowSSO)
+	var profile *usecase.UserProfile
+	if reset != nil {
+		profile = &reset.Profile
+	}
+	auditRecovery(ctx, auditLog, audit.EventResetPassword, profile, email, resetAuditDetail(allowSSO, reset), err)
 	if err != nil {
 		return reportRecoveryError(stderr, err)
 	}
@@ -153,10 +167,26 @@ func resetPasswordCommand(ctx context.Context, svc recoveryService, auditLog *au
 	if !fromStdin {
 		_, _ = fmt.Fprintf(stdout, "New password: %s\nSign in with it and change it right away.\n", password)
 	}
+	if reset.WasSSOOnly {
+		_, _ = fmt.Fprintln(stdout, "Note: this account signed in only through the identity provider. It now also has a local password, so password sign-in works for it and SSO_ADMIN_GROUPS no longer grants it admin.")
+	}
 	if profile.Disabled {
 		_, _ = fmt.Fprintln(stdout, "Note: this account is deactivated and still cannot sign in. Reactivate it from the admin area.")
 	}
 	return 0
+}
+
+// resetAuditDetail records on the audit line that the SSO override was given,
+// and whether it gave an SSO-only account a local password.
+func resetAuditDetail(allowSSO bool, reset *usecase.RecoveryReset) string {
+	switch {
+	case !allowSSO:
+		return ""
+	case reset != nil && reset.WasSSOOnly:
+		return "allow-sso-account: an sso-only account got a local password"
+	default:
+		return "allow-sso-account"
+	}
 }
 
 func grantAdminCommand(ctx context.Context, svc recoveryService, auditLog *audit.Logger, args []string, stdout, stderr io.Writer) int {
@@ -175,7 +205,7 @@ func grantAdminCommand(ctx context.Context, svc recoveryService, auditLog *audit
 		return recoveryUsageError(stderr, "an email address is required")
 	}
 	profile, err := svc.GrantAdminByEmail(ctx, email)
-	auditRecovery(ctx, auditLog, audit.EventChangeUserRole, profile, email, err)
+	auditRecovery(ctx, auditLog, audit.EventChangeUserRole, profile, email, "", err)
 	if err != nil {
 		return reportRecoveryError(stderr, err)
 	}
@@ -195,6 +225,11 @@ func reportRecoveryError(stderr io.Writer, err error) int {
 		fmt.Fprintln(stderr, "error: that account is deactivated; reactivate it from the admin area before granting admin")
 	case errors.Is(err, usecase.ErrInvalidCredentialInput):
 		fmt.Fprintf(stderr, "error: %s\n", err.Error())
+	case errors.Is(err, usecase.ErrNoLocalPassword):
+		fmt.Fprintln(stderr, "error: that account signs in through the identity provider and has no local password; "+
+			"to give it one while the provider is down, run the command again with "+allowSSOAccountFlag)
+	case errors.Is(err, usecase.ErrRecoveryAccountChanged):
+		fmt.Fprintln(stderr, "error: the account's password changed while the command ran, or it was linked to the identity provider; nothing was written, run the command again")
 	default:
 		slog.Error("recovery command failed", "error", err)
 		fmt.Fprintln(stderr, "error: the command could not complete; see the log above for detail")
