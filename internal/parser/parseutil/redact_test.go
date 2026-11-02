@@ -64,10 +64,11 @@ func TestRedactRawJSONRedactsAnObjectUnderACredentialName(t *testing.T) {
 		`"a":{"b":{"c":{"d":{"auth_token":"[REDACTED]"}}}}}`, string(out))
 }
 
-// TestRedactRawJSONKeepsAListUnderACredentialName pins that a list under a
-// credential fragment keeps its shape. The objects inside keep RuleID and
-// StartLine, and only the parser's own Match key is replaced.
-func TestRedactRawJSONKeepsAListUnderACredentialName(t *testing.T) {
+// TestRedactRawJSONKeepsAFindingListUnderACredentialName pins that a list of
+// findings (objects with a RuleID) keeps its shape under a credential name. The
+// objects inside keep RuleID and StartLine, and only the parser's own Match key
+// is replaced.
+func TestRedactRawJSONKeepsAFindingListUnderACredentialName(t *testing.T) {
 	data := []byte(`{"Secrets":[{"RuleID":"aws-access-key-id","StartLine":3,"Match":"AKIA-VALUE"}]}`)
 	out, err := parseutil.RedactRawJSON("test", data, "Match")
 	require.NoError(t, err)
@@ -75,15 +76,15 @@ func TestRedactRawJSONKeepsAListUnderACredentialName(t *testing.T) {
 }
 
 // TestRedactRawJSONRedactsScalarElementsOfACredentialList covers a credential
-// name whose value is a list of scalars. A scalar element has no key, so the
-// walk must replace it directly; otherwise the value survives redaction.
+// name whose value is a list of scalars. The list is replaced whole, so no
+// element survives.
 func TestRedactRawJSONRedactsScalarElementsOfACredentialList(t *testing.T) {
 	data := []byte(`{"db_password":["x"],` +
 		`"a":{"b":{"c":{"d":{"db_password":["y"]}}}}}`)
 	out, err := parseutil.RedactRawJSON("test", data)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"db_password":["[REDACTED]"],`+
-		`"a":{"b":{"c":{"d":{"db_password":["[REDACTED]"]}}}}}`, string(out))
+	assert.JSONEq(t, `{"db_password":"[REDACTED]",`+
+		`"a":{"b":{"c":{"d":{"db_password":"[REDACTED]"}}}}}`, string(out))
 }
 
 func TestRedactRawJSONRedactsParserKeysInAdditionToCredentialKeys(t *testing.T) {
