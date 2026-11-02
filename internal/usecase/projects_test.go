@@ -30,13 +30,13 @@ func TestUpdateProject_GlobalAdminAllowed(t *testing.T) {
 	pr := projectUpdateRepos()
 	var gotName string
 	var gotDesc *string
-	pr.updateFn = func(ctx context.Context, slug, name string, description *string) (port.Project, error) {
+	pr.updateFn = func(ctx context.Context, slug, name string, description, defaultBranch *string) (port.Project, error) {
 		gotName = name
 		gotDesc = description
 		return port.Project{ID: findingFixtureProjectID, Slug: slug, Name: name, Description: description}, nil
 	}
 	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
-	resp, err := uc.UpdateProject(sessionCtx("admin-1", auth.RoleAdmin), "my-app", strptr("Renamed"), strptr("new desc"))
+	resp, err := uc.UpdateProject(sessionCtx("admin-1", auth.RoleAdmin), "my-app", strptr("Renamed"), strptr("new desc"), nil)
 	require.NoError(t, err)
 	assert.Equal(t, "Renamed", gotName)
 	require.NotNil(t, gotDesc)
@@ -49,11 +49,11 @@ func TestUpdateProject_ProjectAdminAllowed(t *testing.T) {
 	pr.listMembersFn = func(ctx context.Context, projectID string) ([]port.ProjectMember, error) {
 		return []port.ProjectMember{{ProjectID: projectID, UserID: "admin-1", Role: auth.RoleAdmin}}, nil
 	}
-	pr.updateFn = func(ctx context.Context, slug, name string, description *string) (port.Project, error) {
+	pr.updateFn = func(ctx context.Context, slug, name string, description, defaultBranch *string) (port.Project, error) {
 		return port.Project{ID: findingFixtureProjectID, Slug: slug, Name: name, Description: description}, nil
 	}
 	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
-	resp, err := uc.UpdateProject(sessionCtx("admin-1", auth.RoleViewer), "my-app", strptr("Renamed"), nil)
+	resp, err := uc.UpdateProject(sessionCtx("admin-1", auth.RoleViewer), "my-app", strptr("Renamed"), nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "Renamed", resp.Name)
 }
@@ -64,7 +64,7 @@ func TestUpdateProject_NonAdminDenied(t *testing.T) {
 		return []port.ProjectMember{{ProjectID: projectID, UserID: "u1", Role: auth.RoleViewer}}, nil
 	}
 	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
-	_, err := uc.UpdateProject(sessionCtx("u1", auth.RoleViewer), "my-app", strptr("Renamed"), nil)
+	_, err := uc.UpdateProject(sessionCtx("u1", auth.RoleViewer), "my-app", strptr("Renamed"), nil, nil)
 	assert.ErrorIs(t, err, ErrProjectAccessDenied)
 }
 
@@ -74,9 +74,9 @@ func TestUpdateProject_NotFound(t *testing.T) {
 		return port.Project{}, port.ErrNotFound
 	}
 	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
-	_, err := uc.UpdateProject(sessionCtx("admin-1", auth.RoleAdmin), "missing", strptr("Renamed"), nil)
+	_, err := uc.UpdateProject(sessionCtx("admin-1", auth.RoleAdmin), "missing", strptr("Renamed"), nil, nil)
 	assert.ErrorIs(t, err, port.ErrNotFound, "a global admin sees every project, so a missing one is not found")
-	_, err = uc.UpdateProject(sessionCtx("u1", auth.RoleMember), "missing", strptr("Renamed"), nil)
+	_, err = uc.UpdateProject(sessionCtx("u1", auth.RoleMember), "missing", strptr("Renamed"), nil, nil)
 	assert.ErrorIs(t, err, ErrProjectAccessDenied, "anyone else cannot tell it from a project they cannot see")
 }
 

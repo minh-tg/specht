@@ -27,7 +27,7 @@ type mockProjectRepo struct {
 	listByIDsFn           func(context.Context, []string) ([]port.Project, error)
 	getBySlugFn           func(context.Context, string) (port.Project, error)
 	getByIDFn             func(context.Context, string) (port.Project, error)
-	updateFn              func(context.Context, string, string, *string) (port.Project, error)
+	updateFn              func(context.Context, string, string, *string, *string) (port.Project, error)
 	updateSettingsFn      func(context.Context, string, json.RawMessage) (port.Project, error)
 	deleteFn              func(context.Context, string) (port.Project, error)
 	upsertMemberFn        func(context.Context, string, string, string) (port.ProjectMember, error)
@@ -409,11 +409,11 @@ func (m *mockProjectRepo) GetBySlug(ctx context.Context, slug string) (port.Proj
 	return m.getBySlugFn(ctx, slug)
 }
 
-func (m *mockProjectRepo) Update(ctx context.Context, slug, name string, description *string) (port.Project, error) {
+func (m *mockProjectRepo) Update(ctx context.Context, slug, name string, description, defaultBranch *string) (port.Project, error) {
 	if m.updateFn == nil {
 		return port.Project{}, fmt.Errorf("unexpected call to Update")
 	}
-	return m.updateFn(ctx, slug, name, description)
+	return m.updateFn(ctx, slug, name, description, defaultBranch)
 }
 
 func (m *mockProjectRepo) UpdateSettings(ctx context.Context, projectID string, settings json.RawMessage) (port.Project, error) {

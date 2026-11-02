@@ -53,7 +53,7 @@ type mockUsecases struct {
 	isProjectMemberFn       func(ctx context.Context, projectID, userID string) (bool, error)
 	listProjectsFn          func(ctx context.Context) ([]usecase.ProjectResponse, error)
 	getProjectFn            func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
-	updateProjectFn         func(ctx context.Context, slug string, name, description *string) (*usecase.ProjectResponse, error)
+	updateProjectFn         func(ctx context.Context, slug string, name, description, defaultBranch *string) (*usecase.ProjectResponse, error)
 	deleteProjectFn         func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
 	listFindingsFn          func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error)
 	listReportsFn           func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
@@ -206,11 +206,11 @@ func (m *mockUsecases) GetProject(ctx context.Context, slug string) (*usecase.Pr
 	return m.getProjectFn(ctx, slug)
 }
 
-func (m *mockUsecases) UpdateProject(ctx context.Context, slug string, name, description *string) (*usecase.ProjectResponse, error) {
+func (m *mockUsecases) UpdateProject(ctx context.Context, slug string, name, description, defaultBranch *string) (*usecase.ProjectResponse, error) {
 	if m.updateProjectFn == nil {
 		return nil, fmt.Errorf("unexpected call to UpdateProject")
 	}
-	return m.updateProjectFn(ctx, slug, name, description)
+	return m.updateProjectFn(ctx, slug, name, description, defaultBranch)
 }
 
 func (m *mockUsecases) DeleteProject(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
@@ -1319,7 +1319,7 @@ func TestCreateProject_InvalidSlug(t *testing.T) {
 
 func TestUpdateProject_Success(t *testing.T) {
 	mock := &mockUsecases{
-		updateProjectFn: func(ctx context.Context, slug string, name, description *string) (*usecase.ProjectResponse, error) {
+		updateProjectFn: func(ctx context.Context, slug string, name, description, defaultBranch *string) (*usecase.ProjectResponse, error) {
 			assert.Equal(t, "my-app", slug)
 			require.NotNil(t, name)
 			return &usecase.ProjectResponse{ID: "p1", Slug: slug, Name: *name}, nil
@@ -1337,6 +1337,42 @@ func TestUpdateProject_Success(t *testing.T) {
 	assert.Equal(t, "Renamed", resp.Name)
 }
 
+func TestUpdateProject_DefaultBranchAlone(t *testing.T) {
+	mock := &mockUsecases{
+		updateProjectFn: func(ctx context.Context, slug string, name, description, defaultBranch *string) (*usecase.ProjectResponse, error) {
+			assert.Nil(t, name)
+			assert.Nil(t, description)
+			require.NotNil(t, defaultBranch)
+			return &usecase.ProjectResponse{ID: "p1", Slug: slug, DefaultBranch: defaultBranch}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("PUT", "/api/v1/projects/my-app", strings.NewReader(`{"default_branch":"main"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"default_branch":"main"`)
+}
+
+func TestUpdateProject_InvalidDefaultBranch(t *testing.T) {
+	mock := &mockUsecases{
+		updateProjectFn: func(ctx context.Context, slug string, name, description, defaultBranch *string) (*usecase.ProjectResponse, error) {
+			return nil, fmt.Errorf("%w: at most 255 bytes", usecase.ErrInvalidDefaultBranch)
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("PUT", "/api/v1/projects/my-app", strings.NewReader(`{"default_branch":"x"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), `"code":"invalid_field"`)
+	assert.Contains(t, w.Body.String(), "default_branch")
+}
+
 func TestUpdateProject_MissingFields(t *testing.T) {
 	router := testRouter(&mockUsecases{})
 	req := httptest.NewRequest("PUT", "/api/v1/projects/my-app", strings.NewReader(`{}`))
@@ -1349,7 +1385,7 @@ func TestUpdateProject_MissingFields(t *testing.T) {
 
 func TestUpdateProject_Denied(t *testing.T) {
 	mock := &mockUsecases{
-		updateProjectFn: func(ctx context.Context, slug string, name, description *string) (*usecase.ProjectResponse, error) {
+		updateProjectFn: func(ctx context.Context, slug string, name, description, defaultBranch *string) (*usecase.ProjectResponse, error) {
 			return nil, usecase.ErrProjectAccessDenied
 		},
 	}
@@ -1364,7 +1400,7 @@ func TestUpdateProject_Denied(t *testing.T) {
 
 func TestUpdateProject_NotFound(t *testing.T) {
 	mock := &mockUsecases{
-		updateProjectFn: func(ctx context.Context, slug string, name, description *string) (*usecase.ProjectResponse, error) {
+		updateProjectFn: func(ctx context.Context, slug string, name, description, defaultBranch *string) (*usecase.ProjectResponse, error) {
 			return nil, fmt.Errorf("project not found: missing")
 		},
 	}

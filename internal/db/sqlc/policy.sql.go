@@ -123,7 +123,7 @@ UPDATE projects SET
     policy_template_id = $2,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id
+RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id, default_branch
 `
 
 type SetProjectPolicyTemplateParams struct {
@@ -147,6 +147,7 @@ func (q *Queries) SetProjectPolicyTemplate(ctx context.Context, arg SetProjectPo
 		&i.CveWatcherEnabled,
 		&i.CveWatcherIntervalSeconds,
 		&i.PolicyTemplateID,
+		&i.DefaultBranch,
 	)
 	return i, err
 }

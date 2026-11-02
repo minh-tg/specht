@@ -204,3 +204,70 @@ func TestIngest_FilteredBaselineNeverBlamesWhatItCouldNotSee(t *testing.T) {
 		"f-carried has no evidence and nothing to carry, so it is pre-existing")
 	assert.Equal(t, 2, out.PreExistingCount)
 }
+
+func projectWithDefaultBranch(branch string) port.Project {
+	p := makeProject(true)
+	p.DefaultBranch = &branch
+	return p
+}
+
+// A default branch set on the project is a trunk even after it was the head
+// of a pull request: its reports are baselines again.
+func TestIngest_DefaultBranchSetOnTheProjectIsATrunk(t *testing.T) {
+	t.Run("by branch name", func(t *testing.T) {
+		uc, calls := carryHarnessFor(t, projectWithDefaultBranch("main"), baselineOn(strRef("main"), false, "main"))
+		out, err := carryIngest(t, uc, "feat/x", "main")
+		require.NoError(t, err)
+		requireBaselineUsed(t, out, calls)
+		assert.Empty(t, calls.branchChecked, "the setting decides without asking the branch history")
+	})
+	t.Run("by commit", func(t *testing.T) {
+		uc, calls := carryHarnessFor(t, projectWithDefaultBranch("main"), baselineOn(strRef("main"), true, "main"))
+		out, err := carryIngest(t, uc, "feat/x", ownEarlierCommit)
+		require.NoError(t, err)
+		requireBaselineUsed(t, out, calls)
+	})
+}
+
+// The setting names one branch. Another change branch stays refused, and so
+// does a report of the uploading branch itself, even when that is the default
+// branch.
+func TestIngest_DefaultBranchSettingTrustsOnlyThatBranch(t *testing.T) {
+	t.Run("develop is a change branch", func(t *testing.T) {
+		uc, calls := carryHarnessFor(t, projectWithDefaultBranch("main"), baselineOn(strRef("develop"), false, "develop"))
+		out, err := carryIngest(t, uc, "feat/x", "develop")
+		require.NoError(t, err)
+		requireCarried(t, out, calls)
+	})
+	t.Run("a release branch without change reports is still a trunk", func(t *testing.T) {
+		uc, calls := carryHarnessFor(t, projectWithDefaultBranch("main"), baselineOn(strRef("release/1"), false))
+		out, err := carryIngest(t, uc, "feat/x", "release/1")
+		require.NoError(t, err)
+		requireBaselineUsed(t, out, calls)
+	})
+	t.Run("the default branch naming itself", func(t *testing.T) {
+		uc, calls := carryHarnessFor(t, projectWithDefaultBranch("main"), baselineOn(strRef("main"), false))
+		out, err := carryIngest(t, uc, "main", "main")
+		require.NoError(t, err)
+		requireNotCarried(t, out, calls)
+		assert.Nil(t, calls.baseRecorded, "a report of the branch itself is no baseline")
+	})
+}
+
+// A push build of the default branch is a trunk build even after the branch
+// was a pull request head, so it never carries introductions forward.
+func TestIngest_DefaultBranchPushBuildDoesNotCarry(t *testing.T) {
+	uc, calls := carryHarnessFor(t, projectWithDefaultBranch("main"), func(rr *mockReportRepo, fr *mockFindingRepo) {
+		rr.branchHasChangeFn = func(ctx context.Context, projectID, branch string) (bool, error) {
+			return true, nil
+		}
+	})
+	out, err := carryIngest(t, uc, "main", "")
+	require.NoError(t, err)
+	requireNotCarried(t, out, calls)
+
+	uc, calls = carryHarnessFor(t, projectWithDefaultBranch("main"), nil)
+	out, err = carryIngest(t, uc, "main", "release/1")
+	require.NoError(t, err)
+	requireCarried(t, out, calls)
+}

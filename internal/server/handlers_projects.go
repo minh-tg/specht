@@ -100,18 +100,23 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Name        *string `json:"name"`
-		Description *string `json:"description"`
+		Name          *string `json:"name"`
+		Description   *string `json:"description"`
+		DefaultBranch *string `json:"default_branch"`
 	}
 	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", projectsMsgInvalidBody) {
 		return
 	}
-	if req.Name == nil && req.Description == nil {
-		respondError(w, http.StatusBadRequest, "missing_field", "name or description is required")
+	if req.Name == nil && req.Description == nil && req.DefaultBranch == nil {
+		respondError(w, http.StatusBadRequest, "missing_field", "name, description or default_branch is required")
 		return
 	}
-	project, err := h.usecase.UpdateProject(r.Context(), slug, req.Name, req.Description)
+	project, err := h.usecase.UpdateProject(r.Context(), slug, req.Name, req.Description, req.DefaultBranch)
 	if err != nil {
+		if errors.Is(err, usecase.ErrInvalidDefaultBranch) {
+			respondError(w, http.StatusBadRequest, "invalid_field", "default_branch: "+err.Error())
+			return
+		}
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {
 			respondError(w, http.StatusForbidden, "project_access_denied", projectsMsgAccessDenied)
 			return

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/minh-tg/specht/internal/auth"
@@ -20,12 +21,15 @@ import (
 
 // ProjectResponse is the API representation of a project.
 type ProjectResponse struct {
-	ID          string    `json:"id"`
-	Slug        string    `json:"slug"`
-	Name        string    `json:"name"`
-	Description *string   `json:"description"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string  `json:"id"`
+	Slug        string  `json:"slug"`
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+	// DefaultBranch is the branch whose reports serve as the baseline for
+	// pull requests; null when unset.
+	DefaultBranch *string   `json:"default_branch"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 	// Role is the signed-in caller's effective role on the project (admin,
 	// manager or member), including team-conferred membership. Permissions
 	// derive from it. Both are omitted for API keys and on list endpoints.
@@ -259,12 +263,13 @@ func intOpt(i *int32) *int32 {
 
 func toProject(p port.Project) ProjectResponse {
 	return ProjectResponse{
-		ID:          uuidStr(p.ID),
-		Slug:        p.Slug,
-		Name:        p.Name,
-		Description: strOpt(p.Description),
-		CreatedAt:   timePtr(p.CreatedAt),
-		UpdatedAt:   timePtr(p.UpdatedAt),
+		ID:            uuidStr(p.ID),
+		Slug:          p.Slug,
+		Name:          p.Name,
+		Description:   strOpt(p.Description),
+		DefaultBranch: strOpt(p.DefaultBranch),
+		CreatedAt:     timePtr(p.CreatedAt),
+		UpdatedAt:     timePtr(p.UpdatedAt),
 	}
 }
 
@@ -403,18 +408,54 @@ func (u *Usecases) CreateProject(ctx context.Context, name, slug, description, c
 	return &resp, nil
 }
 
-// UpdateProject renames a project and/or changes its description. Only
-// global admins and project-admin members may mutate a project (the same
-// gate as member management); API keys never may. A nil name leaves the
-// name unchanged; a nil description leaves the description unchanged while
-// a blank description clears it.
-func (u *Usecases) UpdateProject(ctx context.Context, slug string, name, description *string) (*ProjectResponse, error) {
+// ErrInvalidDefaultBranch is returned for a default branch that is too long
+// or holds a control character.
+var ErrInvalidDefaultBranch = errors.New("invalid default branch")
+
+// maxDefaultBranchBytes matches the limit on a report's branch.
+const maxDefaultBranchBytes = 255
+
+// normalizeDefaultBranch trims a requested default branch. Nil stays nil, a
+// blank value becomes nil (unset), and a value over 255 bytes or with a
+// control character is ErrInvalidDefaultBranch.
+func normalizeDefaultBranch(branch *string) (*string, error) {
+	if branch == nil {
+		return nil, nil
+	}
+	trimmed := strings.TrimSpace(*branch)
+	if trimmed == "" {
+		return nil, nil
+	}
+	if len(trimmed) > maxDefaultBranchBytes {
+		return nil, fmt.Errorf("%w: at most %d bytes", ErrInvalidDefaultBranch, maxDefaultBranchBytes)
+	}
+	for _, r := range trimmed {
+		if unicode.IsControl(r) {
+			return nil, fmt.Errorf("%w: control characters are not allowed", ErrInvalidDefaultBranch)
+		}
+	}
+	return &trimmed, nil
+}
+
+// UpdateProject renames a project, changes its description, and sets or
+// clears its default branch. Only global admins and project-admin members may
+// mutate a project (the same gate as member management); API keys never may.
+// A nil name leaves the name unchanged; a nil description or default branch
+// leaves it unchanged while a blank one clears it.
+func (u *Usecases) UpdateProject(ctx context.Context, slug string, name, description, defaultBranch *string) (*ProjectResponse, error) {
+	newBranch, err := normalizeDefaultBranch(defaultBranch)
+	if err != nil {
+		return nil, err
+	}
 	p, err := u.projectBySlugOrDenied(ctx, slug)
 	if err != nil {
 		return nil, err
 	}
 	if err := u.requireProjectAdmin(ctx, p.ID); err != nil {
 		return nil, err
+	}
+	if defaultBranch == nil {
+		newBranch = p.DefaultBranch
 	}
 	newName := p.Name
 	if name != nil && strings.TrimSpace(*name) != "" {
@@ -429,7 +470,7 @@ func (u *Usecases) UpdateProject(ctx context.Context, slug string, name, descrip
 			newDesc = &trimmed
 		}
 	}
-	updated, err := u.deps.Stores.Projects.Update(ctx, slug, newName, newDesc)
+	updated, err := u.deps.Stores.Projects.Update(ctx, slug, newName, newDesc, newBranch)
 	if err != nil {
 		return nil, fmt.Errorf("update project %q: %w", slug, err)
 	}

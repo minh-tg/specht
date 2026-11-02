@@ -66,10 +66,16 @@ type carryCalls struct {
 
 func carryHarness(t *testing.T, configure func(rr *mockReportRepo, fr *mockFindingRepo)) (*Usecases, *carryCalls) {
 	t.Helper()
+	return carryHarnessFor(t, makeProject(true), configure)
+}
+
+// carryHarnessFor is carryHarness for a given project row.
+func carryHarnessFor(t *testing.T, project port.Project, configure func(rr *mockReportRepo, fr *mockFindingRepo)) (*Usecases, *carryCalls) {
+	t.Helper()
 	calls := &carryCalls{}
 	pr, rr, fr := makeTestRepos()
 	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
-		return makeProject(true), nil
+		return project, nil
 	}
 	report := makeReport()
 	report.ID = carryReportID
