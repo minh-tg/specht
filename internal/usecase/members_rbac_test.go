@@ -36,7 +36,10 @@ func setupMembersRBACTest() (*Usecases, *mockProjectRepo) {
 		}
 		return port.Project{}, port.ErrNotFound
 	}
-	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+	users := &mockUserRepo{getByIDFn: func(_ context.Context, id string) (port.User, error) {
+		return port.User{ID: id, Email: id + "@example.com", Role: auth.RoleMember}, nil
+	}}
+	uc := New(Deps{Stores: &port.Stores{Projects: pr, Users: users}})
 	return uc, pr
 }
 
