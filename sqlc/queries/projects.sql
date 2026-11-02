@@ -84,16 +84,18 @@ ORDER BY p.id
 FOR NO KEY UPDATE OF p;
 
 -- name: CountProjectAdmins :one
--- Admins who can sign in: a deactivated account holds a row but governs nothing.
+-- Admins who can sign in: a deactivated account holds a row but governs nothing,
+-- and nobody signs in as the seeded system account.
 SELECT COUNT(*) FROM project_members pm
-JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL
+JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL AND u.email <> 'system@specht.local'
 WHERE pm.project_id = $1 AND pm.role = 'admin';
 
 -- name: CountOtherProjectAdmins :one
 -- Active admins besides one user, the number the last-admin guard needs when
--- that user is about to be removed or demoted.
+-- that user is about to be removed or demoted. The seeded system account is
+-- not one: nobody signs in as it.
 SELECT COUNT(*) FROM project_members pm
-JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL
+JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL AND u.email <> 'system@specht.local'
 WHERE pm.project_id = $1 AND pm.role = 'admin' AND pm.user_id <> $2;
 
 -- name: ListProjectsSoleAdminedBy :many
@@ -103,7 +105,7 @@ JOIN project_members me ON me.project_id = p.id AND me.user_id = $1 AND me.role 
 JOIN users mu ON mu.id = me.user_id AND mu.disabled_at IS NULL
 WHERE NOT EXISTS (
     SELECT 1 FROM project_members pm
-    JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL
+    JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL AND u.email <> 'system@specht.local'
     WHERE pm.project_id = p.id AND pm.role = 'admin' AND pm.user_id <> $1
 )
 ORDER BY p.slug;

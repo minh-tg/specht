@@ -198,14 +198,7 @@ func (u *Usecases) AddTeamMember(ctx context.Context, teamID, userID, role strin
 		return nil, err
 	}
 	return u.addTeamMember(ctx, teamID, role, func(ctx context.Context) (port.User, error) {
-		user, err := u.deps.Stores.Users.GetByID(ctx, userID)
-		if err != nil {
-			if errors.Is(err, port.ErrNotFound) {
-				return port.User{}, ErrMemberUserNotFound
-			}
-			return port.User{}, fmt.Errorf("lookup user: %w", err)
-		}
-		return user, nil
+		return u.userByID(ctx, userID)
 	})
 }
 

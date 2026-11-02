@@ -22,7 +22,7 @@ func TestListProjectMembers_GlobalAdminAllowed(t *testing.T) {
 	pr.listMembersFn = func(ctx context.Context, projectID string) ([]port.ProjectMember, error) {
 		return []port.ProjectMember{{ProjectID: projectID, UserID: "u1", Role: auth.RoleViewer}}, nil
 	}
-	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+	uc := New(Deps{Stores: &port.Stores{Projects: pr, Users: plainUsers()}})
 	members, err := uc.ListProjectMembers(sessionCtx("00000000-0000-4000-8000-000000000007", auth.RoleAdmin), "my-app")
 	require.NoError(t, err)
 	require.Len(t, members, 1)
@@ -40,7 +40,7 @@ func TestListProjectMembers_NamesGoToPeopleAndNotToKeys(t *testing.T) {
 			Email: "ada@acme.example", DisplayName: "Ada Okafor",
 		}}, nil
 	}
-	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+	uc := New(Deps{Stores: &port.Stores{Projects: pr, Users: plainUsers()}})
 
 	person, err := uc.ListProjectMembers(sessionCtx("00000000-0000-4000-8000-000000000007", auth.RoleAdmin), "my-app")
 	require.NoError(t, err)
@@ -64,7 +64,7 @@ func TestListProjectMembers_NonMemberDenied(t *testing.T) {
 	pr.listMembersFn = func(ctx context.Context, projectID string) ([]port.ProjectMember, error) {
 		return []port.ProjectMember{{ProjectID: projectID, UserID: "other", Role: auth.RoleViewer}}, nil
 	}
-	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+	uc := New(Deps{Stores: &port.Stores{Projects: pr, Users: plainUsers()}})
 	_, err := uc.ListProjectMembers(sessionCtx("u1", auth.RoleViewer), "my-app")
 	assert.ErrorIs(t, err, ErrProjectAccessDenied)
 }
@@ -80,7 +80,7 @@ func TestAddProjectMember_ProjectAdminAllowed(t *testing.T) {
 	pr.upsertMemberFn = func(ctx context.Context, projectID, userID, role string) (port.ProjectMember, error) {
 		return port.ProjectMember{ProjectID: projectID, UserID: userID, Role: role}, nil
 	}
-	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+	uc := New(Deps{Stores: &port.Stores{Projects: pr, Users: plainUsers()}})
 	m, err := uc.AddProjectMember(sessionCtx("00000000-0000-4000-8000-000000000007", auth.RoleViewer), "my-app", "00000000-0000-4000-8000-000000000012", auth.RoleManager)
 	require.NoError(t, err)
 	assert.Equal(t, "00000000-0000-4000-8000-000000000012", m.UserID)
@@ -88,7 +88,7 @@ func TestAddProjectMember_ProjectAdminAllowed(t *testing.T) {
 }
 
 func TestAddProjectMember_InvalidRoleRejected(t *testing.T) {
-	uc := New(Deps{Stores: &port.Stores{Projects: &mockProjectRepo{}}})
+	uc := New(Deps{Stores: &port.Stores{Projects: &mockProjectRepo{}, Users: plainUsers()}})
 	_, err := uc.AddProjectMember(sessionCtx("00000000-0000-4000-8000-000000000007", auth.RoleAdmin), "my-app", "00000000-0000-4000-8000-000000000012", "superuser")
 	assert.ErrorContains(t, err, "invalid member role")
 }
@@ -101,7 +101,15 @@ func TestAddProjectMember_NonAdminDenied(t *testing.T) {
 	pr.listMembersFn = func(ctx context.Context, projectID string) ([]port.ProjectMember, error) {
 		return []port.ProjectMember{{ProjectID: projectID, UserID: "u1", Role: auth.RoleViewer}}, nil
 	}
-	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+	uc := New(Deps{Stores: &port.Stores{Projects: pr, Users: plainUsers()}})
 	_, err := uc.AddProjectMember(sessionCtx("u1", auth.RoleViewer), "my-app", "00000000-0000-4000-8000-000000000012", auth.RoleViewer)
 	assert.ErrorIs(t, err, ErrProjectAccessDenied)
+}
+
+// plainUsers answers every id with an ordinary account, for tests that add
+// members by id.
+func plainUsers() *mockUserRepo {
+	return &mockUserRepo{getByIDFn: func(_ context.Context, id string) (port.User, error) {
+		return port.User{ID: id, Email: id + "@example.com", Role: auth.RoleMember}, nil
+	}}
 }

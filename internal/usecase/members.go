@@ -186,13 +186,32 @@ func (u *Usecases) userByEmail(ctx context.Context, email string) (port.User, er
 	return user, nil
 }
 
+// userByID is userByEmail for a caller that names the person by id: an unknown
+// id and the system account answer the same way.
+func (u *Usecases) userByID(ctx context.Context, userID string) (port.User, error) {
+	user, err := u.deps.Stores.Users.GetByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return port.User{}, ErrMemberUserNotFound
+		}
+		return port.User{}, fmt.Errorf("lookup user: %w", err)
+	}
+	if isSystemAccount(user.Email) {
+		return port.User{}, ErrMemberUserNotFound
+	}
+	return user, nil
+}
+
 // AddProjectMember grants a user a role on a project (upsert) subject to
 // delegation boundaries and the last-admin invariant.
 func (u *Usecases) AddProjectMember(ctx context.Context, projectSlug, userID, role string) (*ProjectMemberResponse, error) {
 	if _, err := validID(userID); err != nil {
 		return nil, err
 	}
-	return u.addProjectMember(ctx, projectSlug, role, func(context.Context) (string, error) { return userID, nil })
+	return u.addProjectMember(ctx, projectSlug, role, func(ctx context.Context) (string, error) {
+		user, err := u.userByID(ctx, userID)
+		return user.ID, err
+	})
 }
 
 // AddProjectMemberByEmail grants the account behind an address a role on a

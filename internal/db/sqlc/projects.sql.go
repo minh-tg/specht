@@ -13,7 +13,7 @@ import (
 
 const countOtherProjectAdmins = `-- name: CountOtherProjectAdmins :one
 SELECT COUNT(*) FROM project_members pm
-JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL
+JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL AND u.email <> 'system@specht.local'
 WHERE pm.project_id = $1 AND pm.role = 'admin' AND pm.user_id <> $2
 `
 
@@ -23,7 +23,8 @@ type CountOtherProjectAdminsParams struct {
 }
 
 // Active admins besides one user, the number the last-admin guard needs when
-// that user is about to be removed or demoted.
+// that user is about to be removed or demoted. The seeded system account is
+// not one: nobody signs in as it.
 func (q *Queries) CountOtherProjectAdmins(ctx context.Context, arg CountOtherProjectAdminsParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countOtherProjectAdmins, arg.ProjectID, arg.UserID)
 	var count int64
@@ -33,11 +34,12 @@ func (q *Queries) CountOtherProjectAdmins(ctx context.Context, arg CountOtherPro
 
 const countProjectAdmins = `-- name: CountProjectAdmins :one
 SELECT COUNT(*) FROM project_members pm
-JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL
+JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL AND u.email <> 'system@specht.local'
 WHERE pm.project_id = $1 AND pm.role = 'admin'
 `
 
-// Admins who can sign in: a deactivated account holds a row but governs nothing.
+// Admins who can sign in: a deactivated account holds a row but governs nothing,
+// and nobody signs in as the seeded system account.
 func (q *Queries) CountProjectAdmins(ctx context.Context, projectID pgtype.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, countProjectAdmins, projectID)
 	var count int64
@@ -403,7 +405,7 @@ JOIN project_members me ON me.project_id = p.id AND me.user_id = $1 AND me.role 
 JOIN users mu ON mu.id = me.user_id AND mu.disabled_at IS NULL
 WHERE NOT EXISTS (
     SELECT 1 FROM project_members pm
-    JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL
+    JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL AND u.email <> 'system@specht.local'
     WHERE pm.project_id = p.id AND pm.role = 'admin' AND pm.user_id <> $1
 )
 ORDER BY p.slug
