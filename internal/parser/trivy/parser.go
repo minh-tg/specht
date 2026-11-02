@@ -224,9 +224,91 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 // RedactRaw scrubs secret material from raw Trivy evidence and caps the result
 // at scanner.RawEvidenceCap. A secret finding carries the matched text in Match
 // and the surrounding source in Code, so both keys are redacted at any depth.
-// Data that cannot be decoded is an error and no output comes back.
+// A container image report also carries the image configuration under
+// Metadata.ImageConfig: the values of config.Env (and container_config.Env) and
+// the build commands in history[].created_by sit under neutral keys, so
+// redactImageConfig replaces them. Data that cannot be decoded is an error and
+// no output comes back.
 func (s *Scanner) RedactRaw(data []byte) ([]byte, error) {
-	return parseutil.RedactRawJSON("trivy", data, "Match", "Code")
+	return parseutil.RedactRawJSONWith("trivy", data, redactImageConfig, "Match", "Code")
+}
+
+// redactImageConfig keeps the NAME of each environment entry in the image
+// configuration and replaces its value, and replaces every history created_by
+// command, which can hold a credential passed on a command line or as an ARG.
+func redactImageConfig(doc any) {
+	root, ok := doc.(map[string]any)
+	if !ok {
+		return
+	}
+	for _, meta := range foldedObjects(root, "Metadata") {
+		for _, cfg := range foldedObjects(meta, "ImageConfig") {
+			for _, section := range []string{"config", "container_config"} {
+				for _, sec := range foldedObjects(cfg, section) {
+					for _, env := range foldedLists(sec, "Env") {
+						for i, entry := range env {
+							if s, ok := entry.(string); ok {
+								env[i] = redactEnvEntry(s)
+							}
+						}
+					}
+				}
+			}
+			for _, history := range foldedLists(cfg, "history") {
+				for _, item := range history {
+					step, ok := item.(map[string]any)
+					if !ok {
+						continue
+					}
+					for k, v := range step {
+						if strings.EqualFold(k, "created_by") && v != nil && v != "" {
+							step[k] = parseutil.RedactedMarker
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// redactEnvEntry turns NAME=value into NAME=[REDACTED]. An entry with no "="
+// has no name to keep and is replaced whole.
+func redactEnvEntry(entry string) string {
+	if entry == "" {
+		return entry
+	}
+	name, value, found := strings.Cut(entry, "=")
+	if !found {
+		return parseutil.RedactedMarker
+	}
+	if value == "" {
+		return entry
+	}
+	return name + "=" + parseutil.RedactedMarker
+}
+
+// foldedObjects returns the object values of every key of m that equals key
+// without regard to case. encoding/json reads struct fields the same way, so a
+// document with both "Env" and "env" has both read.
+func foldedObjects(m map[string]any, key string) []map[string]any {
+	var out []map[string]any
+	for k, v := range m {
+		if obj, ok := v.(map[string]any); ok && strings.EqualFold(k, key) {
+			out = append(out, obj)
+		}
+	}
+	return out
+}
+
+// foldedLists is foldedObjects for list values.
+func foldedLists(m map[string]any, key string) [][]any {
+	var out [][]any
+	for k, v := range m {
+		if list, ok := v.([]any); ok && strings.EqualFold(k, key) {
+			out = append(out, list)
+		}
+	}
+	return out
 }
 
 func decode(data []byte) (trivyReport, error) {

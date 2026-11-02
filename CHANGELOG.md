@@ -405,6 +405,12 @@ releases.
 
 ### Security
 
+- Stored scan evidence redacts more credential keys. Key names are compared lowercased with `-` and
+  `_` removed, so `x-api-key`, `privateKey` and `ssh_private_key` match, and `credentials`,
+  `passphrase`, `pwd` and `cookie` (as a whole name or a suffix) are added. A credential-named list
+  or object is replaced whole, so `db_password: [{"value": "..."}]` no longer keeps its value.
+  Trivy image reports also lose the values of `Metadata.ImageConfig.config.Env` (the `NAME=` part
+  stays) and every `history[].created_by` command.
 - An invite link works only while the account that made it is active and could still make it: after its creator is deactivated, removed from the project, demoted below the invite's role, or loses global admin, the link answers like an expired one. Deactivating an account also revokes the open links it made.
 - Self-service registration is closed unless `REGISTRATION_ENABLED=true`.
 - An SSO exchange code works only in the browser that started the login. The
