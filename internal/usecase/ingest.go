@@ -171,7 +171,11 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	// before anything decodes it: format checks and parsers turn every object
 	// into a struct, so a hostile upload would exhaust memory there.
 	limit := u.deps.IngestMaxFindings
-	if err := scanner.CheckIngestDocument(input.RawData, limit); err != nil {
+	var findingArrays []string
+	if fa, ok := sc.(scanner.FindingArrayer); ok {
+		findingArrays = fa.FindingArrays()
+	}
+	if err := scanner.CheckIngestDocument(input.RawData, limit, findingArrays...); err != nil {
 		slog.Warn("ingest refused: too many objects", "scanner", input.Scanner, "bytes", len(input.RawData))
 		return nil, fmt.Errorf("scanner %s: %w", input.Scanner, err)
 	}

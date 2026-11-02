@@ -44,7 +44,8 @@ const (
 	// copy and the redaction copy next to the bytes: the measured peak is 10 to
 	// 30 times the report for real findings. The document scan refuses a report
 	// estimated at more than scanner.MaxCostPerByte times its length, and the
-	// densest shapes it accepts peak at about 43 times, so the charge covers both.
+	// densest shapes it accepts peak at 43 times in the heap and 48 times in the
+	// server's resident memory, so the charge covers both.
 	ingestBytesPerRawByte = 64
 )
 

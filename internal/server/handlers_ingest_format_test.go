@@ -117,7 +117,7 @@ func TestIngestReport_DenseRefusalSaysPackingNotFindings(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnprocessableEntity, status, "the status stays 422")
 	assert.Equal(t, "too_many_findings", got.Code, "the code stays too_many_findings")
-	assert.Contains(t, got.Message, "packs too many small JSON values")
+	assert.Contains(t, got.Message, "holds more findings or small JSON values than its size allows")
 	assert.NotContains(t, got.Message, "nests deeper")
 	assert.NotContains(t, got.Message, "more than", "a dense refusal names no finding count")
 }

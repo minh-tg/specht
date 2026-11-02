@@ -31,7 +31,8 @@ const ingestBytesCharged = 64
 // redacted copy are all live when redaction returns).
 func ingestPipeline(t *testing.T, reg *scanner.Registry, name string, data []byte) error {
 	t.Helper()
-	if err := scanner.CheckIngestDocument(data, scanner.DefaultMaxFindings); err != nil {
+	sc, _ := reg.Get(name)
+	if err := scanner.CheckIngestDocument(data, scanner.DefaultMaxFindings, findingKeys(sc)...); err != nil {
 		return err
 	}
 	data, err := scanner.SanitizeNUL(data)
@@ -41,7 +42,6 @@ func ingestPipeline(t *testing.T, reg *scanner.Registry, name string, data []byt
 	if err := reg.CheckFormat(name, data); err != nil {
 		return err
 	}
-	sc, _ := reg.Get(name)
 	ctx := scanner.WithMaxFindings(testCtx(), scanner.DefaultMaxFindings)
 	nr, err := sc.Parse(ctx, data)
 	if err != nil {
@@ -54,6 +54,14 @@ func ingestPipeline(t *testing.T, reg *scanner.Registry, name string, data []byt
 	runtime.KeepAlive(nr)
 	runtime.KeepAlive(redacted)
 	runtime.KeepAlive(data)
+	return nil
+}
+
+// findingKeys is what the ingest passes to the document check for sc.
+func findingKeys(sc scanner.Scanner) []string {
+	if fa, ok := sc.(scanner.FindingArrayer); ok {
+		return fa.FindingArrays()
+	}
 	return nil
 }
 
@@ -92,12 +100,16 @@ type memoryShape struct {
 	unit          func(pad string) string
 }
 
+// maxShapeUnits keeps a shape of findings under the default finding limit, so
+// the finding count is never what refuses it (a unit of the OSV shape is two).
+const maxShapeUnits = 45000
+
 func (s memoryShape) build(size int, pad string) []byte {
 	unit := s.unit(pad)
 	var b bytes.Buffer
 	b.Grow(size + len(unit) + len(s.tail) + len(s.head))
 	b.WriteString(s.head)
-	for i := 0; b.Len()+len(unit)+len(s.tail) < size; i++ {
+	for i := 0; b.Len()+len(unit)+len(s.tail) < size && i < maxShapeUnits; i++ {
 		if i > 0 {
 			b.WriteByte(',')
 		}
@@ -109,9 +121,9 @@ func (s memoryShape) build(size int, pad string) []byte {
 
 // densest builds the shape at size with the shortest padding the document check
 // accepts. Acceptance only gets easier as the padding grows, so it bisects.
-func (s memoryShape) densest(size int) []byte {
+func (s memoryShape) densest(keys []string, size int) []byte {
 	accepts := func(n int) bool {
-		return scanner.CheckIngestDocument(s.build(size, strings.Repeat("x", n)), scanner.DefaultMaxFindings) == nil
+		return scanner.CheckIngestDocument(s.build(size, strings.Repeat("x", n)), scanner.DefaultMaxFindings, keys...) == nil
 	}
 	lo, hi := 0, 4096
 	if accepts(0) {
@@ -139,6 +151,50 @@ func alt(n int, v string) string {
 }
 
 func quoted(pad string) string { return `"` + pad + `"` }
+
+var shapeCounter atomic.Int64
+
+// uid is a short id that differs on every call, so repeated findings are not
+// equal and a parser has no duplicate to drop.
+func uid() string { return strconv.FormatInt(shapeCounter.Add(1), 36) }
+
+// findingShapes are reports of minimal findings: each element of the finding
+// array is a finding, package or result with the fewest fields its parser
+// needs. They cost little JSON per element and a parsed finding each.
+func findingShapes() []memoryShape {
+	trivyVulns := `{"SchemaVersion":2,"ArtifactName":"a","ArtifactType":"container_image","Results":[{"Target":"t","Class":"os-pkgs","Type":"alpine","Vulnerabilities":[`
+	return []memoryShape{
+		{"trivy id-only findings", "trivy", trivyVulns, `]}]}`, func(p string) string {
+			return `{"VulnerabilityID":"` + uid() + p + `"}`
+		}},
+		{"trivy two-field findings", "trivy", trivyVulns, `]}]}`, func(p string) string {
+			return `{"VulnerabilityID":"` + uid() + p + `","PkgName":"p"}`
+		}},
+		{"trivy four-field findings", "trivy", trivyVulns, `]}]}`, func(p string) string {
+			return `{"VulnerabilityID":"` + uid() + p + `","PkgName":"p","InstalledVersion":"1","Severity":"HIGH"}`
+		}},
+		{"sarif minimal results", "sarif", `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"x","rules":[{"id":"r"}]}},"results":[`, `]}]}`, func(p string) string {
+			return `{"ruleId":"r","message":{"text":"` + uid() + p + `"}}`
+		}},
+		{"checkov minimal failed checks", "checkov", `{"check_type":"terraform","results":{"failed_checks":[`, `]},"summary":{}}`, func(p string) string {
+			return `{"check_id":"CKV_` + uid() + p + `","file_path":"/m.tf","resource":"r"}`
+		}},
+		{"semgrep minimal results", "semgrep", `{"errors":[],"paths":{},"results":[`, `]}`, func(p string) string {
+			return `{"check_id":"c` + uid() + p + `","path":"p","start":{"line":1},"end":{"line":1},"extra":{"message":"m","severity":"ERROR"}}`
+		}},
+		{"grype minimal matches", "grype", `{"descriptor":{"name":"grype","version":"0.80.0"},"source":{"type":"image"},"matches":[`, `]}`, func(p string) string {
+			return `{"vulnerability":{"id":"C` + uid() + p + `","severity":"High"},"artifact":{"name":"p","version":"1","type":"apk"}}`
+		}},
+		{"cyclonedx minimal components", "sbom", `{"bomFormat":"CycloneDX","specVersion":"1.5","components":[`, `]}`, func(p string) string {
+			return `{"type":"library","name":"a` + uid() + p + `","version":"1"}`
+		}},
+		{"osv minimal packages", "osv-scanner", `{"results":[{"source":{"path":"p","type":"lockfile"},"packages":[`, `]}]}`, func(p string) string {
+			return `{"package":{"name":"a` + uid() + p + `","version":"1","ecosystem":"npm"},"vulnerabilities":[{"id":"G` + uid() + `"}]}`
+		}},
+	}
+}
+
+func allMemoryShapes() []memoryShape { return append(memoryShapes(), findingShapes()...) }
 
 func memoryShapes() []memoryShape {
 	trivyHead := `{"SchemaVersion":2,"ArtifactName":"a","ArtifactType":"container_image","Results":[{"Target":"t","Class":"os-pkgs","Type":"alpine","Vulnerabilities":[{"VulnerabilityID":"CVE-2024-1","PkgName":"p","InstalledVersion":"1","Severity":"HIGH"}]}],"X":[`
@@ -173,6 +229,13 @@ func memoryShapes() []memoryShape {
 			return sarifResult(`[` + strings.TrimSuffix(strings.Repeat(`{"a":0},`, 200), ",") + `,` + quoted(p) + `]`)
 		}},
 	}
+}
+
+func keysOf(t *testing.T, reg *scanner.Registry, name string) []string {
+	t.Helper()
+	sc, err := reg.Get(name)
+	require.NoError(t, err)
+	return findingKeys(sc)
 }
 
 func ingestMemoryRegistry(t *testing.T) *scanner.Registry {
@@ -213,8 +276,8 @@ func TestDensestAcceptedReportsStayUnderTheIngestCharge(t *testing.T) {
 	reg := ingestMemoryRegistry(t)
 	worst, worstName := 0.0, ""
 	for _, size := range sizes {
-		for _, s := range memoryShapes() {
-			doc := s.densest(size)
+		for _, s := range allMemoryShapes() {
+			doc := s.densest(keysOf(t, reg, s.scanner), size)
 			factor := peakFactor(t, reg, s, doc)
 			t.Logf("%-32s %6d KiB factor=%5.1fx", s.name, len(doc)>>10, factor)
 			if factor > worst {
@@ -228,22 +291,36 @@ func TestDensestAcceptedReportsStayUnderTheIngestCharge(t *testing.T) {
 	}
 }
 
-// The shapes the depth cap alone let through at 75x to 99x of the body are
-// refused once their values are packed without padding, with the error that
+// The shapes the depth cap alone let through at 75x to 99x of the body, and
+// reports of minimal findings, are refused once packed without padding, with the error that
 // says the document is too dense.
 func TestUnpaddedDenseShapesAreRefusedAsTooDense(t *testing.T) {
+	reg := ingestMemoryRegistry(t)
 	// These two shapes cost under 40 bytes per body byte as they are.
 	fits := []string{"trivy wide object", "trivy number list"}
-	for _, s := range memoryShapes() {
+	for _, s := range allMemoryShapes() {
 		t.Run(s.name, func(t *testing.T) {
+			keys := keysOf(t, reg, s.scanner)
+			doc := s.build(1<<20, "")
 			if slices.Contains(fits, s.name) {
-				require.NoError(t, scanner.CheckIngestDocument(s.build(1<<20, ""), scanner.DefaultMaxFindings))
+				require.NoError(t, scanner.CheckIngestDocument(doc, scanner.DefaultMaxFindings, keys...))
 				return
 			}
-			err := scanner.CheckIngestDocument(s.build(1<<20, ""), scanner.DefaultMaxFindings)
+			err := scanner.CheckIngestDocument(doc, scanner.DefaultMaxFindings, keys...)
 			var tooMany *scanner.TooManyFindingsError
 			require.ErrorAs(t, err, &tooMany)
 			require.True(t, tooMany.Dense)
 		})
+	}
+}
+
+// The ingest prices each element of a scanner's finding arrays as a finding, so
+// every built-in parser must name them. A parser that does not is checked as a
+// pile of small JSON values, which undercounts minimal findings.
+func TestEveryBuiltinParserNamesItsFindingArrays(t *testing.T) {
+	for _, s := range parser.Builtins() {
+		fa, ok := s.(scanner.FindingArrayer)
+		require.True(t, ok, "%s does not implement scanner.FindingArrayer", s.Descriptor().Name)
+		require.NotEmpty(t, fa.FindingArrays(), s.Descriptor().Name)
 	}
 }

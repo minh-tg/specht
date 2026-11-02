@@ -60,12 +60,22 @@ const (
 	costPerArray  = 128
 	costPerScalar = 80
 
+	// costPerElement is added for every element of a finding array, on top of
+	// the cost of its own value. The element becomes a parsed finding, a typed
+	// struct, a redaction entry and the rows stored for it, which costs far more
+	// than the few bytes of JSON a minimal finding needs. Posted to the server,
+	// reports of 26,000 findings of 159 bytes each (the densest the check
+	// accepts) grew its resident memory by 5 to 8.5 KB per finding. The figure
+	// is the middle of that range, and MaxCostPerByte covers the rest.
+	costPerElement = 5632
+
 	// MaxCostPerByte is how many bytes of estimated memory a document may hold
 	// per byte of its own length. The ingest admission charges 64 bytes per byte
 	// of the body, so 40 leaves over a third of the charge for what the estimate
-	// misses. Density, not depth, drives the peak: a body of one-key objects
-	// costs a Go map for every 6 bytes, and the depth cap alone let such shapes
-	// reach 99x. The captured reports estimate at a fraction of this.
+	// misses: the server's resident memory for the densest accepted reports
+	// reaches 48 times the body. Density, not depth, drives the peak: a body of
+	// one-key objects costs a Go map for every 6 bytes, and the depth cap alone
+	// let such shapes reach 99x. The captured reports estimate at 6 to 20 times.
 	MaxCostPerByte = 40
 
 	// costSlack lets a tiny document pass whatever its shape, because its
@@ -147,16 +157,16 @@ func CheckDocument(data []byte, limit int, arrayKeys ...string) error {
 // The counts bound how many values a document holds; this bounds how small each
 // may be, so the memory the ingest charges for the body covers what decoding it
 // takes. The refusal is a TooManyFindingsError with Dense set.
-func CheckIngestDocument(data []byte, limit int) error {
-	_, err := checkDocument(data, limit, true, nil)
+func CheckIngestDocument(data []byte, limit int, arrayKeys ...string) error {
+	_, err := checkDocument(data, limit, true, arrayKeys)
 	return err
 }
 
 // EstimatedDecodeBytes is the memory the ingest cost model puts on data: what
 // CheckIngestDocument compares with MaxCostPerByte times the length. It is the
 // figure up to the point a count or the depth cap stops the scan.
-func EstimatedDecodeBytes(data []byte) int {
-	cost, _ := checkDocument(data, 0, false, nil)
+func EstimatedDecodeBytes(data []byte, arrayKeys ...string) int {
+	cost, _ := checkDocument(data, 0, false, arrayKeys)
 	return cost
 }
 
@@ -304,13 +314,14 @@ func (s *docScan) value(kind valueKind) error {
 	default:
 		s.cost += costPerScalar
 	}
-	if s.density && s.cost > s.costCeiling {
-		return &TooManyFindingsError{Limit: s.limit, Dense: true}
-	}
 	if s.track && s.elementCounts() {
 		if s.elements++; s.elements > s.elementCeiling {
 			return TooManyFindings(s.limit)
 		}
+		s.cost += costPerElement
+	}
+	if s.density && s.cost > s.costCeiling {
+		return &TooManyFindingsError{Limit: s.limit, Dense: true}
 	}
 	s.keyCounts = false
 	return nil

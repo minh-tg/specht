@@ -11,10 +11,11 @@ import (
 )
 
 // trivyOfEmptyVulnerabilities holds n findings with nothing but a title. The
-// title is long enough that the document is not refused for packing too many
-// small values into its size, which would hide the finding count under test.
+// title is long enough (a finding is priced at several KB of memory) that the
+// document is not refused for packing too many findings into its size, which
+// would hide the finding count under test.
 func trivyOfEmptyVulnerabilities(n int) []byte {
-	units := strings.TrimSuffix(strings.Repeat(`{"Title":"`+strings.Repeat("x", 24)+`"},`, n), ",")
+	units := strings.TrimSuffix(strings.Repeat(`{"Title":"`+strings.Repeat("x", 160)+`"},`, n), ",")
 	return []byte(`{"ArtifactName":"a","Results":[{"Target":"t","Vulnerabilities":[` + units + `]}]}`)
 }
 
@@ -26,7 +27,7 @@ func TestE2E_AReportPastTheFindingLimitIsRefused(t *testing.T) {
 
 	for name, n := range map[string]int{
 		"one finding past the limit, stopped while converting": 100001,
-		"far past the limit, refused before decoding":          500_000,
+		"well past the limit": 150_000,
 	} {
 		t.Run(name, func(t *testing.T) {
 			status, got := postReport(t, slug, "trivy", trivyOfEmptyVulnerabilities(n))

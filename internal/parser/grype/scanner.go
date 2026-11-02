@@ -157,6 +157,10 @@ func (s *Scanner) Recognize(data []byte) scanner.Recognition {
 // packages (see scanner.CheckDocument).
 var findingArrays = []string{"matches"}
 
+// FindingArrays reports the arrays of a report that carry findings (see
+// scanner.FindingArrayer).
+func (s *Scanner) FindingArrays() []string { return findingArrays }
+
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
 	budget, err := parseutil.NewBudget(ctx, data, findingArrays...)
 	if err != nil {
