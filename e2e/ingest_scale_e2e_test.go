@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,15 +17,17 @@ import (
 
 // sarifResultsInOneFile builds a SARIF run whose results all share one rule
 // and one file, so they collapse into a single finding with one entry per
-// result.
+// result. Each message carries about 120 bytes of text, as a real one does, so
+// the report stays above the density floor the ingest refuses below.
 func sarifResultsInOneFile(n int) []byte {
+	text := strings.Repeat("user input reaches a SQL query without escaping ", 3)
 	var b bytes.Buffer
 	b.WriteString(`{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"x","rules":[{"id":"r"}]}},"results":[`)
 	for i := 0; i < n; i++ {
 		if i > 0 {
 			b.WriteByte(',')
 		}
-		fmt.Fprintf(&b, `{"ruleId":"r","message":{"text":"m%d"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"a.go"},"region":{"startLine":%d}}}]}`, i, i+1)
+		fmt.Fprintf(&b, `{"ruleId":"r","message":{"text":"%s(%d)"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"a.go"},"region":{"startLine":%d}}}]}`, text, i, i+1)
 	}
 	b.WriteString(`]}]}`)
 	return b.Bytes()
