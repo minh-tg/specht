@@ -7,10 +7,3 @@ linters:
   default: none
   enable:
     - staticcheck
-  settings:
-    staticcheck:
-      # v1 ran only the SA analyzers under "staticcheck". v2 folds gosimple (S),
-      # stylecheck (ST) and the quickfix checks (QF) into this linter. Start from
-      # the SA set so the bar stays the same; a later change widens it.
-      checks:
-        - SA*
