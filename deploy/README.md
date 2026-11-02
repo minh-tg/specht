@@ -373,7 +373,7 @@ the last document it fetched.
 | `SSO_REDIRECT_URI` | *(empty)* | Must match the IdP's registered redirect URI. |
 | `SSO_GROUPS_CLAIM` | `groups` | Claim carrying IdP group membership. |
 | `SSO_ALLOWED_DOMAINS` | *(empty)* | Comma/space-separated email domains that may auto-provision. Empty refuses every unknown subject. |
-| `SSO_ADMIN_GROUPS` | *(empty)* | IdP groups granting admin to a *newly provisioned* account. Existing accounts never change role from IdP groups. |
+| `SSO_ADMIN_GROUPS` | *(empty)* | IdP groups that grant global admin to an SSO account without a password, and take it back when the group is gone. See "SSO admin groups". |
 | `SSO_ALLOW_USERINFO_ONLY` | `false` | Insecure compatibility downgrade for an IdP that returns no ID token. |
 | `SSO_ALLOW_UNVERIFIED_EMAIL` | `false` | Let a first SSO login link or provision by an email the IdP did not mark `email_verified`. Only for IdPs that never send the claim and whose emails administrators control. See "SSO account linking". |
 
@@ -762,6 +762,33 @@ the verified email above. If your provider never sends `email_verified` (Azure
 AD v2 does not by default) and its emails are controlled by your
 administrators, set `SSO_ALLOW_UNVERIFIED_EMAIL=true` for that first login. The
 server logs a warning at startup while it is on.
+
+### SSO admin groups
+
+With `SSO_ADMIN_GROUPS` set, every SSO login compares the groups claim
+(`SSO_GROUPS_CLAIM`) with that list:
+
+- An account without a local password that carries one of the groups becomes
+  a global admin, granted by SSO. That covers a newly provisioned account and
+  any later login of a linked one. The login that first links an existing
+  account keeps its role; the next one applies the groups.
+- An admin granted by SSO whose login carries none of the groups goes back to
+  member. A missing groups claim counts as none, so make sure the IdP sends the
+  claim before you turn this on. The account's token generation advances, so
+  its open admin sessions stop at their next request.
+- An admin role granted any other way is never taken back: first-run setup,
+  `ADMIN_EMAILS`, the Admin page or `PUT /api/v1/users/{id}/role`, and
+  `specht grant-admin`. Granting admin by hand to an admin the IdP granted
+  turns it into such a grant.
+- The last active global admin keeps the role. The server logs a warning and
+  the login goes on as an admin; promote someone else, and the next login
+  without the group demotes the account.
+
+Each change, and each refused demotion, writes an `audit=user.role` line with
+`principal_id=sso` and the account id as `target`. Admins that existed before
+this behaviour shipped count as granted by hand. To hand one of them over to the
+IdP, demote it on the Admin page and let its next SSO login promote it again.
+With `SSO_ADMIN_GROUPS` empty, SSO logins never change a role.
 
 ## 7. Backup and restore
 

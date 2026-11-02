@@ -208,7 +208,20 @@ type fakeIdP struct {
 	// userinfo withhold email_verified.
 	subject    string
 	unverified bool
-	codes      map[string]struct{ redirectURI, nonce string }
+	// groups is the membership userinfo reports; platform-team is the
+	// server's SSO_ADMIN_GROUPS.
+	groups []string
+	codes  map[string]struct{ redirectURI, nonce string }
+}
+
+// e2eSSOGroups is the membership the fake reports unless a test changes it.
+var e2eSSOGroups = []string{"platform-team"}
+
+// setGroups changes the group membership userinfo reports; nil reports none.
+func (p *fakeIdP) setGroups(groups []string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.groups = groups
 }
 
 // setEmail changes the subject the token endpoint and userinfo assert —
@@ -248,7 +261,7 @@ func newFakeIdP() *fakeIdP {
 	if err != nil {
 		panic(fmt.Sprintf("generate idp key: %v", err))
 	}
-	p := &fakeIdP{key: key, email: e2eSSOEmail, codes: map[string]struct{ redirectURI, nonce string }{}}
+	p := &fakeIdP{key: key, email: e2eSSOEmail, groups: e2eSSOGroups, codes: map[string]struct{ redirectURI, nonce string }{}}
 	p.srv = httptest.NewServer(http.HandlerFunc(p.serve))
 	return p
 }
@@ -311,12 +324,13 @@ func (p *fakeIdP) serve(w http.ResponseWriter, r *http.Request) {
 		})
 	case fakeIdPEndpointPrefix + "/userinfo":
 		p.mu.Lock()
-		email, sub, verified := p.email, p.subjectFor(p.email), !p.unverified
+		email, sub, verified, groups := p.email, p.subjectFor(p.email), !p.unverified, p.groups
 		p.mu.Unlock()
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"sub": sub, "email": email, "email_verified": verified,
-			"groups": []string{"platform-team"},
-		})
+		info := map[string]any{"sub": sub, "email": email, "email_verified": verified}
+		if groups != nil {
+			info["groups"] = groups
+		}
+		_ = json.NewEncoder(w).Encode(info)
 	default:
 		http.NotFound(w, r)
 	}

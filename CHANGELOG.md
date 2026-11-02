@@ -496,6 +496,15 @@ releases.
   starts this version (deploy/README.md, "Database roles"); compose refuses to start
   without the password. The server logs a warning at startup when `DATABASE_URL` is a
   superuser or owns the tables.
+- `SSO_ADMIN_GROUPS` now takes back the admin role it granted. An account that became a
+  global admin through an admin group goes back to member at its next SSO login without
+  one, including a login whose groups claim is missing, and its open admin sessions stop
+  at their next request. Admin roles granted any other way (first-run setup,
+  `ADMIN_EMAILS`, `PUT /api/v1/users/{id}/role`, `specht grant-admin`) are never taken
+  back, and the last active admin keeps the role with a warning. Each change writes an
+  `audit=user.role` line with `principal_id=sso`. Admins that existed before this release
+  count as granted by hand; to hand such an account over to the IdP, demote it and let
+  its next SSO login promote it again.
 - `specht`, `specht-mcp` and `specht-adapter` no longer follow a redirect that changes the
   scheme or host of the API request. An `https` server that answered with a redirect to
   `http://` on the same host name used to get the API key resent in clear text.

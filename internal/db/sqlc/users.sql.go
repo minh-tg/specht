@@ -30,20 +30,28 @@ func (q *Queries) BumpUserTokenVersion(ctx context.Context, id pgtype.UUID) erro
 }
 
 const changeUserRole = `-- name: ChangeUserRole :one
-UPDATE users SET role = $2, token_version = token_version + 1, updated_at = NOW()
-WHERE id = $1
-RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven
+UPDATE users SET
+    role = $1,
+    admin_source = $2,
+    token_version = CASE WHEN role = $1 THEN token_version ELSE token_version + 1 END,
+    updated_at = NOW()
+WHERE id = $3
+RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven, admin_source
 `
 
 type ChangeUserRoleParams struct {
-	ID   pgtype.UUID `json:"id"`
-	Role string      `json:"role"`
+	Role        string      `json:"role"`
+	AdminSource string      `json:"admin_source"`
+	ID          pgtype.UUID `json:"id"`
 }
 
 // Changes the global role and starts a new token generation, so the new role
 // applies to sessions that are already open instead of at their next refresh.
+// admin_source records who granted an admin role: 'sso' for SSO_ADMIN_GROUPS,
+// 'manual' for everything else. A write that keeps the role and only records
+// a new source leaves the generation, since no session's role changes.
 func (q *Queries) ChangeUserRole(ctx context.Context, arg ChangeUserRoleParams) (User, error) {
-	row := q.db.QueryRow(ctx, changeUserRole, arg.ID, arg.Role)
+	row := q.db.QueryRow(ctx, changeUserRole, arg.Role, arg.AdminSource, arg.ID)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -57,6 +65,7 @@ func (q *Queries) ChangeUserRole(ctx context.Context, arg ChangeUserRoleParams) 
 		&i.TokenVersion,
 		&i.DisabledAt,
 		&i.EmailProven,
+		&i.AdminSource,
 	)
 	return i, err
 }
@@ -104,7 +113,7 @@ WHERE NOT EXISTS (
     SELECT 1 FROM users
     WHERE role = 'admin' AND disabled_at IS NULL AND email <> 'system@specht.local'
 )
-RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven
+RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven, admin_source
 `
 
 type CreateFirstAdminParams struct {
@@ -133,6 +142,7 @@ func (q *Queries) CreateFirstAdmin(ctx context.Context, arg CreateFirstAdminPara
 		&i.TokenVersion,
 		&i.DisabledAt,
 		&i.EmailProven,
+		&i.AdminSource,
 	)
 	return i, err
 }
@@ -140,7 +150,7 @@ func (q *Queries) CreateFirstAdmin(ctx context.Context, arg CreateFirstAdminPara
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, display_name, password_hash, role)
 VALUES (lower($1::text), $2, $3, 'member')
-RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven
+RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven, admin_source
 `
 
 type CreateUserParams struct {
@@ -164,12 +174,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.TokenVersion,
 		&i.DisabledAt,
 		&i.EmailProven,
+		&i.AdminSource,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven FROM users WHERE lower(email) = lower($1::text)
+SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven, admin_source FROM users WHERE lower(email) = lower($1::text)
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -187,12 +198,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.TokenVersion,
 		&i.DisabledAt,
 		&i.EmailProven,
+		&i.AdminSource,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven FROM users WHERE id = $1
+SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven, admin_source FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -210,6 +222,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.TokenVersion,
 		&i.DisabledAt,
 		&i.EmailProven,
+		&i.AdminSource,
 	)
 	return i, err
 }
@@ -226,7 +239,7 @@ func (q *Queries) GetUserTokenVersion(ctx context.Context, id pgtype.UUID) (int3
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven FROM users
+SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven, admin_source FROM users
 WHERE ($1::text = '' OR email ILIKE ('%' || $1::text || '%') ESCAPE E'\\')
 ORDER BY email ASC, id ASC
 LIMIT $3 OFFSET $2
@@ -262,6 +275,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 			&i.TokenVersion,
 			&i.DisabledAt,
 			&i.EmailProven,
+			&i.AdminSource,
 		); err != nil {
 			return nil, err
 		}
@@ -274,7 +288,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 }
 
 const listUsersByIDs = `-- name: ListUsersByIDs :many
-SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven FROM users WHERE id = ANY($1::uuid[]) ORDER BY email
+SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven, admin_source FROM users WHERE id = ANY($1::uuid[]) ORDER BY email
 `
 
 func (q *Queries) ListUsersByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]User, error) {
@@ -298,6 +312,7 @@ func (q *Queries) ListUsersByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([
 			&i.TokenVersion,
 			&i.DisabledAt,
 			&i.EmailProven,
+			&i.AdminSource,
 		); err != nil {
 			return nil, err
 		}
@@ -518,7 +533,7 @@ UPDATE users SET
     token_version = CASE WHEN $1::boolean OR disabled_at IS NOT NULL THEN token_version + 1 ELSE token_version END,
     updated_at = NOW()
 WHERE id = $2
-RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven
+RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven, admin_source
 `
 
 type SetUserDisabledParams struct {
@@ -544,6 +559,7 @@ func (q *Queries) SetUserDisabled(ctx context.Context, arg SetUserDisabledParams
 		&i.TokenVersion,
 		&i.DisabledAt,
 		&i.EmailProven,
+		&i.AdminSource,
 	)
 	return i, err
 }
@@ -563,8 +579,8 @@ func (q *Queries) SetUserPassword(ctx context.Context, arg SetUserPasswordParams
 }
 
 const setUserRole = `-- name: SetUserRole :one
-UPDATE users SET role = $2 WHERE id = $1
-RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven
+UPDATE users SET role = $2, admin_source = 'manual' WHERE id = $1
+RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven, admin_source
 `
 
 type SetUserRoleParams struct {
@@ -572,6 +588,8 @@ type SetUserRoleParams struct {
 	Role string      `json:"role"`
 }
 
+// A role set this way is an operator's grant (ADMIN_EMAILS), so an SSO login
+// never takes it back.
 func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) (User, error) {
 	row := q.db.QueryRow(ctx, setUserRole, arg.ID, arg.Role)
 	var i User
@@ -587,13 +605,14 @@ func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) (User,
 		&i.TokenVersion,
 		&i.DisabledAt,
 		&i.EmailProven,
+		&i.AdminSource,
 	)
 	return i, err
 }
 
 const updateUserDisplayName = `-- name: UpdateUserDisplayName :one
 UPDATE users SET display_name = $2, updated_at = NOW() WHERE id = $1
-RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven
+RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven, admin_source
 `
 
 type UpdateUserDisplayNameParams struct {
@@ -616,6 +635,7 @@ func (q *Queries) UpdateUserDisplayName(ctx context.Context, arg UpdateUserDispl
 		&i.TokenVersion,
 		&i.DisabledAt,
 		&i.EmailProven,
+		&i.AdminSource,
 	)
 	return i, err
 }

@@ -182,11 +182,12 @@ func TestFindOrProvisionSSOUser_AProvisioningRoleFailureIsRetried(t *testing.T) 
 		u.Role = auth.RoleMember
 		return u, nil
 	}
-	ur.setRoleFn = func(_ context.Context, id, role string) (port.User, error) {
+	ur.syncSSOAdminFn = func(_ context.Context, id string, admin bool) (port.User, error) {
 		require.Equal(t, "user-9", id)
-		require.Equal(t, auth.RoleAdmin, role)
+		require.True(t, admin)
 		u := makeUser("user-9")
 		u.Role = auth.RoleAdmin
+		u.AdminSource = port.AdminSourceSSO
 		return u, nil
 	}
 	claims := auth.SSOClaims{Issuer: ssoTestIssuer, Subject: "sub-9", Groups: []string{"specht-admins"}}

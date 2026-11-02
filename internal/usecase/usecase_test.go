@@ -1118,6 +1118,7 @@ type mockUserRepo struct {
 	updateDisplayNameFn func(context.Context, string, *string) (port.User, error)
 	setRoleFn           func(context.Context, string, string) (port.User, error)
 	changeRoleFn        func(context.Context, string, string) (port.User, error)
+	syncSSOAdminFn      func(context.Context, string, bool) (port.User, error)
 	setDisabledFn       func(context.Context, string, bool) (port.User, error)
 	deactivateFn        func(context.Context, string, bool) (port.User, []port.RevokedAPIKey, error)
 	clearPasswordFn     func(context.Context, string) error
@@ -1220,6 +1221,13 @@ func (m *mockUserRepo) ChangeRole(ctx context.Context, userID, role string) (por
 		return port.User{}, fmt.Errorf("unexpected call to ChangeRole")
 	}
 	return m.changeRoleFn(ctx, userID, role)
+}
+
+func (m *mockUserRepo) SyncSSOAdmin(ctx context.Context, userID string, admin bool) (port.User, error) {
+	if m.syncSSOAdminFn == nil {
+		return port.User{}, fmt.Errorf("unexpected call to SyncSSOAdmin")
+	}
+	return m.syncSSOAdminFn(ctx, userID, admin)
 }
 
 func (m *mockUserRepo) SetDisabled(ctx context.Context, userID string, disabled bool) (port.User, error) {

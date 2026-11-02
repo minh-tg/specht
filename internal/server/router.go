@@ -171,10 +171,11 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		if cfg.OIDCEnabled && cfg.OIDC != nil {
 			r.Get("/api/v1/auth/sso/login", ssoLoginHandler(cfg.OIDC))
 			r.Get("/api/v1/auth/sso/callback", cfg.OIDC.CallbackHandler(func(ctx context.Context, claims auth.SSOClaims) (string, error) {
-				// Resolve the IdP subject to a local account: existing users
-				// keep their local role; unknown subjects are provisioned only
-				// for allowlisted domains, otherwise rejected. IdP admin
-				// groups elevate provisioned accounts.
+				// Resolve the IdP subject to a local account: unknown
+				// subjects are provisioned only for allowlisted domains,
+				// otherwise rejected. IdP admin groups grant admin to
+				// accounts without a password and take back the grants they
+				// made.
 				userID, _, _, err := cfg.Usecases.FindOrProvisionSSOUser(ctx, claims, cfg.SSOAllowedDomains, cfg.SSOAdminGroups)
 				if err != nil {
 					return "", err
