@@ -145,8 +145,9 @@ func newReportsUploadCmd(d Deps, s *settings) *cobra.Command {
 			"(Nuclei writes one) is sent as a list of its lines. Run specht scanners list to see which scanner\n" +
 			"reads which file and how to produce it.\n\n" +
 			"A scan run with a severity filter or only for fixable findings (trivy --severity, --ignore-unfixed,\n" +
-			"grype --only-fixed) must say so with --scan-severities and --fixable-only. The report then closes only\n" +
-			"the findings inside the filter. For trivy, TRIVY_SEVERITY and TRIVY_IGNORE_UNFIXED are used when the\n" +
+			"grype --only-fixed) must say so with --scan-severities and --fixable-only. A severity-filtered report\n" +
+			"then closes no finding it omits, and a fixable-only report closes only omitted findings that have a\n" +
+			"fix. For trivy, TRIVY_SEVERITY and TRIVY_IGNORE_UNFIXED are used when the\n" +
 			"flags are absent.\n\n" +
 			"This records the scan. To fail a build on a blocked gate, use specht-adapter.",
 		Args: cobra.NoArgs,

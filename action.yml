@@ -74,7 +74,7 @@ inputs:
     required: false
     default: ""
   scan-severities:
-    description: Severities the scan kept, comma-separated, when it was run with a severity filter such as trivy --severity HIGH,CRITICAL. A filtered scan closes only findings inside the filter. For trivy, TRIVY_SEVERITY is used when this is empty.
+    description: Severities the scan kept, comma-separated, when it was run with a severity filter such as trivy --severity HIGH,CRITICAL. A severity-filtered scan closes no finding it omits, since the scanner may have re-rated it below the filter. For trivy, TRIVY_SEVERITY is used when this is empty.
     required: false
     default: ""
   fixable-only:

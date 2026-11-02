@@ -63,9 +63,13 @@ Trivy with `--severity HIGH,CRITICAL` or `--ignore-unfixed`, and Grype with
 record the flags. Without a declaration, every medium, low or unfixed finding
 missing from the report would count as fixed.
 
-Declare the filter when you upload the report. A filtered report closes only the
-findings inside its filter. A finding outside the filter stays open when the
-report omits it, and verifying such a finding by hand stays inconclusive.
+Declare the filter when you upload the report. A report filtered by severity
+closes no finding it omits: the scanner may have re-rated the finding below the
+filter since the last scan, and the report cannot show which happened. Run an
+unfiltered scan of the same scope to close fixed findings. A fixable-only report
+closes an omitted finding only when the finding has a fixed version. A finding
+the report cannot vouch for stays open, and verifying it by hand stays
+inconclusive.
 
 - **Severities the scan kept:** `-scan-severities=high,critical` on the
   adapter, `--scan-severities` on `specht reports upload`, or the

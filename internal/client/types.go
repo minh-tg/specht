@@ -33,8 +33,8 @@ type IngestPayload struct {
 	ArtifactVersion    string          `json:"artifact_version,omitempty"`
 	ArtifactType       string          `json:"artifact_type,omitempty"`
 	// ScanFilter declares what the scanner left out on purpose, such as Trivy
-	// --severity or --ignore-unfixed. A filtered scan only closes findings
-	// inside the filter.
+	// --severity or --ignore-unfixed. A severity-filtered scan closes no
+	// finding it omits; a fixable-only scan closes only findings with a fix.
 	ScanFilter *ScanFilter `json:"scan_filter,omitempty"`
 }
 
