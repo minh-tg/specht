@@ -46,7 +46,8 @@ func requireInstanceAdmin(ctx context.Context) (*auth.Identity, error) {
 
 // ChangeUserRole sets an account's global role (admin or member). Open sessions
 // pick the new role up straight away, and the last active admin cannot be
-// demoted.
+// demoted. An admin role set here is a manual grant, which SSO_ADMIN_GROUPS
+// never takes back.
 func (u *Usecases) ChangeUserRole(ctx context.Context, userID, role string) (*UserProfile, error) {
 	if _, err := requireInstanceAdmin(ctx); err != nil {
 		return nil, err
@@ -65,7 +66,9 @@ func (u *Usecases) ChangeUserRole(ctx context.Context, userID, role string) (*Us
 	if isSystemAccount(current.Email) {
 		return nil, ErrSystemAccount
 	}
-	if current.Role == role {
+	// Granting admin by hand to an admin the IdP granted still writes: the
+	// grant becomes manual, so a later SSO login cannot take it back.
+	if current.Role == role && (role != auth.RoleAdmin || current.AdminSource != port.AdminSourceSSO) {
 		profile := toUserProfile(current)
 		return &profile, nil
 	}

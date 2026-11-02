@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/minh-tg/specht/internal/audit"
 	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/port"
 )
@@ -291,10 +292,13 @@ func (u *Usecases) burnHash(password string) {
 // same provider. A link made while the provider vouched for the email also
 // marks the account's address as proven, which ADMIN_EMAILS requires. Otherwise the account is provisioned when the email domain is
 // allowlisted; anything else yields auth.ErrSSONotProvisioned (the caller maps
-// it to a generic 403). Existing accounts keep their local role. Provisioned
-// accounts have no password, so password login stays impossible for them, and
-// become admin only when IdP group membership matches adminGroups; a SetRole
-// failure fails the login closed.
+// it to a generic 403). Provisioned accounts have no password, so password
+// login stays impossible for them. When adminGroups is set, a login of a
+// provisioned or linked account without a password makes it an admin while
+// it carries an admin group, and takes back an admin role an earlier login
+// granted that way once it carries none (see syncSSOAdmin). A failed role
+// write fails the login closed. The login that links an existing account
+// keeps its role.
 func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, claims auth.SSOClaims, allowedDomains []string, adminGroups []string) (userID, role string, provisioned bool, err error) {
 	issuer, sub := claims.Issuer, claims.Subject
 	if issuer == "" || sub == "" {
@@ -313,7 +317,7 @@ func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, claims auth.SSOCl
 			slog.Warn("sso login: deactivated account", "user_id", user.ID, "sub", sub)
 			return "", "", false, auth.ErrSSONotProvisioned
 		}
-		user, err = u.elevatePasswordlessSSOAdmin(ctx, user, claims.Groups, adminGroups)
+		user, err = u.syncSSOAdmin(ctx, user, claims.Groups, adminGroups)
 		if err != nil {
 			return "", "", false, err
 		}
@@ -393,19 +397,62 @@ func (u *Usecases) linkExistingSSOUser(ctx context.Context, user port.User, issu
 	return user.ID, auth.TokenRole(user.Role), false, nil
 }
 
-// elevatePasswordlessSSOAdmin repairs a first provisioning whose role write
-// failed after the account was linked, and applies group changes to accounts
-// that have no local password. Accounts with a password keep their local role.
-func (u *Usecases) elevatePasswordlessSSOAdmin(ctx context.Context, user port.User, groups, adminGroups []string) (port.User, error) {
-	if user.PasswordHash != "" || user.Role == auth.RoleAdmin || !auth.IsSSOAdmin(groups, adminGroups) {
+// syncSSOAdmin applies SSO_ADMIN_GROUPS to an account that signs in through
+// SSO. With no admin groups configured the role is the account's own. An
+// account without a local password that carries an admin group becomes an
+// admin granted by SSO; one that already is an admin keeps the role and its
+// source, so a manual grant stays manual. An admin granted by SSO that carries
+// no admin group goes back to member, which starts a new token generation, so
+// the admin access tokens it holds stop working. A manual admin is never
+// demoted, and neither is the last active admin: that login keeps the role,
+// and the refusal is logged and audited.
+func (u *Usecases) syncSSOAdmin(ctx context.Context, user port.User, groups, adminGroups []string) (port.User, error) {
+	if len(adminGroups) == 0 {
 		return user, nil
 	}
-	elevated, err := u.deps.Stores.Users.SetRole(ctx, user.ID, auth.RoleAdmin)
-	if err != nil {
-		return port.User{}, fmt.Errorf("elevate sso admin: %w", err)
+	isAdmin := user.Role == auth.RoleAdmin
+	inGroup := auth.IsSSOAdmin(groups, adminGroups)
+	promote := inGroup && !isAdmin && user.PasswordHash == ""
+	demote := !inGroup && isAdmin && user.AdminSource == port.AdminSourceSSO
+	if !promote && !demote {
+		return user, nil
 	}
-	slog.Info("sso login: elevated to admin by IdP group", "user_id", user.ID)
-	return elevated, nil
+	started := time.Now()
+	synced, err := u.deps.Stores.Users.SyncSSOAdmin(ctx, user.ID, inGroup)
+	switch {
+	case errors.Is(err, port.ErrLastGlobalAdmin):
+		slog.Warn("sso login: not demoted, the account is the last active admin", "user_id", user.ID)
+		u.auditSSORole(ctx, user.ID, started, err)
+		return synced, nil
+	case errors.Is(err, port.ErrAccountDeactivated):
+		slog.Warn("sso login: account deactivated before the role change", "user_id", user.ID)
+		return port.User{}, auth.ErrSSONotProvisioned
+	case err != nil:
+		return port.User{}, fmt.Errorf("sync sso admin: %w", err)
+	}
+	if synced.Role == user.Role {
+		return synced, nil
+	}
+	if inGroup {
+		slog.Info("sso login: elevated to admin by IdP group", "user_id", user.ID)
+	} else {
+		slog.Info("sso login: admin role removed, no IdP admin group", "user_id", user.ID)
+	}
+	u.auditSSORole(ctx, user.ID, started, nil)
+	return synced, nil
+}
+
+// ssoRoleActor is the principal id on the audit line of a role change made by
+// SSO_ADMIN_GROUPS at a login.
+const ssoRoleActor = "sso"
+
+func (u *Usecases) auditSSORole(ctx context.Context, userID string, started time.Time, err error) {
+	event := audit.Event{Name: audit.EventChangeUserRole, Outcome: audit.OutcomeSuccess, Actor: ssoRoleActor, Target: userID, StartedAt: started}
+	if err != nil {
+		event.Outcome = audit.OutcomeFailure
+		event.Error = err.Error()
+	}
+	u.deps.Audit.Log(ctx, event)
 }
 
 // issueAccessToken mints an access token bound to the account's current token
@@ -441,15 +488,11 @@ func (u *Usecases) provisionSSOUser(ctx context.Context, claims auth.SSOClaims, 
 		return "", "", false, err
 	}
 	slog.Info("sso login: provisioned account", "user_id", created.ID, "sub", claims.Subject)
-	if auth.IsSSOAdmin(claims.Groups, adminGroups) {
-		elevated, err := u.deps.Stores.Users.SetRole(ctx, created.ID, auth.RoleAdmin)
-		if err != nil {
-			return "", "", false, fmt.Errorf("elevate sso admin: %w", err)
-		}
-		slog.Info("sso login: elevated to admin by IdP group", "user_id", created.ID, "sub", claims.Subject)
-		return elevated.ID, auth.TokenRole(elevated.Role), true, nil
+	synced, err := u.syncSSOAdmin(ctx, created, claims.Groups, adminGroups)
+	if err != nil {
+		return "", "", false, err
 	}
-	return created.ID, auth.TokenRole(created.Role), true, nil
+	return synced.ID, auth.TokenRole(synced.Role), true, nil
 }
 
 // linkSSOIdentity records the binding, mapping a lost race (the subject or the

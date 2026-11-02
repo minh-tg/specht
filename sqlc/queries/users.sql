@@ -19,14 +19,23 @@ SELECT * FROM users WHERE id = ANY($1::uuid[]) ORDER BY email;
 UPDATE users SET password_hash = $2, token_version = token_version + 1, updated_at = NOW() WHERE id = $1;
 
 -- name: SetUserRole :one
-UPDATE users SET role = $2 WHERE id = $1
+-- A role set this way is an operator's grant (ADMIN_EMAILS), so an SSO login
+-- never takes it back.
+UPDATE users SET role = $2, admin_source = 'manual' WHERE id = $1
 RETURNING *;
 
 -- name: ChangeUserRole :one
 -- Changes the global role and starts a new token generation, so the new role
 -- applies to sessions that are already open instead of at their next refresh.
-UPDATE users SET role = $2, token_version = token_version + 1, updated_at = NOW()
-WHERE id = $1
+-- admin_source records who granted an admin role: 'sso' for SSO_ADMIN_GROUPS,
+-- 'manual' for everything else. A write that keeps the role and only records
+-- a new source leaves the generation, since no session's role changes.
+UPDATE users SET
+    role = sqlc.arg(role),
+    admin_source = sqlc.arg(admin_source),
+    token_version = CASE WHEN role = sqlc.arg(role) THEN token_version ELSE token_version + 1 END,
+    updated_at = NOW()
+WHERE id = sqlc.arg(id)
 RETURNING *;
 
 -- name: SetUserDisabled :one

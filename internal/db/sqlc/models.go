@@ -492,6 +492,7 @@ type User struct {
 	TokenVersion int32              `json:"token_version"`
 	DisabledAt   pgtype.Timestamptz `json:"disabled_at"`
 	EmailProven  bool               `json:"email_proven"`
+	AdminSource  string             `json:"admin_source"`
 }
 
 type UserIdentity struct {

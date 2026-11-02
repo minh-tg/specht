@@ -235,3 +235,21 @@ func TestDeactivateUserRefusesTheOnlyActiveAdminOfAProjectUnlessForced(t *testin
 	assert.True(t, profile.Disabled)
 	assert.Equal(t, 1, deactivated)
 }
+
+func TestChangeUserRole_MakesAnIdPGrantManual(t *testing.T) {
+	calls := 0
+	users := &mockUserRepo{
+		getByIDFn: func(context.Context, string) (port.User, error) {
+			return port.User{ID: targetUserID, Email: "t@example.com", Role: auth.RoleAdmin, AdminSource: port.AdminSourceSSO}, nil
+		},
+		changeRoleFn: func(_ context.Context, id, role string) (port.User, error) {
+			calls++
+			return port.User{ID: id, Email: "t@example.com", Role: role, AdminSource: port.AdminSourceManual}, nil
+		},
+	}
+	uc := userAdminUsecase(users, &mockRefreshTokenRepo{})
+
+	_, err := uc.ChangeUserRole(sessionCtx(adminUserID, auth.RoleAdmin), targetUserID, auth.RoleAdmin)
+	require.NoError(t, err)
+	assert.Equal(t, 1, calls, "admin set by hand on an admin the IdP granted is written as a manual grant")
+}

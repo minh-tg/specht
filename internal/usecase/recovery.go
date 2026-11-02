@@ -63,7 +63,9 @@ func (u *Usecases) ResetPasswordByEmail(ctx context.Context, email, password str
 
 // GrantAdminByEmail makes the account a global admin. Changing the role starts
 // a new token generation, so a session the person already has picks it up at
-// the next sign-in. An admin is left as is. A deactivated account is refused,
+// the next sign-in. The grant is manual, so SSO_ADMIN_GROUPS never takes it
+// back: an admin the IdP granted becomes a manual one, any other admin is left
+// as is. A deactivated account is refused,
 // as the ADMIN_EMAILS bootstrap refuses it: reactivate it first.
 func (u *Usecases) GrantAdminByEmail(ctx context.Context, email string) (*UserProfile, error) {
 	email, err := recoveryEmail(email)
@@ -77,7 +79,7 @@ func (u *Usecases) GrantAdminByEmail(ctx context.Context, email string) (*UserPr
 	if user.DisabledAt != nil {
 		return nil, ErrAccountDeactivated
 	}
-	if user.Role != auth.RoleAdmin {
+	if user.Role != auth.RoleAdmin || user.AdminSource == port.AdminSourceSSO {
 		user, err = u.deps.Stores.Users.ChangeRole(ctx, user.ID, auth.RoleAdmin)
 		if err != nil {
 			return nil, fmt.Errorf("grant admin: %w", err)

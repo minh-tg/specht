@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/minh-tg/specht/internal/audit"
 	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/domain"
 	"github.com/minh-tg/specht/internal/gate"
@@ -195,6 +196,10 @@ type Deps struct {
 	// provider resolver (nil when no provider is configured) and the intel
 	// lookup.
 	CVEDetail CVEDetailDeps
+	// Audit receives the audit lines of changes no HTTP handler sees, such as
+	// a role an SSO login grants or takes back. Nil writes them to
+	// slog.Default, as the handlers' own audit logger does.
+	Audit *audit.Logger
 }
 
 // Usecases groups the application's use-case methods. It is safe for
@@ -226,6 +231,9 @@ type Usecases struct {
 
 // New builds a Usecases from its dependencies.
 func New(deps Deps) *Usecases {
+	if deps.Audit == nil {
+		deps.Audit = audit.NewLogger(nil)
+	}
 	return &Usecases{deps: deps}
 }
 
