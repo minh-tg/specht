@@ -54,6 +54,10 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusBadRequest, "invalid_slug", err.Error())
 			return
 		}
+		if errors.Is(err, usecase.ErrInvalidField) {
+			respondError(w, http.StatusBadRequest, "invalid_field", err.Error())
+			return
+		}
 		if errors.Is(err, usecase.ErrSlugTaken) {
 			respondError(w, http.StatusConflict, "slug_taken", "project slug already exists")
 			return
@@ -115,6 +119,10 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, usecase.ErrInvalidDefaultBranch) {
 			respondError(w, http.StatusBadRequest, "invalid_field", "default_branch: "+err.Error())
+			return
+		}
+		if errors.Is(err, usecase.ErrInvalidField) {
+			respondError(w, http.StatusBadRequest, "invalid_field", err.Error())
 			return
 		}
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {

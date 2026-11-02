@@ -2377,6 +2377,7 @@ export interface components {
     CreateApiKeyRequest: {
       /** @description Slug of the project the key is bound to. */
       project: string;
+      /** @description At most 100 characters after trimming, with no control characters. Otherwise 400 `invalid_field`. */
       name: string;
       /**
        * @description RFC 3339. Omit for a key that never expires.
@@ -2434,18 +2435,20 @@ export interface components {
       upload_reports: boolean;
     };
     CreateProjectRequest: {
+      /** @description At most 100 characters after trimming, with no control characters. Otherwise 400 `invalid_field`. */
       name: string;
       /**
        * @description Unique URL-safe identifier for the project, 3 to 48 characters of lowercase letters and digits with single hyphens between groups (`^[a-z0-9]+(-[a-z0-9]+)*$`). Names the server or the web app already uses as a first path segment (`admin`, `api`, `api-keys`, `assets`, `ingest`, `login`, `projects`, `register`, `teams`) are reserved. A rejected slug returns `invalid_slug`.
        * @example my-app
        */
       slug: string;
+      /** @description At most 2000 characters after trimming. Line breaks and tabs are allowed, other control characters are not. Otherwise 400 `invalid_field`. */
       description?: string;
     };
     UpdateProjectRequest: {
-      /** @description Omit to leave unchanged. */
+      /** @description Omit to leave unchanged. At most 100 characters after trimming, with no control characters. Otherwise 400 `invalid_field`. */
       name?: string | null;
-      /** @description Omit to leave unchanged. */
+      /** @description Omit to leave unchanged. At most 2000 characters after trimming. Line breaks and tabs are allowed, other control characters are not. Otherwise 400 `invalid_field`. */
       description?: string | null;
       /**
        * @description Omit to leave unchanged; an empty string clears it. Surrounding

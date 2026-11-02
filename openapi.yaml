@@ -3977,7 +3977,10 @@ components:
       required: [project, name]
       properties:
         project: { type: string, description: Slug of the project the key is bound to. }
-        name: { type: string }
+        name:
+          type: string
+          maxLength: 100
+          description: At most 100 characters after trimming, with no control characters. Otherwise 400 `invalid_field`.
         expires_at:
           type: string
           description: RFC 3339. Omit for a key that never expires.
@@ -4031,18 +4034,30 @@ components:
       type: object
       required: [name, slug]
       properties:
-        name: { type: string }
+        name:
+          type: string
+          maxLength: 100
+          description: At most 100 characters after trimming, with no control characters. Otherwise 400 `invalid_field`.
         slug:
           type: string
           description: Unique URL-safe identifier for the project, 3 to 48 characters of lowercase letters and digits with single hyphens between groups (`^[a-z0-9]+(-[a-z0-9]+)*$`). Names the server or the web app already uses as a first path segment (`admin`, `api`, `api-keys`, `assets`, `ingest`, `login`, `projects`, `register`, `teams`) are reserved. A rejected slug returns `invalid_slug`.
           example: my-app
-        description: { type: string }
+        description:
+          type: string
+          maxLength: 2000
+          description: At most 2000 characters after trimming. Line breaks and tabs are allowed, other control characters are not. Otherwise 400 `invalid_field`.
 
     UpdateProjectRequest:
       type: object
       properties:
-        name: { type: [string, "null"], description: Omit to leave unchanged. }
-        description: { type: [string, "null"], description: Omit to leave unchanged. }
+        name:
+          type: [string, "null"]
+          maxLength: 100
+          description: Omit to leave unchanged. At most 100 characters after trimming, with no control characters. Otherwise 400 `invalid_field`.
+        description:
+          type: [string, "null"]
+          maxLength: 2000
+          description: Omit to leave unchanged. At most 2000 characters after trimming. Line breaks and tabs are allowed, other control characters are not. Otherwise 400 `invalid_field`.
         default_branch:
           type: [string, "null"]
           maxLength: 255

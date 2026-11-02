@@ -230,6 +230,7 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
             <form onSubmit={handleCreate} className="flex flex-wrap gap-2">
               <Input
                 id="apikeys-name"
+                maxLength={100}
                 className="w-auto flex-1"
                 placeholder="Key name"
                 value={newKeyName}
