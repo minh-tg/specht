@@ -397,6 +397,12 @@ releases.
   triage holds, and no longer deadlocks with a report upload or delays other projects'
   rows. Skipped rows are reset by the next sweep. A new index on `findings.analysis_expires_at`
   keeps the sweep from scanning the whole table.
+- A report that names one finding thousands of times no longer takes minutes to ingest. A
+  SARIF run with 23,000 results in one file and rule (3 MiB) ran past the request limit and
+  the client saw the connection close, because every result updated the same finding row
+  inside the ingest transaction and each update was slower than the last. The row is now
+  written for the finding's first and last result, and the same report ingests in about one
+  second.
 - A branch can no longer pass the introduced-only gate by pushing again. When no
   baseline resolves from `base_revision` (the target branch was never scanned, or a
   push build sent no base ref), a finding the previous report in the same scan scope

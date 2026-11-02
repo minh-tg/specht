@@ -926,6 +926,17 @@ type ingestFindingsState struct {
 	// ingested. A repeated entry adds an occurrence but no second created or
 	// regression event and no second introduced count.
 	reported map[string]bool
+	// upserts holds, per finding key, the last row write of this report. Only
+	// a finding's first and last entry write its row (see upsertFindingRow):
+	// updating one row thousands of times in a single transaction makes each
+	// later update slower, so the cost of a report that names one finding many
+	// times grew with the square of its length.
+	upserts map[string]findingUpsert
+	// attributed holds the finding keys whose introduced-by attribution this
+	// report already wrote.
+	attributed map[string]bool
+	// dimensionsWritten holds the finding dimensions this report already wrote.
+	dimensionsWritten map[string]bool
 	// scopeHash is the scan scope of this ingest (see scanScopeHash).
 	scopeHash string
 	// scopeSev holds the per-scope severities of the known findings.
@@ -948,16 +959,19 @@ func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Projec
 	}
 	batchStore, _ := u.deps.Stores.Findings.(port.FindingIngestBatchStore)
 	st := &ingestFindingsState{
-		project:        project,
-		input:          input,
-		report:         report,
-		baselineID:     baselineID,
-		nowTime:        now(),
-		known:          make(map[string]port.Finding),
-		reported:       make(map[string]bool),
-		seenIntroduced: make(map[string]bool),
-		batchStore:     batchStore,
-		scopeHash:      scanScopeHash(input, nr),
+		project:           project,
+		input:             input,
+		report:            report,
+		baselineID:        baselineID,
+		nowTime:           now(),
+		known:             make(map[string]port.Finding),
+		reported:          make(map[string]bool),
+		upserts:           make(map[string]findingUpsert),
+		attributed:        make(map[string]bool),
+		dimensionsWritten: make(map[string]bool),
+		seenIntroduced:    make(map[string]bool),
+		batchStore:        batchStore,
+		scopeHash:         scanScopeHash(input, nr),
 	}
 	if err := u.prefetchKnownFindings(ctx, st, nr); err != nil {
 		return ingestOutcome{}, err
@@ -1143,7 +1157,7 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 	known := exists && existing.State != string(finding.TechArchived)
 
 	incoming := severityValue{text: severityStr(f.Severity), rank: newRank}
-	upserted, err := u.upsertFindingRow(ctx, st, f, incoming)
+	upserted, err := u.upsertFindingRow(ctx, st, key, f, incoming, final)
 	if err != nil {
 		return err
 	}
@@ -1160,7 +1174,7 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 	if err := u.recordScopeSeverity(ctx, st, upserted, existing, exists, final, incoming, project); err != nil {
 		return err
 	}
-	if err := u.attributeFinding(ctx, st, upserted, exists, existing); err != nil {
+	if err := u.attributeFinding(ctx, st, key, upserted, exists, existing); err != nil {
 		return err
 	}
 
@@ -1193,7 +1207,10 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 			return err
 		}
 	} else {
-		st.occurrences = append(st.occurrences, findingOccurrenceInput(st, upserted, f))
+		// The store keeps one occurrence per finding and report, the first.
+		if !repeat {
+			st.occurrences = append(st.occurrences, findingOccurrenceInput(st, upserted, f))
+		}
 	}
 	// Read whether the fix already existed before the new dimensions are
 	// written. applyMaterialChange compares against this to report a fix that
@@ -1248,7 +1265,16 @@ func (s *ingestFindingsState) tallyIngest(introduced bool, changeType, upsertedI
 
 // upsertFindingRow persists the observation and returns the aggregate severity
 // computed by the store under the finding's row lock.
-func (u *Usecases) upsertFindingRow(ctx context.Context, st *ingestFindingsState, f domain.NormalizedFinding, incoming severityValue) (port.Finding, error) {
+func (u *Usecases) upsertFindingRow(ctx context.Context, st *ingestFindingsState, key string, f domain.NormalizedFinding, incoming severityValue, final bool) (port.Finding, error) {
+	values := findingUpsertValues{
+		title: f.Title, severity: incoming.text, rank: incoming.rank, score: scoreToFloat(f.Score),
+	}
+	// An earlier write of this report already created or updated the row. A
+	// later entry that is not the finding's last writes values the last entry
+	// overwrites, and one that repeats the stored values changes nothing.
+	if prior, ok := st.upserts[key]; ok && (!final || prior.findingUpsertValues == values) {
+		return prior.row, nil
+	}
 	upserted, err := u.deps.Stores.Findings.Upsert(ctx, port.UpsertFindingInput{
 		Scope: &port.FindingScopeSeverityInput{
 			ScopeHash: st.scopeHash, ReportID: st.report.ID,
@@ -1268,15 +1294,31 @@ func (u *Usecases) upsertFindingRow(ctx context.Context, st *ingestFindingsState
 		slog.Error("upsert finding failed", "scanner", st.input.Scanner, "fingerprint", f.Fingerprint, "error", err)
 		return port.Finding{}, fmt.Errorf("scanner %s: upsert finding %q: %w", st.input.Scanner, f.Fingerprint, err)
 	}
+	st.upserts[key] = findingUpsert{findingUpsertValues: values, row: upserted}
 	return upserted, nil
+}
+
+// findingUpsertValues are the fields a finding upsert writes from the report.
+type findingUpsertValues struct {
+	title    string
+	severity string
+	rank     int16
+	score    float64
+}
+
+// findingUpsert is one finding row write of the report and the row it returned.
+type findingUpsert struct {
+	findingUpsertValues
+	row port.Finding
 }
 
 // attributeFinding keeps legacy attribution on the finding row for
 // unattributed findings.
-func (u *Usecases) attributeFinding(ctx context.Context, st *ingestFindingsState, upserted port.Finding, exists bool, existing port.Finding) error {
-	if exists && existing.IntroducedByReportID != nil {
+func (u *Usecases) attributeFinding(ctx context.Context, st *ingestFindingsState, key string, upserted port.Finding, exists bool, existing port.Finding) error {
+	if (exists && existing.IntroducedByReportID != nil) || st.attributed[key] {
 		return nil
 	}
+	st.attributed[key] = true
 	if _, err := u.deps.Stores.Findings.SetFindingIntroducedBy(ctx, upserted.ID, st.report.ID, textPtr(st.input.CommitSha)); err != nil {
 		slog.Error("set introduced-by failed", "scanner", st.input.Scanner, "fingerprint", upserted.Fingerprint, "error", err)
 		return fmt.Errorf("scanner %s: attribute finding %q: %w", st.input.Scanner, upserted.Fingerprint, err)
@@ -1350,6 +1392,11 @@ func (u *Usecases) createFindingOccurrence(ctx context.Context, st *ingestFindin
 func (u *Usecases) upsertFindingDimensions(ctx context.Context, st *ingestFindingsState, upserted port.Finding, f domain.NormalizedFinding) error {
 	source := textPtr(st.input.Scanner)
 	write := func(dimension port.DimensionInput) error {
+		id := dimension.FindingID + "\x00" + dimension.Key + "\x00" + dimension.Value
+		if st.dimensionsWritten[id] {
+			return nil
+		}
+		st.dimensionsWritten[id] = true
 		if st.batchStore != nil && dimension.Key != domain.DimFixedVersion {
 			st.dimensions = append(st.dimensions, dimension)
 			return nil
