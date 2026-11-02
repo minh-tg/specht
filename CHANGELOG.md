@@ -458,6 +458,9 @@ releases.
 
 ### Security
 
+- The EPSS feed reader skips a row whose score or percentile is not a finite number in
+  [0, 1], and logs it. A `NaN` score used to be stored and made every finding response for
+  that CVE come back without a body.
 - Stored scan evidence redacts more credential keys. Key names are compared lowercased with `-` and
   `_` removed, so `x-api-key`, `privateKey` and `ssh_private_key` match, and `credentials`,
   `passphrase`, `pwd` and `cookie` (as a whole name or a suffix) are added. A credential-named list

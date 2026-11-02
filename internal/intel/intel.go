@@ -153,7 +153,7 @@ func (s *Store) fetchProviders(ctx context.Context, want []string) (map[string]R
 		for id, rec := range got {
 			m := merged[id]
 			m.CVEID = id
-			if rec.EPSS != nil {
+			if rec.EPSS != nil && validProbability(*rec.EPSS) && validProbability(rec.EPSSPercentile) {
 				m.EPSS, m.EPSSPercentile, m.EPSSDate = rec.EPSS, rec.EPSSPercentile, rec.EPSSDate
 			}
 			if rec.KEV {
