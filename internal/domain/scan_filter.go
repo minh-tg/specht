@@ -13,8 +13,10 @@ var ScanSeverities = []string{"unknown", "low", "medium", "high", "critical"}
 
 // ScanFilter is what the uploader says the scanner left out on purpose, such as
 // Trivy --severity HIGH,CRITICAL or --ignore-unfixed. Scanner output records no
-// such flag, so a filtered report looks like a full one. A report closes only
-// the findings inside its filter.
+// such flag, so a filtered report looks like a full one. A severity filter
+// keeps a report from closing any finding it omits, since the scanner may have
+// re-rated the finding below the filter; a fixable-only filter keeps it from
+// closing a finding without a fix.
 type ScanFilter struct {
 	// Severities are the severities the scan kept, lowercase, de-duplicated and
 	// sorted by rank. Empty means no severity filter.

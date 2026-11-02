@@ -974,9 +974,9 @@ Flags:
   -scan-mode string      Scan mode: full or incremental
   -scan-severities string Severities the scan kept, comma-separated, for a scan run
                          with a severity filter (trivy --severity HIGH,CRITICAL).
-                         The server closes only findings inside the filter, so a
-                         filtered scan never closes the findings it hid. For
-                         -tool=trivy, TRIVY_SEVERITY is used when the flag is absent
+                         A scan filtered by severity closes no finding it omits,
+                         since the scanner may have re-rated it below the filter.
+                         For -tool=trivy, TRIVY_SEVERITY is used when the flag is absent
   -fixable-only[=bool]   The scan kept only findings that have a fix (trivy
                          --ignore-unfixed, grype --only-fixed). For -tool=trivy,
                          TRIVY_IGNORE_UNFIXED=true is used when the flag is absent

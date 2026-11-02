@@ -359,7 +359,7 @@ type ingestRequest struct {
 	ArtifactVersion    string `json:"artifact_version,omitempty"`
 	ArtifactType       string `json:"artifact_type,omitempty"`
 	// ScanFilter declares what the scanner left out on purpose. A filtered
-	// report closes only the findings inside the filter.
+	// report closes only the findings it can vouch for (report_examined_finding).
 	ScanFilter *scanFilterRequest `json:"scan_filter,omitempty"`
 }
 

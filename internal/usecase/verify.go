@@ -98,8 +98,8 @@ func (u *Usecases) VerifyFix(ctx context.Context, findingID string) (*VerifyResp
 	// complete (SARIF and Checkov stay unknown) still settles a finding its
 	// own output proves it looked for: a listed rule that found nothing, or a
 	// passed check. The proof test is the one auto-fix uses. A report the
-	// uploader declared filtered by severity or fixability is complete only
-	// inside its filter, so it needs the proof like any other.
+	// uploader declared filtered by severity or fixability vouches only for what
+	// its filter cannot have hidden, so it needs the proof like any other.
 	if (report.Completeness != "complete" || report.Filtered) && !report.ExaminedFinding {
 		return &VerifyResponse{
 			FindingID: fid.String(), Outcome: VerifyInconclusive, ReportID: &reportID,

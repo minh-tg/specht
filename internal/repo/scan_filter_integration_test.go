@@ -114,7 +114,10 @@ func (s *filterScenario) scopeRows(t *testing.T, fingerprint string) int {
 	return len(rows)
 }
 
-func TestScanFilterSeverityClosesOnlyFindingsInTheFilter(t *testing.T) {
+// A severity filter hides whatever the scanner now rates outside it, and the
+// stored rating may be stale, so a severity-filtered report closes nothing by
+// absence, inside the filter or outside it.
+func TestScanFilterSeverityClosesNothingByAbsence(t *testing.T) {
 	s, cleanup := newFilterScenario(t,
 		seeded{fingerprint: "low-1", severity: "low", rank: 1},
 		seeded{fingerprint: "high-1", severity: "high", rank: 3},
@@ -125,12 +128,42 @@ func TestScanFilterSeverityClosesOnlyFindingsInTheFilter(t *testing.T) {
 	fixed, err := s.stores.Findings.MarkAbsentFindingsFixed(s.ctx, s.projectID, "main", filtered)
 	require.NoError(t, err)
 
-	require.Len(t, fixed, 1)
-	assert.Equal(t, s.ids["high-1"], fixed[0].ID)
-	assert.Equal(t, "fixed", s.state(t, "high-1"))
+	assert.Empty(t, fixed)
+	assert.Equal(t, "open", s.state(t, "high-1"), "the scanner may have re-rated it below the filter")
 	assert.Equal(t, "open", s.state(t, "low-1"), "a HIGH,CRITICAL scan says nothing about a low finding")
 	assert.Equal(t, 1, s.scopeRows(t, "low-1"), "the low finding keeps its scope evidence")
-	assert.Zero(t, s.scopeRows(t, "high-1"))
+	assert.Equal(t, 1, s.scopeRows(t, "high-1"), "the high finding keeps its scope evidence")
+}
+
+// A finding rated critical when it was last seen and gone from a
+// HIGH,CRITICAL report may have been re-rated to medium and hidden. It stays
+// open.
+func TestScanFilterSeverityKeepsAReRatedFindingOpen(t *testing.T) {
+	s, cleanup := newFilterScenario(t,
+		seeded{fingerprint: "critical-1", severity: "critical", rank: 4},
+	)
+	defer cleanup()
+	filtered := s.scan(t, "filtered", []string{"high", "critical"}, false)
+
+	fixed, err := s.stores.Findings.MarkAbsentFindingsFixed(s.ctx, s.projectID, "main", filtered)
+	require.NoError(t, err)
+	assert.Empty(t, fixed)
+	assert.Equal(t, "open", s.state(t, "critical-1"))
+}
+
+// A filter that keeps every severity filters nothing and closes like a full
+// scan.
+func TestScanFilterOfEverySeverityClosesLikeAFullScan(t *testing.T) {
+	s, cleanup := newFilterScenario(t,
+		seeded{fingerprint: "low-1", severity: "low", rank: 1},
+		seeded{fingerprint: "high-1", severity: "high", rank: 3},
+	)
+	defer cleanup()
+	all := s.scan(t, "all", []string{"unknown", "low", "medium", "high", "critical"}, false)
+
+	fixed, err := s.stores.Findings.MarkAbsentFindingsFixed(s.ctx, s.projectID, "main", all)
+	require.NoError(t, err)
+	assert.Len(t, fixed, 2)
 }
 
 func TestScanFilterFixableOnlyClosesOnlyFindingsWithAFix(t *testing.T) {
@@ -152,21 +185,32 @@ func TestScanFilterFixableOnlyClosesOnlyFindingsWithAFix(t *testing.T) {
 }
 
 func TestScanFilterSeverityAndFixableOnlyBothApply(t *testing.T) {
-	s, cleanup := newFilterScenario(t,
-		seeded{fingerprint: "high-fixable", severity: "high", rank: 3, fixedIn: "2.0"},
-		seeded{fingerprint: "high-unfixed", severity: "high", rank: 3},
-		seeded{fingerprint: "low-fixable", severity: "low", rank: 1, fixedIn: "2.0"},
-	)
-	defer cleanup()
-	filtered := s.scan(t, "filtered", []string{"high"}, true)
+	t.Run("a severity filter closes nothing even for a fixable finding", func(t *testing.T) {
+		s, cleanup := newFilterScenario(t,
+			seeded{fingerprint: "high-fixable", severity: "high", rank: 3, fixedIn: "2.0"},
+			seeded{fingerprint: "high-unfixed", severity: "high", rank: 3},
+		)
+		defer cleanup()
+		filtered := s.scan(t, "filtered", []string{"high"}, true)
 
-	fixed, err := s.stores.Findings.MarkAbsentFindingsFixed(s.ctx, s.projectID, "main", filtered)
-	require.NoError(t, err)
+		fixed, err := s.stores.Findings.MarkAbsentFindingsFixed(s.ctx, s.projectID, "main", filtered)
+		require.NoError(t, err)
+		assert.Empty(t, fixed)
+	})
+	t.Run("every severity kept, fixable only", func(t *testing.T) {
+		s, cleanup := newFilterScenario(t,
+			seeded{fingerprint: "high-fixable", severity: "high", rank: 3, fixedIn: "2.0"},
+			seeded{fingerprint: "high-unfixed", severity: "high", rank: 3},
+		)
+		defer cleanup()
+		filtered := s.scan(t, "filtered", []string{"unknown", "low", "medium", "high", "critical"}, true)
 
-	require.Len(t, fixed, 1)
-	assert.Equal(t, "fixed", s.state(t, "high-fixable"))
-	assert.Equal(t, "open", s.state(t, "high-unfixed"))
-	assert.Equal(t, "open", s.state(t, "low-fixable"))
+		fixed, err := s.stores.Findings.MarkAbsentFindingsFixed(s.ctx, s.projectID, "main", filtered)
+		require.NoError(t, err)
+		require.Len(t, fixed, 1)
+		assert.Equal(t, "fixed", s.state(t, "high-fixable"))
+		assert.Equal(t, "open", s.state(t, "high-unfixed"))
+	})
 }
 
 func TestScanFilterUnfilteredReportStillClosesEverything(t *testing.T) {
@@ -199,8 +243,8 @@ func TestScanFilterVerifyRefusesAFindingOutsideTheFilter(t *testing.T) {
 	assert.Equal(t, 1, s.scopeRows(t, "low-1"))
 
 	_, err = s.stores.Findings.MarkFixedWithEvent(s.ctx, s.ids["high-1"], basis, port.FindingEventInput{FindingID: s.ids["high-1"], EventType: "verified_fixed"})
-	require.NoError(t, err)
-	assert.Equal(t, "fixed", s.state(t, "high-1"))
+	require.ErrorIs(t, err, port.ErrFindingStillObserved, "a severity filter vouches for no absence")
+	assert.Equal(t, "open", s.state(t, "high-1"))
 }
 
 func TestScanFilterVerifyFixAnswersInconclusiveOutsideTheFilter(t *testing.T) {
@@ -221,12 +265,13 @@ func TestScanFilterVerifyFixAnswersInconclusiveOutsideTheFilter(t *testing.T) {
 
 	high, err := u.VerifyFix(globalAdminCtx(user.ID), s.ids["high-1"])
 	require.NoError(t, err)
-	assert.Equal(t, usecase.VerifyFixed, high.Outcome)
-	assert.Equal(t, "fixed", s.state(t, "high-1"))
+	assert.Equal(t, usecase.VerifyInconclusive, high.Outcome, "the scanner may have re-rated it below the filter")
+	assert.Equal(t, "open", s.state(t, "high-1"))
 }
 
-// The severity a filter is tested against is the one the report's own scope
-// holds, and the finding's current severity when that scope has no row.
+// A severity filter that leaves out any severity never vouches for an absent
+// finding, whatever severity the finding had. The fixable filter needs a
+// non-empty fixed_version dimension.
 func TestReportExaminedFindingScanFilter(t *testing.T) {
 	s, cleanup := newFilterScenario(t,
 		seeded{fingerprint: "high-1", severity: "high", rank: 3, fixedIn: "1.0"},
@@ -245,26 +290,22 @@ func TestReportExaminedFindingScanFilter(t *testing.T) {
 			sev, fixableOnly, scope, id).Scan(&got))
 		return got
 	}
+	every := []string{"unknown", "low", "medium", "high", "critical"}
 
 	assert.True(t, ask("main", nil, false), "no filter")
-	assert.True(t, ask("main", []string{"high"}, false))
-	assert.False(t, ask("main", []string{"low", "medium", "critical"}, false))
-	assert.True(t, ask("main", []string{"high"}, true))
+	assert.True(t, ask("main", every, false), "a filter of every severity filters nothing")
+	assert.False(t, ask("main", []string{"high"}, false), "the finding's high rating may be stale")
+	assert.False(t, ask("main", []string{"high", "critical"}, false))
+	assert.False(t, ask("main", []string{"low", "medium", "high", "critical"}, false))
+	assert.False(t, ask("other", []string{"high"}, false))
+	assert.True(t, ask("main", nil, true))
+	assert.True(t, ask("main", every, true))
+	assert.False(t, ask("main", []string{"high"}, true))
 
-	// Another scope has no row for the finding: its current severity decides.
-	assert.True(t, ask("other", []string{"high"}, false))
-	assert.False(t, ask("other", []string{"low"}, false))
-
-	// The scope row wins over a stale current severity.
-	_, err := s.pool.Exec(s.ctx, `UPDATE finding_scope_severities SET severity = 'medium', severity_rank = 2 WHERE finding_id = $1`, id)
+	_, err := s.pool.Exec(s.ctx, `DELETE FROM finding_dimensions WHERE finding_id = $1`, id)
 	require.NoError(t, err)
-	assert.False(t, ask("main", []string{"high"}, false), "the scope says medium")
-	assert.True(t, ask("main", []string{"medium"}, false))
-
-	_, err = s.pool.Exec(s.ctx, `DELETE FROM finding_dimensions WHERE finding_id = $1`, id)
-	require.NoError(t, err)
-	assert.False(t, ask("main", []string{"medium"}, true), "no fixed_version dimension")
-	assert.True(t, ask("main", []string{"medium"}, false))
+	assert.False(t, ask("main", nil, true), "no fixed_version dimension")
+	assert.True(t, ask("main", nil, false))
 }
 
 func TestReportsFilterSeveritiesCheckRejectsUnknownValues(t *testing.T) {
@@ -319,9 +360,52 @@ func TestScanFilterMigrationRollbackRestoresTheOldFunction(t *testing.T) {
 	assert.True(t, has(newSig))
 }
 
+// The 000070 down migration puts back the 000067 severity test, which reads the
+// severity the finding has in the report's scope, and drops the shared filter
+// function; applying it again makes a severity filter vouch for no absence.
+func TestSeverityFilterAbsenceMigrationRollback(t *testing.T) {
+	s, cleanup := newFilterScenario(t,
+		seeded{fingerprint: "high-1", severity: "high", rank: 3},
+	)
+	defer cleanup()
+	dsn := s.pool.Config().ConnString()
+	examined := func() bool {
+		t.Helper()
+		var got bool
+		require.NoError(t, s.pool.QueryRow(s.ctx,
+			`SELECT report_examined_finding('complete', ARRAY['sca'], NULL::text[], ARRAY['high']::text[], false, 'main', $1::uuid, 'sca', 'high-1')`,
+			s.ids["high-1"]).Scan(&got))
+		return got
+	}
+	hasHelper := func() bool {
+		t.Helper()
+		var ok bool
+		require.NoError(t, s.pool.QueryRow(s.ctx,
+			`SELECT to_regprocedure('report_filter_admits_absence(text[],boolean,uuid)') IS NOT NULL`).Scan(&ok))
+		return ok
+	}
+	require.False(t, examined())
+	require.True(t, hasHelper())
+
+	for {
+		var version int
+		require.NoError(t, s.pool.QueryRow(s.ctx, `SELECT version FROM schema_migrations`).Scan(&version))
+		if version < 70 {
+			break
+		}
+		require.NoError(t, db.RollbackMigrations(dsn, "../../migrations"))
+	}
+	assert.True(t, examined(), "000067 trusts the stored high rating")
+	assert.False(t, hasHelper())
+
+	require.NoError(t, db.RunMigrations(dsn, "../../migrations"))
+	assert.False(t, examined())
+	assert.True(t, hasHelper())
+}
+
 // End to end: a Trivy report written with --severity HIGH,CRITICAL looks like a
-// full scan, so only the declared filter keeps it from closing a medium finding.
-func TestScanFilterIngestClosesOnlyInsideTheDeclaredFilter(t *testing.T) {
+// full scan, so only the declared filter keeps it from closing what it hid.
+func TestScanFilterIngestClosesNothingUnderADeclaredSeverityFilter(t *testing.T) {
 	pool, cleanup := setupIngestPool(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -380,7 +464,7 @@ func TestScanFilterIngestClosesOnlyInsideTheDeclaredFilter(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"high", "critical"}, report.FilterSeverities)
 	assert.False(t, report.FilterFixableOnly)
-	assert.Equal(t, "fixed", state("curl"), "the filter kept critical findings, and this one is gone")
+	assert.Equal(t, "open", state("curl"), "the scanner may now rate it below the filter, so absence says nothing")
 	assert.Equal(t, "open", state("lodash"), "the filter hid medium findings, so absence says nothing")
 
 	// The same bytes under the same filter and commit replay.
