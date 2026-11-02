@@ -45,6 +45,7 @@ func New(baseURL string, opts ...Option) *Client {
 	for _, o := range opts {
 		o(c)
 	}
+	c.httpClient = withSameOriginRedirects(c.httpClient)
 	return c
 }
 

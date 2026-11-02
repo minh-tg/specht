@@ -458,6 +458,9 @@ func newAdapterHTTPClient(hc *http.Client, sleep func(context.Context, time.Dura
 		clone := *hc
 		hc = &clone
 	}
+	if hc.CheckRedirect == nil {
+		hc.CheckRedirect = client.RefuseCrossOriginRedirect
+	}
 	hc.Transport = &retryTransport{base: client.NewTimeoutTransport(hc.Transport), sleep: sleep}
 	return hc
 }

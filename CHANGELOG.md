@@ -458,6 +458,9 @@ releases.
 
 ### Security
 
+- `specht`, `specht-mcp` and `specht-adapter` no longer follow a redirect that changes the
+  scheme or host of the API request. An `https` server that answered with a redirect to
+  `http://` on the same host name used to get the API key resent in clear text.
 - The CVE watcher escapes an advisory id before it puts the id in the OSV record URL and
   skips, with a log line, an id that is not letters, digits and `. _ : + -` (128 characters at
   most). An id with `/`, `?` or a control character used to change the request path or fail the

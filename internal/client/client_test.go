@@ -467,9 +467,15 @@ func (t *waitForContextTransport) RoundTrip(req *http.Request) (*http.Response, 
 }
 
 func TestWithHTTPClient(t *testing.T) {
-	hc := &http.Client{}
+	rt := &waitForContextTransport{}
+	hc := &http.Client{Transport: rt, Timeout: time.Minute}
 	cl := New("http://localhost", WithHTTPClient(hc))
-	assert.Same(t, hc, cl.httpClient)
+	assert.Same(t, rt, cl.httpClient.Transport)
+	assert.Equal(t, time.Minute, cl.httpClient.Timeout)
+	assert.NotNil(t, cl.httpClient.CheckRedirect, "a client without a redirect policy gets the same-origin one")
+
+	custom := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	assert.Same(t, custom, New("http://localhost", WithHTTPClient(custom)).httpClient)
 }
 
 func TestMe(t *testing.T) {
