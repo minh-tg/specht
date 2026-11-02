@@ -711,6 +711,9 @@ releases.
   or, for a session upload, the signed-in account is deactivated or its session ended
   (a password change, a reactivation), before the body finishes arriving. The ingest transaction now locks the key and the account and answers `401`
   as a revoked key does. Before, such an upload was stored with `201`.
+- When PostgreSQL ends a request's transaction as a deadlock victim, the deactivation,
+  role change, membership, invite and report routes answer `503` `retry_later` with
+  `Retry-After: 1` instead of `500`. Nothing was saved, so the request can be repeated.
 - `PUT /api/v1/projects/{slug}/waivers/{id}` answers `404` for a waiver of another project
   and for an id that does not exist, whatever the body holds. Before, an emptied
   `conditions` list gave `404` for the first and `400` for the second.

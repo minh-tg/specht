@@ -103,6 +103,12 @@ func (e *SoleProjectAdminError) Error() string {
 	return "the account is the only active admin of " + strings.Join(e.Projects, ", ")
 }
 
+// ErrRetry marks a failure that left nothing behind and is likely to succeed
+// when the request is repeated: the database chose this transaction as the
+// victim of a deadlock or a serialization conflict. The adapter wraps the
+// original error with it, so it still unwraps to the database error.
+var ErrRetry = errors.New("the request collided with another change and can be repeated")
+
 // ErrIngestCallerInactive is returned when the key or session an ingest
 // authenticated with is no longer live before the write it started could
 // commit: the key was revoked or expired, or the account deactivated.

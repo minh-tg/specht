@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/minh-tg/specht/internal/audit"
 	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/scanner"
 	"github.com/minh-tg/specht/internal/usecase"
 )
@@ -235,6 +236,11 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {
 			respondError(w, http.StatusForbidden, "project_access_denied", "project role cannot ingest reports")
+			h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
+			return
+		}
+		if errors.Is(err, port.ErrRetry) {
+			respondRetry(w)
 			h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
 			return
 		}

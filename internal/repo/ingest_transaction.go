@@ -18,6 +18,10 @@ type pgIngestTransaction struct {
 }
 
 func (r *pgIngestTransaction) Run(ctx context.Context, projectID string, caller port.IngestCaller, fn func(*port.Stores) error) error {
+	return markRetryable(r.run(ctx, projectID, caller, fn))
+}
+
+func (r *pgIngestTransaction) run(ctx context.Context, projectID string, caller port.IngestCaller, fn func(*port.Stores) error) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return err

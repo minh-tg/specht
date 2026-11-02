@@ -271,6 +271,8 @@ func respondMemberError(w http.ResponseWriter, err error) {
 		respondError(w, http.StatusBadRequest, "invalid_email", err.Error())
 	case errors.Is(err, usecase.ErrProjectAccessDenied):
 		respondError(w, http.StatusForbidden, "project_access_denied", projectsMsgAccessDenied)
+	case errors.Is(err, port.ErrRetry):
+		respondRetry(w)
 	default:
 		slog.Error("project membership change failed", "error", err)
 		respondError(w, http.StatusInternalServerError, "internal_error", "could not update project members")

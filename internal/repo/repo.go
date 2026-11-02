@@ -8,10 +8,12 @@ package repo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minh-tg/specht/internal/db/sqlc"
@@ -82,10 +84,22 @@ func (r *Repos) WithTx(ctx context.Context, fn func(q *sqlc.Queries) error) erro
 
 	q := sqlc.New(tx)
 	if err := fn(q); err != nil {
-		return err
+		return markRetryable(err)
 	}
 
-	return tx.Commit(ctx)
+	return markRetryable(tx.Commit(ctx))
+}
+
+// markRetryable wraps err with port.ErrRetry when PostgreSQL ended the
+// transaction as a deadlock victim (40P01) or for a serialization failure
+// (40001). Both leave nothing behind, and a repeat of the request is likely to
+// succeed.
+func markRetryable(err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && (pgErr.Code == "40P01" || pgErr.Code == "40001") {
+		return fmt.Errorf("%w: %w", port.ErrRetry, err)
+	}
+	return err
 }
 
 // ProjectRepo persists scan projects.
