@@ -157,3 +157,50 @@ func TestResolveScanMode_RefusedBaselineFallsBackToFull(t *testing.T) {
 	assert.Contains(t, reason, `branch "feat/x" itself`)
 	assert.Empty(t, baseline)
 }
+
+// A trunk baseline declared filtered cannot speak for f-carried and
+// f-carried-reg: they fall back to the rules without a baseline, so the carry
+// from the previous report decides, while f-old, which the baseline observed,
+// stays pre-existing.
+func TestIngest_FindingsAFilteredBaselineCannotSpeakForFallBackToCarry(t *testing.T) {
+	uc, calls := carryHarness(t, func(rr *mockReportRepo, fr *mockFindingRepo) {
+		baselineOn(strRef("main"), false)(rr, fr)
+		fr.baselineEvidenceFn = func(ctx context.Context, baselineID string, ids []string) (map[string]bool, error) {
+			assert.Equal(t, carryBaselineID, baselineID)
+			return map[string]bool{"f-old": true}, nil
+		}
+		fr.listReportIntroducedChangeTypesFn = func(ctx context.Context, reportID string, ids []string) (map[string]string, error) {
+			assert.ElementsMatch(t, []string{"f-carried", "f-carried-reg"}, ids,
+				"only findings the baseline cannot speak for are looked up for a carry")
+			return map[string]string{"f-carried": "new", "f-carried-reg": "regression"}, nil
+		}
+	})
+	out, err := carryIngest(t, uc, "feat/x", "main")
+	require.NoError(t, err)
+	assert.Equal(t, 3, out.IntroducedCount)
+	assert.Equal(t, 1, out.PreExistingCount)
+	assert.Equal(t, map[string]string{"f-new": "new", "f-carried": "new", "f-carried-reg": "regression"}, entryTypes(calls.entries))
+	require.NotNil(t, calls.baseRecorded)
+	assert.Equal(t, carryBaselineID, *calls.baseRecorded)
+	assert.Equal(t, 1, calls.previousLookups)
+}
+
+// Without anything to carry, a known finding the filtered baseline cannot
+// speak for is pre-existing, never introduced by default. One the baseline
+// speaks for and did not observe is introduced.
+func TestIngest_FilteredBaselineNeverBlamesWhatItCouldNotSee(t *testing.T) {
+	uc, calls := carryHarness(t, func(rr *mockReportRepo, fr *mockFindingRepo) {
+		baselineOn(strRef("main"), false)(rr, fr)
+		fr.baselineEvidenceFn = func(ctx context.Context, baselineID string, ids []string) (map[string]bool, error) {
+			return map[string]bool{"f-old": true, "f-carried-reg": false}, nil
+		}
+		fr.listReportIntroducedChangeTypesFn = func(ctx context.Context, reportID string, ids []string) (map[string]string, error) {
+			return nil, nil
+		}
+	})
+	out, err := carryIngest(t, uc, "feat/x", "main")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"f-new": "new", "f-carried-reg": "new"}, entryTypes(calls.entries),
+		"f-carried has no evidence and nothing to carry, so it is pre-existing")
+	assert.Equal(t, 2, out.PreExistingCount)
+}

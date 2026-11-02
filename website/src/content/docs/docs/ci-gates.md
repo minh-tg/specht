@@ -30,6 +30,12 @@ branch, so a default branch that was once the head of a pull request no longer
 serves as a baseline either, and pull requests against it are classified the
 same way.
 
+A baseline declared filtered (see below) cannot show that a finding its filter
+may have hidden is absent. For such a finding, the newest earlier full scan of
+the same branch that could have seen it answers instead, among the 20 newest. If
+none could, the finding is classified as if the base was never scanned, so trunk
+debt hidden by the filter never counts as introduced.
+
 ## Configure the integration
 
 The project CI setup page generates instructions for your installation. Create a
