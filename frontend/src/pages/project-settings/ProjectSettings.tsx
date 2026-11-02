@@ -97,6 +97,7 @@ function DetailsForm({ project }: { project: Project; }) {
           <label htmlFor="settings-name" className="text-body font-medium">Name</label>
           <Input
             id="settings-name"
+            maxLength={100}
             value={name}
             aria-invalid={nameError ? true : undefined}
             aria-describedby={nameError ? "settings-name-error" : undefined}
@@ -113,6 +114,7 @@ function DetailsForm({ project }: { project: Project; }) {
           </label>
           <Textarea
             id="settings-description"
+            maxLength={2000}
             value={description}
             onChange={(event) => setDescription(event.target.value)}
           />

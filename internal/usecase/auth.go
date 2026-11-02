@@ -553,6 +553,9 @@ func (u *Usecases) requireProjectKeyManager(ctx context.Context, projectID strin
 }
 
 func (u *Usecases) CreateAPIKey(ctx context.Context, projectSlug, name, createdBy string, expiresAt *time.Time) (*APIKeyResponse, error) {
+	if err := checkName("name", strings.TrimSpace(name)); err != nil {
+		return nil, err
+	}
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf(authMsgProjectNotFound, err)
