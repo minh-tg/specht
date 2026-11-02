@@ -2531,10 +2531,13 @@ export interface components {
     /**
      * @description What the scanner left out on purpose. Trivy `--severity HIGH,CRITICAL`
      *     and `--ignore-unfixed` (Grype `--only-fixed`) write nothing about the
-     *     flag into the report, so the uploader declares it here. A filtered scan
-     *     only closes findings inside the filter: a finding outside it stays open
-     *     when the report omits it, and a manual verification of such a finding
-     *     stays inconclusive.
+     *     flag into the report, so the uploader declares it here. A scan filtered
+     *     by severity closes no finding it omits, because the scanner may have
+     *     re-rated the finding below the filter since it was last seen; a list of
+     *     every severity is no filter. A fixable-only scan closes an omitted
+     *     finding only when the finding has a fixed version. A finding the report
+     *     cannot vouch for stays open, and a manual verification of it stays
+     *     inconclusive.
      */
     ScanFilter: {
       /** @description Severities the scan kept. Case is ignored, duplicates are dropped, and any other value is refused with 400 `invalid_field`. Empty or absent means no severity filter. */

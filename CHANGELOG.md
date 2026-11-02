@@ -25,8 +25,8 @@ releases.
 - A report upload can declare a scan filter (`scan_filter` with `severities` and
   `fixable_only`) for scans run with Trivy `--severity` or `--ignore-unfixed` or
   Grype `--only-fixed`, whose output does not record the flags. A filtered report
-  closes and verifies only findings inside its filter, so a HIGH,CRITICAL scan no
-  longer marks open medium findings fixed. `specht-adapter`, `specht reports upload`
+  closes and verifies only findings its filter cannot have hidden, so a
+  HIGH,CRITICAL scan no longer marks open medium findings fixed. `specht-adapter`, `specht reports upload`
   and the GitHub Action take `-scan-severities` and `-fixable-only`; for Trivy the
   adapter also reads `TRIVY_SEVERITY` and `TRIVY_IGNORE_UNFIXED`.
 - `FINGERPRINT_KEY` keeps the key that Gitleaks secret identities are hashed with
@@ -432,6 +432,13 @@ releases.
 - `specht`, `specht-mcp` and `specht-adapter` refuse an `API_URL` with plain `http://` to a host that is not loopback, because the API key or session token would be sent unencrypted. `SPECHT_ALLOW_INSECURE_HTTP=1` allows it for a server on a trusted network.
 - MCP tool results print every scanner- or user-supplied value (titles, paths, names, comments, branch and commit names) as one double-quoted string with newlines escaped, and error messages on one line. A finding title can no longer add list entries or text that looks like the tool's own output to a result.
 - `specht-adapter` and the GitHub Action script print finding titles, file names, branch names and server error messages on one line with terminal escapes and bidirectional overrides removed. A scanner-supplied title can no longer start a line with `::` and forge or hide workflow commands such as `::notice::`, `::add-mask::` or `::stop-commands::` in the CI log.
+- A report filtered by severity no longer closes a finding it omits. The filter
+  test read the severity the finding had when last seen, so a finding the scanner
+  re-rated below a HIGH,CRITICAL filter disappeared from the next filtered report
+  and was closed as fixed. The server cannot see the new rating, so only an
+  unfiltered scan, or a filter that lists every severity, closes findings by
+  absence now, and verifying a finding against a severity-filtered report stays
+  inconclusive. Fixable-only reports still close omitted findings that have a fix.
 - A `base_revision` can no longer make a branch's own blockers pre-existing. The
   introduced-only gate, the ingest verdict and the pull request check used any
   report the base revision resolved to as the baseline, so a blocked branch passed
