@@ -4,21 +4,14 @@ package repo
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/require"
 
 	"github.com/minh-tg/specht/internal/port"
 )
-
-func isDeadlock(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "40P01"
-}
 
 func upsertSCAFindings(t *testing.T, ctx context.Context, stores *port.Stores, projectID string, fingerprints ...string) {
 	t.Helper()
@@ -63,7 +56,7 @@ func TestAnalysisExpirySweepDoesNotDeadlockWithIngest(t *testing.T) {
 
 	sweepStore := NewAnalysisExpiryStore(repos.pool)
 	swept := make(chan error, 1)
-	ingestErr := stores.Ingest.Run(ctx, projectID, func(s *port.Stores) error {
+	ingestErr := stores.Ingest.Run(ctx, projectID, port.IngestCaller{}, func(s *port.Stores) error {
 		upsertSCAFindings(t, ctx, s, projectID, "f2")
 		go func() {
 			_, err := sweepStore.ExpireExpired(ctx)
