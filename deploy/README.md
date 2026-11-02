@@ -21,9 +21,10 @@ fail fast instead of running insecure.
 The bundled Postgres container has no TLS and the server reaches it over the
 private Compose network, so `POSTGRES_SSLMODE` stays `disable` for it; setting
 `require` makes the server fail to connect. If you replace the bundled database
-with a remote, TLS-enabled one, set `POSTGRES_SSLMODE=require` (or
-`verify-full` once the Postgres certificate and hostname are configured), and
-never use the `disable` fallback for a database that is not on the same host.
+with a remote, TLS-enabled one, set `POSTGRES_SSLMODE=verify-full` once the
+Postgres certificate and hostname are configured, and never use the `disable`
+fallback for a database that is not on the same host. `require` encrypts the
+connection but accepts any certificate, so the server still warns at startup.
 Keep `DB_MIGRATE=true` for the simple deployment path, or set it to `false`
 and run `specht migrate` as a separately controlled release step.
 

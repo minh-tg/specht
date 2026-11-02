@@ -9,8 +9,10 @@ import (
 // insecureDBTransport returns a warning when dbURL sends database traffic
 // over a connection TLS does not protect to a host other than this machine,
 // and "" otherwise. sslmode disable and allow never encrypt when the server
-// permits plaintext, and prefer (also the driver default when unset) can be
-// downgraded by anyone who can interfere with the connection. The warning
+// permits plaintext, prefer (also the driver default when unset) can be
+// downgraded by anyone who can interfere with the connection, and require
+// encrypts but accepts any certificate, so a man in the middle can still
+// terminate it. Only verify-ca and verify-full check the server. The warning
 // never includes credentials.
 func insecureDBTransport(dbURL string) string {
 	host, mode, ok := dbTransportSettings(dbURL)
@@ -18,14 +20,14 @@ func insecureDBTransport(dbURL string) string {
 		return ""
 	}
 	switch mode {
-	case "disable", "allow", "prefer":
+	case "disable", "allow", "prefer", "require":
 	case "":
 		mode = "prefer"
 	default:
 		return ""
 	}
 	return "database connection to " + host + " is not protected by verified TLS (sslmode=" + mode +
-		"); set sslmode=require or verify-full unless this is a trusted local network"
+		"); set sslmode=verify-full unless this is a trusted local network"
 }
 
 // dbTransportSettings returns the host and sslmode of a Postgres connection

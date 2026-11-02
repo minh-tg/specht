@@ -12,6 +12,9 @@ func TestInsecureDBTransport_KeywordForm(t *testing.T) {
 	if got := insecureDBTransport("host=db.example.com user=specht"); !strings.Contains(got, "sslmode=prefer") {
 		t.Errorf("keyword DSN without sslmode should warn about the prefer default, got %q", got)
 	}
+	if got := insecureDBTransport("host=db.example.com sslmode=require"); !strings.Contains(got, "sslmode=require") {
+		t.Errorf("sslmode=require does not verify the certificate and should warn, got %q", got)
+	}
 	if got := insecureDBTransport("host=db.example.com sslmode=verify-full"); got != "" {
 		t.Errorf("verify-full should not warn, got %q", got)
 	}
@@ -26,7 +29,8 @@ func TestInsecureDBTransport(t *testing.T) {
 		url  string
 		want string // substring of the warning, "" for none
 	}{
-		{"remote with TLS required", "postgres://u:p@db.internal:5432/x?sslmode=require", ""},
+		{"remote with TLS required but unverified", "postgres://u:p@db.internal:5432/x?sslmode=require", "sslmode=require"},
+		{"remote verify-ca", "postgres://u:p@db.internal/x?sslmode=verify-ca", ""},
 		{"remote verify-full", "postgres://u:p@db.internal/x?sslmode=verify-full", ""},
 		{"remote with TLS disabled", "postgres://u:p@db.internal:5432/x?sslmode=disable", "sslmode=disable"},
 		{"compose service name, disabled", "postgres://u:p@db:5432/x?sslmode=disable", "sslmode=disable"},
@@ -49,6 +53,9 @@ func TestInsecureDBTransport(t *testing.T) {
 			}
 			if tc.want != "" && !strings.Contains(got, tc.want) {
 				t.Fatalf("warning = %q, want it to mention %q", got, tc.want)
+			}
+			if tc.want != "" && !strings.Contains(got, "verify-full") {
+				t.Fatalf("warning = %q, want it to recommend verify-full", got)
 			}
 			if strings.Contains(got, "p@") || strings.Contains(got, ":p") {
 				t.Fatalf("the warning must not echo the password: %q", got)
