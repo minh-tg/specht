@@ -432,6 +432,15 @@ releases.
 - `specht`, `specht-mcp` and `specht-adapter` refuse an `API_URL` with plain `http://` to a host that is not loopback, because the API key or session token would be sent unencrypted. `SPECHT_ALLOW_INSECURE_HTTP=1` allows it for a server on a trusted network.
 - MCP tool results print every scanner- or user-supplied value (titles, paths, names, comments, branch and commit names) as one double-quoted string with newlines escaped, and error messages on one line. A finding title can no longer add list entries or text that looks like the tool's own output to a result.
 - `specht-adapter` and the GitHub Action script print finding titles, file names, branch names and server error messages on one line with terminal escapes and bidirectional overrides removed. A scanner-supplied title can no longer start a line with `::` and forge or hide workflow commands such as `::notice::`, `::add-mask::` or `::stop-commands::` in the CI log.
+- A `base_revision` can no longer make a branch's own blockers pre-existing. The
+  introduced-only gate, the ingest verdict and the pull request check used any
+  report the base revision resolved to as the baseline, so a blocked branch passed
+  by naming itself, one of its earlier commits or another blocked branch as its
+  base. A baseline must now be a report of another branch that never compared its
+  reports against a different base. Otherwise the report is classified as if its
+  base was never scanned, and what the branch introduced earlier stays introduced.
+  A default branch that was once a pull request head stops being a baseline too,
+  since the server does not know the default branch.
 - An invite link works only while the account that made it is active and could still make it: after its creator is deactivated, removed from the project, demoted below the invite's role, or loses global admin, the link answers like an expired one. Deactivating an account also revokes the open links it made.
 - A report whose JSON values are packed tighter than the memory budget charges for is
   refused with `422 too_many_findings` before it is decoded. Under the 64-level nesting cap,
