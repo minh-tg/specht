@@ -458,6 +458,10 @@ releases.
 
 ### Security
 
+- The CVE watcher escapes an advisory id before it puts the id in the OSV record URL and
+  skips, with a log line, an id that is not letters, digits and `. _ : + -` (128 characters at
+  most). An id with `/`, `?` or a control character used to change the request path or fail the
+  whole poll.
 - The EPSS feed reader skips a row whose score or percentile is not a finite number in
   [0, 1], and logs it. A `NaN` score used to be stored and made every finding response for
   that CVE come back without a body.
