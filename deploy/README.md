@@ -318,7 +318,7 @@ an external issue tracker. Disabled by default.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `TRACKER_PROVIDER` | `noop` | `noop`, `inprocess`, or `webhook`. |
+| `TRACKER_PROVIDER` | `noop` | `noop`, `inprocess`, or `webhook`. Case and surrounding spaces are ignored; any other value logs an error at startup and runs no tracker. |
 | `TRACKER_BASE_URL` | *(empty)* | Tracker API base URL. |
 | `TRACKER_PROJECT_ID` | *(empty)* | Destination project. |
 | `TRACKER_API_TOKEN` | *(empty)* | **Secret.** Tracker API token. |
