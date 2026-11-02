@@ -61,7 +61,7 @@ func TestUpdateProject_RefusesAnOverlongOrControlNameOrDescription(t *testing.T)
 	} {
 		t.Run(name, func(t *testing.T) {
 			pr := projectUpdateRepos()
-			pr.updateFn = func(context.Context, string, string, *string, *string) (port.Project, error) {
+			pr.updateFn = func(context.Context, string, port.ProjectUpdate) (port.Project, error) {
 				t.Fatal("a refused update must not reach the store")
 				return port.Project{}, nil
 			}

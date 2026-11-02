@@ -24,7 +24,7 @@ func TestProjectDefaultBranch_UpdateWritesAndClears(t *testing.T) {
 	require.NoError(t, err)
 
 	main := "main"
-	updated, err := stores.Projects.Update(ctx, "branchy", "Branchy", nil, &main)
+	updated, err := stores.Projects.Update(ctx, "branchy", port.ProjectUpdate{SetDefaultBranch: true, DefaultBranch: &main})
 	require.NoError(t, err)
 	require.NotNil(t, updated.DefaultBranch)
 	assert.Equal(t, "main", *updated.DefaultBranch)
@@ -34,7 +34,7 @@ func TestProjectDefaultBranch_UpdateWritesAndClears(t *testing.T) {
 	require.NotNil(t, read.DefaultBranch)
 	assert.Equal(t, "main", *read.DefaultBranch)
 
-	cleared, err := stores.Projects.Update(ctx, "branchy", "Branchy", nil, nil)
+	cleared, err := stores.Projects.Update(ctx, "branchy", port.ProjectUpdate{SetDefaultBranch: true})
 	require.NoError(t, err)
 	assert.Nil(t, cleared.DefaultBranch)
 

@@ -21,8 +21,15 @@ VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
 -- name: UpdateProject :one
-UPDATE projects SET name = $2, description = $3, default_branch = sqlc.narg(default_branch), updated_at = NOW()
-WHERE slug = $1
+-- Writes only the fields the caller sent, in one statement. A concurrent update
+-- of another field waits for the row lock and then applies to the row the first
+-- one left, so neither change is lost.
+UPDATE projects SET
+    name = COALESCE(sqlc.narg(name)::text, name),
+    description = CASE WHEN sqlc.arg(set_description)::boolean THEN sqlc.narg(description)::text ELSE description END,
+    default_branch = CASE WHEN sqlc.arg(set_default_branch)::boolean THEN sqlc.narg(default_branch)::text ELSE default_branch END,
+    updated_at = NOW()
+WHERE slug = sqlc.arg(slug)
 RETURNING *;
 
 -- name: UpdateProjectSettings :one

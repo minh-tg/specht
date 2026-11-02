@@ -23,10 +23,16 @@ func TestUpdateProject_DefaultBranch(t *testing.T) {
 			return p, err
 		}
 		var written *string
-		pr.updateFn = func(ctx context.Context, slug, name string, description, defaultBranch *string) (port.Project, error) {
-			written = defaultBranch
-			assert.Equal(t, "My App", name, "the name is kept")
-			return port.Project{ID: findingFixtureProjectID, Slug: slug, Name: name, Description: description, DefaultBranch: defaultBranch}, nil
+		pr.updateFn = func(ctx context.Context, slug string, change port.ProjectUpdate) (port.Project, error) {
+			assert.Nil(t, change.Name, "the name is not sent, so it is not written")
+			assert.False(t, change.SetDescription)
+			if !change.SetDefaultBranch {
+				// The store keeps the value it holds.
+				written = current
+				return port.Project{ID: findingFixtureProjectID, Slug: slug, Name: "My App", DefaultBranch: current}, nil
+			}
+			written = change.DefaultBranch
+			return port.Project{ID: findingFixtureProjectID, Slug: slug, Name: "My App", DefaultBranch: change.DefaultBranch}, nil
 		}
 		uc := New(Deps{Stores: &port.Stores{Projects: pr}})
 		resp, err := uc.UpdateProject(sessionCtx("admin-1", auth.RoleAdmin), "my-app", nil, nil, requested)
@@ -69,7 +75,7 @@ func TestUpdateProject_DefaultBranchNeedsAProjectAdmin(t *testing.T) {
 			pr.effectiveRoleFn = func(ctx context.Context, projectID, userID string) (string, error) {
 				return role, nil
 			}
-			pr.updateFn = func(ctx context.Context, slug, name string, description, defaultBranch *string) (port.Project, error) {
+			pr.updateFn = func(ctx context.Context, slug string, change port.ProjectUpdate) (port.Project, error) {
 				t.Fatal("a non-admin must not write")
 				return port.Project{}, nil
 			}

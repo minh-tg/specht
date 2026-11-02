@@ -184,12 +184,14 @@ func (r *pgProjectPort) GetBySlug(ctx context.Context, slug string) (port.Projec
 	return projectToPort(row), nil
 }
 
-func (r *pgProjectPort) Update(ctx context.Context, slug, name string, description, defaultBranch *string) (port.Project, error) {
+func (r *pgProjectPort) Update(ctx context.Context, slug string, change port.ProjectUpdate) (port.Project, error) {
 	row, err := r.q.UpdateProject(ctx, sqlc.UpdateProjectParams{
-		Slug:          slug,
-		Name:          name,
-		Description:   textPtrFromString(description),
-		DefaultBranch: textPtrFromString(defaultBranch),
+		Slug:             slug,
+		Name:             textPtrFromString(change.Name),
+		SetDescription:   change.SetDescription,
+		Description:      textPtrFromString(change.Description),
+		SetDefaultBranch: change.SetDefaultBranch,
+		DefaultBranch:    textPtrFromString(change.DefaultBranch),
 	})
 	if err != nil {
 		return port.Project{}, mappingErr(err)
