@@ -477,23 +477,36 @@ func (u *Usecases) findBaselineReport(ctx context.Context, project port.Project,
 // change a report on branch makes. The uploader names the base revision, so a
 // report of the branch itself (the branch name, or an earlier commit of it)
 // would let a branch call its own blockers pre-existing, and a report of
-// another change branch would let it borrow that branch's blockers. Only a
-// trunk qualifies: a branch no report ever compared against a base other than
-// itself (BranchHasChangeReport), or the default branch a project manager set
-// on the project, even if that branch was once the head of a pull request.
-// Without a default branch set, a default branch that was once a pull request
-// head counts as a change branch, and reports against it fall back to the
-// carry rule. A report without a branch has nothing to compare and is
-// accepted as before.
+// another change branch would let it borrow that branch's blockers.
+//
+// When a project admin set the default branch, only a report on that branch
+// qualifies, even if the branch was once the head of a pull request. A report
+// without a branch, or on any other branch, is refused: an ingest key could
+// upload either one with the blockers in it and name it as the base.
+//
+// Without a default branch, a trunk is a branch no report ever compared
+// against a base other than itself (BranchHasChangeReport), and a report
+// without a branch is accepted, since the server has nothing better to go on.
+// A default branch that was once a pull request head then counts as a change
+// branch.
 func (u *Usecases) acceptBaseline(ctx context.Context, project port.Project, base port.CompletedReport, branch string) error {
-	if base.Branch == nil || *base.Branch == "" {
-		return nil
+	baseBranch := ""
+	if base.Branch != nil {
+		baseBranch = *base.Branch
 	}
-	baseBranch := *base.Branch
-	if baseBranch == branch {
+	if baseBranch != "" && baseBranch == branch {
 		return fmt.Errorf("%w: it resolved to a report of branch %q itself", errBaselineRefused, branch)
 	}
-	if isDefaultBranch(project, baseBranch) {
+	if hasDefaultBranch(project) {
+		if isDefaultBranch(project, baseBranch) {
+			return nil
+		}
+		if baseBranch == "" {
+			return fmt.Errorf("%w: it resolved to a report without a branch, and the project's default branch is %q", errBaselineRefused, *project.DefaultBranch)
+		}
+		return fmt.Errorf("%w: branch %q is not the project's default branch %q", errBaselineRefused, baseBranch, *project.DefaultBranch)
+	}
+	if baseBranch == "" {
 		return nil
 	}
 	change, err := u.deps.Stores.Reports.BranchHasChangeReport(ctx, project.ID, baseBranch)
@@ -509,7 +522,12 @@ func (u *Usecases) acceptBaseline(ctx context.Context, project port.Project, bas
 // isDefaultBranch reports whether branch is the default branch set on the
 // project. An unset default branch matches nothing.
 func isDefaultBranch(project port.Project, branch string) bool {
-	return project.DefaultBranch != nil && *project.DefaultBranch != "" && *project.DefaultBranch == branch
+	return hasDefaultBranch(project) && *project.DefaultBranch == branch
+}
+
+// hasDefaultBranch reports whether a project admin set a default branch.
+func hasDefaultBranch(project port.Project) bool {
+	return project.DefaultBranch != nil && *project.DefaultBranch != ""
 }
 
 // sameRevision reports whether two revision strings name the same SHA. A

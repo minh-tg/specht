@@ -58,6 +58,39 @@ func TestE2E_DefaultBranchMakesAFormerPullRequestHeadABaseline(t *testing.T) {
 	require.Nil(t, cleared.DefaultBranch)
 }
 
+// TestE2E_DefaultBranchRefusesAStandInBaseline pins that, once the project
+// names its default branch, an ingest key cannot upload a report of the
+// branch's blockers somewhere else and name it as the base: a report without
+// a branch and a report on a fresh branch name are no baselines, so the
+// finding the branch introduced on its first push stays introduced.
+func TestE2E_DefaultBranchRefusesAStandInBaseline(t *testing.T) {
+	slug := newProject(t, "default-branch-stand-in")
+	key := mintKey(t, slug)
+	request[projectDefaultBranch](t, http.MethodPut, "/api/v1/projects/"+slug, adminToken,
+		map[string]any{"default_branch": "main"}, http.StatusOK)
+	carryPush(t, slug, key, "high.sarif.json", "main", "f300000000000000000000000000000000000001", "")
+
+	first := carryPush(t, slug, key, "high-new.sarif.json", "feat/x", "f300000000000000000000000000000000000002", "main")
+	require.Equal(t, 1, first.IntroducedCount, "E2E-NEW-003 is new against main")
+
+	// The stand-ins hold both findings.
+	request[ingestResponse](t, http.MethodPost, "/api/v1/reports", key,
+		ingestBodyWith(t, slug, "high-new.sarif.json", map[string]any{
+			"commit_sha": "f300000000000000000000000000000000000003",
+		}), http.StatusCreated)
+	carryPush(t, slug, key, "high-new.sarif.json", "attacker-trunk", "f300000000000000000000000000000000000004", "")
+
+	pushes := map[string]string{
+		"f300000000000000000000000000000000000003": "f300000000000000000000000000000000000005",
+		"attacker-trunk": "f300000000000000000000000000000000000006",
+	}
+	for base, commit := range pushes {
+		pushed := carryPush(t, slug, key, "high-new.sarif.json", "feat/x", commit, base)
+		require.Equalf(t, 1, pushed.IntroducedCount, "base %s must not vouch for the branch's finding", base)
+		require.True(t, pushed.ThresholdBreached)
+	}
+}
+
 // TestE2E_DefaultBranchNeedsAProjectAdmin pins who may set the default branch:
 // a global admin or an admin of the project. A project member and an API key
 // are refused, and an invalid value is a 400.
