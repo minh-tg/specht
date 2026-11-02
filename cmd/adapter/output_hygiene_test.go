@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,10 +32,16 @@ func writeEventFile(t *testing.T, payload map[string]any) string {
 // logLinesStartingWithCommand returns the lines of a CI log that the GitHub
 // Actions runner would read as workflow commands, minus the adapter's own
 // escaped annotations.
+// logLinesStartingWithCommand returns the lines the GitHub Actions runner
+// would parse as a workflow command, other than the adapter's own ::error
+// lines. The runner trims leading whitespace before it looks for "::" and
+// reads the legacy "##[" form anywhere in a line.
 func logLinesStartingWithCommand(log string) []string {
 	var commands []string
 	for _, line := range strings.Split(log, "\n") {
-		if strings.HasPrefix(line, "::") && !strings.HasPrefix(line, "::error ") {
+		trimmed := strings.TrimLeftFunc(line, unicode.IsSpace)
+		if strings.Contains(line, "##[") ||
+			strings.HasPrefix(trimmed, "::") && !strings.HasPrefix(trimmed, "::error ") {
 			commands = append(commands, line)
 		}
 	}
@@ -131,6 +138,8 @@ func TestWriteDiagnosticDefusesALeadingCommandPrefix(t *testing.T) {
 	var out bytes.Buffer
 	writeDiagnostic(&out, "%s\n", "::add-mask::x")
 	writeDiagnosticLine(&out, "::stop-commands::x")
+	writeDiagnostic(&out, "%s\n", "  ::notice::x")
+	writeDiagnosticLine(&out, "libfoo ##[warning]forged ##[group]hidden")
 	assert.Empty(t, logLinesStartingWithCommand(out.String()), out.String())
 }
 

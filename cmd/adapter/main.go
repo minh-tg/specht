@@ -124,13 +124,10 @@ func writeDiagnosticLine(w io.Writer, message string) {
 	_, _ = fmt.Fprintln(w, sanitize.Line(message))
 }
 
-// noCommandPrefix keeps a formatted diagnostic that starts with "::" from
-// reading as a workflow command.
+// noCommandPrefix keeps a formatted diagnostic from reading as a workflow
+// command.
 func noCommandPrefix(s string) string {
-	if strings.HasPrefix(s, "::") {
-		return " " + s
-	}
-	return s
+	return sanitize.NoWorkflowCommand(s)
 }
 
 // readRawInput loads the scan result from the file flag or stdin.
