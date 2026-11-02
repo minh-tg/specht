@@ -79,9 +79,12 @@ const (
 
 // Server is the resolved server configuration.
 type Server struct {
-	Addr      string
-	DBURL     string
-	DBMigrate bool
+	Addr  string
+	DBURL string
+	// MigrateDBURL is the connection the migrations run with, normally the
+	// role that owns the schema. Empty means DBURL; see MigrationURL.
+	MigrateDBURL string
+	DBMigrate    bool
 	// DBConnectTimeout is how long startup waits for the database. Zero
 	// means a single attempt.
 	DBConnectTimeout time.Duration
@@ -486,6 +489,7 @@ func Load() (*Server, error) {
 	s := &Server{
 		Addr:                 strOr(os.Getenv("SERVER_ADDR"), DefaultServerAddr),
 		DBURL:                os.Getenv("DATABASE_URL"),
+		MigrateDBURL:         os.Getenv("MIGRATE_DATABASE_URL"),
 		DBConnectTimeout:     DefaultDBConnectTimeout,
 		DBMaxConns:           DefaultDBMaxConns,
 		DBMinConns:           DefaultDBMinConns,
@@ -699,6 +703,16 @@ func ParseLogLevel(s string) (slog.Level, bool) {
 		return slog.LevelError, true
 	}
 	return slog.LevelInfo, false
+}
+
+// MigrationURL is the connection migrations run with: MIGRATE_DATABASE_URL
+// when set, so the server can query as a role that cannot change the schema,
+// and DATABASE_URL otherwise, as installs from before the split expect.
+func (s *Server) MigrationURL() string {
+	if s.MigrateDBURL != "" {
+		return s.MigrateDBURL
+	}
+	return s.DBURL
 }
 
 func (s *Server) Validate() error {

@@ -48,8 +48,8 @@ func connectDB(cfg *config.Server) *pgxpool.Pool {
 		exitOnError("database not reachable", db.WaitForDatabase(context.Background(), cfg.DBURL, cfg.DBConnectTimeout))
 	}
 	if cfg.DBMigrate && cfg.DBURL != "" {
-		db.WarnInsecureMigrationURL(cfg.DBURL)
-		exitOnError("startup migration failed", db.RunMigrations(cfg.DBURL, "migrations"))
+		db.WarnInsecureMigrationURL(cfg.MigrationURL())
+		exitOnError("startup migration failed", db.RunMigrations(cfg.MigrationURL(), "migrations"))
 	}
 	pool, err := db.ConnectPoolWithOptions(context.Background(), cfg.DBURL, db.PoolOptions{
 		MaxConns: cfg.DBMaxConns,
@@ -168,6 +168,11 @@ func main() {
 	setupLogging(cfg.LogLevel)
 	if warning := insecureDBTransport(cfg.DBURL); warning != "" {
 		slog.Warn(warning)
+	}
+	if cfg.MigrateDBURL != "" && cfg.MigrateDBURL != cfg.DBURL {
+		if warning := insecureDBTransport(cfg.MigrateDBURL); warning != "" {
+			slog.Warn("MIGRATE_DATABASE_URL: " + warning)
+		}
 	}
 	if warning := catchAllProxyWarning(cfg.TrustedProxies); warning != "" {
 		slog.Warn(warning)
@@ -323,7 +328,7 @@ func handleSubcommand(cfg *config.Server) bool {
 			slog.Error("DATABASE_URL is required")
 			os.Exit(1)
 		}
-		if err := db.RunMigrations(cfg.DBURL, "migrations"); err != nil {
+		if err := db.RunMigrations(cfg.MigrationURL(), "migrations"); err != nil {
 			slog.Error("migration failed", "error", err)
 			os.Exit(1)
 		}
@@ -334,7 +339,7 @@ func handleSubcommand(cfg *config.Server) bool {
 			slog.Error("DATABASE_URL is required")
 			os.Exit(1)
 		}
-		if err := db.RollbackMigrations(cfg.DBURL, "migrations"); err != nil {
+		if err := db.RollbackMigrations(cfg.MigrationURL(), "migrations"); err != nil {
 			slog.Error("rollback failed", "error", err)
 			os.Exit(1)
 		}
