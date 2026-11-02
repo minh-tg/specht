@@ -102,6 +102,7 @@ export function NewProject() {
           <span className="text-muted-foreground ml-1 text-meta">(required)</span>
           <Input
             id="new-project-name"
+            maxLength={100}
             className="mt-1"
             value={name}
             onChange={handleNameChange}
@@ -145,6 +146,7 @@ export function NewProject() {
           <span className="text-muted-foreground ml-1 text-meta">(optional)</span>
           <Textarea
             id="new-project-description"
+            maxLength={2000}
             className="mt-1"
             value={description}
             onChange={(event) => setDescription(event.target.value)}

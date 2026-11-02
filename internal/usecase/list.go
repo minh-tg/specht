@@ -382,6 +382,12 @@ func (u *Usecases) CreateProject(ctx context.Context, name, slug, description, c
 	if err := validateProjectSlug(slug); err != nil {
 		return nil, err
 	}
+	if err := checkName("name", strings.TrimSpace(name)); err != nil {
+		return nil, err
+	}
+	if err := checkDescription("description", strings.TrimSpace(description)); err != nil {
+		return nil, err
+	}
 	p, err := u.deps.Stores.Projects.Create(ctx, port.CreateProjectInput{
 		Slug:                slug,
 		Name:                name,
@@ -446,6 +452,16 @@ func (u *Usecases) UpdateProject(ctx context.Context, slug string, name, descrip
 	newBranch, err := normalizeDefaultBranch(defaultBranch)
 	if err != nil {
 		return nil, err
+	}
+	if name != nil {
+		if err := checkName("name", strings.TrimSpace(*name)); err != nil {
+			return nil, err
+		}
+	}
+	if description != nil {
+		if err := checkDescription("description", strings.TrimSpace(*description)); err != nil {
+			return nil, err
+		}
 	}
 	p, err := u.projectBySlugOrDenied(ctx, slug)
 	if err != nil {

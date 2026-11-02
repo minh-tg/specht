@@ -152,6 +152,7 @@ releases.
 
 ### Changed
 
+- API key names and project names are limited to 100 characters, and project descriptions to 2000. Control characters are refused in all three (descriptions may hold line breaks and tabs). A longer or unclean value answers `400 invalid_field` on `POST /api/v1/auth/apikeys`, `POST /api/v1/projects` and `PUT /api/v1/projects/{slug}`; existing values are left as they are.
 - The adapter sends the repository default branch as `base_revision` on push builds of a
   branch other than the default branch, so the server compares the report with the newest
   full report on the default branch, as it already does for pull and merge requests. GitHub

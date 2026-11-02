@@ -374,6 +374,10 @@ func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.usecase.CreateAPIKey(r.Context(), req.Project, req.Name, ident.UserID, expiresAt)
 	if err != nil {
+		if errors.Is(err, usecase.ErrInvalidField) {
+			respondError(w, http.StatusBadRequest, "invalid_field", err.Error())
+			return
+		}
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {
 			h.respondProjectAccessError(w, r, errProjectAccessDenied)
 			return
