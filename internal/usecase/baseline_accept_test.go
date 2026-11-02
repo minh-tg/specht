@@ -229,9 +229,10 @@ func TestIngest_DefaultBranchSetOnTheProjectIsATrunk(t *testing.T) {
 	})
 }
 
-// The setting names one branch. Another change branch stays refused, and so
-// does a report of the uploading branch itself, even when that is the default
-// branch.
+// The setting names the one trunk. Every other branch is refused, with or
+// without change reports, and so is a report without a branch and a report of
+// the uploading branch itself, even when that is the default branch. Each of
+// them could have been uploaded by the ingest key just to serve as the base.
 func TestIngest_DefaultBranchSettingTrustsOnlyThatBranch(t *testing.T) {
 	t.Run("develop is a change branch", func(t *testing.T) {
 		uc, calls := carryHarnessFor(t, projectWithDefaultBranch("main"), baselineOn(strRef("develop"), false, "develop"))
@@ -239,11 +240,24 @@ func TestIngest_DefaultBranchSettingTrustsOnlyThatBranch(t *testing.T) {
 		require.NoError(t, err)
 		requireCarried(t, out, calls)
 	})
-	t.Run("a release branch without change reports is still a trunk", func(t *testing.T) {
+	t.Run("a release branch without change reports", func(t *testing.T) {
 		uc, calls := carryHarnessFor(t, projectWithDefaultBranch("main"), baselineOn(strRef("release/1"), false))
 		out, err := carryIngest(t, uc, "feat/x", "release/1")
 		require.NoError(t, err)
-		requireBaselineUsed(t, out, calls)
+		requireCarried(t, out, calls)
+		assert.Empty(t, calls.branchChecked, "the setting decides without asking the branch history")
+	})
+	t.Run("a fresh branch name", func(t *testing.T) {
+		uc, calls := carryHarnessFor(t, projectWithDefaultBranch("main"), baselineOn(strRef("attacker-trunk"), false))
+		out, err := carryIngest(t, uc, "feat/x", "attacker-trunk")
+		require.NoError(t, err)
+		requireCarried(t, out, calls)
+	})
+	t.Run("a report without a branch", func(t *testing.T) {
+		uc, calls := carryHarnessFor(t, projectWithDefaultBranch("main"), baselineOn(nil, true))
+		out, err := carryIngest(t, uc, "feat/x", ownEarlierCommit)
+		require.NoError(t, err)
+		requireCarried(t, out, calls)
 	})
 	t.Run("the default branch naming itself", func(t *testing.T) {
 		uc, calls := carryHarnessFor(t, projectWithDefaultBranch("main"), baselineOn(strRef("main"), false))

@@ -458,6 +458,11 @@ releases.
 
 ### Security
 
+- Once a project names its default branch, only reports on that branch are
+  baselines for the introduced-only gate. A report without a branch, or on any
+  other branch, used to be accepted when its branch had never named another base,
+  so an ingest key could upload the branch's blockers under a fresh branch name
+  or no branch and name that report as the base.
 - Stored scan evidence redacts more credential keys. Key names are compared lowercased with `-` and
   `_` removed, so `x-api-key`, `privateKey` and `ssh_private_key` match, and `credentials`,
   `passphrase`, `pwd` and `cookie` (as a whole name or a suffix) are added. A credential-named list
