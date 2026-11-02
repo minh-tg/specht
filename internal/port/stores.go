@@ -76,6 +76,12 @@ var ErrReportProcessing = errors.New("report is still processing")
 // ErrEmailTaken is returned when a new account's email already belongs to one.
 var ErrEmailTaken = errors.New("email already registered")
 
+// Values of User.AdminSource.
+const (
+	AdminSourceManual = "manual"
+	AdminSourceSSO    = "sso"
+)
+
 // ErrLastGlobalAdmin is returned when a role change or deactivation would
 // leave the instance without an active global admin.
 var ErrLastGlobalAdmin = errors.New("last global admin")
@@ -288,6 +294,10 @@ type User struct {
 	DisplayName  *string
 	PasswordHash string
 	Role         string
+	// AdminSource says who granted the admin role: AdminSourceSSO when
+	// SSO_ADMIN_GROUPS did, AdminSourceManual for every other grant. It only
+	// matters while Role is admin.
+	AdminSource string
 	// DisabledAt is set while the account is deactivated: it keeps its
 	// history and memberships but cannot sign in.
 	DisabledAt *time.Time
@@ -333,6 +343,14 @@ type UserStore interface {
 	// so open sessions pick the role up, and refuses to remove the last
 	// active admin with ErrLastGlobalAdmin.
 	ChangeRole(ctx context.Context, userID, role string) (User, error)
+	// SyncSSOAdmin applies SSO_ADMIN_GROUPS to an account at an SSO login.
+	// With admin set, a member becomes an admin granted by SSO and an admin
+	// keeps the role and its source. Without it, an admin granted by SSO
+	// becomes a member and a manual admin is left as is. A role change starts
+	// a new token generation. A demotion that would leave no active admin is
+	// refused with ErrLastGlobalAdmin and the account read under the lock; a
+	// deactivated account is refused with ErrAccountDeactivated.
+	SyncSSOAdmin(ctx context.Context, userID string, admin bool) (User, error)
 	// SetDisabled deactivates or reactivates an account. Deactivating starts a
 	// new token generation and refuses to remove the last active admin with
 	// ErrLastGlobalAdmin.

@@ -104,11 +104,12 @@ func TestFindOrProvisionSSOUser_AdminGroupProvisionsAdmin(t *testing.T) {
 		u.Role = "member"
 		return u, nil
 	}
-	var gotRole string
-	ur.setRoleFn = func(ctx context.Context, userID, role string) (port.User, error) {
-		gotRole = role
+	var gotAdmin bool
+	ur.syncSSOAdminFn = func(ctx context.Context, userID string, admin bool) (port.User, error) {
+		gotAdmin = admin
 		u := makeUser(userID)
-		u.Role = role
+		u.Role = auth.RoleAdmin
+		u.AdminSource = port.AdminSourceSSO
 		return u, nil
 	}
 	uc := New(ssoTestDeps(ur))
@@ -118,7 +119,7 @@ func TestFindOrProvisionSSOUser_AdminGroupProvisionsAdmin(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "user-9", userID)
-	assert.Equal(t, auth.RoleAdmin, gotRole, "IdP admin group must elevate")
+	assert.True(t, gotAdmin, "IdP admin group must elevate")
 	assert.Equal(t, auth.RoleAdmin, role)
 	assert.True(t, provisioned)
 }
@@ -135,7 +136,7 @@ func TestFindOrProvisionSSOUser_NonAdminGroupStaysMember(t *testing.T) {
 		return u, nil
 	}
 	calls := 0
-	ur.setRoleFn = func(ctx context.Context, userID, role string) (port.User, error) {
+	ur.syncSSOAdminFn = func(ctx context.Context, userID string, admin bool) (port.User, error) {
 		calls++
 		return makeUser(userID), nil
 	}
@@ -159,7 +160,7 @@ func TestFindOrProvisionSSOUser_ExistingRoleNeverChanges(t *testing.T) {
 		return u, nil
 	}
 	calls := 0
-	ur.setRoleFn = func(ctx context.Context, userID, role string) (port.User, error) {
+	ur.syncSSOAdminFn = func(ctx context.Context, userID string, admin bool) (port.User, error) {
 		calls++
 		return makeUser(userID), nil
 	}
@@ -185,7 +186,7 @@ func TestFindOrProvisionSSOUser_ElevationFailureFailsClosed(t *testing.T) {
 		u.Role = "member"
 		return u, nil
 	}
-	ur.setRoleFn = func(ctx context.Context, userID, role string) (port.User, error) {
+	ur.syncSSOAdminFn = func(ctx context.Context, userID string, admin bool) (port.User, error) {
 		return port.User{}, assert.AnError
 	}
 	uc := New(ssoTestDeps(ur))

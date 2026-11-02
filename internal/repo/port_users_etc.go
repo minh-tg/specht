@@ -151,7 +151,7 @@ func (r *pgUserPort) ChangeRole(ctx context.Context, userID, role string) (port.
 				return err
 			}
 		}
-		row, err := q.ChangeUserRole(ctx, sqlc.ChangeUserRoleParams{ID: uid, Role: role})
+		row, err := q.ChangeUserRole(ctx, sqlc.ChangeUserRoleParams{ID: uid, Role: role, AdminSource: port.AdminSourceManual})
 		if err != nil {
 			return err
 		}
@@ -162,6 +162,63 @@ func (r *pgUserPort) ChangeRole(ctx context.Context, userID, role string) (port.
 		return port.User{}, mappingErr(err)
 	}
 	return out, nil
+}
+
+// SyncSSOAdmin applies the IdP's admin groups to one account. It locks the
+// account and the active admins in id order, as a deactivation does, so the
+// role it reads cannot change before it writes, and a demotion races neither
+// another demotion nor a deactivation of the other admins.
+func (r *pgUserPort) SyncSSOAdmin(ctx context.Context, userID string, admin bool) (port.User, error) {
+	uid, err := parseID(userID)
+	if err != nil {
+		return port.User{}, err
+	}
+	var out port.User
+	err = r.withTx(ctx, func(q *sqlc.Queries) error {
+		if _, err := q.LockUserAndActiveAdmins(ctx, uid); err != nil {
+			return err
+		}
+		target, err := q.GetUserByID(ctx, uid)
+		if err != nil {
+			return err
+		}
+		out = userToPort(target)
+		if target.DisabledAt.Valid {
+			return port.ErrAccountDeactivated
+		}
+		isAdmin := target.Role == "admin"
+		switch {
+		case admin && isAdmin:
+			// An admin keeps the role and where it came from: a manual
+			// grant does not become one the IdP can take back.
+			return nil
+		case admin:
+			return changeRoleTo(ctx, q, uid, "admin", port.AdminSourceSSO, &out)
+		case !isAdmin || target.AdminSource != port.AdminSourceSSO:
+			// The IdP takes back only what it granted.
+			return nil
+		}
+		if err := guardLastAdmin(ctx, q, target); err != nil {
+			return err
+		}
+		return changeRoleTo(ctx, q, uid, "member", port.AdminSourceManual, &out)
+	})
+	if err != nil {
+		if errors.Is(err, port.ErrLastGlobalAdmin) || errors.Is(err, port.ErrAccountDeactivated) {
+			return out, err
+		}
+		return port.User{}, mappingErr(err)
+	}
+	return out, nil
+}
+
+func changeRoleTo(ctx context.Context, q *sqlc.Queries, uid pgtype.UUID, role, source string, out *port.User) error {
+	row, err := q.ChangeUserRole(ctx, sqlc.ChangeUserRoleParams{ID: uid, Role: role, AdminSource: source})
+	if err != nil {
+		return err
+	}
+	*out = userToPort(row)
+	return nil
 }
 
 // SetDisabled deactivates or reactivates an account, refusing to deactivate
@@ -427,6 +484,7 @@ func userToPort(u sqlc.User) port.User {
 		DisplayName:  stringFromTextPtr(u.DisplayName),
 		PasswordHash: strVal(u.PasswordHash),
 		Role:         u.Role,
+		AdminSource:  u.AdminSource,
 		DisabledAt:   timePtrFromTimestamptz(u.DisabledAt),
 		EmailProven:  u.EmailProven,
 		TokenVersion: u.TokenVersion,

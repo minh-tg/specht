@@ -165,3 +165,14 @@ func TestGrantAdminByEmail_RefusesADeactivatedAccount(t *testing.T) {
 	assert.ErrorIs(t, err, ErrAccountDeactivated)
 	assert.Empty(t, h.promoted, "a deactivated account is not promoted")
 }
+
+func TestGrantAdminByEmail_MakesAnIdPGrantManual(t *testing.T) {
+	granted := recoveryUser("ada@acme.example", "admin")
+	granted.AdminSource = port.AdminSourceSSO
+	h := newRecoveryHarness(granted)
+
+	_, err := h.uc.GrantAdminByEmail(context.Background(), "ada@acme.example")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"00000000-0000-0000-0000-000000000051:admin"}, h.promoted,
+		"the store records the grant as manual, so a later SSO login cannot take it back")
+}
