@@ -46,25 +46,25 @@ func HardenReport(nr *domain.NormalizedReport) *domain.NormalizedReport {
 		return nil
 	}
 	if t := nr.Target; t != nil {
-		t.Identifier = SanitizeText(t.Identifier, MaxTargetIdentifierLength)
-		t.Kind = SanitizeText(t.Kind, MaxTargetKindLength)
+		t.Identifier = SanitizeIdentifier(t.Identifier, MaxTargetIdentifierLength)
+		t.Kind = SanitizeIdentifier(t.Kind, MaxTargetKindLength)
 	}
 	if a := nr.Artifact; a != nil {
-		a.Identifier = SanitizeText(a.Identifier, MaxTargetIdentifierLength)
-		a.Kind = SanitizeText(a.Kind, MaxTargetKindLength)
-		a.Digest = SanitizeText(a.Digest, MaxDigestLength)
+		a.Identifier = SanitizeIdentifier(a.Identifier, MaxTargetIdentifierLength)
+		a.Kind = SanitizeIdentifier(a.Kind, MaxTargetKindLength)
+		a.Digest = SanitizeIdentifier(a.Digest, MaxDigestLength)
 		a.Metadata = HardenExtensions(a.Metadata)
 	}
 	if s := nr.ScanScope; s != nil {
-		s.Target = SanitizeText(s.Target, MaxTargetIdentifierLength)
-		s.TargetKind = SanitizeText(s.TargetKind, MaxTargetKindLength)
-		s.Artifact = SanitizeText(s.Artifact, MaxTargetIdentifierLength)
-		s.ArtifactVer = SanitizeText(s.ArtifactVer, 256)
-		s.ArtifactTyp = SanitizeText(s.ArtifactTyp, MaxTargetKindLength)
+		s.Target = SanitizeIdentifier(s.Target, MaxTargetIdentifierLength)
+		s.TargetKind = SanitizeIdentifier(s.TargetKind, MaxTargetKindLength)
+		s.Artifact = SanitizeIdentifier(s.Artifact, MaxTargetIdentifierLength)
+		s.ArtifactVer = SanitizeIdentifier(s.ArtifactVer, 256)
+		s.ArtifactTyp = SanitizeIdentifier(s.ArtifactTyp, MaxTargetKindLength)
 		if len(s.Ext) > 0 {
 			ext := make(map[string]string, len(s.Ext))
 			for k, v := range s.Ext {
-				ext[SanitizeText(k, MaxScopeKeyLength)] = SanitizeText(v, MaxScopeValueLength)
+				ext[SanitizeIdentifier(k, MaxScopeKeyLength)] = SanitizeIdentifier(v, MaxScopeValueLength)
 			}
 			s.Ext = ext
 		}
@@ -110,7 +110,7 @@ func HardenExtensions(m map[string]any) map[string]any {
 	entries := make([]entry, 0, len(m))
 	total := len("{}")
 	for _, k := range keys {
-		key := SanitizeText(k, extensionKeyLength)
+		key := SanitizeIdentifier(k, extensionKeyLength)
 		value, valueChanged := cleanValue(m[k])
 		changed = changed || valueChanged || key != k
 		encoded, err := json.Marshal(value)
