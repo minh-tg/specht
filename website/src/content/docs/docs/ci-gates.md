@@ -25,10 +25,19 @@ a branch whose reports never named a `base_revision` other than the branch
 itself, such as a default branch that only gets push builds, and a report
 without a branch is accepted. A `base_revision` that resolves to a report of the
 uploading branch, by its name or an earlier commit, or to a report of a branch
-that is itself a pull or merge request head, is not used. The report is
-then classified as if its base had never been scanned: findings new to the
-project are introduced, and a finding the previous report in the same scan
-scope introduced stays introduced.
+that is itself a pull or merge request head, is not used.
+
+A report of a change with no usable baseline counts a finding as pre-existing
+only when the trunk still has it: a trunk scan observed it and no later complete
+scan of that trunk scope found it gone. Every other finding the report observes
+is introduced. A report is a change when it names a `base_revision` other than
+its branch, or its branch did before. Once the project names its default branch,
+every report off that branch is a change, with or without a branch name. The
+branch name, environment and artifact name are the uploader's choice, so changing
+them between pushes does not turn a blocker into existing debt. A project that
+never scans its trunk has no trunk debt: each change counts every finding it
+observes as introduced. Scan the default branch, or waive or accept the shared
+findings, to keep pull requests from blocking on them.
 
 A project admin sets the default branch under **Settings** on the project, or
 with `default_branch` on `PUT /api/v1/projects/{slug}`. Reports on it count as
@@ -39,14 +48,16 @@ then, so a `develop` or release branch is a baseline only if it is the one you
 set. Set the default branch: without it, an ingest key can upload a report
 without a branch, or on a branch name nobody used, and name it as the base.
 Without the setting, a
-default branch that was once the head of a pull request no longer serves as a
-baseline, and pull requests against it are classified as if it was never
-scanned. The server never takes the default branch from an upload.
+default branch that was once the head of a pull request is a change branch: it
+is no baseline and no trunk, so a pull request against it counts the default
+branch's own findings as introduced. Without the setting, a push build of a
+branch that never named a base also counts as a trunk build. The server never
+takes the default branch from an upload.
 
 A baseline declared filtered (see below) cannot show that a finding its filter
 may have hidden is absent. For such a finding, the newest earlier full scan of
 the same branch that could have seen it answers instead, among the 20 newest. If
-none could, the finding is classified as if the base was never scanned, so trunk
+none could, the finding is pre-existing when the trunk still has it, so trunk
 debt hidden by the filter never counts as introduced.
 
 A trunk that scans several images or targets with one scanner has a newest

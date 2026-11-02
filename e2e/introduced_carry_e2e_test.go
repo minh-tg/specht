@@ -89,6 +89,51 @@ func TestE2E_IntroducedCarriesOnBranchWithUnscannedBase(t *testing.T) {
 	require.Zero(t, gs.BlockingCount)
 }
 
+// TestE2E_IntroducedSurvivesAChangedScopeOrBranchName pins that what a change
+// introduced stays introduced when a later push changes what the uploader
+// chooses: the environment, the artifact name, or the branch name. Only a
+// trunk scan that has the finding makes it pre-existing.
+func TestE2E_IntroducedSurvivesAChangedScopeOrBranchName(t *testing.T) {
+	slug := newProject(t, "carry-scope-shift")
+	key := mintKey(t, slug)
+	request[projectDefaultBranch](t, http.MethodPut, "/api/v1/projects/"+slug, adminToken,
+		map[string]any{"default_branch": "main"}, http.StatusOK)
+	carryPush(t, slug, key, "high.sarif.json", "main", "c200000000000000000000000000000000000001", "")
+
+	first := carryPush(t, slug, key, "high-new.sarif.json", "feat/x", "c200000000000000000000000000000000000002", "main")
+	require.Equal(t, 1, first.IntroducedCount, "E2E-NEW-003 is new against main")
+
+	shifts := []struct {
+		name   string
+		commit string
+		extra  map[string]any
+	}{
+		{"another environment, no base", "c200000000000000000000000000000000000003", map[string]any{"branch": "feat/x", "environment": "ci-2"}},
+		{"another artifact name, no base", "c200000000000000000000000000000000000004", map[string]any{"branch": "feat/x", "artifact_name": "renamed"}},
+		{"another branch name, no base", "c200000000000000000000000000000000000005", map[string]any{"branch": "feat/x-renamed"}},
+		{"no branch at all", "c200000000000000000000000000000000000006", map[string]any{}},
+	}
+	for _, s := range shifts {
+		t.Run(s.name, func(t *testing.T) {
+			extra := map[string]any{"commit_sha": s.commit, "gate_introduced_only": true}
+			for k, v := range s.extra {
+				extra[k] = v
+			}
+			pushed := request[ingestResponse](t, http.MethodPost, "/api/v1/reports", key,
+				ingestBodyWith(t, slug, "high-new.sarif.json", extra), http.StatusCreated)
+			require.Equal(t, 1, pushed.IntroducedCount, "main's high is pre-existing, E2E-NEW-003 stays introduced")
+			require.Equal(t, 1, pushed.PreExistingCount)
+			require.True(t, pushed.ThresholdBreached)
+		})
+	}
+
+	// Once main has the finding, it is trunk debt for the change too.
+	carryPush(t, slug, key, "high-new.sarif.json", "main", "c200000000000000000000000000000000000007", "")
+	merged := carryPush(t, slug, key, "high-new.sarif.json", "feat/x", "c200000000000000000000000000000000000008", "")
+	require.Zero(t, merged.IntroducedCount)
+	require.False(t, merged.ThresholdBreached)
+}
+
 // TestE2E_IntroducedCarryKeepsBaselineOrigin pins that a carry only keeps
 // what the branch introduced against its real baseline: debt the target
 // branch already had stays pre-existing on later push builds, and a PR build
