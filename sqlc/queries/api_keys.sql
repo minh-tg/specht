@@ -95,7 +95,9 @@ WHERE ak.key_hash = $1
   );
 
 -- name: RevokeAPIKey :one
-UPDATE api_keys SET revoked_at = NOW() WHERE id = $1 AND project_id = $2
+-- A key that is already revoked matches no row, so its first revocation time
+-- stays the record of when it died.
+UPDATE api_keys SET revoked_at = NOW() WHERE id = $1 AND project_id = $2 AND revoked_at IS NULL
 RETURNING *;
 
 -- name: RevokeAPIKeysByCreator :many
