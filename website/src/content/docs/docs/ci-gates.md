@@ -49,6 +49,14 @@ the same branch that could have seen it answers instead, among the 20 newest. If
 none could, the finding is classified as if the base was never scanned, so trunk
 debt hidden by the filter never counts as introduced.
 
+A trunk that scans several images or targets with one scanner has a newest
+report for each. The baseline is the newest trunk report of the same scan scope
+as the uploaded report: the same scanner, target, artifact name and environment.
+When the trunk has no report in that scope, the newest trunk report of the
+scanner is used. The earlier scans that answer for a filtered baseline come from
+the baseline's own scope, so a scan of one image never says a finding of another
+image is gone.
+
 ## Configure the integration
 
 The project CI setup page generates instructions for your installation. Create a

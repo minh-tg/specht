@@ -518,6 +518,58 @@ func (q *Queries) GetCompletedReportByCommit(ctx context.Context, arg GetComplet
 	return i, err
 }
 
+const getCompletedReportByCommitInScope = `-- name: GetCompletedReportByCommitInScope :one
+SELECT id, tool_name, branch, commit_sha, base_revision, scan_mode, scan_completeness, created_at
+FROM reports
+WHERE project_id = $1 AND tool_name = $2 AND commit_sha = $3
+  AND scan_scope_hash = $4::text
+  AND status = 'completed' AND scan_mode = 'full'
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`
+
+type GetCompletedReportByCommitInScopeParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	ToolName  string      `json:"tool_name"`
+	CommitSha pgtype.Text `json:"commit_sha"`
+	ScopeHash string      `json:"scope_hash"`
+}
+
+type GetCompletedReportByCommitInScopeRow struct {
+	ID               pgtype.UUID        `json:"id"`
+	ToolName         string             `json:"tool_name"`
+	Branch           pgtype.Text        `json:"branch"`
+	CommitSha        pgtype.Text        `json:"commit_sha"`
+	BaseRevision     pgtype.Text        `json:"base_revision"`
+	ScanMode         string             `json:"scan_mode"`
+	ScanCompleteness string             `json:"scan_completeness"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
+// The newest completed full report of the scanner for an exact revision in one
+// scan scope. A baseline resolved by commit prefers the report that scanned
+// what the uploading report scanned. pgx.ErrNoRows when that scope has none.
+func (q *Queries) GetCompletedReportByCommitInScope(ctx context.Context, arg GetCompletedReportByCommitInScopeParams) (GetCompletedReportByCommitInScopeRow, error) {
+	row := q.db.QueryRow(ctx, getCompletedReportByCommitInScope,
+		arg.ProjectID,
+		arg.ToolName,
+		arg.CommitSha,
+		arg.ScopeHash,
+	)
+	var i GetCompletedReportByCommitInScopeRow
+	err := row.Scan(
+		&i.ID,
+		&i.ToolName,
+		&i.Branch,
+		&i.CommitSha,
+		&i.BaseRevision,
+		&i.ScanMode,
+		&i.ScanCompleteness,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getLatestCompletedFullReportByBranch = `-- name: GetLatestCompletedFullReportByBranch :one
 SELECT id, tool_name, branch, commit_sha, base_revision, scan_mode, scan_completeness, created_at
 FROM reports
@@ -549,6 +601,59 @@ type GetLatestCompletedFullReportByBranchRow struct {
 func (q *Queries) GetLatestCompletedFullReportByBranch(ctx context.Context, arg GetLatestCompletedFullReportByBranchParams) (GetLatestCompletedFullReportByBranchRow, error) {
 	row := q.db.QueryRow(ctx, getLatestCompletedFullReportByBranch, arg.ProjectID, arg.ToolName, arg.Branch)
 	var i GetLatestCompletedFullReportByBranchRow
+	err := row.Scan(
+		&i.ID,
+		&i.ToolName,
+		&i.Branch,
+		&i.CommitSha,
+		&i.BaseRevision,
+		&i.ScanMode,
+		&i.ScanCompleteness,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getLatestCompletedFullReportByBranchInScope = `-- name: GetLatestCompletedFullReportByBranchInScope :one
+SELECT id, tool_name, branch, commit_sha, base_revision, scan_mode, scan_completeness, created_at
+FROM reports
+WHERE project_id = $1 AND tool_name = $2 AND branch = $3
+  AND scan_scope_hash = $4::text
+  AND status = 'completed' AND scan_mode = 'full'
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`
+
+type GetLatestCompletedFullReportByBranchInScopeParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	ToolName  string      `json:"tool_name"`
+	Branch    pgtype.Text `json:"branch"`
+	ScopeHash string      `json:"scope_hash"`
+}
+
+type GetLatestCompletedFullReportByBranchInScopeRow struct {
+	ID               pgtype.UUID        `json:"id"`
+	ToolName         string             `json:"tool_name"`
+	Branch           pgtype.Text        `json:"branch"`
+	CommitSha        pgtype.Text        `json:"commit_sha"`
+	BaseRevision     pgtype.Text        `json:"base_revision"`
+	ScanMode         string             `json:"scan_mode"`
+	ScanCompleteness string             `json:"scan_completeness"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
+// The newest completed full report of the scanner on a branch in one scan
+// scope. A branch that scans several images or targets has one newest report
+// per scope, and only the one of the uploading report's scope may vouch for
+// what that scope had. pgx.ErrNoRows when that scope has none.
+func (q *Queries) GetLatestCompletedFullReportByBranchInScope(ctx context.Context, arg GetLatestCompletedFullReportByBranchInScopeParams) (GetLatestCompletedFullReportByBranchInScopeRow, error) {
+	row := q.db.QueryRow(ctx, getLatestCompletedFullReportByBranchInScope,
+		arg.ProjectID,
+		arg.ToolName,
+		arg.Branch,
+		arg.ScopeHash,
+	)
+	var i GetLatestCompletedFullReportByBranchInScopeRow
 	err := row.Scan(
 		&i.ID,
 		&i.ToolName,

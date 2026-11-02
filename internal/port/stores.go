@@ -1345,6 +1345,10 @@ type ReportStore interface {
 	// one scanner on a branch, or ErrNotFound. It is the baseline fallback
 	// when base_revision names a branch instead of a commit.
 	GetLatestFullByBranch(ctx context.Context, projectID, scanner, branch string) (CompletedReport, error)
+	// GetCompletedByCommitInScope and GetLatestFullByBranchInScope are the
+	// two baseline lookups limited to one scan scope, or ErrNotFound.
+	GetCompletedByCommitInScope(ctx context.Context, projectID, scanner, commit, scopeHash string) (CompletedReport, error)
+	GetLatestFullByBranchInScope(ctx context.Context, projectID, scanner, branch, scopeHash string) (CompletedReport, error)
 	// PreviousCompletedInScope returns the id of the newest completed report
 	// created before reportID in the same scan scope (scanner, target,
 	// artifact, branch, environment), or ErrNotFound.
