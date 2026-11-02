@@ -50,6 +50,7 @@ fail() {
 # example's own POSTGRES_SSLMODE value is what an operator starts from.
 sed \
   -e "s/CHANGE-ME-32-plus-random-chars/$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')smoke0000/" \
+  -e "s/CHANGE-ME-app-32-plus-random-chars/$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')smokeapp/" \
   -e "s/CHANGE-ME-64-random-chars-min-32-bytes/$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')smoke00000000000000/" \
   -e "s/^SERVER_PORT=.*/SERVER_PORT=$PORT/" \
   -e "s/^ADMIN_EMAILS=.*/ADMIN_EMAILS=$EMAIL/" \
@@ -79,6 +80,10 @@ fi
 wait_healthy
 curl -fsS "$BASE/ready" >/dev/null || fail "the server is healthy but not ready"
 curl -fsS "$BASE/version" >/dev/null || fail "version endpoint"
+# The server queries as specht_app, so it must not warn about its database role.
+if "${COMPOSE[@]}" logs --no-color server 2>/dev/null | grep -q "the database role in DATABASE_URL"; then
+  fail "the server runs its queries as a privileged database role"
+fi
 
 echo "== first-run setup ==" >&2
 caps="$(curl -fsS "$BASE/capabilities")"

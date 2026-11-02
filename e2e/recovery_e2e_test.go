@@ -20,7 +20,7 @@ func serverCommand(t *testing.T, stdin string, args ...string) (code int, stdout
 	cmd := exec.Command(serverBin, args...)
 	cmd.Dir = repoRoot
 	cmd.Env = cleanEnv(
-		"DATABASE_URL="+dsn,
+		"DATABASE_URL="+appDSN,
 		"JWT_SECRET="+randomHex(48),
 		"LOG_LEVEL=info",
 		"DB_MIGRATE=false",

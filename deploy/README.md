@@ -10,7 +10,10 @@ attached to each GitHub Release. No Helm deployment is provided.
 
 ```bash
 cp deploy/.env.prod.example deploy/.env.prod
-# Fill in POSTGRES_PASSWORD and JWT_SECRET (min 32 random bytes):
+# Fill in POSTGRES_PASSWORD and SPECHT_APP_DB_PASSWORD (letters and digits
+# only, they go into connection URLs):
+openssl rand -hex 32
+# and JWT_SECRET (min 32 random bytes):
 head -c 48 /dev/urandom | base64
 ```
 
@@ -27,6 +30,83 @@ fallback for a database that is not on the same host. `require` encrypts the
 connection but accepts any certificate, so the server still warns at startup.
 Keep `DB_MIGRATE=true` for the simple deployment path, or set it to `false`
 and run `specht migrate` as a separately controlled release step.
+
+### Database roles
+
+The server uses two database roles:
+
+- `specht` owns the tables and runs the migrations (`MIGRATE_DATABASE_URL`).
+  In the bundled container it is also the bootstrap superuser, so keep its
+  password out of everything but the migration step.
+- `specht_app` is the role the server runs its queries as (`DATABASE_URL`).
+  It logs in, has no superuser, `CREATEDB` or `CREATEROLE`, and has `SELECT`,
+  `INSERT`, `UPDATE` and `DELETE` on the tables and `USAGE, SELECT` on the
+  sequences of the `public` schema. It cannot create, alter, truncate or drop a
+  table, or disable the triggers that keep the waiver deletion log append-only,
+  so a SQL injection or a leaked `DATABASE_URL` reaches rows and nothing else.
+
+`deploy/postgres/initdb/10-specht-app-role.sql` creates `specht_app` and its
+grants, including `ALTER DEFAULT PRIVILEGES` so every table a later migration
+creates as `specht` is granted too. The Postgres container runs it on the
+first start of an empty volume, with the password from
+`SPECHT_APP_DB_PASSWORD`. The script is idempotent: running it again resets the
+password to the current `SPECHT_APP_DB_PASSWORD` and repeats the grants. It
+refuses an existing role that has superuser, `CREATEDB`, `CREATEROLE`,
+replication or `BYPASSRLS`.
+
+At startup the server logs a warning when the `DATABASE_URL` role is a
+superuser or owns (or can act as the owner of) the schema's tables.
+
+#### Existing install
+
+An install from before this split has only `specht`, and its Postgres volume
+is past the point where the init script runs. Create the role once, before the
+server starts with the new compose file:
+
+1. Take a backup (section 7).
+2. Add `SPECHT_APP_DB_PASSWORD` to `deploy/.env.prod` (`openssl rand -hex 32`).
+3. Stop the server and recreate the database container, which picks up the
+   script mount and the new variable. The data volume is kept:
+
+   ```bash
+   docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod stop server
+   docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod up -d db
+   ```
+
+4. Run the script against the existing database:
+
+   ```bash
+   docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec -T db \
+     psql -v ON_ERROR_STOP=1 -U specht -d specht -f /docker-entrypoint-initdb.d/10-specht-app-role.sql
+   ```
+
+5. Start everything and check that the server logs no database role warning:
+
+   ```bash
+   docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod up -d
+   docker compose -f deploy/docker-compose.yml logs server | grep 'database role' || echo ok
+   ```
+
+Without `SPECHT_APP_DB_PASSWORD`, compose refuses to start. If the server
+starts before step 4, it cannot log in as `specht_app` and restarts until the
+role exists.
+
+#### Your own Postgres
+
+Run the same script with `psql` 15 or newer as the role that owns the schema
+(or as a superuser, naming the owner with `-v owner_role=<owner>`). Creating a
+role takes `CREATEROLE` or a superuser:
+
+```bash
+SPECHT_APP_DB_PASSWORD="$(openssl rand -hex 32)" \
+  psql -v ON_ERROR_STOP=1 -U specht -d specht -f deploy/postgres/initdb/10-specht-app-role.sql
+```
+
+`SPECHT_APP_DB_USER` picks another role name. Then set `DATABASE_URL` to that
+role and `MIGRATE_DATABASE_URL` to the owner. Migrations must always run as the
+owner the script named: the default privileges only cover tables that role
+creates. When `MIGRATE_DATABASE_URL` is unset, migrations use `DATABASE_URL`,
+which is how installs from before the split keep working, with the warning.
 
 ## 2. Start
 
@@ -81,7 +161,8 @@ and `SSO_ALLOW_PRIVATE_ISSUER` accept only the exact words `true` and `false`.
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `SERVER_ADDR` | `:8080` | HTTP listen address. |
-| `DATABASE_URL` | *required* | Postgres DSN. Append `?sslmode=require` or `verify-full` for a remote database. |
+| `DATABASE_URL` | *required* | Postgres DSN the server runs its queries with. Use a role limited to `SELECT`, `INSERT`, `UPDATE` and `DELETE` (see Database roles); compose connects as `specht_app`. Append `?sslmode=require` or `verify-full` for a remote database. |
+| `MIGRATE_DATABASE_URL` | `DATABASE_URL` | Postgres DSN the migrations run with, at startup (`DB_MIGRATE=true`) and in `specht migrate` and `specht migrate-down`. Use the role that owns the tables; compose connects as `specht`. Unset falls back to `DATABASE_URL`. |
 | `JWT_SECRET` | *required* | HMAC signing key, at least 32 random bytes (`openssl rand -hex 32`). Startup fails without it, and also refuses a secret with fewer than 8 distinct characters or one that contains `change-me` or `changeme`. |
 | `DB_MIGRATE` | `true` | Run migrations at startup. Set `false` to run `specht migrate` as a separately controlled step. |
 | `DB_CONNECT_TIMEOUT` | `30s` | How long startup waits for Postgres to answer, retrying with a growing delay, before the server exits. `0s` tries once. A rejected login fails at once. |
@@ -415,8 +496,9 @@ published limit.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `POSTGRES_PASSWORD` | *required* | Postgres password. |
-| `POSTGRES_SSLMODE` | `disable` | Appended to the generated `DATABASE_URL`. |
+| `POSTGRES_PASSWORD` | *required* | Password of `specht`, the owner role, used in the generated `MIGRATE_DATABASE_URL`. |
+| `SPECHT_APP_DB_PASSWORD` | *required* | Password of `specht_app`, used in the generated `DATABASE_URL` and by the database init script. |
+| `POSTGRES_SSLMODE` | `disable` | Appended to the generated `DATABASE_URL` and `MIGRATE_DATABASE_URL`. |
 | `SERVER_PORT` | `8080` | Host port published for the server. |
 
 See `.env.example` for a commented starting point.
@@ -725,7 +807,9 @@ docker compose -f deploy/docker-compose.yml exec db \
 docker compose -f deploy/docker-compose.yml exec db rm /tmp/specht.dump
 ```
 
-Read the `pg_restore` output for errors before you continue. Then remove
+Read the `pg_restore` output for errors before you continue. A dump taken
+after the role split carries the grants to `specht_app`; for an older dump, run
+the role script (Database roles, step 4) before you start the server. Then remove
 `DB_MIGRATE=false` (or set it back to `true`) and start the server normally.
 Any migrations newer than the dump run at that start:
 
@@ -739,6 +823,11 @@ curl -fsS http://localhost:8080/api/v1/ready
 Migrations are forward-only and run when the server starts. A rollback
 therefore depends on a backup taken before the upgrade, so take one first
 (section 7).
+
+An install from before the database role split (`specht_app`) must create
+that role once before it starts the new compose file: follow Database roles,
+Existing install (section 1). Compose refuses to start until
+`SPECHT_APP_DB_PASSWORD` is set.
 
 1. Set `SPECHT_VERSION` in `deploy/.env.prod` to the new tag.
 2. Pull the new image and recreate the server:
@@ -792,7 +881,9 @@ rollback restores the pre-upgrade dump:
 
 1. Stop the server and drop the database: `docker compose -f deploy/docker-compose.yml stop server`, then
    `docker compose -f deploy/docker-compose.yml exec db dropdb -U specht specht`
-   and `... exec db createdb -U specht specht`.
+   and `... exec db createdb -U specht specht`. The new database has no grants
+   for `specht_app` yet; run the role script (Database roles, step 4) on it
+   before the restore.
 2. Set `SPECHT_VERSION` back to the previous tag.
 3. Follow the restore steps above with the pre-upgrade dump, then start the
    previous version.
@@ -817,6 +908,9 @@ rollback restores the pre-upgrade dump:
   stay out of it; the health and readiness probes log at `debug`.
 - Keep the image updated; rebuilds pull a fresh Alpine + `go mod` pins.
 - Watcher (`WATCHER_ENABLE`) and SSO stay off unless configured.
+- The server queries as `specht_app`, which cannot change the schema, and
+  only the migrations use the owner. The server warns at startup when
+  `DATABASE_URL` is a superuser or the table owner (see Database roles).
 - Database TLS: the compose default `POSTGRES_SSLMODE=disable` is for a
   database on the same host. For anything else set `require` or `verify-full`;
   at startup the server logs a warning when `DATABASE_URL` reaches a non-local

@@ -5,10 +5,15 @@ services:
       POSTGRES_USER: specht
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
       POSTGRES_DB: specht
+      # Password of specht_app, the role the server queries with. The init
+      # script creates it on the first start of an empty volume; an existing
+      # install runs the script once by hand (deploy/README.md, "Database roles").
+      SPECHT_APP_DB_PASSWORD: "${SPECHT_APP_DB_PASSWORD:?SPECHT_APP_DB_PASSWORD must be set, see deploy/README.md}"
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U specht"]
       interval: 5s
@@ -38,12 +43,16 @@ services:
       # Development-only default: the compose database is bound to localhost,
       # so TLS is disabled. Production deployments must set POSTGRES_SSLMODE
       # explicitly (for example, `require` or `verify-full`).
+      # The server queries as specht_app, which can read and write rows but
+      # not change the schema. Migrations run as specht, the owner.
       DATABASE_URL: >-
+        postgres://specht_app:${SPECHT_APP_DB_PASSWORD:?SPECHT_APP_DB_PASSWORD must be set, see deploy/README.md}@db:5432/specht?sslmode=${POSTGRES_SSLMODE:-disable}
+      MIGRATE_DATABASE_URL: >-
         postgres://specht:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db:5432/specht?sslmode=${POSTGRES_SSLMODE:-disable}
-      # Production must set JWT_SECRET (min 32 random bytes) and
-      # POSTGRES_PASSWORD via deploy/.env.prod (see deploy/README.md). Empty
-      # values fail fast: postgres refuses an empty password and the server
-      # refuses a missing/short JWT secret at startup.
+      # Production must set JWT_SECRET (min 32 random bytes), POSTGRES_PASSWORD
+      # and SPECHT_APP_DB_PASSWORD via deploy/.env.prod (see deploy/README.md).
+      # Empty values fail fast: compose refuses an empty database password and
+      # the server refuses a missing/short JWT secret at startup.
       JWT_SECRET: ${JWT_SECRET}
       FINGERPRINT_KEY: ${FINGERPRINT_KEY:-}
       RAW_RETENTION_DAYS: ${RAW_RETENTION_DAYS:-30}

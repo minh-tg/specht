@@ -46,9 +46,10 @@ cd specht
 cp deploy/.env.prod.example deploy/.env.prod
 ```
 
-Edit `deploy/.env.prod`. Set `POSTGRES_PASSWORD` and `JWT_SECRET` (at least 32 random
-bytes, for example `head -c 48 /dev/urandom | base64`), and uncomment `SETUP_TOKEN` with a
-value of your choice, at least 16 characters. Then start the stack:
+Edit `deploy/.env.prod`. Set `POSTGRES_PASSWORD` and `SPECHT_APP_DB_PASSWORD` (letters
+and digits, for example `openssl rand -hex 32`), `JWT_SECRET` (at least 32 random bytes,
+for example `head -c 48 /dev/urandom | base64`), and uncomment `SETUP_TOKEN` with a value
+of your choice, at least 16 characters. Then start the stack:
 
 ```bash
 docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml \
