@@ -33,6 +33,16 @@ The backup table is retained until the release's rollback window expires, then
 removed by a separately reviewed cleanup migration. For large tables, use an
 export or an online, staged migration rather than holding a long table lock.
 
+## Down migrations that drop data
+
+The same rule covers a `down.sql`. A down migration that drops a column or table
+holding values written since the up must copy them into a backup table first, and
+applying the up again must restore them from that table and then drop it. This
+matters most where the empty default means something other than "unknown": a
+column whose NULL reads as "no restriction" makes every row it was lost from look
+unrestricted after a rollback and a re-apply. Where no backup is practical, the
+re-applied column must default to the value that fails closed.
+
 Every migration must have an up and down file. CI applies the complete chain,
 rolls it back one migration at a time, and applies it again on a clean
 PostgreSQL database.
