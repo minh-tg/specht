@@ -2,9 +2,20 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import axe from "axe-core";
-import { apiToken, FIXTURE_HIGH, ingestFixture, seedProject, uiLogin, uniq } from "./helpers";
+import {
+  apiToken,
+  BASE_SHA,
+  CHANGE_SHA,
+  FIXTURE_HIGH,
+  FIXTURE_HIGH_MEDIUM,
+  FIXTURE_HIGH_NEW,
+  ingestFixture,
+  seedProject,
+  uiLogin,
+  uniq,
+} from "./helpers";
 
-// The phone pass: the four pages a signed-in admin reaches most often, audited at 360x740.
+// The phone pass: the pages a signed-in admin reaches most often, audited at 360x740.
 // Each page must pass axe-core on the WCAG 2.2 A and AA rules and must not scroll sideways.
 // The axe runner and the rule set match frontend/e2e/a11y.spec.ts.
 
@@ -105,4 +116,21 @@ test("the project access page fits a 360px phone and passes axe", async ({ page,
   await auditPhone(page, "project configuration menu");
   await page.keyboard.press("Escape");
   await expect(configuration).toBeFocused();
+});
+
+test("a blocked change with a long branch name fits a 360px phone and passes axe", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("mobile-change");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH_MEDIUM, { commit_sha: BASE_SHA });
+  await ingestFixture(request, token, slug, FIXTURE_HIGH_NEW, {
+    commit_sha: CHANGE_SHA,
+    base_revision: BASE_SHA,
+    branch: `dependabot/npm_and_yarn/${"a".repeat(80)}`,
+    gate_introduced_only: true,
+  });
+  await uiLogin(page);
+  await page.goto(`/${slug}/changes/${CHANGE_SHA.slice(0, 7)}`);
+  await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
+  await auditPhone(page, "change view");
 });

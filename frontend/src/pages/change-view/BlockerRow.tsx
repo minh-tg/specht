@@ -72,14 +72,22 @@ export function BlockerRowView(
     <Row>
       <div className="flex flex-wrap items-center gap-2">
         <SeverityBadge severity={finding.current_severity} />
-        <Link to={target} state={targetState} className="font-medium hover:underline">
+        <Link
+          to={target}
+          state={targetState}
+          className="min-w-0 font-medium [overflow-wrap:anywhere] hover:underline"
+        >
           {finding.current_title}
         </Link>
         <Link to={target} state={targetState} className={`${INLINE_LINK} ml-auto text-body`}>
           Decide
         </Link>
       </div>
-      {location && <p className="text-muted-foreground mt-1 font-mono text-code">{location}</p>}
+      {location && (
+        <p className="text-muted-foreground mt-1 font-mono text-code [overflow-wrap:anywhere]">
+          {location}
+        </p>
+      )}
       <div className="mt-2 rounded-md border px-3 py-2">
         <p className="text-muted-foreground text-meta font-semibold tracking-wide uppercase">
           Do this

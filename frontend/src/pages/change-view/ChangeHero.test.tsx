@@ -91,6 +91,25 @@ describe("ChangeHero passing copy", () => {
   });
 });
 
+describe("ChangeHero narrow screens", () => {
+  it("lets a long branch name wrap so a phone does not scroll sideways", () => {
+    const branch = `dependabot/npm_and_yarn/${"a".repeat(60)}`;
+    render(
+      <ChangeHero
+        commit="abcdef1234"
+        report={{ ...report, branch }}
+        state="passing"
+        blockers={0}
+        existing={0}
+        waived={0}
+        policy={policy}
+      />,
+    );
+
+    expect(screen.getByText(branch)).toHaveClass("min-w-0", "[overflow-wrap:anywhere]");
+  });
+});
+
 describe("ChangeHero unblocked and unconfirmed copy", () => {
   it("says the unblocked verdict is worked out now, not recorded at upload", () => {
     render(
