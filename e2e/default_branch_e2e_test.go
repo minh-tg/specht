@@ -17,10 +17,10 @@ type projectDefaultBranch struct {
 
 // TestE2E_DefaultBranchMakesAFormerPullRequestHeadABaseline pins the project
 // default branch. main was once the head of a pull request, so without the
-// setting its reports are no baseline and a finding feat/x shares with another
-// blocked branch counts as pre-existing. Once a project admin names main as
-// the default branch, main is the baseline again and that finding is
-// introduced, since main never had it.
+// setting main is a change branch: its reports are no baseline and no trunk
+// has main's own high, so a pull request counts it as introduced too. Once a
+// project admin names main as the default branch, main is the baseline again:
+// its high is pre-existing and only the finding main never had is introduced.
 func TestE2E_DefaultBranchMakesAFormerPullRequestHeadABaseline(t *testing.T) {
 	slug := newProject(t, "default-branch")
 	key := mintKey(t, slug)
@@ -28,13 +28,13 @@ func TestE2E_DefaultBranchMakesAFormerPullRequestHeadABaseline(t *testing.T) {
 	carryPush(t, slug, key, "high.sarif.json", "main", "f200000000000000000000000000000000000001", "")
 	// main was the head of a pull request into a release branch once.
 	carryPush(t, slug, key, "high.sarif.json", "main", "f200000000000000000000000000000000000002", "release/1")
-	// Another branch introduced E2E-NEW-003 and is blocked on it.
+	// Another branch has E2E-NEW-003 and is blocked on it.
 	other := carryPush(t, slug, key, "high-new.sarif.json", "feat/other", "f200000000000000000000000000000000000003", "main")
-	require.Equal(t, 1, other.IntroducedCount)
+	require.Equal(t, 2, other.IntroducedCount, "main is no trunk without the setting")
 
 	unset := carryPush(t, slug, key, "high-new.sarif.json", "feat/x", "f200000000000000000000000000000000000004", "main")
-	require.Equal(t, 0, unset.IntroducedCount,
-		"without the setting main is a change branch, so the finding known from feat/other counts as pre-existing")
+	require.Equal(t, 2, unset.IntroducedCount,
+		"without the setting main is a change branch, so nothing is trunk debt")
 
 	got := request[projectDefaultBranch](t, http.MethodGet, "/api/v1/projects/"+slug, adminToken, nil, http.StatusOK)
 	require.Nil(t, got.DefaultBranch)
@@ -50,8 +50,9 @@ func TestE2E_DefaultBranchMakesAFormerPullRequestHeadABaseline(t *testing.T) {
 
 	// Another change branch stays refused with the setting in place.
 	viaOther := carryPush(t, slug, key, "high-new.sarif.json", "feat/z", "f200000000000000000000000000000000000006", "feat/other")
-	require.Equal(t, 0, viaOther.IntroducedCount,
-		"feat/other is no baseline; feat/z falls back to the rules without one")
+	require.Equal(t, 1, viaOther.IntroducedCount,
+		"feat/other is no baseline; main still has the high, and E2E-NEW-003 stays introduced")
+	require.Equal(t, 1, viaOther.PreExistingCount)
 
 	cleared := request[projectDefaultBranch](t, http.MethodPut, "/api/v1/projects/"+slug, adminToken,
 		map[string]any{"default_branch": ""}, http.StatusOK)

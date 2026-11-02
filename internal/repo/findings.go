@@ -690,6 +690,17 @@ func (r *pgFindingRepo) ListFindingsByFingerprints(ctx context.Context, projectI
 	})
 }
 
+func (r *pgFindingRepo) ListFindingIDsOnTrunk(ctx context.Context, projectID pgtype.UUID, defaultBranch pgtype.Text, findingIDs []pgtype.UUID) ([]pgtype.UUID, error) {
+	if len(findingIDs) == 0 {
+		return nil, nil
+	}
+	return r.q.ListFindingIDsOnTrunk(ctx, sqlc.ListFindingIDsOnTrunkParams{
+		ProjectID:     projectID,
+		FindingIds:    findingIDs,
+		DefaultBranch: defaultBranch,
+	})
+}
+
 func (r *pgFindingRepo) ListBaselineEvidence(ctx context.Context, baselineID pgtype.UUID, findingIDs []pgtype.UUID) ([]sqlc.ListBaselineEvidenceRow, error) {
 	if len(findingIDs) == 0 {
 		return nil, nil

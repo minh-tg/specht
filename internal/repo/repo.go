@@ -259,6 +259,7 @@ type FindingRepo interface {
 	ListIntroducedGateCandidates(ctx context.Context, projectID, reportID pgtype.UUID, minSeverityRank int16) ([]sqlc.ListIntroducedGateCandidatesRow, error)
 	ListFindingsByFingerprints(ctx context.Context, projectID pgtype.UUID, findingKind string, fingerprints []string) ([]sqlc.Finding, error)
 	ListBaselineEvidence(ctx context.Context, baselineID pgtype.UUID, findingIDs []pgtype.UUID) ([]sqlc.ListBaselineEvidenceRow, error)
+	ListFindingIDsOnTrunk(ctx context.Context, projectID pgtype.UUID, defaultBranch pgtype.Text, findingIDs []pgtype.UUID) ([]pgtype.UUID, error)
 	ListReportIntroducedChangeTypes(ctx context.Context, reportID pgtype.UUID, findingIDs []pgtype.UUID) ([]sqlc.ListReportIntroducedChangeTypesRow, error)
 	RecordReportIntroducedFindings(ctx context.Context, reportID pgtype.UUID, baselineReportID pgtype.UUID, findingIDs []pgtype.UUID, changeTypes []string) error
 	ListFindingsIntroducedByCommit(ctx context.Context, projectID pgtype.UUID, commit pgtype.Text) ([]sqlc.Finding, error)

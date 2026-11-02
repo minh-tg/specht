@@ -490,6 +490,16 @@ releases.
 - The EPSS feed reader skips a row whose score or percentile is not a finite number in
   [0, 1], and logs it. A `NaN` score used to be stored and made every finding response for
   that CVE come back without a body.
+- A change can no longer shed its blockers by pushing again under another
+  environment, artifact name or branch name, or with no base. Carrying introduced
+  findings forward depended on the previous report in the same scan scope, which
+  those fields define. A report of a change with no usable baseline now counts a
+  finding as pre-existing only when the trunk still has it, and as introduced
+  otherwise. With a default branch set, every report off that branch counts as a
+  change. Projects that never scan their trunk now see every finding a change
+  observes as introduced, including findings shared with other open changes;
+  scanning the default branch, or waiving the shared findings, keeps them off
+  the change gate.
 - Once a project names its default branch, only reports on that branch are
   baselines for the introduced-only gate. A report without a branch, or on any
   other branch, used to be accepted when its branch had never named another base,

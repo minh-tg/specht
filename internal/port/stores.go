@@ -1092,6 +1092,10 @@ type FindingStore interface {
 	// fixability cannot speak for a finding its filter may have hidden. Findings
 	// nothing speaks for are absent from the map.
 	ListBaselineEvidence(ctx context.Context, baselineID string, findingIDs []string) (map[string]bool, error)
+	// ListFindingIDsOnTrunk returns the findingIDs the project's trunk still
+	// has in some scan scope. defaultBranch is the project's default branch,
+	// nil when unset (see the query for the trunk rule then).
+	ListFindingIDsOnTrunk(ctx context.Context, projectID string, defaultBranch *string, findingIDs []string) (map[string]bool, error)
 	RecordReportIntroducedFindings(ctx context.Context, reportID string, baselineReportID *string, entries []IntroducedFindingEntry) error
 	// ListReportIntroducedChangeTypes maps each of findingIDs that the report
 	// recorded as introduced to its change type. Others are absent.

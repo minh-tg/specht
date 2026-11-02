@@ -75,7 +75,8 @@ func TestE2E_BaseRevisionCannotVouchForTheBranchsOwnFindings(t *testing.T) {
 		mine := carryPush(t, slug, key, "high-new.sarif.json", "feat/x",
 			"d300000000000000000000000000000000000002", "main")
 		require.True(t, mine.ThresholdBreached)
-		require.Equal(t, 1, mine.IntroducedCount, "feat/x introduced E2E-NEW-003")
+		require.Equal(t, 2, mine.IntroducedCount,
+			"main was never scanned, so the high known from feat/other is not trunk debt either")
 
 		// feat/other picks up the same finding, so its newest report holds both.
 		carryPush(t, slug, key, "high-new.sarif.json", "feat/other",
@@ -83,11 +84,17 @@ func TestE2E_BaseRevisionCannotVouchForTheBranchsOwnFindings(t *testing.T) {
 
 		laundered := carryPush(t, slug, key, "high-new.sarif.json", "feat/x",
 			"d300000000000000000000000000000000000004", "feat/other")
-		require.Equal(t, 1, laundered.IntroducedCount,
-			"a change branch's report is no baseline: the finding feat/x introduced stays introduced")
+		require.Equal(t, 2, laundered.IntroducedCount,
+			"a change branch's report is no baseline: what the trunk lacks stays introduced")
 		require.True(t, laundered.ThresholdBreached)
 		require.Equal(t, "failure", prCheckConclusion(t, slug, key,
 			"d300000000000000000000000000000000000004", laundered.ReportID))
+
+		fresh := carryPush(t, slug, key, "high-new.sarif.json", "feat/y",
+			"d300000000000000000000000000000000000005", "feat/other")
+		require.Equal(t, 2, fresh.IntroducedCount,
+			"a fresh branch naming a blocked branch as base cannot borrow its findings")
+		require.True(t, fresh.ThresholdBreached)
 	})
 
 	t.Run("a scanned trunk stays the baseline", func(t *testing.T) {

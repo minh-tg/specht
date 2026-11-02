@@ -1385,6 +1385,33 @@ func (r *pgFindingPort) ListFindingsByFingerprints(ctx context.Context, projectI
 	return out, nil
 }
 
+func (r *pgFindingPort) ListFindingIDsOnTrunk(ctx context.Context, projectID string, defaultBranch *string, findingIDs []string) (map[string]bool, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]bool{}
+	if len(findingIDs) == 0 {
+		return out, nil
+	}
+	uuids := make([]pgtype.UUID, 0, len(findingIDs))
+	for _, id := range findingIDs {
+		u, err := parseID(id)
+		if err != nil {
+			return nil, err
+		}
+		uuids = append(uuids, u)
+	}
+	rows, err := r.inner.ListFindingIDsOnTrunk(ctx, pid, textPtrFromString(defaultBranch), uuids)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[toUUID(row)] = true
+	}
+	return out, nil
+}
+
 func (r *pgFindingPort) ListBaselineEvidence(ctx context.Context, baselineID string, findingIDs []string) (map[string]bool, error) {
 	bid, err := parseID(baselineID)
 	if err != nil {

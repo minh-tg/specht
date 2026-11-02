@@ -186,14 +186,18 @@ func TestIngest_FindingsAFilteredBaselineCannotSpeakForFallBackToCarry(t *testin
 	assert.Equal(t, 1, calls.previousLookups)
 }
 
-// Without anything to carry, a known finding the filtered baseline cannot
-// speak for is pre-existing, never introduced by default. One the baseline
-// speaks for and did not observe is introduced.
+// A known finding the filtered baseline cannot speak for is pre-existing when
+// the trunk still has it, the debt the filter hid. One the baseline speaks for
+// and did not observe is introduced.
 func TestIngest_FilteredBaselineNeverBlamesWhatItCouldNotSee(t *testing.T) {
 	uc, calls := carryHarness(t, func(rr *mockReportRepo, fr *mockFindingRepo) {
 		baselineOn(strRef("main"), false)(rr, fr)
 		fr.baselineEvidenceFn = func(ctx context.Context, baselineID string, ids []string) (map[string]bool, error) {
 			return map[string]bool{"f-old": true, "f-carried-reg": false}, nil
+		}
+		fr.onTrunkFn = func(ctx context.Context, projectID string, defaultBranch *string, ids []string) (map[string]bool, error) {
+			assert.Equal(t, []string{"f-carried"}, ids, "only the finding without evidence is asked about")
+			return map[string]bool{"f-carried": true}, nil
 		}
 		fr.listReportIntroducedChangeTypesFn = func(ctx context.Context, reportID string, ids []string) (map[string]string, error) {
 			return nil, nil
@@ -202,7 +206,7 @@ func TestIngest_FilteredBaselineNeverBlamesWhatItCouldNotSee(t *testing.T) {
 	out, err := carryIngest(t, uc, "feat/x", "main")
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{"f-new": "new", "f-carried-reg": "new"}, entryTypes(calls.entries),
-		"f-carried has no evidence and nothing to carry, so it is pre-existing")
+		"f-carried has no evidence and the trunk has it, so it is pre-existing")
 	assert.Equal(t, 2, out.PreExistingCount)
 }
 

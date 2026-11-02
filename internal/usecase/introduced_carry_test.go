@@ -21,7 +21,7 @@ func TestClassifyIngestChange(t *testing.T) {
 		regression   bool
 		baselineID   string
 		baselineSeen bool
-		carried      string
+		ev           changeEvidence
 		wantIntro    bool
 		wantType     string
 	}{
@@ -29,17 +29,19 @@ func TestClassifyIngestChange(t *testing.T) {
 		{name: "baseline: new to project", baselineID: "b", wantIntro: true, wantType: "new"},
 		{name: "baseline: known but absent from baseline", exists: true, baselineID: "b", wantIntro: true, wantType: "new"},
 		{name: "baseline: seen by baseline", exists: true, baselineID: "b", baselineSeen: true},
-		{name: "baseline: seen by baseline ignores carry", exists: true, baselineID: "b", baselineSeen: true, carried: "new"},
-		{name: "baseline: absent from baseline keeps new over carried regression", exists: true, baselineID: "b", carried: "regression", wantIntro: true, wantType: "new"},
+		{name: "baseline: seen by baseline ignores carry", exists: true, baselineID: "b", baselineSeen: true, ev: changeEvidence{change: true, carriedType: "new"}},
+		{name: "baseline: absent from baseline keeps new over carried regression", exists: true, baselineID: "b", ev: changeEvidence{change: true, carriedType: "regression"}, wantIntro: true, wantType: "new"},
 		{name: "no baseline: new to project", wantIntro: true, wantType: "new"},
-		{name: "no baseline: known, nothing carried", exists: true},
-		{name: "no baseline: known, carried new", exists: true, carried: "new", wantIntro: true, wantType: "new"},
-		{name: "no baseline: known, carried regression", exists: true, carried: "regression", wantIntro: true, wantType: "regression"},
-		{name: "no baseline: unknown ignores carry", carried: "regression", wantIntro: true, wantType: "new"},
+		{name: "trunk report: known is pre-existing", exists: true},
+		{name: "change: known on the trunk is pre-existing", exists: true, ev: changeEvidence{change: true, onTrunk: true}},
+		{name: "change: on the trunk wins over a carry", exists: true, ev: changeEvidence{change: true, onTrunk: true, carriedType: "new"}},
+		{name: "change: known, off the trunk, nothing carried", exists: true, ev: changeEvidence{change: true}, wantIntro: true, wantType: "new"},
+		{name: "change: off the trunk keeps the carried regression", exists: true, ev: changeEvidence{change: true, carriedType: "regression"}, wantIntro: true, wantType: "regression"},
+		{name: "change: unknown ignores carry", ev: changeEvidence{change: true, carriedType: "regression"}, wantIntro: true, wantType: "new"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			intro, ct := classifyIngestChange(tc.exists, tc.regression, tc.baselineID, tc.baselineSeen, tc.carried)
+			intro, ct := classifyIngestChange(tc.exists, tc.regression, tc.baselineID, tc.baselineSeen, tc.ev)
 			assert.Equal(t, tc.wantIntro, intro)
 			assert.Equal(t, tc.wantType, ct)
 		})
@@ -62,6 +64,7 @@ type carryCalls struct {
 	introducedOf    []string
 	entries         []port.IntroducedFindingEntry
 	baseRecorded    *string
+	trunkLookups    int
 }
 
 func carryHarness(t *testing.T, configure func(rr *mockReportRepo, fr *mockFindingRepo)) (*Usecases, *carryCalls) {
@@ -123,6 +126,17 @@ func carryHarnessFor(t *testing.T, project port.Project, configure func(rr *mock
 		calls.entries = entries
 		calls.baseRecorded = baseID
 		return nil
+	}
+	// fp-old is debt the trunk still has; nothing else is on the trunk.
+	fr.onTrunkFn = func(ctx context.Context, projectID string, defaultBranch *string, ids []string) (map[string]bool, error) {
+		calls.trunkLookups++
+		out := map[string]bool{}
+		for _, id := range ids {
+			if id == "f-old" {
+				out[id] = true
+			}
+		}
+		return out, nil
 	}
 	if configure != nil {
 		configure(rr, fr)
@@ -244,7 +258,11 @@ func TestIngest_NoCarryWithoutBranch(t *testing.T) {
 	assert.Empty(t, calls.branchChecked)
 }
 
-func TestIngest_NoCarryWithoutPreviousReportInScope(t *testing.T) {
+// Without a previous report in the scan scope, as after a push that changed
+// the environment, artifact name or branch name, a change report still counts
+// every known finding the trunk lacks as introduced. Only the change type of
+// the earlier push is lost: they count as new.
+func TestIngest_ChangeWithoutPreviousReportInScopeKeepsWhatTheTrunkLacks(t *testing.T) {
 	uc, calls := carryHarness(t, func(rr *mockReportRepo, fr *mockFindingRepo) {
 		rr.previousInScopeFn = func(ctx context.Context, projectID, reportID string) (string, error) {
 			return "", port.ErrNotFound
@@ -252,9 +270,86 @@ func TestIngest_NoCarryWithoutPreviousReportInScope(t *testing.T) {
 	})
 	out, err := carryIngest(t, uc, "feat/x", "main")
 	require.NoError(t, err)
-	assert.Equal(t, 1, out.IntroducedCount)
-	assert.Equal(t, map[string]string{"f-new": "new"}, entryTypes(calls.entries))
+	assert.Equal(t, 3, out.IntroducedCount)
+	assert.Equal(t, 1, out.PreExistingCount, "fp-old is debt the trunk still has")
+	assert.Equal(t, map[string]string{"f-new": "new", "f-carried": "new", "f-carried-reg": "new"}, entryTypes(calls.entries))
 	assert.Empty(t, calls.introducedOf)
+	assert.Equal(t, 1, calls.trunkLookups)
+}
+
+// The same holds for a push build that names no base on a branch that is a
+// change branch, and for a branch name the project never saw once the project
+// names its default branch.
+func TestIngest_PushOfAChangeUnderAFreshScopeKeepsWhatTheTrunkLacks(t *testing.T) {
+	noPrevious := func(rr *mockReportRepo, fr *mockFindingRepo) {
+		rr.previousInScopeFn = func(ctx context.Context, projectID, reportID string) (string, error) {
+			return "", port.ErrNotFound
+		}
+	}
+	t.Run("push build of a change branch", func(t *testing.T) {
+		uc, calls := carryHarness(t, func(rr *mockReportRepo, fr *mockFindingRepo) {
+			noPrevious(rr, fr)
+			rr.branchHasChangeFn = func(ctx context.Context, projectID, branch string) (bool, error) {
+				return true, nil
+			}
+		})
+		out, err := carryIngest(t, uc, "feat/x", "")
+		require.NoError(t, err)
+		assert.Equal(t, 3, out.IntroducedCount)
+		assert.Equal(t, 1, calls.trunkLookups)
+	})
+	t.Run("fresh branch name with a default branch set", func(t *testing.T) {
+		uc, calls := carryHarnessFor(t, projectWithDefaultBranch("main"), noPrevious)
+		out, err := carryIngest(t, uc, "feat/renamed", "")
+		require.NoError(t, err)
+		assert.Equal(t, 3, out.IntroducedCount)
+		assert.Equal(t, 1, out.PreExistingCount)
+		assert.Empty(t, calls.branchChecked, "the default branch decides without the branch history")
+	})
+	t.Run("no branch with a default branch set", func(t *testing.T) {
+		uc, _ := carryHarnessFor(t, projectWithDefaultBranch("main"), noPrevious)
+		out, err := carryIngest(t, uc, "", "")
+		require.NoError(t, err)
+		assert.Equal(t, 3, out.IntroducedCount)
+	})
+	t.Run("the default branch itself is the trunk", func(t *testing.T) {
+		uc, calls := carryHarnessFor(t, projectWithDefaultBranch("main"), noPrevious)
+		out, err := carryIngest(t, uc, "main", "")
+		require.NoError(t, err)
+		assert.Equal(t, 1, out.IntroducedCount, "only the finding new to the project")
+		assert.Zero(t, calls.trunkLookups)
+	})
+}
+
+// The trunk lookup names the default branch when one is set, and nil
+// otherwise, and it fails the ingest when it errors.
+func TestIngest_TrunkLookupNamesTheDefaultBranch(t *testing.T) {
+	var got []*string
+	record := func(rr *mockReportRepo, fr *mockFindingRepo) {
+		fr.onTrunkFn = func(ctx context.Context, projectID string, defaultBranch *string, ids []string) (map[string]bool, error) {
+			got = append(got, defaultBranch)
+			return map[string]bool{}, nil
+		}
+	}
+	uc, _ := carryHarnessFor(t, projectWithDefaultBranch("main"), record)
+	_, err := carryIngest(t, uc, "feat/x", "main")
+	require.NoError(t, err)
+	uc, _ = carryHarness(t, record)
+	_, err = carryIngest(t, uc, "feat/x", "main")
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.NotNil(t, got[0])
+	assert.Equal(t, "main", *got[0])
+	assert.Nil(t, got[1])
+
+	boom := errors.New("boom")
+	uc, _ = carryHarness(t, func(rr *mockReportRepo, fr *mockFindingRepo) {
+		fr.onTrunkFn = func(ctx context.Context, projectID string, defaultBranch *string, ids []string) (map[string]bool, error) {
+			return nil, boom
+		}
+	})
+	_, err = carryIngest(t, uc, "feat/x", "main")
+	require.ErrorIs(t, err, boom)
 }
 
 // A resolvable baseline keeps today's classification exactly: the carry
