@@ -234,7 +234,7 @@ func (q *Queries) LockLiveAPIKey(ctx context.Context, keyHash string) (pgtype.UU
 }
 
 const revokeAPIKey = `-- name: RevokeAPIKey :one
-UPDATE api_keys SET revoked_at = NOW() WHERE id = $1 AND project_id = $2
+UPDATE api_keys SET revoked_at = NOW() WHERE id = $1 AND project_id = $2 AND revoked_at IS NULL
 RETURNING id, project_id, name, key_prefix, key_hash, last_four, scopes, expires_at, last_used_at, created_at, revoked_at, created_by
 `
 
@@ -243,6 +243,8 @@ type RevokeAPIKeyParams struct {
 	ProjectID pgtype.UUID `json:"project_id"`
 }
 
+// A key that is already revoked matches no row, so its first revocation time
+// stays the record of when it died.
 func (q *Queries) RevokeAPIKey(ctx context.Context, arg RevokeAPIKeyParams) (ApiKey, error) {
 	row := q.db.QueryRow(ctx, revokeAPIKey, arg.ID, arg.ProjectID)
 	var i ApiKey

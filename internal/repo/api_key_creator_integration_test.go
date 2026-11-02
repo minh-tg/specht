@@ -273,3 +273,28 @@ func TestListByProjectReturnsExpiryAndKeepsExpiredKeys(t *testing.T) {
 	require.NotNil(t, byID[expired].ExpiresAt)
 	assert.True(t, byID[expired].ExpiresAt.Before(time.Now()), "the expired key is listed with its past expiry")
 }
+
+// Revoking a key twice keeps the first revocation time and reports the second
+// call as a missing key, so the use case writes no second audit line for it.
+func TestRevokeKeepsTheFirstRevocationTime(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(repos.pool)
+	creator := newUser(t, repos, "revoke-twice@test.com", "admin")
+	project := createTestProject(t, repos)
+	id, _ := newKeyBy(t, repos, project, creator.ID, "twice")
+
+	_, err := stores.APIKeys.Revoke(ctx, id, toUUID(project.ID))
+	require.NoError(t, err)
+	_, err = repos.pool.Exec(ctx, "UPDATE api_keys SET revoked_at = revoked_at - interval '1 hour' WHERE id = $1", id)
+	require.NoError(t, err)
+	var first time.Time
+	require.NoError(t, repos.pool.QueryRow(ctx, "SELECT revoked_at FROM api_keys WHERE id = $1", id).Scan(&first))
+
+	_, err = stores.APIKeys.Revoke(ctx, id, toUUID(project.ID))
+	assert.ErrorIs(t, err, port.ErrNotFound)
+	var after time.Time
+	require.NoError(t, repos.pool.QueryRow(ctx, "SELECT revoked_at FROM api_keys WHERE id = $1", id).Scan(&after))
+	assert.True(t, first.Equal(after), "the second revoke did not move revoked_at")
+}
