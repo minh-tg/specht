@@ -95,6 +95,37 @@ func TestIngestTransactionRefusesASessionOfADeactivatedAccount(t *testing.T) {
 	assert.False(t, entered, "a deactivated account does not write")
 }
 
+func TestIngestTransactionRefusesASessionOfAnEarlierTokenGeneration(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(repos.pool)
+	newUser(t, repos, "admin@test.com", "admin")
+	project := createTestProject(t, repos)
+	projectID := uuid.UUID(project.ID.Bytes).String()
+	person := newUser(t, repos, "person@test.com", "member")
+	var generation int32
+	require.NoError(t, repos.pool.QueryRow(ctx, "SELECT token_version FROM users WHERE id = $1", person.ID).Scan(&generation))
+	runs := func(version *int32) (entered bool, err error) {
+		err = stores.Ingest.Run(ctx, projectID, port.IngestCaller{UserID: person.ID, TokenVersion: version}, func(*port.Stores) error {
+			entered = true
+			return nil
+		})
+		return entered, err
+	}
+
+	entered, err := runs(&generation)
+	require.NoError(t, err)
+	assert.True(t, entered, "the current generation writes")
+
+	// A password change, or a deactivation followed by a reactivation.
+	_, err = repos.pool.Exec(ctx, "UPDATE users SET token_version = token_version + 1 WHERE id = $1", person.ID)
+	require.NoError(t, err)
+	entered, err = runs(&generation)
+	require.ErrorIs(t, err, port.ErrIngestCallerInactive)
+	assert.False(t, entered, "a session of an earlier generation does not write")
+}
+
 // A deactivation that starts while a session's ingest is open waits for it.
 func TestDeactivationWaitsForASessionIngest(t *testing.T) {
 	repos, cleanup := setupTestDB(t)

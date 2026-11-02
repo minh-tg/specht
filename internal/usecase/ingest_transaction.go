@@ -26,6 +26,7 @@ func (u *Usecases) ingestAtomically(ctx context.Context, project port.Project, i
 			caller.KeyHash = ident.KeyHash
 		} else {
 			caller.UserID = ident.UserID
+			caller.TokenVersion = ident.TokenVersion
 		}
 	}
 	err := u.deps.Stores.Ingest.Run(ctx, project.ID, caller, func(stores *port.Stores) error {

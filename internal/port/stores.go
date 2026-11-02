@@ -146,6 +146,11 @@ type IngestCaller struct {
 	KeyHash string
 	// UserID is the account of a session the request authenticated with.
 	UserID string
+	// TokenVersion is the token generation that session carried. When set, the
+	// account's current generation must still equal it, so a password change or
+	// a deactivation and reactivation that ended the session also stops its
+	// upload.
+	TokenVersion *int32
 }
 
 // ---------- Projects ----------

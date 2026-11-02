@@ -84,6 +84,39 @@ func TestIngestStraddlingSessionDeactivationIsRefused(t *testing.T) {
 	requireInflightRefused(t, slug, got, "session deactivated mid-flight")
 }
 
+// A session that ends without a deactivation also stops its upload: a password
+// change, or a deactivation followed by a reactivation, starts a new token
+// generation.
+func TestIngestStraddlingSessionEndIsRefused(t *testing.T) {
+	t.Run("password change", func(t *testing.T) {
+		slug := newProject(t, "inflight-password")
+		person := azRegister(t, "inflight-password")
+		azAddMember(t, slug, person.UserID, "admin")
+		time.Sleep(150 * time.Millisecond)
+		session := azLogin(t, person)
+
+		got := inflightUpload(t, slug, session, func() {
+			status, raw := doJSON(t, http.MethodPut, "/api/v1/me/password", session,
+				map[string]string{"current_password": person.Password, "new_password": "Az-" + randomHex(12)})
+			require.Containsf(t, []int{http.StatusOK, http.StatusNoContent}, status, "password change: %s", raw)
+		})
+		requireInflightRefused(t, slug, got, "session ended by a password change mid-flight")
+	})
+	t.Run("deactivated and reactivated", func(t *testing.T) {
+		slug := newProject(t, "inflight-reactivate")
+		person := azRegister(t, "inflight-reactivate")
+		azAddMember(t, slug, person.UserID, "admin")
+		time.Sleep(150 * time.Millisecond)
+		session := azLogin(t, person)
+
+		got := inflightUpload(t, slug, session, func() {
+			azSetActive(t, person.UserID, false)
+			azSetActive(t, person.UserID, true)
+		})
+		requireInflightRefused(t, slug, got, "session ended by a deactivation and reactivation mid-flight")
+	})
+}
+
 // A control: nothing changes mid-flight, the report lands.
 func TestIngestWithAnUnchangedSessionStillLands(t *testing.T) {
 	slug := newProject(t, "inflight-control")
