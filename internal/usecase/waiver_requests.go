@@ -249,6 +249,9 @@ func (u *Usecases) RequestWaiver(ctx context.Context, input RequestWaiverInput) 
 		},
 	})
 	if err != nil {
+		if errors.Is(err, port.ErrWaiverRequestExists) {
+			return nil, ErrWaiverRequestExists
+		}
 		return nil, err
 	}
 	resp := toWaiver(w)

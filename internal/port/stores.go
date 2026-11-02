@@ -32,6 +32,10 @@ var ErrAnalysisConflict = errors.New("analysis state changed")
 // still observes the finding. No fixed event is recorded.
 var ErrFindingStillObserved = errors.New("finding is still observed")
 
+// ErrWaiverRequestExists is returned when a pending waiver request is created
+// for a finding another pending request of the project already names.
+var ErrWaiverRequestExists = errors.New("a pending waiver request already names one of the findings")
+
 // ErrWaiverNotPending is returned when a waiver decision targets a waiver
 // that already has a final status.
 var ErrWaiverNotPending = errors.New("waiver is not pending")

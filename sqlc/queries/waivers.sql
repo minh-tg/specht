@@ -128,6 +128,13 @@ INSERT INTO waiver_finding_targets (waiver_id, finding_id)
 VALUES ($1, $2)
 RETURNING *;
 
+-- name: CountPendingWaiverTargets :one
+-- How many of the given findings a pending waiver request of the project
+-- already names.
+SELECT COUNT(*) FROM waiver_finding_targets t
+JOIN waivers w ON w.id = t.waiver_id
+WHERE w.project_id = sqlc.arg(project_id) AND w.status = 'pending' AND t.finding_id = ANY(sqlc.arg(finding_ids)::uuid[]);
+
 -- name: ListWaiverFindingTargets :many
 SELECT * FROM waiver_finding_targets
 WHERE waiver_id = $1
