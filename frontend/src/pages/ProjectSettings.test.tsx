@@ -139,6 +139,38 @@ describe("ProjectSettings", () => {
     expect(writes[0].body).toEqual({ description: "Card and wallet flows for cards" });
   });
 
+  it("explains the default branch and sends it alone when only it changed", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const field = await screen.findByLabelText("Default branch");
+    expect(field).toHaveValue("");
+    expect(field).toHaveAccessibleDescription(
+      expect.stringContaining("Reports on this branch count as the baseline for pull requests."),
+    );
+
+    await user.type(field, " main ");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0].body).toEqual({ default_branch: "main" });
+    await waitFor(() => expect(screen.getByLabelText("Default branch")).toHaveValue("main"));
+  });
+
+  it("clears a stored default branch with an empty value", async () => {
+    project = { ...payments, default_branch: "main" };
+    const user = userEvent.setup();
+    renderPage();
+    const field = await screen.findByLabelText("Default branch");
+    expect(field).toHaveValue("main");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+    await user.clear(field);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0].body).toEqual({ default_branch: "" });
+  });
+
   it("refuses a blank name and keeps Save disabled", async () => {
     const user = userEvent.setup();
     renderPage();

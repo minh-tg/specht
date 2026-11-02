@@ -15,6 +15,9 @@ releases.
 - A project can name its default branch. A project admin sets it with
   `default_branch` on `PUT /api/v1/projects/{slug}`, and the project response
   returns it. Reports on that branch count as the baseline for
+- A project can name its default branch. A project admin sets it on the project's
+  Settings page or with `default_branch` on `PUT /api/v1/projects/{slug}`, and the
+  project response returns it. Reports on that branch count as the baseline for
   pull requests even after the branch was the head of a pull request, and its push
   builds no longer carry introduced findings forward. Without it, a default branch
   that was once a pull request head is not a baseline.
