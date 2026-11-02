@@ -174,7 +174,7 @@ func convertDCVulnerability(dep dcDependency, v dcVulnerability, purl string) do
 		}
 	}
 	return domain.NormalizedFinding{
-		Fingerprint: createFingerprint(v.Name, purl, filePath, parseutil.SanitizeText(dep.FileName, parseutil.MaxPathLength)),
+		Fingerprint: createFingerprint(v.Name, purl, filePath, parseutil.SanitizeIdentifier(dep.FileName, parseutil.MaxPathLength)),
 		FindingKind: "sca",
 		Title:       v.Name,
 		Description: v.Description,

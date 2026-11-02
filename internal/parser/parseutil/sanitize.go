@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/minh-tg/specht/internal/domain"
@@ -108,8 +109,35 @@ func CleanFilePath(raw string) string {
 	return TruncateString(cleaned, MaxPathLength)
 }
 
-// SanitizeText strips null bytes and bounds text to maxLen characters.
+// SanitizeText makes scanner text safe to show on one line and bounds it to
+// maxLen bytes. Scanner output reaches terminals (the adapter's log lines, the
+// CLI) and GitHub check annotations unescaped, so a title could otherwise
+// clear a line and print a forged verdict. It drops ANSI escape sequences and
+// every C0 and C1 control character except tab, and turns CR, LF and the
+// Unicode line and paragraph separators into a space.
 func SanitizeText(raw string, maxLen int) string {
+	if raw == "" {
+		return ""
+	}
+	return TruncateString(cleanText(raw, false), maxLen)
+}
+
+// SanitizeMultiline is SanitizeText for text shown as several lines, such as a
+// description or a code snippet: line breaks stay, as LF (a CRLF pair or a
+// lone CR becomes one LF).
+func SanitizeMultiline(raw string, maxLen int) string {
+	if raw == "" {
+		return ""
+	}
+	return TruncateString(cleanText(raw, true), maxLen)
+}
+
+// SanitizeIdentifier strips null bytes only and bounds text to maxLen bytes.
+// It is for strings whose exact spelling is identity: fingerprints, target and
+// artifact names that enter the scan scope, dimension keys and values that
+// waivers and examined keys match against. Changing their spelling would split
+// one finding or one scope in two.
+func SanitizeIdentifier(raw string, maxLen int) string {
 	if raw == "" {
 		return ""
 	}
@@ -120,6 +148,89 @@ func SanitizeText(raw string, maxLen int) string {
 		return r
 	}, raw)
 	return TruncateString(s, maxLen)
+}
+
+// cleanText drops escape sequences and control characters; see SanitizeText.
+func cleanText(raw string, multiline bool) string {
+	var b strings.Builder
+	b.Grow(len(raw))
+	runes := []rune(raw)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		switch {
+		case r == '\x1b':
+			i = skipEscape(runes, i)
+		case r == '\u009b': // C1 CSI
+			i = skipControlSequence(runes, i+1)
+		case r == '\u009d', r == '\u0090', r == '\u0098', r == '\u009e', r == '\u009f': // C1 OSC, DCS, SOS, PM, APC
+			i = skipControlString(runes, i+1)
+		case r == '\t':
+			b.WriteRune(r)
+		case r == '\r' || r == '\n' || r == '\u2028' || r == '\u2029':
+			if r == '\r' && i+1 < len(runes) && runes[i+1] == '\n' {
+				i++
+			}
+			if multiline {
+				b.WriteByte('\n')
+			} else {
+				b.WriteByte(' ')
+			}
+		case unicode.IsControl(r):
+			// Other C0 controls, DEL and C1 controls are dropped.
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// skipEscape returns the index of the last rune of the escape sequence that
+// starts with ESC at i: a CSI (ESC [), a control string (ESC ] for OSC, ESC P,
+// X, ^ or _), or ESC with one more character.
+func skipEscape(runes []rune, i int) int {
+	if i+1 >= len(runes) {
+		return i
+	}
+	switch runes[i+1] {
+	case '[':
+		return skipControlSequence(runes, i+2)
+	case ']', 'P', 'X', '^', '_':
+		return skipControlString(runes, i+2)
+	default:
+		return i + 1
+	}
+}
+
+// skipControlSequence returns the index of a CSI's final byte (0x40 to 0x7E)
+// at or after start, skipping its parameter and intermediate bytes. A
+// sequence cut short ends the text.
+func skipControlSequence(runes []rune, start int) int {
+	for j := start; j < len(runes); j++ {
+		if runes[j] >= 0x40 && runes[j] <= 0x7e {
+			return j
+		}
+		if runes[j] < 0x20 || runes[j] > 0x3f {
+			// Not a parameter or intermediate byte: the sequence is broken,
+			// so only what came before this rune is dropped.
+			return j - 1
+		}
+	}
+	return len(runes) - 1
+}
+
+// skipControlString returns the index of the terminator of an OSC, DCS, SOS,
+// PM or APC string at or after start: BEL, ESC \ or the C1 string terminator.
+// An unterminated string runs to the end of the text.
+func skipControlString(runes []rune, start int) int {
+	for j := start; j < len(runes); j++ {
+		switch {
+		case runes[j] == '\a', runes[j] == '\u009c':
+			return j
+		case runes[j] == '\x1b' && j+1 < len(runes) && runes[j+1] == '\\':
+			return j + 1
+		}
+	}
+	return len(runes) - 1
 }
 
 // TruncateString truncates a string to maxLen bytes while preserving valid UTF-8.
@@ -165,7 +276,7 @@ func SafeScore(score float64) float64 {
 // input, so two overlong fingerprints that share a prefix stay distinct.
 func BoundFingerprint(fp string) string {
 	original := fp
-	fp = SanitizeText(fp, MaxFingerprintLength*2)
+	fp = SanitizeIdentifier(fp, MaxFingerprintLength*2)
 	if len(fp) <= MaxFingerprintLength {
 		return fp
 	}
@@ -175,7 +286,8 @@ func BoundFingerprint(fp string) string {
 }
 
 // HardenFinding applies defensive bounds and sanitization to an untrusted finding:
-//   - Strips null bytes across strings
+//   - Strips null bytes across strings, and terminal escape sequences and
+//     control characters from the text shown to people (see SanitizeText)
 //   - Bounds Title, Description, Location, and Dimensions
 //   - Protects Fingerprint against PostgreSQL index row-size overflow
 //   - Validates CodeLocation lines (non-negative)
@@ -184,7 +296,7 @@ func BoundFingerprint(fp string) string {
 func HardenFinding(f domain.NormalizedFinding) domain.NormalizedFinding {
 	f.Fingerprint = BoundFingerprint(f.Fingerprint)
 	f.Title = SanitizeText(f.Title, MaxTitleLength)
-	f.Description = SanitizeText(f.Description, MaxDescriptionLength)
+	f.Description = SanitizeMultiline(f.Description, MaxDescriptionLength)
 	f.Location = SanitizeText(f.Location, MaxPathLength)
 	f.Resource = SanitizeText(f.Resource, MaxTitleLength)
 	f.Score = SafeScore(f.Score)
@@ -198,7 +310,7 @@ func HardenFinding(f domain.NormalizedFinding) domain.NormalizedFinding {
 		}
 		f.CodeLocation.StartColumn = SafeLine(f.CodeLocation.StartColumn)
 		f.CodeLocation.EndColumn = SafeLine(f.CodeLocation.EndColumn)
-		f.CodeLocation.Snippet = SanitizeText(f.CodeLocation.Snippet, 4096)
+		f.CodeLocation.Snippet = SanitizeMultiline(f.CodeLocation.Snippet, 4096)
 	}
 
 	if f.CVSS != nil {
@@ -210,12 +322,12 @@ func HardenFinding(f domain.NormalizedFinding) domain.NormalizedFinding {
 	f.CVSSAll = hardenCVSSAll(f.CVSSAll)
 
 	for i := range f.Dimensions {
-		f.Dimensions[i].Key = SanitizeText(f.Dimensions[i].Key, 64)
-		f.Dimensions[i].Value = SanitizeText(f.Dimensions[i].Value, MaxDimensionValueLength)
+		f.Dimensions[i].Key = SanitizeIdentifier(f.Dimensions[i].Key, 64)
+		f.Dimensions[i].Value = SanitizeIdentifier(f.Dimensions[i].Value, MaxDimensionValueLength)
 	}
 
 	for i := range f.Aliases {
-		f.Aliases[i] = SanitizeText(f.Aliases[i], 256)
+		f.Aliases[i] = SanitizeIdentifier(f.Aliases[i], 256)
 	}
 
 	f.Extensions = HardenExtensions(f.Extensions)
@@ -223,7 +335,7 @@ func HardenFinding(f domain.NormalizedFinding) domain.NormalizedFinding {
 	if f.Fix != nil {
 		f.Fix.Summary = SanitizeText(f.Fix.Summary, MaxTitleLength)
 		f.Fix.URL = SanitizeText(f.Fix.URL, MaxPathLength)
-		f.Fix.Description = SanitizeText(f.Fix.Description, MaxDescriptionLength)
+		f.Fix.Description = SanitizeMultiline(f.Fix.Description, MaxDescriptionLength)
 	}
 
 	return f
