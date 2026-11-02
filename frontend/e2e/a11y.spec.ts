@@ -175,6 +175,22 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await page.getByRole("radio", { name: "Yes", exact: true }).check();
   await page.getByRole("button", { name: "Save decision" }).click();
   await expect(page.getByText("Reachability saved", { exact: true })).toBeVisible();
+  // The toast fades in, and when a second one arrives the one behind fades its content out, so axe
+  // reads blended colours while either runs. Wait until every toast and each part of it is either
+  // fully shown or fully hidden, so the audit sees what stays on screen.
+  await expect.poll(
+    () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll<HTMLElement>("[data-sonner-toast]")].every((toast) =>
+          toast.dataset.mounted === "true"
+          && [toast, ...toast.children].every((part) => {
+            const opacity = getComputedStyle(part).opacity;
+            return opacity === "0" || opacity === "1";
+          })
+        )
+      ),
+    { timeout: 5_000 },
+  ).toBe(true);
   await audit(page, "finding detail with a success toast");
   // Decide-first: the decision leads the page, so its Save shows without scrolling. With a reason
   // field open the button can sit across the fold on a 720 px desktop, so this asks for any part.
