@@ -18,12 +18,14 @@ other findings.
 
 The introduced-findings gate compares the report with a baseline: the newest
 full report of the same scanner for `base_revision`, a commit or a branch name.
-Only a report on a trunk can be the baseline. A trunk is the project's default
-branch, or a branch whose reports never named a `base_revision` other than the
-branch itself, such as a default branch that only gets push builds. A
-`base_revision` that resolves to a report
-of the uploading branch, by its name or an earlier commit, or to a report of a
-branch that is itself a pull or merge request head, is not used. The report is
+Only a report on a trunk can be the baseline. Once the project names its
+default branch, that branch is the only trunk: a report on any other branch, or
+a report without a branch, is never a baseline. Without the setting, a trunk is
+a branch whose reports never named a `base_revision` other than the branch
+itself, such as a default branch that only gets push builds, and a report
+without a branch is accepted. A `base_revision` that resolves to a report of the
+uploading branch, by its name or an earlier commit, or to a report of a branch
+that is itself a pull or merge request head, is not used. The report is
 then classified as if its base had never been scanned: findings new to the
 project are introduced, and a finding the previous report in the same scan
 scope introduced stays introduced.
@@ -32,9 +34,11 @@ A project admin sets the default branch under **Settings** on the project, or
 with `default_branch` on `PUT /api/v1/projects/{slug}`. Reports on it count as
 the baseline for pull requests even if the branch was once the head of a pull
 request, for example a `main` that was merged into a release branch, and its own
-push builds never carry introduced findings forward. Other branches are judged
-by their reports as before, so a `develop` or release branch whose builds name
-another base is not a trunk unless it is the one you set. Without the setting, a
+push builds never carry introduced findings forward. No other branch is a trunk
+then, so a `develop` or release branch is a baseline only if it is the one you
+set. Set the default branch: without it, an ingest key can upload a report
+without a branch, or on a branch name nobody used, and name it as the base.
+Without the setting, a
 default branch that was once the head of a pull request no longer serves as a
 baseline, and pull requests against it are classified as if it was never
 scanned. The server never takes the default branch from an upload.
