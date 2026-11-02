@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,6 +39,29 @@ func TestListAPIKeysSaysWhetherTheCreatorIsStillAMember(t *testing.T) {
 	raw, err := json.Marshal(got[1])
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), `"creator_is_member":false`, "false is sent, not dropped as an empty value")
+}
+
+// A manager reading the list has to see when a key stops working, and which
+// keys never do.
+func TestListAPIKeysReturnsTheExpiry(t *testing.T) {
+	expires := time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)
+	uc := permissionsUsecase(auth.RoleManager, true)
+	uc.deps.Stores.APIKeys = &mockAPIKeyRepo{
+		listByProjectFn: func(context.Context, string) ([]port.APIKey, error) {
+			return []port.APIKey{
+				{ID: "k1", Name: "expiring", KeyPrefix: "vuln_aaaa", ExpiresAt: &expires},
+				{ID: "k2", Name: "permanent", KeyPrefix: "vuln_bbbb"},
+			}, nil
+		},
+	}
+
+	got, err := uc.ListAPIKeys(sessionCtx("00000000-0000-0000-0000-0000000000a1", auth.RoleMember), "my-app")
+
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.NotNil(t, got[0].ExpiresAt)
+	assert.Equal(t, "2026-12-31T00:00:00Z", *got[0].ExpiresAt)
+	assert.Nil(t, got[1].ExpiresAt)
 }
 
 func TestListAPIKeysWithNoKeysIsAnEmptyList(t *testing.T) {

@@ -393,6 +393,7 @@ releases.
 - `TRACKER_PROVIDER` is read the same way at startup validation and at dispatch. A value such
   as `Webhook` passed validation and then ran no tracker without a message. The server now
   uses the lowercased, trimmed value, and logs an error for a provider it does not know.
+- `GET /api/v1/auth/apikeys` returns `expires_at` for each key, as the API reference says. The API keys page showed every key as never expiring; it now shows the real end date, and a key past its expiry reads "Expired" and stays listed until it is revoked.
 - The seeded system account can no longer be added to a project or team by user id (adding it by email was already refused), and the last-admin check no longer counts it as an admin who can sign in. A project whose only other admin seat was the system account is guarded like one with a single admin.
 - A refresh token that is used twice (the sign-in it belonged to is revoked) and a wrong setup token each write an audit line (`auth.refresh`, `setup.complete` with outcome `failure`) with the client address. Token values are never logged.
 - `SETUP_TOKEN` gets the refusal `JWT_SECRET` already has: a placeholder such as `change-me` or a token of a few repeated characters is refused like a short one: the startup log names the reason and first-run setup is not offered until the token is replaced.

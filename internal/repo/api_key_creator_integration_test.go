@@ -5,6 +5,7 @@ package repo
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -239,4 +240,36 @@ func TestListByProjectReportsWhetherTheCreatorIsStillAMember(t *testing.T) {
 	for name, id := range byName {
 		assert.False(t, keyRevoked(t, repos, id), "%s: removing a member never revokes their keys", name)
 	}
+}
+
+// The key list carries each key's expiry, and a key past it stays listed (it
+// no longer authenticates) until someone revokes it.
+func TestListByProjectReturnsExpiryAndKeepsExpiredKeys(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(repos.pool)
+	creator := newUser(t, repos, "expiry-creator@test.com", "admin")
+	project := createTestProject(t, repos)
+
+	permanent, _ := newKeyBy(t, repos, project, creator.ID, "permanent")
+	expiring, _ := newKeyBy(t, repos, project, creator.ID, "expiring")
+	expired, _ := newKeyBy(t, repos, project, creator.ID, "expired")
+	_, err := repos.pool.Exec(ctx, "UPDATE api_keys SET expires_at = now() + interval '2 days' WHERE id = $1", expiring)
+	require.NoError(t, err)
+	_, err = repos.pool.Exec(ctx, "UPDATE api_keys SET expires_at = now() - interval '1 day' WHERE id = $1", expired)
+	require.NoError(t, err)
+
+	keys, err := stores.APIKeys.ListByProject(ctx, toUUID(project.ID))
+	require.NoError(t, err)
+	byID := map[string]port.APIKey{}
+	for _, k := range keys {
+		byID[k.ID] = k
+	}
+	require.Len(t, byID, 3)
+	assert.Nil(t, byID[permanent].ExpiresAt)
+	require.NotNil(t, byID[expiring].ExpiresAt)
+	assert.True(t, byID[expiring].ExpiresAt.After(time.Now()))
+	require.NotNil(t, byID[expired].ExpiresAt)
+	assert.True(t, byID[expired].ExpiresAt.Before(time.Now()), "the expired key is listed with its past expiry")
 }
