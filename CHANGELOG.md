@@ -402,6 +402,12 @@ releases.
 - A refresh token that is used twice (the sign-in it belonged to is revoked) and a wrong setup token each write an audit line (`auth.refresh`, `setup.complete` with outcome `failure`) with the client address. Token values are never logged.
 - `SETUP_TOKEN` gets the refusal `JWT_SECRET` already has: a placeholder such as `change-me` or a token of a few repeated characters is refused like a short one: the startup log names the reason and first-run setup is not offered until the token is replaced.
 - Deactivating an account revokes its refresh tokens in the same transaction, and reactivating it starts a new token generation, so a session from before the deactivation never works again.
+- A pull request no longer counts a finding of one trunk image as introduced
+  because the trunk's newest scan was of another image. The baseline is now the
+  newest trunk report of the uploaded report's scan scope (same scanner, target,
+  artifact name and environment), and the earlier scans that answer for a filtered
+  baseline come from that scope too. Without a trunk report in the scope, the
+  newest trunk report of the scanner is used as before.
 - `specht-adapter` no longer exits 2 when the server answers `409 duplicate_report` (the same report uploaded again, as when a job reruns without a code change). It prints that the report was already uploaded and exits with the stored verdict: the project gate, or the change-scoped verdict for the commit. It still exits 2 when that verdict cannot be read.
 - `specht-adapter` prints the scan filter it declares (`declaring scan filter: severities=..., fixable_only=...`) with the flag or variable each part came from, so a filter taken from `TRIVY_SEVERITY` or `TRIVY_IGNORE_UNFIXED` is visible in the job log.
 - A filtered trunk scan no longer makes the trunk's own open findings count as

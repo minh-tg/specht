@@ -857,7 +857,7 @@ func (q *Queries) HasDimension(ctx context.Context, arg HasDimensionParams) (boo
 
 const listBaselineEvidence = `-- name: ListBaselineEvidence :many
 WITH base AS (
-    SELECT b.id, b.project_id, b.tool_name, b.branch, b.created_at
+    SELECT b.id, b.project_id, b.tool_name, b.branch, b.scan_scope_hash, b.created_at
     FROM reports b
     WHERE b.id = $2
 ), history AS (
@@ -865,7 +865,10 @@ WITH base AS (
     FROM reports r, base
     WHERE r.project_id = base.project_id
       AND r.tool_name = base.tool_name
-      AND (r.id = base.id OR (base.branch IS NOT NULL AND r.branch = base.branch))
+      AND (r.id = base.id OR (
+          base.branch IS NOT NULL AND r.branch = base.branch
+          AND COALESCE(r.scan_scope_hash, '') = COALESCE(base.scan_scope_hash, '')
+      ))
       AND r.status = 'completed'
       AND r.scan_mode = 'full'
       AND (r.created_at, r.id) <= (base.created_at, base.id)
@@ -902,8 +905,10 @@ type ListBaselineEvidenceRow struct {
 
 // What the baseline of an introduced-only classification can say about each
 // of the given findings. The answer comes from the newest of the baseline and
-// the 19 completed full reports before it on the baseline's branch and from
-// its scanner that observed the finding or could have: a report filtered by
+// the 19 completed full reports before it on the baseline's branch, from its
+// scanner and in its scan scope, that observed the finding or could have. A
+// report of another image or target on the same branch says nothing about
+// this one. A report filtered by
 // severity, or fixable-only for a finding without a fix, cannot say a finding
 // it omits is absent (report_filter_admits_absence). observed is whether that
 // report observed the finding. A finding no such report speaks for has no row,

@@ -214,6 +214,45 @@ func (r *pgReportPort) BranchHasChangeReport(ctx context.Context, projectID, bra
 	return found, nil
 }
 
+func (r *pgReportPort) GetCompletedByCommitInScope(ctx context.Context, projectID, scanner, commit, scopeHash string) (port.CompletedReport, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return port.CompletedReport{}, err
+	}
+	row, err := r.inner.GetCompletedByCommitInScope(ctx, pid, scanner, textPtrFromString(&commit), scopeHash)
+	if err != nil {
+		return port.CompletedReport{}, mappingErr(err)
+	}
+	return completedReportToPort(sqlc.GetCompletedReportByCommitRow(row)), nil
+}
+
+func (r *pgReportPort) GetLatestFullByBranchInScope(ctx context.Context, projectID, scanner, branch, scopeHash string) (port.CompletedReport, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return port.CompletedReport{}, err
+	}
+	row, err := r.inner.GetLatestFullByBranchInScope(ctx, pid, scanner, textPtrFromString(&branch), scopeHash)
+	if err != nil {
+		return port.CompletedReport{}, mappingErr(err)
+	}
+	return completedReportToPort(sqlc.GetCompletedReportByCommitRow(row)), nil
+}
+
+// completedReportToPort maps a baseline lookup row; every baseline query
+// selects the same columns.
+func completedReportToPort(row sqlc.GetCompletedReportByCommitRow) port.CompletedReport {
+	return port.CompletedReport{
+		ID:           toUUID(row.ID),
+		ToolName:     row.ToolName,
+		Branch:       stringFromTextPtr(row.Branch),
+		CommitSha:    stringFromTextPtr(row.CommitSha),
+		BaseRevision: stringFromTextPtr(row.BaseRevision),
+		ScanMode:     row.ScanMode,
+		Completeness: row.ScanCompleteness,
+		CreatedAt:    row.CreatedAt.Time,
+	}
+}
+
 func (r *pgReportPort) GetLatestFullByBranch(ctx context.Context, projectID, scanner, branch string) (port.CompletedReport, error) {
 	pid, err := parseID(projectID)
 	if err != nil {

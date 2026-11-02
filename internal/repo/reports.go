@@ -147,6 +147,24 @@ func (r *pgReportRepo) GetLatestFullByBranch(ctx context.Context, projectID pgty
 	})
 }
 
+func (r *pgReportRepo) GetCompletedByCommitInScope(ctx context.Context, projectID pgtype.UUID, toolName string, commit pgtype.Text, scopeHash string) (sqlc.GetCompletedReportByCommitInScopeRow, error) {
+	return r.q.GetCompletedReportByCommitInScope(ctx, sqlc.GetCompletedReportByCommitInScopeParams{
+		ProjectID: projectID,
+		ToolName:  toolName,
+		CommitSha: commit,
+		ScopeHash: scopeHash,
+	})
+}
+
+func (r *pgReportRepo) GetLatestFullByBranchInScope(ctx context.Context, projectID pgtype.UUID, toolName string, branch pgtype.Text, scopeHash string) (sqlc.GetLatestCompletedFullReportByBranchInScopeRow, error) {
+	return r.q.GetLatestCompletedFullReportByBranchInScope(ctx, sqlc.GetLatestCompletedFullReportByBranchInScopeParams{
+		ProjectID: projectID,
+		ToolName:  toolName,
+		Branch:    branch,
+		ScopeHash: scopeHash,
+	})
+}
+
 func (r *pgReportRepo) PreviousCompletedInScope(ctx context.Context, projectID, reportID pgtype.UUID) (pgtype.UUID, error) {
 	return r.q.PreviousCompletedReportInScope(ctx, sqlc.PreviousCompletedReportInScopeParams{
 		ProjectID: projectID,

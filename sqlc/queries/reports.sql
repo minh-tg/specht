@@ -90,6 +90,31 @@ WHERE project_id = $1 AND tool_name = $2 AND branch = $3 AND status = 'completed
 ORDER BY created_at DESC, id DESC
 LIMIT 1;
 
+-- name: GetCompletedReportByCommitInScope :one
+-- The newest completed full report of the scanner for an exact revision in one
+-- scan scope. A baseline resolved by commit prefers the report that scanned
+-- what the uploading report scanned. pgx.ErrNoRows when that scope has none.
+SELECT id, tool_name, branch, commit_sha, base_revision, scan_mode, scan_completeness, created_at
+FROM reports
+WHERE project_id = $1 AND tool_name = $2 AND commit_sha = $3
+  AND scan_scope_hash = sqlc.arg(scope_hash)::text
+  AND status = 'completed' AND scan_mode = 'full'
+ORDER BY created_at DESC, id DESC
+LIMIT 1;
+
+-- name: GetLatestCompletedFullReportByBranchInScope :one
+-- The newest completed full report of the scanner on a branch in one scan
+-- scope. A branch that scans several images or targets has one newest report
+-- per scope, and only the one of the uploading report's scope may vouch for
+-- what that scope had. pgx.ErrNoRows when that scope has none.
+SELECT id, tool_name, branch, commit_sha, base_revision, scan_mode, scan_completeness, created_at
+FROM reports
+WHERE project_id = $1 AND tool_name = $2 AND branch = $3
+  AND scan_scope_hash = sqlc.arg(scope_hash)::text
+  AND status = 'completed' AND scan_mode = 'full'
+ORDER BY created_at DESC, id DESC
+LIMIT 1;
+
 -- name: PreviousCompletedReportInScope :one
 -- The newest completed report in the same scan scope as the given report
 -- and created before it. Scope covers scanner, target, artifact, branch and
