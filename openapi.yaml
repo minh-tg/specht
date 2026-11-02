@@ -1142,7 +1142,10 @@ paths:
         ingest that cannot get its place, a free slot or its share of the memory
         within 15 seconds is answered `503 ingest_busy` with `Retry-After`; a
         caller or project that is over its own limit never delays another.
-        Once started, an ingest finishes even if the client hangs up.
+        Once started, an ingest finishes even if the client hangs up. One that
+        is still running two minutes after its body arrived is stopped, its
+        report is marked failed, and the answer is `503 ingest_timeout` with
+        `Retry-After`.
       x-required-scope: ingest
       security:
         - sessionAuth: []
@@ -1218,9 +1221,15 @@ paths:
                   value: { error: { code: ingest_failed, message: report ingestion failed } }
         "503":
           description: |
-            Too many ingests are running, or the memory budget stays taken, or the
-            caller already has its share of both in use, for 15 seconds. Nothing
-            was stored. Retry after `Retry-After` seconds.
+            The server could not take or finish the report. `error.code` says which:
+
+            - `ingest_busy`: too many ingests are running, or the memory budget stays
+              taken, or the caller already has its share of both in use, for 15
+              seconds. Nothing was stored. Retry after `Retry-After` seconds.
+            - `ingest_timeout`: processing ran past its two minute limit. The report
+              is stored as failed, and the request itself is not at fault. Upload the
+              scan again after `Retry-After` seconds; if it keeps happening, split the
+              report. `specht-adapter` does not retry this code on its own.
           headers:
             Retry-After:
               description: Seconds to wait before retrying.
@@ -1228,7 +1237,13 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
-              example: { error: { code: ingest_busy, message: "too many ingests in progress, retry shortly" } }
+              examples:
+                busy:
+                  summary: No free ingest slot or memory
+                  value: { error: { code: ingest_busy, message: "too many ingests in progress, retry shortly" } }
+                timeout:
+                  summary: Processing ran past its time limit
+                  value: { error: { code: ingest_timeout, message: "the server stopped processing the report at its time limit and marked it failed; upload the scan again" } }
 
   /api/v1/projects/{slug}/reports:
     get:

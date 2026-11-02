@@ -557,6 +557,19 @@ func respondIngestBusy(w http.ResponseWriter, queueWait time.Duration) {
 	respondError(w, http.StatusServiceUnavailable, "ingest_busy", "too many ingests in progress, retry shortly")
 }
 
+// ingestTimeoutRetryAfter is the Retry-After of ingest_timeout, in seconds. An
+// ingest that used its whole window is a slow server or a very large report,
+// so the second try waits for the load to pass.
+const ingestTimeoutRetryAfter = "30"
+
+// respondIngestTimeout answers an ingest that ran past its processing window.
+// It is 503, not 422: nothing is wrong with the request, and a CI client reads
+// 422 as a bad report and stops.
+func respondIngestTimeout(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", ingestTimeoutRetryAfter)
+	respondError(w, http.StatusServiceUnavailable, "ingest_timeout", "the server stopped processing the report at its time limit and marked it failed; upload the scan again")
+}
+
 // errIngestBusy means the memory budget stayed taken for the whole queue wait.
 var errIngestBusy = errors.New("ingest memory budget is busy")
 

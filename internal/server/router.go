@@ -88,6 +88,9 @@ type RouterConfig struct {
 	// pinging the database. Nil means always ready, which suits tests and a
 	// router without a database.
 	Ready func(ctx context.Context) error
+
+	// ingestWindow overrides the processing window of one ingest; tests only.
+	ingestWindow time.Duration
 }
 
 // NewRouter builds the chi router with middleware and all API routes.
@@ -141,6 +144,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	h.loginDelay = newLoginDelay()
 	ingestQueueWait := cmp.Or(max(cfg.IngestQueueWait, 0), defaultIngestQueueWait)
 	h.ingest = newIngestAdmission(cfg.IngestConcurrency, cfg.IngestMemoryBudget, ingestQueueWait)
+	h.ingestWindow = cfg.ingestWindow
 
 	limitPublic := func(next http.Handler) http.Handler { return next }
 	if cfg.RateLimit.Enabled {

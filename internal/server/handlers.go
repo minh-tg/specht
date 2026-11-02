@@ -297,6 +297,9 @@ type Handler struct {
 	// the memory budget and the per-caller gates. NewHandler installs the
 	// defaults and NewRouter replaces them with the configured limits.
 	ingest *ingestAdmission
+	// ingestWindow overrides ingestWindow; zero means the default. Tests
+	// shorten it to reach the timeout path.
+	ingestWindow time.Duration
 }
 
 type usecaseInterface interface {

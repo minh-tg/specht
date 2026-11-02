@@ -723,7 +723,10 @@ export interface paths {
      *     ingest that cannot get its place, a free slot or its share of the memory
      *     within 15 seconds is answered `503 ingest_busy` with `Retry-After`; a
      *     caller or project that is over its own limit never delays another.
-     *     Once started, an ingest finishes even if the client hangs up.
+     *     Once started, an ingest finishes even if the client hangs up. One that
+     *     is still running two minutes after its body arrived is stopped, its
+     *     report is marked failed, and the answer is `503 ingest_timeout` with
+     *     `Retry-After`.
      */
     post: operations["ingestReport"];
     delete?: never;
@@ -5005,9 +5008,15 @@ export interface operations {
         };
       };
       /**
-       * @description Too many ingests are running, or the memory budget stays taken, or the
-       *     caller already has its share of both in use, for 15 seconds. Nothing
-       *     was stored. Retry after `Retry-After` seconds.
+       * @description The server could not take or finish the report. `error.code` says which:
+       *
+       *     - `ingest_busy`: too many ingests are running, or the memory budget stays
+       *       taken, or the caller already has its share of both in use, for 15
+       *       seconds. Nothing was stored. Retry after `Retry-After` seconds.
+       *     - `ingest_timeout`: processing ran past its two minute limit. The report
+       *       is stored as failed, and the request itself is not at fault. Upload the
+       *       scan again after `Retry-After` seconds; if it keeps happening, split the
+       *       report. `specht-adapter` does not retry this code on its own.
        */
       503: {
         headers: {
@@ -5016,14 +5025,6 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          /**
-           * @example {
-           *       "error": {
-           *         "code": "ingest_busy",
-           *         "message": "too many ingests in progress, retry shortly"
-           *       }
-           *     }
-           */
           "application/json": components["schemas"]["Error"];
         };
       };
