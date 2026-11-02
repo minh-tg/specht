@@ -393,6 +393,7 @@ releases.
 - `TRACKER_PROVIDER` is read the same way at startup validation and at dispatch. A value such
   as `Webhook` passed validation and then ran no tracker without a message. The server now
   uses the lowercased, trimmed value, and logs an error for a provider it does not know.
+- `PUT /api/v1/projects/{slug}` writes only the fields the request names. Two admins changing different fields (for example the name and the default branch) at the same time no longer lose one of the changes.
 - Revoking an API key that is already revoked answers 404 instead of 204. It no longer moves `revoked_at` forward or writes a second revoke audit line.
 - `GET /api/v1/auth/apikeys` returns `expires_at` for each key, as the API reference says. The API keys page showed every key as never expiring; it now shows the real end date, and a key past its expiry reads "Expired" and stays listed until it is revoked.
 - The seeded system account can no longer be added to a project or team by user id (adding it by email was already refused), and the last-admin check no longer counts it as an admin who can sign in. A project whose only other admin seat was the system account is guarded like one with a single admin.

@@ -477,24 +477,35 @@ func (q *Queries) LockProjectsAdministeredBy(ctx context.Context, userID pgtype.
 }
 
 const updateProject = `-- name: UpdateProject :one
-UPDATE projects SET name = $2, description = $3, default_branch = $4, updated_at = NOW()
-WHERE slug = $1
+UPDATE projects SET
+    name = COALESCE($1::text, name),
+    description = CASE WHEN $2::boolean THEN $3::text ELSE description END,
+    default_branch = CASE WHEN $4::boolean THEN $5::text ELSE default_branch END,
+    updated_at = NOW()
+WHERE slug = $6
 RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id, default_branch
 `
 
 type UpdateProjectParams struct {
-	Slug          string      `json:"slug"`
-	Name          string      `json:"name"`
-	Description   pgtype.Text `json:"description"`
-	DefaultBranch pgtype.Text `json:"default_branch"`
+	Name             pgtype.Text `json:"name"`
+	SetDescription   bool        `json:"set_description"`
+	Description      pgtype.Text `json:"description"`
+	SetDefaultBranch bool        `json:"set_default_branch"`
+	DefaultBranch    pgtype.Text `json:"default_branch"`
+	Slug             string      `json:"slug"`
 }
 
+// Writes only the fields the caller sent, in one statement. A concurrent update
+// of another field waits for the row lock and then applies to the row the first
+// one left, so neither change is lost.
 func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error) {
 	row := q.db.QueryRow(ctx, updateProject,
-		arg.Slug,
 		arg.Name,
+		arg.SetDescription,
 		arg.Description,
+		arg.SetDefaultBranch,
 		arg.DefaultBranch,
+		arg.Slug,
 	)
 	var i Project
 	err := row.Scan(
