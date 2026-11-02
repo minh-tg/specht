@@ -385,6 +385,9 @@ releases.
   section 4.3 requires. A mismatch fails the login with `503`, and the server log names
   both values. Copy the `issuer` value from `/.well-known/openid-configuration` into
   `SSO_ISSUER_URL` unchanged.
+- The server and adapter images, `go.mod`'s `toolchain` line and the dev shell move to Go
+  1.27.3. CI and the pre-commit hook lint with golangci-lint v2.15.0, configured in
+  `.golangci.yml`; v1 cannot read Go 1.27 export data. The `go` directive stays at 1.26.0.
 
 ### Fixed
 
@@ -934,7 +937,7 @@ releases.
 - A release tag now publishes only a commit that is reachable from `main` and whose `ci`
   run on `main` passed. Before, any successful `ci` push run for the commit was enough, so a
   tag on an unmerged branch commit could publish and sign an image.
-- The server and adapter images are both built with Go 1.26.10, the release CI tests. The
+- The server and adapter images are both built with Go 1.27.3, the release CI tests. The
   adapter was still built with Go 1.26.9, and the server with Go 1.27.2; both have fixed
   standard library advisories, among them a crypto/x509 one fixed in 1.26.10 and 1.27.3. A CI check now fails
   when the Dockerfiles use different Go builder images or when go.mod's `toolchain` line, which
