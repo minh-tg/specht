@@ -234,7 +234,7 @@ func TestE2E_WatcherDaemonLifecycle(t *testing.T) {
 		require.Empty(t, pre, "a disabled project is pruned from the live schedule")
 
 		backfillEnv := []string{
-			"DATABASE_URL=" + dsn,
+			"DATABASE_URL=" + appDSN,
 			"WATCHER_OSV_ENDPOINT=" + fakes.osv.URL(),
 			"WATCHER_OSV_VULN_ENDPOINT=" + fakes.osv.VulnURL(),
 		}

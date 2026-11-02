@@ -483,6 +483,18 @@ releases.
 
 ### Security
 
+- The compose deployment runs the server's queries as `specht_app`, a role with only
+  `SELECT`, `INSERT`, `UPDATE` and `DELETE` on the tables and `USAGE` on the sequences.
+  Migrations run as `specht`, the owner, through the new `MIGRATE_DATABASE_URL`, which
+  falls back to `DATABASE_URL` when unset. Before, the server queried as the bootstrap
+  superuser, so a SQL injection or a leaked `DATABASE_URL` could alter or drop tables,
+  truncate the waiver deletion log, or run shell commands in the database container
+  through `COPY ... PROGRAM`. A new database gets the role
+  from `deploy/postgres/initdb/10-specht-app-role.sql`. **Upgrade step:** an existing
+  compose install must set `SPECHT_APP_DB_PASSWORD` and run that script once before it
+  starts this version (deploy/README.md, "Database roles"); compose refuses to start
+  without the password. The server logs a warning at startup when `DATABASE_URL` is a
+  superuser or owns the tables.
 - `specht`, `specht-mcp` and `specht-adapter` no longer follow a redirect that changes the
   scheme or host of the API request. An `https` server that answered with a redirect to
   `http://` on the same host name used to get the API key resent in clear text.

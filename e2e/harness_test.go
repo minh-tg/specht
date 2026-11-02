@@ -41,9 +41,13 @@ var (
 	cliBin     string
 	mcpBin     string
 
-	repoRoot   string
-	tmpDir     string
+	repoRoot string
+	tmpDir   string
+	// dsn connects as specht, the owner that runs the migrations; tests use
+	// it to arrange rows. appDSN connects as specht_app, the restricted role
+	// the shared server queries with, as deploy/docker-compose.yml runs it.
 	dsn        string
+	appDSN     string
 	container  testcontainers.Container
 	serverCmd  *exec.Cmd
 	serverLog  *os.File
@@ -140,10 +144,18 @@ func startDatabase() error {
 		Image:        testimage.Postgres(),
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
-			"POSTGRES_USER":     "specht",
-			"POSTGRES_PASSWORD": "specht",
-			"POSTGRES_DB":       "specht_e2e",
+			"POSTGRES_USER":          "specht",
+			"POSTGRES_PASSWORD":      "specht",
+			"POSTGRES_DB":            "specht_e2e",
+			"SPECHT_APP_DB_PASSWORD": e2eAppPassword,
 		},
+		// The deploy init script creates specht_app before any migration,
+		// so the suite proves its grants cover every table.
+		Files: []testcontainers.ContainerFile{{
+			HostFilePath:      filepath.Join(repoRoot, "deploy", "postgres", "initdb", "10-specht-app-role.sql"),
+			ContainerFilePath: "/docker-entrypoint-initdb.d/10-specht-app-role.sql",
+			FileMode:          0o644,
+		}},
 		WaitingFor: wait.ForLog("database system is ready to accept connections").
 			WithOccurrence(2).
 			WithStartupTimeout(60 * time.Second),
@@ -165,6 +177,7 @@ func startDatabase() error {
 		return fmt.Errorf("postgres port: %w", err)
 	}
 	dsn = fmt.Sprintf("postgres://specht:specht@%s:%s/specht_e2e?sslmode=disable", host, port.Port())
+	appDSN = fmt.Sprintf("postgres://specht_app:%s@%s:%s/specht_e2e?sslmode=disable", e2eAppPassword, host, port.Port())
 	if err := db.RunMigrations(dsn, filepath.Join(repoRoot, "migrations")); err != nil {
 		return fmt.Errorf("migrations: %w", err)
 	}
@@ -208,6 +221,9 @@ func buildBinaries() error {
 // e2eSetupToken is the first-run setup token of the shared server.
 const e2eSetupToken = "e2e-shared-setup-token-0001"
 
+// e2eAppPassword is the password of specht_app in the suite's database.
+const e2eAppPassword = "e2e-app-role-password"
+
 // startServer boots the real server binary with a swept-up environment:
 // caller-provided variables override anything inherited, so CI env (or a
 // developer's .env exports) can never leak into the experiment.
@@ -220,7 +236,8 @@ func startServer() error {
 		}
 		addr := fmt.Sprintf("127.0.0.1:%d", port)
 		env := cleanEnv(
-			"DATABASE_URL="+dsn,
+			"DATABASE_URL="+appDSN,
+			"MIGRATE_DATABASE_URL="+dsn,
 			"JWT_SECRET="+randomHex(48),
 			"SERVER_ADDR="+addr,
 			"LOG_LEVEL=info",
@@ -330,7 +347,7 @@ func serverLogTail() string {
 // explicitly (so a stale caller value can never win), and appends overrides.
 func cleanEnv(overrides ...string) []string {
 	managed := map[string]bool{
-		"DATABASE_URL": true, "JWT_SECRET": true, "SERVER_ADDR": true,
+		"DATABASE_URL": true, "MIGRATE_DATABASE_URL": true, "JWT_SECRET": true, "SERVER_ADDR": true,
 		"ADMIN_EMAILS": true, "LOG_LEVEL": true, "DB_MIGRATE": true,
 		"LIFECYCLE_SWEEP_INTERVAL": true, "RAW_RETENTION_DAYS": true, "RATE_LIMIT_ENABLED": true,
 		"RATE_LIMIT_LOGIN_PER_MINUTE": true, "RATE_LIMIT_LOGIN_BURST": true,
