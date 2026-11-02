@@ -165,8 +165,15 @@ func TestE2E_TheServerStaysUnderTheIngestChargeForTheDensestAcceptedReports(t *t
 			})
 		}
 	}
-	t.Logf("worst %.1fx (%s) against a charge of 64x", worst, worstName)
-	if worst > 64 {
-		t.Errorf("%s grew the server's RSS by %.1fx the body, above the 64x charge", worstName, worst)
+	// Resident memory includes the garbage collector's headroom: with the default
+	// GOGC the heap may grow to twice its live size before a collection, and when
+	// that collection lands varies between runs. The same shapes measured 40x to 64x across
+	// workstations and CI runners. The decoded heap, which the charge
+	// prices, is held to 64x without slack in internal/parser/ingest_memory_test.go;
+	// here the bound allows a quarter more for collection timing.
+	const rssBound = 80
+	t.Logf("worst %.1fx (%s) against a charge of 64x and an RSS bound of %dx", worst, worstName, rssBound)
+	if worst > rssBound {
+		t.Errorf("%s grew the server's RSS by %.1fx the body, above the %dx bound", worstName, worst, rssBound)
 	}
 }
