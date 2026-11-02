@@ -403,6 +403,9 @@ releases.
   inside the ingest transaction and each update was slower than the last. The row is now
   written for the finding's first and last result, and the same report ingests in about one
   second.
+- An ingest that outlives the 2 minute processing window now stops at the window. It used to
+  stop 30 seconds after the response deadline had passed, so the client saw the connection
+  close instead of the error response.
 - A branch can no longer pass the introduced-only gate by pushing again. When no
   baseline resolves from `base_revision` (the target branch was never scanned, or a
   push build sent no base ref), a finding the previous report in the same scan scope

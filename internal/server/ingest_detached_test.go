@@ -80,3 +80,30 @@ func TestDetachedContext_KeepsValuesAndDeadlineButNotCancellation(t *testing.T) 
 	<-expiring.Done()
 	assert.ErrorIs(t, expiring.Err(), context.DeadlineExceeded, "the server's own deadline still ends the ingest")
 }
+
+// The response deadline is armed for the processing window plus a slack. An
+// ingest that outlives the window is cut off inside that slack, so the caller
+// receives the failure instead of a closed connection.
+func TestIngestReport_WritePhaseEndsWithinTheProcessingWindow(t *testing.T) {
+	var remaining time.Duration
+	var hasDeadline bool
+	mock := &mockUsecases{
+		ingestReportFn: func(ctx context.Context, _ usecase.IngestReportInput) (*usecase.IngestReportOutput, error) {
+			var deadline time.Time
+			deadline, hasDeadline = ctx.Deadline()
+			remaining = time.Until(deadline)
+			return &usecase.IngestReportOutput{ReportID: "rep-1"}, nil
+		},
+	}
+	req := httptest.NewRequest("POST", "/api/v1/reports",
+		strings.NewReader(`{"project":"my-app","scanner":"trivy","raw_data":{"a":1}}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+testToken(t))
+	w := httptest.NewRecorder()
+	NewRouter(RouterConfig{Usecases: mock, JWTAuth: testJWTAuth}).ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	require.True(t, hasDeadline)
+	assert.LessOrEqual(t, remaining, ingestWindow, "the write phase may not run past the processing window")
+	assert.Greater(t, remaining, ingestWindow-10*time.Second)
+}
