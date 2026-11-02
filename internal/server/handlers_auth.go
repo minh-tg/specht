@@ -463,10 +463,20 @@ func respondUserAdminError(w http.ResponseWriter, err error) bool {
 		respondError(w, http.StatusNotFound, "not_found", "user not found")
 	case errors.Is(err, port.ErrNotFound):
 		respondError(w, http.StatusNotFound, "not_found", "user not found")
+	case errors.Is(err, port.ErrRetry):
+		respondRetry(w)
 	default:
 		return false
 	}
 	return true
+}
+
+// respondRetry answers a request whose transaction the database ended as a
+// deadlock victim: nothing was changed, and repeating the request is likely to
+// work.
+func respondRetry(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "1")
+	respondError(w, http.StatusServiceUnavailable, "retry_later", "the request collided with another change and nothing was saved; retry it")
 }
 
 // CreatePasswordResetLink issues a one-time link an administrator hands to a person who is locked

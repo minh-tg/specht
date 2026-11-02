@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/minh-tg/specht/internal/audit"
+	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/usecase"
 )
 
@@ -43,6 +44,8 @@ func (h *Handler) respondInviteError(w http.ResponseWriter, r *http.Request, op 
 		// Same answer as registration, so a link cannot reveal which
 		// addresses already have an account.
 		respondError(w, http.StatusUnprocessableEntity, "registration_failed", "registration failed")
+	case errors.Is(err, port.ErrRetry):
+		respondRetry(w)
 	default:
 		slog.Error("invite", "op", op, "error", err)
 		respondError(w, http.StatusInternalServerError, "internal_error", "could not complete the request")
