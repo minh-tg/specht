@@ -393,6 +393,42 @@ describe("AuthProvider SSO fragment", () => {
     await waitFor(() => expect(window.location.hash).toBe(""));
   });
 
+  it("does not redeem an sso_code when no login was started here, even if the server would accept it", async () => {
+    const fetchSpy = fetchMock(() =>
+      response(200, {
+        token: "attacker-jwt",
+        refresh_token: "attacker-refresh",
+        user_id: "attacker",
+        email: "attacker@example.com",
+      })
+    );
+    window.history.replaceState(null, "", "/#sso_code=attacker-code");
+
+    renderAuth();
+
+    await waitFor(() => expect(window.location.hash).toBe(""));
+    // Let a wrongly started exchange resolve before asserting it never ran.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("token")).toHaveTextContent("none");
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it("does not redeem an sso_code once the attempt marker has expired", async () => {
+    const fetchSpy = fetchMock(() =>
+      response(200, { token: "t", refresh_token: "r", user_id: "u", email: "u@example.com" })
+    );
+    markSsoAttempt(Date.now() - 11 * 60 * 1000);
+    window.history.replaceState(null, "", "/#sso_code=late-code");
+
+    renderAuth();
+
+    await waitFor(() => expect(window.location.hash).toBe(""));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("token")).toHaveTextContent("none");
+  });
+
   it("clears state when sso_code exchange fails", async () => {
     fetchMock(() => response(401, { error: { code: "invalid_code", message: "invalid" } }));
 
