@@ -128,20 +128,59 @@ func (r *pgProjectPort) Create(ctx context.Context, input port.CreateProjectInpu
 	if len(settings) == 0 {
 		settings = []byte("{}")
 	}
-	row, err := r.q.CreateProject(ctx, sqlc.CreateProjectParams{
+	params := sqlc.CreateProjectParams{
 		Slug:                input.Slug,
 		Name:                input.Name,
 		Description:         textPtrFromString(&input.Description),
 		DeploymentThreshold: input.DeploymentThreshold,
 		Settings:            settings,
-	})
-	if err != nil {
-		if isDuplicateSlug(err) {
-			return port.Project{}, port.ErrSlugTaken
+	}
+	if input.AdminID == "" {
+		row, err := r.q.CreateProject(ctx, params)
+		if err != nil {
+			return port.Project{}, createProjectErr(err)
 		}
+		return projectToPort(row), nil
+	}
+	admin, err := parseID(input.AdminID)
+	if err != nil {
 		return port.Project{}, err
 	}
+	if r.withTx == nil {
+		return port.Project{}, errors.New("project port: transactions unavailable")
+	}
+	var row sqlc.Project
+	err = r.withTx(ctx, func(q *sqlc.Queries) error {
+		// The account row first, as every write that grants a project role
+		// takes it: a deactivation locks the account and then the projects it
+		// administers, so it either committed before this lock and is seen
+		// here, or it waits until this project and its admin row exist and
+		// then finds them.
+		disabledAt, err := q.LockUserForMembership(ctx, admin)
+		if err != nil {
+			return mappingErr(err)
+		}
+		if disabledAt.Valid {
+			return port.ErrAccountDeactivated
+		}
+		row, err = q.CreateProject(ctx, params)
+		if err != nil {
+			return err
+		}
+		_, err = q.UpsertProjectMember(ctx, sqlc.UpsertProjectMemberParams{ProjectID: row.ID, UserID: admin, Role: "admin"})
+		return err
+	})
+	if err != nil {
+		return port.Project{}, createProjectErr(err)
+	}
 	return projectToPort(row), nil
+}
+
+func createProjectErr(err error) error {
+	if isDuplicateSlug(err) {
+		return port.ErrSlugTaken
+	}
+	return err
 }
 
 func (r *pgProjectPort) List(ctx context.Context) ([]port.Project, error) {

@@ -1866,13 +1866,10 @@ func makeFinding(idIdx int) port.Finding {
 func TestCreateProject_Success(t *testing.T) {
 	pr, _, _ := makeTestRepos()
 
+	var gotAdmin string
 	pr.createFn = func(ctx context.Context, arg port.CreateProjectInput) (port.Project, error) {
+		gotAdmin = arg.AdminID
 		return makeProject(true), nil
-	}
-	var gotRole string
-	pr.upsertMemberFn = func(ctx context.Context, projectID, userID, role string) (port.ProjectMember, error) {
-		gotRole = role
-		return port.ProjectMember{ProjectID: projectID, UserID: userID, Role: role}, nil
 	}
 
 	uc := New(Deps{
@@ -1884,7 +1881,7 @@ func TestCreateProject_Success(t *testing.T) {
 	require.NotNil(t, result)
 	assert.Equal(t, "my-app", result.Slug)
 	assert.Equal(t, "My App", result.Name)
-	assert.Equal(t, auth.RoleAdmin, gotRole, "project creator must become admin member")
+	assert.Equal(t, "creator-1", gotAdmin, "the store makes the creator the first admin in the same transaction")
 }
 
 func TestCreateProject_APIKeyCannotCreatePlatformProject(t *testing.T) {
@@ -1895,29 +1892,22 @@ func TestCreateProject_APIKeyCannotCreatePlatformProject(t *testing.T) {
 	require.ErrorIs(t, err, ErrProjectAccessDenied)
 }
 
-func TestCreateProject_MembershipFailureRollsBack(t *testing.T) {
-	pr, _, _ := makeTestRepos()
+func TestCreateProject_ADeactivatedCreatorIsRefused(t *testing.T) {
+	for name, storeErr := range map[string]error{
+		"deactivated": port.ErrAccountDeactivated,
+		"gone":        port.ErrNotFound,
+	} {
+		t.Run(name, func(t *testing.T) {
+			pr, _, _ := makeTestRepos()
+			pr.createFn = func(ctx context.Context, arg port.CreateProjectInput) (port.Project, error) {
+				return port.Project{}, storeErr
+			}
+			uc := New(Deps{Stores: &port.Stores{Projects: pr}})
 
-	pr.createFn = func(ctx context.Context, arg port.CreateProjectInput) (port.Project, error) {
-		return makeProject(true), nil
+			_, err := uc.CreateProject(sessionCtx("creator-1", auth.RoleAdmin), "My App", "my-app", "", "creator-1")
+			require.ErrorIs(t, err, ErrAccountDeactivated)
+		})
 	}
-	pr.upsertMemberFn = func(ctx context.Context, projectID, userID, role string) (port.ProjectMember, error) {
-		return port.ProjectMember{}, fmt.Errorf("db unavailable")
-	}
-	var gotDeleteSlug string
-	pr.deleteFn = func(ctx context.Context, slug string) (port.Project, error) {
-		gotDeleteSlug = slug
-		return makeProject(true), nil
-	}
-
-	uc := New(Deps{
-		Stores: &port.Stores{Projects: pr},
-	})
-
-	_, err := uc.CreateProject(sessionCtx("creator-1", auth.RoleAdmin), "My App", "my-app", "test description", "creator-1")
-	require.Error(t, err)
-	assert.ErrorContains(t, err, "grant creator admin membership")
-	assert.Equal(t, "my-app", gotDeleteSlug, "orphaned project must be removed when admin grant fails")
 }
 
 func TestIngestReport_ProjectViewerCannotIngest(t *testing.T) {
