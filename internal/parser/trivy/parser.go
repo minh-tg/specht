@@ -205,6 +205,10 @@ func hasTarget(raw json.RawMessage) bool {
 // packages (see scanner.CheckDocument).
 var findingArrays = []string{"", "Results", "Packages", "Vulnerabilities", "Secrets", "Misconfigurations"}
 
+// FindingArrays reports the arrays of a report that carry findings (see
+// scanner.FindingArrayer).
+func (s *Scanner) FindingArrays() []string { return findingArrays }
+
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
 	budget, err := parseutil.NewBudget(ctx, data, findingArrays...)
 	if err != nil {

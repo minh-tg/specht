@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -117,4 +118,25 @@ func TestIngestReport_ScansTheDocumentBeforeCheckingItsFormat(t *testing.T) {
 			require.NotErrorIs(t, err, scanner.ErrUnrecognizedFormat, "the format check must not have run")
 		})
 	}
+}
+
+// A report of minimal findings is small as JSON but large once parsed, stored
+// and redacted. The scan prices each element of the scanner's finding arrays as
+// a finding, so 300 findings of 30 bytes each are refused as too dense. Without
+// the scanner's array names the same document costs 720 bytes per element and
+// passes.
+func TestIngestReport_RefusesMinimalFindingsPackedDenserThanTheirCost(t *testing.T) {
+	uc := builtinRegistryUsecase(t)
+	var units []string
+	for i := range 300 {
+		units = append(units, `{"VulnerabilityID":"`+strconv.Itoa(i)+`"}`)
+	}
+	doc := `{"SchemaVersion":2,"ArtifactName":"a","Results":[{"Target":"t","Vulnerabilities":[` + strings.Join(units, ",") + `]}]}`
+
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{ProjectSlug: "my-app", Scanner: "trivy", RawData: json.RawMessage(doc)})
+
+	var tooMany *scanner.TooManyFindingsError
+	require.ErrorAs(t, err, &tooMany)
+	assert.True(t, tooMany.Dense)
+	require.NoError(t, scanner.CheckIngestDocument([]byte(doc), scanner.DefaultMaxFindings), "the cost model without finding arrays accepts it")
 }

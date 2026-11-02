@@ -320,3 +320,22 @@ func TestCheckIngestDocumentLetsATinyDocumentThroughWhateverItsShape(t *testing.
 	doc := strings.Repeat(`{"a":`, 60) + "0" + strings.Repeat("}", 60)
 	require.NoError(t, scanner.CheckIngestDocument([]byte(doc), scanner.DefaultMaxFindings))
 }
+
+func TestCheckIngestDocumentPricesEveryElementOfAFindingArray(t *testing.T) {
+	minimal := func(n int) []byte {
+		return []byte(`{"Vulnerabilities":[` + strings.TrimSuffix(strings.Repeat(`{"VulnerabilityID":"CVE-2024-0001"},`, n), ",") + `]}`)
+	}
+	doc := minimal(20000) // 36 bytes each: 720 KB, estimated at 7 times that with the finding cost
+	require.NoError(t, scanner.CheckIngestDocument(doc, scanner.DefaultMaxFindings),
+		"as small values the elements fit")
+	err := scanner.CheckIngestDocument(doc, scanner.DefaultMaxFindings, "Vulnerabilities")
+	var tooMany *scanner.TooManyFindingsError
+	require.ErrorAs(t, err, &tooMany)
+	assert.True(t, tooMany.Dense)
+
+	padded := []byte(`{"Vulnerabilities":[` + strings.TrimSuffix(strings.Repeat(`{"VulnerabilityID":"CVE-2024-0001","Title":"`+strings.Repeat("x", 150)+`"},`, 2000), ",") + `]}`)
+	require.NoError(t, scanner.CheckIngestDocument(padded, scanner.DefaultMaxFindings, "Vulnerabilities"),
+		"findings of ordinary size are accepted")
+	assert.Greater(t, scanner.EstimatedDecodeBytes(padded, "Vulnerabilities"), scanner.EstimatedDecodeBytes(padded),
+		"the finding array adds to the estimate")
+}

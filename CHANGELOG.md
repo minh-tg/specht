@@ -433,8 +433,10 @@ releases.
   bodies of one-key objects or alternating objects and arrays still peaked at 75x to 99x
   their size (the budget charges 64x), so a few concurrent uploads could use more memory than
   `INGEST_MEMORY_BUDGET` allows. The server now estimates each document's decoded size and
-  refuses one past 40x its length. Captured reports estimate at 4x to 19x, so they are
-  unaffected.
+  refuses one past 40x its length. Each element of a scanner's finding arrays is priced at
+  5.5 KiB on top of its JSON, so a report of minimal findings (26 bytes each) is refused too:
+  it used to grow the server's memory by up to 223x its size. Captured reports estimate at 6x
+  to 20x, so they are unaffected.
 - Self-service registration is closed unless `REGISTRATION_ENABLED=true`.
 - An SSO exchange code works only in the browser that started the login. The
   exchange refuses a code from a browser without that login's `sso_state_<id>`

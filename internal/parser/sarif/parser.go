@@ -133,6 +133,10 @@ func onlyGitleaks(data []byte) bool {
 // packages (see scanner.CheckDocument).
 var findingArrays = []string{"results", "runs", "rules"}
 
+// FindingArrays reports the arrays of a report that carry findings (see
+// scanner.FindingArrayer).
+func (s *Scanner) FindingArrays() []string { return findingArrays }
+
 // RedactRaw scrubs matched source from raw SARIF evidence and caps the result
 // at scanner.RawEvidenceCap. A region's snippet holds the matched text, which
 // for a secret scanner such as Gitleaks is the credential itself, and a

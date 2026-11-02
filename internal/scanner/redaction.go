@@ -59,3 +59,11 @@ var ErrRedactionFailed = errors.New("redaction failed")
 type Redactor interface {
 	RedactRaw(data []byte) ([]byte, error)
 }
+
+// FindingArrayer is implemented by a scanner whose parser reads its findings
+// from named arrays of the report (see CheckDocument). The ingest passes the
+// names to CheckIngestDocument, so every element of those arrays is priced as
+// the finding, package or result it becomes and not only as a small JSON value.
+type FindingArrayer interface {
+	FindingArrays() []string
+}
