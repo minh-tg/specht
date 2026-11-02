@@ -6546,6 +6546,7 @@ export interface operations {
       };
       400: components["responses"]["BadRequest"];
       403: components["responses"]["ProjectAccessDenied"];
+      404: components["responses"]["NotFound"];
       500: components["responses"]["InternalError"];
     };
   };

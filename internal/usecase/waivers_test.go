@@ -151,7 +151,7 @@ func TestCheckWaiverMatch_InvalidFindingID(t *testing.T) {
 	_, _, _, uc := testCheckWaiverMatchDeps(t)
 
 	_, err := uc.CheckWaiverMatch(context.Background(), "my-app", "not-a-uuid")
-	require.Error(t, err)
+	require.ErrorIs(t, err, ErrInvalidID)
 }
 
 func TestCheckWaiverMatch_RejectsFindingFromAnotherProject(t *testing.T) {
@@ -161,7 +161,7 @@ func TestCheckWaiverMatch_RejectsFindingFromAnotherProject(t *testing.T) {
 	}
 
 	_, err := uc.CheckWaiverMatch(sessionCtx("admin", auth.RoleAdmin), "my-app", "00000000-0000-0000-0000-0000000000a1")
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound, "a finding of another project answers like a missing one")
 }
 
 func TestGateWaiverRepo_ListActiveWaivers_Batched(t *testing.T) {

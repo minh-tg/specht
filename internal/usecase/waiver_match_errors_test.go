@@ -41,3 +41,14 @@ func TestCheckWaiverMatchDeniesUsersWithoutProjectAccess(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrProjectAccessDenied)
 }
+
+// An unknown finding id is a 404, not a 500, and answers like a finding of
+// another project (see TestCheckWaiverMatch_RejectsFindingFromAnotherProject).
+func TestCheckWaiverMatchAnswersNotFoundForAnUnknownFinding(t *testing.T) {
+	_, findings, _, uc := testCheckWaiverMatchDeps(t)
+	findings.getByIDFn = func(context.Context, string) (port.Finding, error) { return port.Finding{}, port.ErrNotFound }
+
+	_, err := uc.CheckWaiverMatch(sessionCtx("admin", auth.RoleAdmin), "my-app", "00000000-0000-0000-0000-0000000000a1")
+
+	require.ErrorIs(t, err, ErrFindingNotFound)
+}
