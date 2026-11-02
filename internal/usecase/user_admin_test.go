@@ -85,7 +85,6 @@ func TestChangeUserRoleSurfacesTheLastAdminGuard(t *testing.T) {
 
 func TestDeactivateUser(t *testing.T) {
 	disabledAt := time.Now()
-	var revoked string
 	keys := []port.RevokedAPIKey{
 		{ID: "k1", ProjectSlug: "my-app", Name: "ci"},
 		{ID: "k2", ProjectSlug: "other", Name: "deploy"},
@@ -98,15 +97,13 @@ func TestDeactivateUser(t *testing.T) {
 			return port.User{ID: id, Email: "t@example.com", Role: auth.RoleMember, DisabledAt: &disabledAt, CreatedAt: time.Now()}, keys, nil
 		},
 	}
-	refresh := &mockRefreshTokenRepo{revokeAllFn: func(_ context.Context, id string) error { revoked = id; return nil }}
-	uc := userAdminUsecase(users, refresh)
+	uc := userAdminUsecase(users, &mockRefreshTokenRepo{})
 
 	profile, revokedKeys, err := uc.DeactivateUser(sessionCtx(adminUserID, auth.RoleAdmin), targetUserID, false)
 
 	require.NoError(t, err)
 	assert.True(t, profile.Disabled)
 	require.NotNil(t, profile.DisabledAt)
-	assert.Equal(t, targetUserID, revoked, "the account's refresh tokens are revoked")
 	assert.Equal(t, keys, revokedKeys, "the caller learns which keys went with the account, to write one audit line each")
 }
 

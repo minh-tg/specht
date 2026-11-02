@@ -515,7 +515,7 @@ func (q *Queries) LockUsersShared(ctx context.Context, dollar_1 []pgtype.UUID) (
 const setUserDisabled = `-- name: SetUserDisabled :one
 UPDATE users SET
     disabled_at = CASE WHEN $1::boolean THEN COALESCE(disabled_at, NOW()) ELSE NULL END,
-    token_version = CASE WHEN $1::boolean THEN token_version + 1 ELSE token_version END,
+    token_version = CASE WHEN $1::boolean OR disabled_at IS NOT NULL THEN token_version + 1 ELSE token_version END,
     updated_at = NOW()
 WHERE id = $2
 RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven
@@ -527,7 +527,8 @@ type SetUserDisabledParams struct {
 }
 
 // Deactivating also starts a new token generation, which ends open sessions at
-// their next request. Reactivating leaves the generation alone.
+// their next request. Reactivating a deactivated account starts another one, so
+// no token issued before the deactivation can work again.
 func (q *Queries) SetUserDisabled(ctx context.Context, arg SetUserDisabledParams) (User, error) {
 	row := q.db.QueryRow(ctx, setUserDisabled, arg.Disabled, arg.ID)
 	var i User

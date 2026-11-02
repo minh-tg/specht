@@ -31,10 +31,11 @@ RETURNING *;
 
 -- name: SetUserDisabled :one
 -- Deactivating also starts a new token generation, which ends open sessions at
--- their next request. Reactivating leaves the generation alone.
+-- their next request. Reactivating a deactivated account starts another one, so
+-- no token issued before the deactivation can work again.
 UPDATE users SET
     disabled_at = CASE WHEN sqlc.arg(disabled)::boolean THEN COALESCE(disabled_at, NOW()) ELSE NULL END,
-    token_version = CASE WHEN sqlc.arg(disabled)::boolean THEN token_version + 1 ELSE token_version END,
+    token_version = CASE WHEN sqlc.arg(disabled)::boolean OR disabled_at IS NOT NULL THEN token_version + 1 ELSE token_version END,
     updated_at = NOW()
 WHERE id = sqlc.arg(id)
 RETURNING *;
