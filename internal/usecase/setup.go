@@ -125,7 +125,6 @@ func (u *Usecases) Setup(ctx context.Context, input SetupInput) (*AuthResponse, 
 		if stillRequired, err := u.SetupRequired(ctx); err == nil && !stillRequired {
 			return nil, ErrSetupClosed
 		}
-		slog.Warn("setup: wrong setup token")
 		return nil, ErrInvalidSetupToken
 	}
 	trimmedName := strings.TrimSpace(input.DisplayName)

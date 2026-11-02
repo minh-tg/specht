@@ -26,6 +26,7 @@ const (
 	EventSSOExchange          = "auth.sso.exchange"
 	EventLogin                = "auth.login"
 	EventLogout               = "auth.logout"
+	EventRefresh              = "auth.refresh"
 	EventRegister             = "auth.register"
 	EventCreateAPIKey         = "auth.apikey.create"
 	EventListAPIKeys          = "auth.apikey.list"
