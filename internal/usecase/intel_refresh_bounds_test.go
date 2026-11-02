@@ -69,7 +69,12 @@ func TestIntelRefresherBoundsConcurrentRefreshes(t *testing.T) {
 	store.open()
 	r.wg.Wait()
 	assert.LessOrEqual(t, store.peak.Load(), int64(intelRefreshWorkers))
-	assert.EqualValues(t, intelRefreshWorkers+intelRefreshQueue, store.started.Load(), "the rest were skipped, not run")
+	// The workers take their first jobs while the reads are still scheduling, so
+	// up to intelRefreshWorkers more fit in the queue than it holds at once. A
+	// full queue before the first take runs exactly intelRefreshQueue.
+	started := store.started.Load()
+	assert.GreaterOrEqual(t, started, int64(intelRefreshQueue), "the queued refreshes ran")
+	assert.LessOrEqual(t, started, int64(intelRefreshWorkers+intelRefreshQueue), "the rest were skipped, not run")
 }
 
 // A skipped CVE is neither marked in flight nor held back, so a later read
