@@ -3852,6 +3852,30 @@ func TestCheckWaiverMatch_Success(t *testing.T) {
 	assert.True(t, resp["matched"])
 }
 
+func TestCheckWaiverMatch_ErrorStatuses(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		code int
+	}{
+		{"missing or foreign finding", fmt.Errorf("x: %w", usecase.ErrFindingNotFound), http.StatusNotFound},
+		{"malformed finding id", fmt.Errorf("x: %w", usecase.ErrInvalidID), http.StatusBadRequest},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := &mockUsecases{
+				checkWaiverMatchFn: func(context.Context, string, string) (bool, error) { return false, tc.err },
+			}
+			router := authRouter(NewHandler(mock))
+			req := httptest.NewRequest("POST", "/api/v1/projects/my-app/waivers/check-match", strings.NewReader(`{"finding_id":"find-1"}`))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, tc.code, w.Code)
+		})
+	}
+}
+
 // addChiURLParam attaches a chi URL param to a request. Repeated calls merge
 // into the same route context, so a handler that reads two params sees both.
 func addChiURLParam(r *http.Request, key, value string) *http.Request {

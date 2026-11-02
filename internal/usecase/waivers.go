@@ -763,15 +763,20 @@ func (u *Usecases) CheckWaiverMatch(ctx context.Context, projectSlug, findingID 
 
 	fid, err := uuid.Parse(findingID)
 	if err != nil {
-		return false, fmt.Errorf("invalid finding id: %w", err)
+		return false, fmt.Errorf("invalid finding id: %w", ErrInvalidID)
 	}
 
 	finding, err := u.deps.Stores.Findings.GetByID(ctx, fid.String())
 	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return false, ErrFindingNotFound
+		}
 		return false, fmt.Errorf("get finding: %w", err)
 	}
+	// A finding of another project answers like a missing one, so the
+	// endpoint does not tell a caller which ids exist elsewhere.
 	if finding.ProjectID != project.ID {
-		return false, ErrProjectAccessDenied
+		return false, ErrFindingNotFound
 	}
 	if err := u.checkFindingProjectIDAccess(ctx, finding.ProjectID); err != nil {
 		return false, err

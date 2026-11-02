@@ -341,6 +341,14 @@ func (h *Handler) CheckWaiverMatch(w http.ResponseWriter, r *http.Request) {
 			h.respondProjectAccessError(w, r, errProjectAccessDenied)
 			return
 		}
+		if errors.Is(err, usecase.ErrFindingNotFound) {
+			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+			return
+		}
+		if errors.Is(err, usecase.ErrInvalidID) {
+			respondError(w, http.StatusBadRequest, "invalid_body", "finding_id must be a finding id")
+			return
+		}
 		slog.Error("check waiver match", "error", err)
 		respondError(w, http.StatusInternalServerError, "internal_error", "could not check waiver match")
 		return
