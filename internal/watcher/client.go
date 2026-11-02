@@ -16,7 +16,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -193,8 +196,15 @@ func NewHTTPClient(cfg HTTPClientConfig) *HTTPClient {
 // endpointVuln returns the full-record URL for the given advisory ID by
 // substituting the "{id}" placeholder in the configured template.
 func (c *HTTPClient) endpointVuln(id string) string {
-	return strings.ReplaceAll(c.vulnURL, "{id}", id)
+	return strings.ReplaceAll(c.vulnURL, "{id}", url.PathEscape(id))
 }
+
+// vulnIDPattern is the shape of an advisory id the client will put in a URL:
+// a leading letter or digit, then letters, digits and . _ : + -, up to 128
+// characters. It covers every OSV id scheme (GHSA, CVE, PYSEC, GO, RUSTSEC,
+// USN, openSUSE-SU-2024:0001-1) and refuses path separators, query
+// characters and control characters.
+var vulnIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:+-]{0,127}$`)
 
 // QueryBatch implements Client. Querybatch POSTs are split into BatchSize
 // chunks executed sequentially; full advisory records are fetched with bounded
@@ -348,6 +358,15 @@ func (c *HTTPClient) fetchFullRecords(ctx context.Context, idBatches [][]string)
 	return fetcher.run(ctx)
 }
 
+// truncateForLog cuts a feed-supplied value to 64 bytes so a hostile id
+// cannot fill the log. The slog handler quotes the value.
+func truncateForLog(s string) string {
+	if len(s) > 64 {
+		return s[:64]
+	}
+	return s
+}
+
 func uniqueVulnIDs(idBatches [][]string) []string {
 	seen := make(map[string]struct{})
 	var ids []string
@@ -355,6 +374,10 @@ func uniqueVulnIDs(idBatches [][]string) []string {
 		for _, id := range batch {
 			id = strings.TrimSpace(id)
 			if id == "" {
+				continue
+			}
+			if !vulnIDPattern.MatchString(id) {
+				slog.Warn("osv advisory skipped: id is not a valid advisory id", "id", truncateForLog(id))
 				continue
 			}
 			if _, exists := seen[id]; exists {
@@ -447,8 +470,7 @@ func dispatchFullRecordJobs(ctx context.Context, jobs chan<- int, count int) {
 // querybatch endpoint returns only IDs; the full record (affected, aliases,
 // severity, summary, ...) comes from this endpoint.
 func (c *HTTPClient) fetchVuln(ctx context.Context, id string) (Advisory, error) {
-	url := c.endpointVuln(id)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpointVuln(id), nil)
 	if err != nil {
 		return Advisory{}, fmt.Errorf("osv vuln request: %w", err)
 	}
