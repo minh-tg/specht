@@ -90,3 +90,49 @@ describe("ChangeHero passing copy", () => {
     expect(document.body).not.toHaveTextContent(/blocks the merge|\bgreen\b/i);
   });
 });
+
+describe("ChangeHero unblocked and unconfirmed copy", () => {
+  it("says the unblocked verdict is worked out now, not recorded at upload", () => {
+    render(
+      <ChangeHero
+        commit="abcdef1234"
+        report={report}
+        state="unblocked"
+        blockers={0}
+        existing={0}
+        waived={0}
+        policy={policy}
+      />,
+    );
+
+    expect(screen.getByText(/Specht works out this verdict now/)).toBeInTheDocument();
+    expect(screen.getByText(/does not update; re-run the job if it still shows failed/))
+      .toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(
+      /recorded this verdict|when the scan uploaded|reflects it as of then/,
+    );
+    expect(document.body).not.toHaveTextContent(/blocks the merge|\bgreen\b/i);
+  });
+
+  it("says the unconfirmed verdict counts only what this scan introduced", () => {
+    render(
+      <ChangeHero
+        commit="abcdef1234"
+        report={report}
+        state="unconfirmed"
+        blockers={0}
+        existing={0}
+        waived={0}
+        earlierOpen={2}
+        policy={policy}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "This verdict counts only the findings this scan introduced. The findings below blocked the earlier scan and are still open.",
+      ),
+    ).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/did not examine|recorded as passing/);
+  });
+});

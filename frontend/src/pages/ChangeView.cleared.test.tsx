@@ -290,7 +290,7 @@ describe("ChangeView after a blocked scan", () => {
     expect(document.body).not.toHaveTextContent(/Nothing blocks this change now/);
     const open = await screen.findByRole("list", { name: "Findings still open" });
     expect(await within(open).findByText("Hard-coded credential")).toBeInTheDocument();
-    expect(screen.getByText(/did not examine this finding/)).toBeInTheDocument();
+    expect(screen.getByText(/does not count this finding/)).toBeInTheDocument();
     expect(screen.getByText(/then send a fresh scanner report/)).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { level: 2, name: "What cleared the rest" }),
@@ -306,7 +306,7 @@ describe("ChangeView after a blocked scan", () => {
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
       "Passed, but 2 earlier blockers are still open.",
     );
-    expect(screen.getByText(/did not examine these findings/)).toBeInTheDocument();
+    expect(screen.getByText(/does not count these findings/)).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /What cleared/ })).not.toBeInTheDocument();
   });
 
@@ -417,13 +417,14 @@ describe("ChangeView after a blocked scan", () => {
     expect(screen.getByText(/^Partial scan/)).toBeInTheDocument();
   });
 
-  it("says the verdict is recorded and the PR check reflects it as of upload, never that CI is green", async () => {
+  it("says the verdict is worked out now and an older CI check does not update, never that CI is green", async () => {
     findings = { fixed: finding("fixed", { state: "fixed" }) };
     renderPage(previousState(["fixed"]));
 
     await screen.findByRole("heading", { level: 1, name: /^Unblocked/ });
-    expect(screen.getByText(/recorded this verdict when the scan uploaded/)).toBeInTheDocument();
-    expect(screen.getByText(/reflects it as of then/)).toBeInTheDocument();
+    expect(screen.getByText(/works out this verdict now/)).toBeInTheDocument();
+    expect(screen.getByText(/does not update; re-run the job/)).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/recorded this verdict|reflects it as of then/);
     expect(document.body).not.toHaveTextContent(/\bgreen\b/i);
     expect(document.body).not.toHaveTextContent(/blocks the merge|for this merge|can merge/i);
   });
