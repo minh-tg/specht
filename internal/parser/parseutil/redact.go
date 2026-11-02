@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode"
 
 	"github.com/minh-tg/specht/internal/scanner"
 )
@@ -14,32 +15,45 @@ import (
 // RedactedMarker replaces the content of a key that RedactRawJSON redacts.
 const RedactedMarker = "[REDACTED]"
 
-// credentialKeys are exact key names that hold a credential in any scanner's
-// raw output. credentialFragments match by name: a key whose lowercased name
-// contains one of them holds a credential too (db_password, auth_token,
-// Authorization). RedactRawJSON applies both to every scanner, on top of the
-// keys a parser passes. Gitleaks does not use them: it matches its own keys
-// (Secret and Match) with RedactKeys.
+// Credential rules match on a normalized key: lowercased, with "-" and "_"
+// removed, so x-api-key, X_API_KEY and apiKey all read as "xapikey" and
+// "apikey". credentialFragments match by name: a key whose normalized name
+// contains one of them holds a credential (db_password, auth_token,
+// Authorization, ssh_private_key, credentials). credentialSuffixes match the
+// end of the name only, for short words that would otherwise hit unrelated keys
+// (cookie_consent is left alone, set-cookie and db_pwd are not).
+// credentialKeys match the whole name. RedactRawJSON applies all three to every
+// scanner, on top of the keys a parser passes. Gitleaks does not use them: it
+// matches its own keys (Secret and Match) with RedactKeys.
 var (
-	credentialKeys      = []string{"secret", "password", "passwd", "token", "api_key", "apikey", "access_key", "private_key", "client_secret"}
-	credentialFragments = []string{"password", "passwd", "secret", "token", "api_key", "apikey", "authorization"}
+	credentialKeys      = []string{"accesskey"}
+	credentialFragments = []string{"password", "passwd", "passphrase", "secret", "token", "apikey", "privatekey", "credential", "authorization"}
+	credentialSuffixes  = []string{"pwd", "cookie", "cookies"}
 )
 
 // RedactRawJSON is the RedactRaw of a scanner whose evidence is one JSON
 // document. It decodes data, replaces the content of every key in keys and of
-// every credential key (see credentialKeys) with RedactedMarker (see
-// RedactKeys), replaces the scalar content of every key that holds a credential
-// fragment (see redactCredentialFragments), encodes the document again and caps
+// every credential-named key (see isCredentialKey) with RedactedMarker (see
+// RedactKeys and redactCredentialFragments), encodes the document again and caps
 // the result at scanner.RawEvidenceCap (see scanner.CapRawEvidence). Data it
 // cannot decode is an error wrapping scanner.ErrRedactionFailed, and no output
 // comes back, because the input may still hold a secret.
 func RedactRawJSON(name string, data []byte, keys ...string) ([]byte, error) {
+	return RedactRawJSONWith(name, data, nil, keys...)
+}
+
+// RedactRawJSONWith is RedactRawJSON with a scanner-specific step: extra, when
+// not nil, edits the decoded document before the generic rules run, for values
+// that sit under neutral keys (Trivy's image environment).
+func RedactRawJSONWith(name string, data []byte, extra func(doc any), keys ...string) ([]byte, error) {
 	var doc any
 	if err := DecodeJSON(data, &doc); err != nil {
 		return nil, fmt.Errorf("%w: %s evidence: %w", scanner.ErrRedactionFailed, name, err)
 	}
+	if extra != nil {
+		extra(doc)
+	}
 	RedactKeys(doc, RedactedMarker, keys...)
-	RedactKeys(doc, RedactedMarker, credentialKeys...)
 	redactCredentialFragments(doc, RedactedMarker)
 	out, err := json.Marshal(doc)
 	if err != nil {
@@ -92,22 +106,21 @@ func RedactKeys(v any, marker string, keys ...string) {
 	}
 }
 
-// redactCredentialFragments replaces the whole content of each key whose
-// lowercased name contains a credential fragment, at any depth, when that
-// content is a scalar or an object. An object under such a key is not walked:
-// db_password: {"value": "..."} loses the object, so no value inside it is
-// stored. A list under such a key is walked instead of replaced: its scalar
-// elements are redacted by redactCredentialList, and the objects inside keep
-// their own rules. Trivy's Secrets list stays a list with its RuleID, Title
-// and Severity, which the parser reads back for the fingerprint, while the
-// parser's Match and Code keys still remove the value.
+// redactCredentialFragments replaces the whole content of each credential-named
+// key (see isCredentialKey), at any depth, whatever its type: a scalar, an
+// object or a list. Nothing under such a key is walked, so
+// db_password: [{"value": "..."}] loses the list and its neutral inner keys
+// cannot keep the value. The one exception is a list of scanner findings (see
+// isFindingList): Trivy's Secrets list stays a list with its RuleID, Title and
+// Severity, which the parser reads back for the fingerprint, while the parser's
+// Match and Code keys still remove the value.
 func redactCredentialFragments(v any, marker string) {
 	switch x := v.(type) {
 	case map[string]any:
 		for k, item := range x {
-			if hasCredentialFragment(k) {
-				if list, ok := item.([]any); ok {
-					redactCredentialList(list, marker)
+			if isCredentialKey(k) {
+				if list, ok := item.([]any); ok && isFindingList(list) {
+					redactCredentialFragments(list, marker)
 					continue
 				}
 				if hasContent(item) {
@@ -124,32 +137,51 @@ func redactCredentialFragments(v any, marker string) {
 	}
 }
 
-// redactCredentialList replaces every scalar element of a list that sits under a
-// credential-named key with marker, because a scalar element has no key for
-// redactCredentialFragments to match. It walks an object element with
-// redactCredentialFragments and a nested list the same way, so an object keeps
-// its structure and only its credential-named leaves change.
-func redactCredentialList(list []any, marker string) {
-	for i, item := range list {
-		switch x := item.(type) {
-		case map[string]any:
-			redactCredentialFragments(x, marker)
-		case []any:
-			redactCredentialList(x, marker)
-		default:
-			if hasContent(item) {
-				list[i] = marker
-			}
+// isFindingList reports whether list is a non-empty list of objects that each
+// carry a RuleID, the shape of Trivy's Secrets findings.
+func isFindingList(list []any) bool {
+	if len(list) == 0 {
+		return false
+	}
+	for _, item := range list {
+		obj, ok := item.(map[string]any)
+		if !ok {
+			return false
+		}
+		if _, ok := obj["RuleID"]; !ok {
+			return false
 		}
 	}
+	return true
 }
 
-// hasCredentialFragment reports whether key, lowercased, contains one of
-// credentialFragments.
-func hasCredentialFragment(key string) bool {
-	lower := strings.ToLower(key)
+// normalizeKey lowercases key and removes "-" and "_".
+func normalizeKey(key string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '-' || r == '_' {
+			return -1
+		}
+		return unicode.ToLower(r)
+	}, key)
+}
+
+// isCredentialKey reports whether key, normalized, equals one of
+// credentialKeys, contains one of credentialFragments or ends with one of
+// credentialSuffixes.
+func isCredentialKey(key string) bool {
+	n := normalizeKey(key)
+	for _, k := range credentialKeys {
+		if n == k {
+			return true
+		}
+	}
 	for _, fragment := range credentialFragments {
-		if strings.Contains(lower, fragment) {
+		if strings.Contains(n, fragment) {
+			return true
+		}
+	}
+	for _, suffix := range credentialSuffixes {
+		if strings.HasSuffix(n, suffix) {
 			return true
 		}
 	}

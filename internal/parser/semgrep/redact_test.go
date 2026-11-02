@@ -171,7 +171,7 @@ func dbPasswordAtDepth(doc []byte, shallow, deep string) []byte {
 }
 
 // TestRedactRawRedactsAScalarInADbPasswordList checks that each scalar element
-// of a db_password list is gone at depth 1 and depth 5, in both output formats.
+// of a db_password list is replaced whole at depth 1 and depth 5, in both output formats.
 // The sentinel "dbpass-list-" appears in both values.
 func TestRedactRawRedactsAScalarInADbPasswordList(t *testing.T) {
 	for format, doc := range semgrepSecretDocs {
@@ -180,7 +180,7 @@ func TestRedactRawRedactsAScalarInADbPasswordList(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.NotContains(t, string(redacted), "dbpass-list-")
-			assert.Equal(t, 2, strings.Count(string(redacted), `"db_password":["[REDACTED]"]`))
+			assert.Equal(t, 2, strings.Count(string(redacted), `"db_password":"[REDACTED]"`))
 		})
 	}
 }

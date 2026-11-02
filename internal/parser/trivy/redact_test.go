@@ -126,7 +126,7 @@ func TestRedactRawRedactsScalarElementsOfADbPasswordList(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NotContains(t, string(redacted), "dbpass-")
-	assert.Equal(t, 2, strings.Count(string(redacted), `"db_password":["[REDACTED]"]`))
+	assert.Equal(t, 2, strings.Count(string(redacted), `"db_password":"[REDACTED]"`))
 	assert.Contains(t, string(redacted), `"RuleID":"aws-access-key-id"`)
 	assert.Contains(t, string(redacted), `"Title":"AWS Access Key ID"`)
 
