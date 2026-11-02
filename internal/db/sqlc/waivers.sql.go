@@ -47,6 +47,26 @@ func (q *Queries) ArchiveWaiverDeletion(ctx context.Context, arg ArchiveWaiverDe
 	return err
 }
 
+const countPendingWaiverTargets = `-- name: CountPendingWaiverTargets :one
+SELECT COUNT(*) FROM waiver_finding_targets t
+JOIN waivers w ON w.id = t.waiver_id
+WHERE w.project_id = $1 AND w.status = 'pending' AND t.finding_id = ANY($2::uuid[])
+`
+
+type CountPendingWaiverTargetsParams struct {
+	ProjectID  pgtype.UUID   `json:"project_id"`
+	FindingIds []pgtype.UUID `json:"finding_ids"`
+}
+
+// How many of the given findings a pending waiver request of the project
+// already names.
+func (q *Queries) CountPendingWaiverTargets(ctx context.Context, arg CountPendingWaiverTargetsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPendingWaiverTargets, arg.ProjectID, arg.FindingIds)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createWaiver = `-- name: CreateWaiver :one
 INSERT INTO waivers (project_id, name, description, enabled, expires_at, status, reason, requested_by, requested_at)
 VALUES (

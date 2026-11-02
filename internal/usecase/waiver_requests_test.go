@@ -148,6 +148,19 @@ func TestRequestWaiverRejectsDuplicatePendingRequest(t *testing.T) {
 	require.ErrorIs(t, err, ErrWaiverRequestExists)
 }
 
+// A request that passed the early check but lost the race to another one is
+// refused by the store, and answers like the early refusal.
+func TestRequestWaiverMapsTheStoresOverlapRefusal(t *testing.T) {
+	wr := &mockWaiverRepo{
+		listFn: func(context.Context, string) ([]port.Waiver, error) { return nil, nil },
+		createWithDetailsFn: func(context.Context, port.CreateWaiverInput) (port.Waiver, error) {
+			return port.Waiver{}, port.ErrWaiverRequestExists
+		},
+	}
+	_, err := waiverRequestUsecase(t, auth.RoleMember, wr).RequestWaiver(sessionCtx(requesterID, auth.RoleMember), validWaiverRequest())
+	require.ErrorIs(t, err, ErrWaiverRequestExists)
+}
+
 func pendingWaiver(requestedBy string, expires *time.Time) port.Waiver {
 	return port.Waiver{
 		ID: requestWaiverID, ProjectID: makeProject(true).ID, Status: WaiverStatusPending,
