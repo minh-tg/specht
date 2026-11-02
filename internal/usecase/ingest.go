@@ -442,17 +442,58 @@ func reportTotalFindings(report port.Report) int {
 	return int(*report.TotalFindings)
 }
 
-// findBaselineReport resolves a base revision to a completed full report.
-// A commit SHA matches the newest full report for that exact commit. CI
-// passes a branch name for pull requests, so when no commit matches, the
-// newest full report on that branch is the baseline.
-func (u *Usecases) findBaselineReport(ctx context.Context, projectID, scanner, revision string) (port.CompletedReport, error) {
+// errBaselineRefused marks a base revision that resolved to a report the
+// introduced classification must not compare against. Callers treat it like a
+// missing baseline.
+var errBaselineRefused = errors.New("base revision is not a trunk baseline")
+
+// findBaselineReport resolves a base revision to a completed full report that
+// may serve as the baseline of a report on branch. A commit SHA matches the
+// newest full report for that exact commit. CI passes a branch name for pull
+// requests, so when no commit matches, the newest full report on that branch
+// is the baseline. A resolved report that acceptBaseline refuses comes back
+// as errBaselineRefused.
+func (u *Usecases) findBaselineReport(ctx context.Context, projectID, scanner, revision, branch string) (port.CompletedReport, error) {
 	// Commits are stored lowercase; a branch name keeps its case.
 	base, err := u.deps.Stores.Reports.GetCompletedByCommit(ctx, projectID, scanner, normalizeRevision(revision))
-	if !errors.Is(err, port.ErrNotFound) {
-		return base, err
+	if errors.Is(err, port.ErrNotFound) {
+		base, err = u.deps.Stores.Reports.GetLatestFullByBranch(ctx, projectID, scanner, revision)
 	}
-	return u.deps.Stores.Reports.GetLatestFullByBranch(ctx, projectID, scanner, revision)
+	if err != nil {
+		return port.CompletedReport{}, err
+	}
+	if err := u.acceptBaseline(ctx, projectID, base, branch); err != nil {
+		return port.CompletedReport{}, err
+	}
+	return base, nil
+}
+
+// acceptBaseline decides whether base may vouch that a finding pre-exists the
+// change a report on branch makes. The uploader names the base revision, so a
+// report of the branch itself (the branch name, or an earlier commit of it)
+// would let a branch call its own blockers pre-existing, and a report of
+// another change branch would let it borrow that branch's blockers. Only a
+// trunk qualifies: a branch no report ever compared against a base other than
+// itself (BranchHasChangeReport). The server does not know a project's default
+// branch, so a default branch that was once the head of a pull request counts
+// as a change branch too, and reports against it fall back to the carry rule.
+// A report without a branch has nothing to compare and is accepted as before.
+func (u *Usecases) acceptBaseline(ctx context.Context, projectID string, base port.CompletedReport, branch string) error {
+	if base.Branch == nil || *base.Branch == "" {
+		return nil
+	}
+	baseBranch := *base.Branch
+	if baseBranch == branch {
+		return fmt.Errorf("%w: it resolved to a report of branch %q itself", errBaselineRefused, branch)
+	}
+	change, err := u.deps.Stores.Reports.BranchHasChangeReport(ctx, projectID, baseBranch)
+	if err != nil {
+		return fmt.Errorf("check baseline branch %q: %w", baseBranch, err)
+	}
+	if change {
+		return fmt.Errorf("%w: branch %q compared its own reports against another base", errBaselineRefused, baseBranch)
+	}
+	return nil
 }
 
 // sameRevision reports whether two revision strings name the same SHA. A
@@ -482,11 +523,16 @@ func (u *Usecases) resolveBaseRevision(ctx context.Context, project port.Project
 	if baselineID != "" || input.BaseRevision == "" {
 		return baselineID, nil
 	}
-	base, err := u.findBaselineReport(ctx, project.ID, input.Scanner, input.BaseRevision)
+	base, err := u.findBaselineReport(ctx, project.ID, input.Scanner, input.BaseRevision, input.Branch)
 	if err == nil {
 		return base.ID, nil
 	}
 	if errors.Is(err, port.ErrNotFound) {
+		return "", nil
+	}
+	if errors.Is(err, errBaselineRefused) {
+		slog.Info("base revision not used as baseline", "project", project.ID, "branch", input.Branch,
+			"base_revision", input.BaseRevision, "reason", err.Error())
 		return "", nil
 	}
 	return "", fmt.Errorf("resolve base revision: %w", err)
@@ -504,10 +550,13 @@ func (u *Usecases) resolveScanMode(ctx context.Context, project port.Project, sc
 	if !scanner.SupportsIncremental(sc) {
 		return ScanModeFull, fmt.Sprintf("scanner %q does not support incremental scans; recorded as full scan", input.Scanner), "", nil
 	}
-	base, err := u.findBaselineReport(ctx, project.ID, input.Scanner, input.BaseRevision)
+	base, err := u.findBaselineReport(ctx, project.ID, input.Scanner, input.BaseRevision, input.Branch)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			return ScanModeFull, fmt.Sprintf("no completed full baseline for base_revision %q; recorded as full scan", input.BaseRevision), "", nil
+		}
+		if errors.Is(err, errBaselineRefused) {
+			return ScanModeFull, fmt.Sprintf("no completed full baseline for base_revision %q (%v); recorded as full scan", input.BaseRevision, err), "", nil
 		}
 		return "", "", "", fmt.Errorf("resolve incremental baseline: %w", err)
 	}

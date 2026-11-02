@@ -401,6 +401,15 @@ releases.
 
 ### Security
 
+- A `base_revision` can no longer make a branch's own blockers pre-existing. The
+  introduced-only gate, the ingest verdict and the pull request check used any
+  report the base revision resolved to as the baseline, so a blocked branch passed
+  by naming itself, one of its earlier commits or another blocked branch as its
+  base. A baseline must now be a report of another branch that never compared its
+  reports against a different base. Otherwise the report is classified as if its
+  base was never scanned, and what the branch introduced earlier stays introduced.
+  A default branch that was once a pull request head stops being a baseline too,
+  since the server does not know the default branch.
 - An invite link works only while the account that made it is active and could still make it: after its creator is deactivated, removed from the project, demoted below the invite's role, or loses global admin, the link answers like an expired one. Deactivating an account also revokes the open links it made.
 - Self-service registration is closed unless `REGISTRATION_ENABLED=true`.
 - An SSO exchange code works only in the browser that started the login. The

@@ -16,6 +16,20 @@ The change view keeps introduced blockers separate from existing debt. Do not
 interpret a passing introduced-findings gate as proof that the project has no
 other findings.
 
+The introduced-findings gate compares the report with a baseline: the newest
+full report of the same scanner for `base_revision`, a commit or a branch name.
+Only a report on a trunk can be the baseline. A trunk is a branch whose reports
+never named a `base_revision` other than the branch itself, such as a default
+branch that only gets push builds. A `base_revision` that resolves to a report
+of the uploading branch, by its name or an earlier commit, or to a report of a
+branch that is itself a pull or merge request head, is not used. The report is
+then classified as if its base had never been scanned: findings new to the
+project are introduced, and a finding the previous report in the same scan
+scope introduced stays introduced. Specht does not store a project's default
+branch, so a default branch that was once the head of a pull request no longer
+serves as a baseline either, and pull requests against it are classified the
+same way.
+
 ## Configure the integration
 
 The project CI setup page generates instructions for your installation. Create a
