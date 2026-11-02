@@ -1340,13 +1340,13 @@ func (r *pgFindingPort) ListFindingsByFingerprints(ctx context.Context, projectI
 	return out, nil
 }
 
-func (r *pgFindingPort) ListFindingIDsPresentInReport(ctx context.Context, reportID string, findingIDs []string) ([]string, error) {
-	rid, err := parseID(reportID)
+func (r *pgFindingPort) ListBaselineEvidence(ctx context.Context, baselineID string, findingIDs []string) (map[string]bool, error) {
+	bid, err := parseID(baselineID)
 	if err != nil {
 		return nil, err
 	}
 	if len(findingIDs) == 0 {
-		return nil, nil
+		return map[string]bool{}, nil
 	}
 	uuids := make([]pgtype.UUID, 0, len(findingIDs))
 	for _, id := range findingIDs {
@@ -1356,13 +1356,13 @@ func (r *pgFindingPort) ListFindingIDsPresentInReport(ctx context.Context, repor
 		}
 		uuids = append(uuids, u)
 	}
-	rows, err := r.inner.ListFindingIDsPresentInReport(ctx, rid, uuids)
+	rows, err := r.inner.ListBaselineEvidence(ctx, bid, uuids)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]string, len(rows))
-	for i, row := range rows {
-		out[i] = toUUID(row)
+	out := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		out[toUUID(row.FindingID)] = row.Observed
 	}
 	return out, nil
 }

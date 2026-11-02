@@ -104,3 +104,35 @@ func TestE2E_BaseRevisionCannotVouchForTheBranchsOwnFindings(t *testing.T) {
 		require.Equal(t, 1, byCommit.PreExistingCount)
 	})
 }
+
+// TestE2E_FilteredTrunkBaselineKeepsTrunkDebtPreExisting pins that a trunk
+// scan declared filtered cannot blame a branch for what the filter hid. main's
+// newest scan was fixable-only and omits E2E-NEW-003, which main still has
+// open; the unfiltered main scan before it observed it, so a branch with
+// exactly main's findings introduces nothing.
+func TestE2E_FilteredTrunkBaselineKeepsTrunkDebtPreExisting(t *testing.T) {
+	slug := newProject(t, "filtered-base")
+	key := mintKey(t, slug)
+
+	carryPush(t, slug, key, "high-new.sarif.json", "main", "e100000000000000000000000000000000000001", "")
+	request[ingestResponse](t, http.MethodPost, "/api/v1/reports", key,
+		ingestBodyWith(t, slug, "high.sarif.json", map[string]any{
+			"branch": "main", "commit_sha": "e100000000000000000000000000000000000002",
+			"scan_filter": map[string]any{"fixable_only": true},
+		}), http.StatusCreated)
+	open := 0
+	for _, f := range listFindings(t, slug) {
+		if f.State == "open" {
+			open++
+		}
+	}
+	require.Equal(t, 2, open, "the filtered report must not close E2E-NEW-003")
+
+	pr := carryPush(t, slug, key, "high-new.sarif.json", "feat/x", "e100000000000000000000000000000000000003", "main")
+	require.Equal(t, 0, pr.IntroducedCount, "main's own open finding is not the branch's")
+	require.Equal(t, 2, pr.PreExistingCount)
+	require.False(t, pr.ThresholdBreached)
+
+	added := carryPush(t, slug, key, "high-medium.sarif.json", "feat/y", "e100000000000000000000000000000000000004", "main")
+	require.Equal(t, 1, added.IntroducedCount, "a finding new to the project is still introduced")
+}

@@ -855,6 +855,80 @@ func (q *Queries) HasDimension(ctx context.Context, arg HasDimensionParams) (boo
 	return exists, err
 }
 
+const listBaselineEvidence = `-- name: ListBaselineEvidence :many
+WITH base AS (
+    SELECT b.id, b.project_id, b.tool_name, b.branch, b.created_at
+    FROM reports b
+    WHERE b.id = $2
+), history AS (
+    SELECT r.id, r.filter_severities, r.filter_fixable_only, r.created_at
+    FROM reports r, base
+    WHERE r.project_id = base.project_id
+      AND r.tool_name = base.tool_name
+      AND (r.id = base.id OR (base.branch IS NOT NULL AND r.branch = base.branch))
+      AND r.status = 'completed'
+      AND r.scan_mode = 'full'
+      AND (r.created_at, r.id) <= (base.created_at, base.id)
+    ORDER BY r.created_at DESC, r.id DESC
+    LIMIT 20
+)
+SELECT c.finding_id::uuid AS finding_id, ev.observed::boolean AS observed
+FROM unnest($1::uuid[]) AS c(finding_id)
+CROSS JOIN LATERAL (
+    SELECT EXISTS (
+        SELECT 1 FROM finding_occurrences o
+        WHERE o.finding_id = c.finding_id AND o.report_id = h.id
+    ) AS observed
+    FROM history h
+    WHERE EXISTS (
+        SELECT 1 FROM finding_occurrences o
+        WHERE o.finding_id = c.finding_id AND o.report_id = h.id
+    )
+       OR report_filter_admits_absence(h.filter_severities, h.filter_fixable_only, c.finding_id)
+    ORDER BY h.created_at DESC, h.id DESC
+    LIMIT 1
+) ev
+`
+
+type ListBaselineEvidenceParams struct {
+	FindingIds []pgtype.UUID `json:"finding_ids"`
+	BaselineID pgtype.UUID   `json:"baseline_id"`
+}
+
+type ListBaselineEvidenceRow struct {
+	FindingID pgtype.UUID `json:"finding_id"`
+	Observed  bool        `json:"observed"`
+}
+
+// What the baseline of an introduced-only classification can say about each
+// of the given findings. The answer comes from the newest of the baseline and
+// the 19 completed full reports before it on the baseline's branch and from
+// its scanner that observed the finding or could have: a report filtered by
+// severity, or fixable-only for a finding without a fix, cannot say a finding
+// it omits is absent (report_filter_admits_absence). observed is whether that
+// report observed the finding. A finding no such report speaks for has no row,
+// and the caller classifies it as if there were no baseline. A baseline
+// without a branch speaks only for itself.
+func (q *Queries) ListBaselineEvidence(ctx context.Context, arg ListBaselineEvidenceParams) ([]ListBaselineEvidenceRow, error) {
+	rows, err := q.db.Query(ctx, listBaselineEvidence, arg.FindingIds, arg.BaselineID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListBaselineEvidenceRow
+	for rows.Next() {
+		var i ListBaselineEvidenceRow
+		if err := rows.Scan(&i.FindingID, &i.Observed); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFindingDimensions = `-- name: ListFindingDimensions :many
 SELECT dim_key, dim_value, source
 FROM finding_dimensions
@@ -990,37 +1064,6 @@ func (q *Queries) ListFindingEvents(ctx context.Context, arg ListFindingEventsPa
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listFindingIDsPresentInReport = `-- name: ListFindingIDsPresentInReport :many
-SELECT finding_id FROM finding_occurrences
-WHERE report_id = $1
-  AND finding_id = ANY($2::uuid[])
-`
-
-type ListFindingIDsPresentInReportParams struct {
-	ReportID pgtype.UUID   `json:"report_id"`
-	Column2  []pgtype.UUID `json:"column_2"`
-}
-
-func (q *Queries) ListFindingIDsPresentInReport(ctx context.Context, arg ListFindingIDsPresentInReportParams) ([]pgtype.UUID, error) {
-	rows, err := q.db.Query(ctx, listFindingIDsPresentInReport, arg.ReportID, arg.Column2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []pgtype.UUID
-	for rows.Next() {
-		var finding_id pgtype.UUID
-		if err := rows.Scan(&finding_id); err != nil {
-			return nil, err
-		}
-		items = append(items, finding_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

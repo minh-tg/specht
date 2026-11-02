@@ -673,6 +673,7 @@ type mockFindingRepo struct {
 	listIntroducedGateCandidatesFn    func(context.Context, string, string, int16) ([]port.GateCandidate, error)
 	listFindingsByFingerprintsFn      func(context.Context, string, string, []string) ([]port.Finding, error)
 	listFindingIDsPresentInReportFn   func(context.Context, string, []string) ([]string, error)
+	baselineEvidenceFn                func(context.Context, string, []string) (map[string]bool, error)
 	recordReportIntroducedFindingsFn  func(context.Context, string, *string, []port.IntroducedFindingEntry) error
 	listReportIntroducedChangeTypesFn func(context.Context, string, []string) (map[string]string, error)
 	listFindingsIntroducedByCommitFn  func(context.Context, string, string) ([]port.Finding, error)
@@ -879,7 +880,28 @@ func (m *mockFindingRepo) ListFindingsByFingerprints(ctx context.Context, projec
 	return nil, nil
 }
 
-func (m *mockFindingRepo) ListFindingIDsPresentInReport(ctx context.Context, reportID string, findingIDs []string) ([]string, error) {
+// ListBaselineEvidence answers like an unfiltered baseline unless
+// baselineEvidenceFn is set: it speaks for every finding, and observed is
+// whether the finding is present in the report.
+func (m *mockFindingRepo) ListBaselineEvidence(ctx context.Context, baselineID string, findingIDs []string) (map[string]bool, error) {
+	if m.baselineEvidenceFn != nil {
+		return m.baselineEvidenceFn(ctx, baselineID, findingIDs)
+	}
+	present, err := m.findingIDsPresentInReport(ctx, baselineID, findingIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(findingIDs))
+	for _, id := range findingIDs {
+		out[id] = false
+	}
+	for _, id := range present {
+		out[id] = true
+	}
+	return out, nil
+}
+
+func (m *mockFindingRepo) findingIDsPresentInReport(ctx context.Context, reportID string, findingIDs []string) ([]string, error) {
 	if m.listFindingIDsPresentInReportFn != nil {
 		return m.listFindingIDsPresentInReportFn(ctx, reportID, findingIDs)
 	}

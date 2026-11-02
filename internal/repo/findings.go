@@ -690,13 +690,13 @@ func (r *pgFindingRepo) ListFindingsByFingerprints(ctx context.Context, projectI
 	})
 }
 
-func (r *pgFindingRepo) ListFindingIDsPresentInReport(ctx context.Context, reportID pgtype.UUID, findingIDs []pgtype.UUID) ([]pgtype.UUID, error) {
+func (r *pgFindingRepo) ListBaselineEvidence(ctx context.Context, baselineID pgtype.UUID, findingIDs []pgtype.UUID) ([]sqlc.ListBaselineEvidenceRow, error) {
 	if len(findingIDs) == 0 {
 		return nil, nil
 	}
-	return r.q.ListFindingIDsPresentInReport(ctx, sqlc.ListFindingIDsPresentInReportParams{
-		ReportID: reportID,
-		Column2:  findingIDs,
+	return r.q.ListBaselineEvidence(ctx, sqlc.ListBaselineEvidenceParams{
+		BaselineID: baselineID,
+		FindingIds: findingIDs,
 	})
 }
 

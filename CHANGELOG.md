@@ -375,6 +375,10 @@ releases.
 
 ### Fixed
 
+- A filtered trunk scan no longer makes the trunk's own open findings count as
+  introduced by a pull request. A finding the baseline's declared filter may have
+  hidden is judged by the newest earlier full scan of that branch that could have
+  seen it, and without one it is classified as if the base was never scanned.
 - A branch can no longer pass the introduced-only gate by pushing again. When no
   baseline resolves from `base_revision` (the target branch was never scanned, or a
   push build sent no base ref), a finding the previous report in the same scan scope
