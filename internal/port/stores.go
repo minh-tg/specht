@@ -203,6 +203,12 @@ type CreateProjectInput struct {
 	Description         string
 	DeploymentThreshold string
 	Settings            json.RawMessage
+	// AdminID, when set, is the account that becomes the project's first
+	// admin in the same transaction. The store share-locks that account
+	// before it inserts anything and refuses a deactivated one with
+	// ErrAccountDeactivated, or a missing one with ErrNotFound, so a project
+	// never starts with an admin who cannot sign in.
+	AdminID string
 }
 
 // ProjectStore is the consumer-facing project persistence contract.

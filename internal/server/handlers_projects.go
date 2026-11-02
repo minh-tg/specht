@@ -62,6 +62,12 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusConflict, "slug_taken", "project slug already exists")
 			return
 		}
+		if errors.Is(err, usecase.ErrAccountDeactivated) {
+			// The account was deactivated while the request ran; its next
+			// request gets the same answer from the auth middleware.
+			respondError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+			return
+		}
 		respondError(w, http.StatusInternalServerError, "creation_failed", "could not create project")
 		return
 	}
