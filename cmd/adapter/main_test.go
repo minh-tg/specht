@@ -1658,6 +1658,80 @@ func TestRetryTransportDoesNotRetryAnAttemptTimeout(t *testing.T) {
 	assert.Equal(t, 1, calls)
 }
 
+// A 503 ingest_timeout means the server spent its whole processing window on
+// the report. It is not retried, and the caller still reads the full body.
+func TestRetryTransportDoesNotRetryAnIngestTimeout(t *testing.T) {
+	const body = `{"error":{"code":"ingest_timeout","message":"the server stopped processing the report"}}`
+	var calls int
+	base := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		h := make(http.Header)
+		h.Set("Retry-After", "30")
+		return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: io.NopCloser(strings.NewReader(body)), Header: h, Request: req}, nil
+	})
+	slept := []time.Duration{}
+	rt := &retryTransport{base: base, sleep: func(_ context.Context, d time.Duration) { slept = append(slept, d) }}
+	req, err := http.NewRequest(http.MethodPost, "http://example.test/api/v1/reports", strings.NewReader("{}"))
+	require.NoError(t, err)
+
+	resp, err := rt.RoundTrip(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	got, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, body, string(got), "the body is intact for the client's error")
+	assert.Equal(t, 1, calls)
+	assert.Empty(t, slept)
+}
+
+// 503 ingest_busy and a 503 with no readable body stay retryable.
+func TestRetryTransportStillRetriesOtherServiceUnavailable(t *testing.T) {
+	for name, body := range map[string]string{
+		"ingest_busy": `{"error":{"code":"ingest_busy","message":"too many ingests in progress, retry shortly"}}`,
+		"html":        `<html>upstream unavailable</html>`,
+		"empty":       ``,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var calls int
+			base := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				calls++
+				return &http.Response{StatusCode: http.StatusServiceUnavailable, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header), Request: req}, nil
+			})
+			rt := &retryTransport{base: base, sleep: func(context.Context, time.Duration) {}}
+			req, err := http.NewRequest(http.MethodPost, "http://example.test/api/v1/reports", strings.NewReader("{}"))
+			require.NoError(t, err)
+
+			resp, err := rt.RoundTrip(req)
+			require.NoError(t, err)
+			defer func() { _ = resp.Body.Close() }()
+			assert.Equal(t, 1+len(retryBackoff), calls, "tried again until the backoff is used up, not forever")
+		})
+	}
+}
+
+func TestRun_ReportsAnIngestTimeoutOnce(t *testing.T) {
+	slept := stubRetrySleep(t)
+	var attempts int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.Header().Set("Retry-After", "30")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = io.WriteString(w, `{"error":{"code":"ingest_timeout","message":"the server stopped processing the report at its time limit and marked it failed; upload the scan again"}}`)
+	}))
+	defer srv.Close()
+	clearCIEnvironment(t)
+	t.Setenv("API_KEY", "test-key")
+	t.Setenv("API_URL", srv.URL)
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-project=my-app", "-tool=trivy"}, strings.NewReader(`{"Results":[]}`), &stdout, &stderr, srv.Client())
+	require.Equal(t, 2, code, "a runtime error, not a gate failure")
+	assert.Equal(t, 1, attempts)
+	assert.Empty(t, *slept)
+	assert.Contains(t, stderr.String(), "ingest_timeout")
+	assert.Contains(t, stderr.String(), "run the job again")
+}
+
 func TestRetryTransportStopsOnContextCancelDuringBackoff(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var calls int

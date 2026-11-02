@@ -388,7 +388,7 @@ releases.
 
 ### Fixed
 
-- An ingest that runs past its two minute processing window now answers `503 ingest_timeout` with `Retry-After` instead of `422 ingest_failed`. CI clients read a 422 as a bad report and stopped; the report is still marked failed.
+- An ingest that runs past its two minute processing window now answers `503 ingest_timeout` with `Retry-After` instead of `422 ingest_failed`. CI clients read a 422 as a bad report and stopped; the report is still marked failed. `specht-adapter` reports the error and a hint to run the job again, and does not retry it itself, because each try would use another full window.
 - The server marks only the hashed files under `/assets/` as cached for a year. Root files
   such as `/theme-init.js`, the web manifest and the icons keep a fixed URL across releases and
   are now revalidated, so a browser no longer keeps an old copy after an upgrade.
