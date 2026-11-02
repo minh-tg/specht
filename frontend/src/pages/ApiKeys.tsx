@@ -146,7 +146,9 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-body font-medium">{k.name}</p>
-                    {formerMember && <Badge variant="outline">Created by a former member</Badge>}
+                    {formerMember && (
+                      <Badge variant="outline">Creator is not a project member</Badge>
+                    )}
                   </div>
                   <p className="text-muted-foreground text-meta">
                     {k.key_prefix}...{k.last_four ?? ""} &middot; created{" "}

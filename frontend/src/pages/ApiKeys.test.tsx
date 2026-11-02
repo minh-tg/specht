@@ -317,7 +317,7 @@ describe("ApiKeys", () => {
     expect(screen.getByText("Cancel")).toBeInTheDocument();
   });
 
-  it("flags a key whose creator left the project and offers Revoke on that row", async () => {
+  it("flags a key whose creator is not a project member and offers Revoke on that row", async () => {
     keys = [
       { ...MY_KEY, id: "k1", name: "Orphan Key", creator_is_member: false },
       { ...MY_KEY, id: "k2", name: "Member Key", creator_is_member: true },
@@ -333,15 +333,15 @@ describe("ApiKeys", () => {
     );
     await screen.findByText("Orphan Key");
 
-    expect(screen.getAllByText("Created by a former member")).toHaveLength(1);
+    expect(screen.getAllByText("Creator is not a project member")).toHaveLength(1);
     const orphanRow = screen.getByText("Orphan Key").closest("div.bg-card") as HTMLElement;
-    expect(within(orphanRow).getByText("Created by a former member")).toBeInTheDocument();
+    expect(within(orphanRow).getByText("Creator is not a project member")).toBeInTheDocument();
     await user.click(within(orphanRow).getByRole("button", { name: "Revoke" }));
     expect(within(orphanRow).getByText("Confirm")).toBeInTheDocument();
 
     for (const name of ["Member Key", "Legacy Key"]) {
       const row = screen.getByText(name).closest("div.bg-card") as HTMLElement;
-      expect(within(row).queryByText("Created by a former member")).not.toBeInTheDocument();
+      expect(within(row).queryByText("Creator is not a project member")).not.toBeInTheDocument();
       expect(within(row).getByRole("button", { name: "Revoke" })).toBeInTheDocument();
     }
   });
