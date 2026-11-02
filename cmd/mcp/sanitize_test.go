@@ -111,7 +111,7 @@ func TestMCPArgumentValidationErrorStripsTerminalControls(t *testing.T) {
 	session := connectMCPServer(t, &mockClient{})
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "findings_list",
-		Arguments: map[string]any{"project": "demo", "limit": "x\x1b[31m‮"},
+		Arguments: map[string]any{"project": "demo", "limit": "x\x1b[31m\u202e"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -120,7 +120,7 @@ func TestMCPArgumentValidationErrorStripsTerminalControls(t *testing.T) {
 		t.Fatal("expected a validation error result")
 	}
 	text := result.Content[0].(*mcp.TextContent).Text
-	if strings.ContainsAny(text, "\x1b‮") {
+	if strings.ContainsAny(text, "\x1b\u202e") {
 		t.Fatalf("error result still holds terminal controls: %q", text)
 	}
 	if !strings.Contains(text, "type: x has type") {
@@ -130,11 +130,11 @@ func TestMCPArgumentValidationErrorStripsTerminalControls(t *testing.T) {
 
 func TestMCPUnknownToolErrorStripsTerminalControls(t *testing.T) {
 	session := connectMCPServer(t, &mockClient{})
-	_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "nope\x1b[31m‮"})
+	_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "nope\x1b[31m\u202e"})
 	if err == nil {
 		t.Fatal("expected an unknown tool error")
 	}
-	if strings.ContainsAny(err.Error(), "\x1b‮") {
+	if strings.ContainsAny(err.Error(), "\x1b\u202e") {
 		t.Fatalf("error still holds terminal controls: %q", err.Error())
 	}
 	if !strings.Contains(err.Error(), "unknown tool") {
