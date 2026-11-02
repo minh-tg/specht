@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/minh-tg/specht/internal/repo"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,17 +16,16 @@ func TestE2E_ReportVerdictsRequireCompletedEvidence(t *testing.T) {
 	pool, err := pgxpool.New(ctx, dsn)
 	require.NoError(t, err)
 	defer pool.Close()
-	stores := repo.NewPortStores(pool)
 	slug := newProject(t, "report-status")
 	key := mintKey(t, slug)
 	report := request[ingestResponse](t, http.MethodPost, "/api/v1/reports", key,
 		ingestBodyWith(t, slug, "high.sarif.json", map[string]any{"commit_sha": baseSHA}), http.StatusCreated)
-	stored, err := stores.Reports.GetByID(ctx, report.ReportID)
-	require.NoError(t, err)
 
 	for _, state := range []string{"processing", "failed", "completed"} {
 		t.Run(state, func(t *testing.T) {
-			_, err := stores.Reports.UpdateStatus(ctx, report.ReportID, stored.ProjectID, state, 1, nil)
+			// The status is forced directly: the store only moves a report out
+			// of processing, and this test needs each state in turn.
+			_, err := pool.Exec(ctx, `UPDATE reports SET status = $2, total_findings = 1 WHERE id = $1`, report.ReportID, state)
 			require.NoError(t, err)
 			for _, path := range []string{
 				"/api/v1/projects/" + slug + "/gate?introduced_only=true&report_id=" + report.ReportID,

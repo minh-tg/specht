@@ -125,7 +125,7 @@ type ReportRepo interface {
 	BranchHasChangeReport(ctx context.Context, projectID pgtype.UUID, branch string) (bool, error)
 	LatestCompletedInFindingScope(ctx context.Context, projectID, findingID pgtype.UUID) (sqlc.LatestCompletedFullReportInFindingScopeRow, error)
 	CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error)
-	FailStaleReports(ctx context.Context, cutoff time.Time, reason string) (int64, error)
+	FailStaleReports(ctx context.Context, olderThan time.Duration, reason string) (int64, error)
 	SettleFailedReport(ctx context.Context, id, projectID pgtype.UUID) error
 	DeleteStaleReports(ctx context.Context, cutoff time.Time, limit int) ([]pgtype.UUID, error)
 	ClearRawDataBefore(ctx context.Context, cutoff time.Time, batchSize int32) ([]pgtype.UUID, error)

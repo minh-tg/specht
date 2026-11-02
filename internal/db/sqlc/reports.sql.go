@@ -398,15 +398,15 @@ const failStaleReports = `-- name: FailStaleReports :many
 UPDATE reports SET
     status = 'failed',
     completed_at = NOW(),
-    error_message = $2
+    error_message = $1
 WHERE status = 'processing'
-  AND created_at < $1
+  AND created_at < NOW() - make_interval(secs => $2::float8)
 RETURNING id, project_id
 `
 
 type FailStaleReportsParams struct {
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
-	ErrorMessage pgtype.Text        `json:"error_message"`
+	ErrorMessage     pgtype.Text `json:"error_message"`
+	OlderThanSeconds float64     `json:"older_than_seconds"`
 }
 
 type FailStaleReportsRow struct {
@@ -417,9 +417,11 @@ type FailStaleReportsRow struct {
 // A report stays in processing only while its ingest request runs. One that
 // is still there well after the ingest window means the server stopped under
 // it, so it is settled as failed and a retry can ingest the same content. The
-// ids come back so the findings it left half written can be settled too.
+// ids come back so the findings it left half written can be settled too. The
+// age is measured on the database clock, the one that stamps created_at, so
+// a replica with a skewed clock cannot fail a running ingest.
 func (q *Queries) FailStaleReports(ctx context.Context, arg FailStaleReportsParams) ([]FailStaleReportsRow, error) {
-	rows, err := q.db.Query(ctx, failStaleReports, arg.CreatedAt, arg.ErrorMessage)
+	rows, err := q.db.Query(ctx, failStaleReports, arg.ErrorMessage, arg.OlderThanSeconds)
 	if err != nil {
 		return nil, err
 	}
@@ -1106,7 +1108,7 @@ UPDATE reports SET
     total_findings = $3,
     completed_at = CASE WHEN $2 = 'completed' OR $2 = 'failed' THEN NOW() ELSE completed_at END,
     error_message = $4
-WHERE id = $1 AND project_id = $5
+WHERE id = $1 AND project_id = $5 AND status = 'processing'
 RETURNING id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds, examined_keys, filter_severities, filter_fixable_only
 `
 

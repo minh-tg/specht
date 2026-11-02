@@ -14,19 +14,19 @@ import (
 )
 
 type fakeReportReaper struct {
-	mu     sync.Mutex
-	cutoff time.Time
-	reason string
-	count  int64
-	err    error
-	calls  int
+	mu        sync.Mutex
+	olderThan time.Duration
+	reason    string
+	count     int64
+	err       error
+	calls     int
 }
 
-func (f *fakeReportReaper) FailStale(_ context.Context, cutoff time.Time, reason string) (int64, error) {
+func (f *fakeReportReaper) FailStale(_ context.Context, olderThan time.Duration, reason string) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
-	f.cutoff, f.reason = cutoff, reason
+	f.olderThan, f.reason = olderThan, reason
 	return f.count, f.err
 }
 
@@ -38,15 +38,14 @@ func (f *fakeReportReaper) callCount() int {
 
 func quietLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
-func TestReapStaleReports_CutsOffAtTheGivenAge(t *testing.T) {
+func TestReapStaleReports_PassesTheAgeToTheDatabase(t *testing.T) {
 	reaper := &fakeReportReaper{count: 2}
-	before := time.Now()
 
 	n, err := ReapStaleReports(context.Background(), reaper, 30*time.Minute, quietLogger())
 
 	require.NoError(t, err)
 	assert.Equal(t, 2, n)
-	assert.WithinDuration(t, before.Add(-30*time.Minute), reaper.cutoff, time.Minute)
+	assert.Equal(t, 30*time.Minute, reaper.olderThan, "the age goes to the store; the cutoff is computed on the database clock")
 	assert.NotEmpty(t, reaper.reason)
 }
 
