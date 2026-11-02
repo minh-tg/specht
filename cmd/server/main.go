@@ -56,7 +56,24 @@ func connectDB(cfg *config.Server) *pgxpool.Pool {
 		MinConns: cfg.DBMinConns,
 	})
 	exitOnError("connect db", err)
+	warnRuntimeRole(pool)
 	return pool
+}
+
+// warnRuntimeRole logs a warning when the role DATABASE_URL connects as could
+// change the schema, so a SQL injection or a stolen credential would reach
+// more than the rows. A failed check is logged and never stops the server.
+func warnRuntimeRole(pool *pgxpool.Pool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	warning, err := db.RuntimeRoleWarning(ctx, pool)
+	if err != nil {
+		slog.Warn("could not check the database role's privileges", "error", err)
+		return
+	}
+	if warning != "" {
+		slog.Warn(warning)
+	}
 }
 
 // buildScannerRegistry registers every builtin parser as a scanner adapter.
