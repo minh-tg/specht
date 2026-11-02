@@ -870,7 +870,19 @@ func authzRows() []authzRow {
 				return "/api/v1/projects/" + f.X.Slug + "/waivers/check-match"
 			},
 			Body: func(f *authzFixtures, _ *authzAttempt) any { return map[string]string{"finding_id": f.Y.FindingID} },
-			Want: allowOnly(), Tenants: onlyX,
+			// A caller who can use project X learns nothing about project Y's
+			// finding: it answers like a missing one.
+			Want: func() map[authzCaller]authzOutcome {
+				out := make(map[authzCaller]authzOutcome, len(readers))
+				for c, o := range readers {
+					if o == outcomeAllow {
+						o = outcomeDeny404
+					}
+					out[c] = o
+				}
+				return out
+			}(),
+			Tenants: onlyX,
 		},
 	}
 	// ID-addressed findings hide inaccessible projects. Scope middleware still
