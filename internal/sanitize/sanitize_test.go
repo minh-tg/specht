@@ -49,8 +49,9 @@ func TestLine(t *testing.T) {
 		{"runs of whitespace collapse", "a \n\n  b", "a b"},
 		{"ANSI sequences are removed", "x\x1b[2J\x1b[31mred", "xred"},
 		{"bidi overrides are removed", "feat/‮tnirp", "feat/tnirp"},
-		{"a leading workflow command prefix is defused", "::stop-commands::tok", " ::stop-commands::tok"},
-		{"a leading prefix after newlines is defused", "\n\n::notice::x", " ::notice::x"},
+		{"a leading workflow command prefix is defused", "::stop-commands::tok", ": :stop-commands::tok"},
+		{"a leading prefix after newlines is defused", "\n\n::notice::x", ": :notice::x"},
+		{"the legacy command form is defused anywhere", "libfoo ##[warning]forged ##[group]x", "libfoo ## [warning]forged ## [group]x"},
 		{"a prefix inside the line is kept", "a ::b", "a ::b"},
 		{"non-Latin text is kept", "日本語 ✓", "日本語 ✓"},
 	}

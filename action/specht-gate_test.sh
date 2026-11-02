@@ -134,6 +134,8 @@ expect_exit 2 "the archive checksum does not match" "$verify" PATH="$work/bin:$P
 hostile=$'v1\n::notice::forged\r::add-mask::FAILED\x1b[2J \xe2\x80\xaebidi \xc2\x9bC1 100%'
 got="$(bash -c 'source "$1"; command_data "$2"' _ "$script" "$hostile")"
 check "v1%0A::notice::forged%0D::add-mask::FAILED [2J  bidi  C1 100%25" "$got" "command_data escapes and strips hostile text"
+got="$(bash -c 'source "$1"; command_data "$2"' _ "$script" 'v1 ##[warning]forged ##[group]x')"
+check "v1 ## [warning]forged ## [group]x" "$got" "command_data defuses the legacy command form"
 got="$("${clean_env[@]}" SPECHT_INPUT_VERSION="$hostile" bash -c 'source "$1"; resolve_release' _ "$script" 2>&1 || true)"
 lines="$(printf '%s\n' "$got" | grep -c '' || true)"
 check "1" "$lines" "an error for a hostile version is a single log line"
