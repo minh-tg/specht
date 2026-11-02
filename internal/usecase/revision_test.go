@@ -1028,7 +1028,7 @@ func TestResolveBaseRevision_CommitHit(t *testing.T) {
 	)
 
 	baseline, err := uc.resolveBaseRevision(context.Background(), makeProject(true),
-		IngestReportInput{Scanner: "trivy", BaseRevision: "a1b2c3d"}, "")
+		IngestReportInput{Scanner: "trivy", BaseRevision: "a1b2c3d"}, &domain.NormalizedReport{}, "")
 	require.NoError(t, err)
 	assert.Equal(t, "commit-base", baseline)
 	assert.Equal(t, []string{"a1b2c3d"}, commitCalls)
@@ -1043,7 +1043,7 @@ func TestResolveBaseRevision_BranchHit(t *testing.T) {
 	)
 
 	baseline, err := uc.resolveBaseRevision(context.Background(), makeProject(true),
-		IngestReportInput{Scanner: "trivy", BaseRevision: "main"}, "")
+		IngestReportInput{Scanner: "trivy", BaseRevision: "main"}, &domain.NormalizedReport{}, "")
 	require.NoError(t, err)
 	assert.Equal(t, "branch-base", baseline)
 	assert.Equal(t, []string{"main"}, commitCalls)
@@ -1058,7 +1058,7 @@ func TestResolveBaseRevision_NoBaseline(t *testing.T) {
 	)
 
 	baseline, err := uc.resolveBaseRevision(context.Background(), makeProject(true),
-		IngestReportInput{Scanner: "trivy", BaseRevision: "main"}, "")
+		IngestReportInput{Scanner: "trivy", BaseRevision: "main"}, &domain.NormalizedReport{}, "")
 	require.NoError(t, err)
 	assert.Empty(t, baseline)
 }
@@ -1072,7 +1072,7 @@ func TestResolveScanMode_CommitHitIsIncremental(t *testing.T) {
 
 	mode, reason, baseline, err := uc.resolveScanMode(context.Background(), makeProject(true),
 		&incrementalStub{mockScanner{name: "trivy"}},
-		IngestReportInput{Scanner: "trivy", ScanMode: ScanModeIncremental, BaseRevision: "a1b2c3d"})
+		IngestReportInput{Scanner: "trivy", ScanMode: ScanModeIncremental, BaseRevision: "a1b2c3d"}, &domain.NormalizedReport{})
 	require.NoError(t, err)
 	assert.Equal(t, ScanModeIncremental, mode)
 	assert.Empty(t, reason)
@@ -1089,7 +1089,7 @@ func TestResolveScanMode_BranchHitIsIncremental(t *testing.T) {
 
 	mode, reason, baseline, err := uc.resolveScanMode(context.Background(), makeProject(true),
 		&incrementalStub{mockScanner{name: "trivy"}},
-		IngestReportInput{Scanner: "trivy", ScanMode: ScanModeIncremental, BaseRevision: "main"})
+		IngestReportInput{Scanner: "trivy", ScanMode: ScanModeIncremental, BaseRevision: "main"}, &domain.NormalizedReport{})
 	require.NoError(t, err)
 	assert.Equal(t, ScanModeIncremental, mode)
 	assert.Empty(t, reason)
@@ -1106,7 +1106,7 @@ func TestResolveScanMode_NoBaselineFallsBackToFull(t *testing.T) {
 
 	mode, reason, baseline, err := uc.resolveScanMode(context.Background(), makeProject(true),
 		&incrementalStub{mockScanner{name: "trivy"}},
-		IngestReportInput{Scanner: "trivy", ScanMode: ScanModeIncremental, BaseRevision: "main"})
+		IngestReportInput{Scanner: "trivy", ScanMode: ScanModeIncremental, BaseRevision: "main"}, &domain.NormalizedReport{})
 	require.NoError(t, err)
 	assert.Equal(t, ScanModeFull, mode)
 	assert.Contains(t, reason, "no completed full baseline for base_revision \"main\"")

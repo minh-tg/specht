@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/minh-tg/specht/internal/domain"
 	"github.com/minh-tg/specht/internal/port"
 )
 
@@ -150,7 +151,7 @@ func TestResolveScanMode_RefusedBaselineFallsBackToFull(t *testing.T) {
 
 	mode, reason, baseline, err := uc.resolveScanMode(context.Background(), makeProject(true),
 		&incrementalStub{mockScanner{name: "semgrep"}},
-		IngestReportInput{Scanner: "semgrep", ScanMode: ScanModeIncremental, Branch: "feat/x", BaseRevision: "feat/x"})
+		IngestReportInput{Scanner: "semgrep", ScanMode: ScanModeIncremental, Branch: "feat/x", BaseRevision: "feat/x"}, &domain.NormalizedReport{})
 	require.NoError(t, err)
 	assert.Equal(t, ScanModeFull, mode)
 	assert.Contains(t, reason, `no completed full baseline for base_revision "feat/x"`)
@@ -284,4 +285,51 @@ func TestIngest_DefaultBranchPushBuildDoesNotCarry(t *testing.T) {
 	out, err = carryIngest(t, uc, "main", "release/1")
 	require.NoError(t, err)
 	requireCarried(t, out, calls)
+}
+
+// A trunk that scans several images has one newest report per image. The
+// baseline is the newest one in the uploading report's scan scope moved to the
+// trunk branch, by branch name and by commit, and only without one the newest
+// report of any scope.
+func TestIngest_BaselinePrefersTheUploadingReportsScope(t *testing.T) {
+	nr := &domain.NormalizedReport{Target: &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"}}
+	want := scanScopeHash(IngestReportInput{Scanner: "trivy", Branch: "main"}, nr)
+	const scopedID = "00000000-0000-0000-0000-0000000000b9"
+	scoped := func(gotScope *string) func(context.Context, string, string, string, string) (port.CompletedReport, error) {
+		return func(ctx context.Context, projectID, scanner, revision, scope string) (port.CompletedReport, error) {
+			*gotScope = scope
+			return port.CompletedReport{ID: scopedID, ToolName: scanner, Branch: strRef("main"), ScanMode: "full", Completeness: "complete"}, nil
+		}
+	}
+	t.Run("by branch name", func(t *testing.T) {
+		var gotScope string
+		uc, calls := carryHarness(t, func(rr *mockReportRepo, fr *mockFindingRepo) {
+			baselineOn(strRef("main"), false)(rr, fr)
+			rr.byBranchInScopeFn = scoped(&gotScope)
+		})
+		_, err := carryIngest(t, uc, "feat/x", "main")
+		require.NoError(t, err)
+		assert.Equal(t, want, gotScope)
+		require.NotNil(t, calls.baseRecorded)
+		assert.Equal(t, scopedID, *calls.baseRecorded)
+	})
+	t.Run("by commit", func(t *testing.T) {
+		var gotScope string
+		uc, calls := carryHarness(t, func(rr *mockReportRepo, fr *mockFindingRepo) {
+			baselineOn(strRef("main"), true)(rr, fr)
+			rr.byCommitInScopeFn = scoped(&gotScope)
+		})
+		_, err := carryIngest(t, uc, "feat/x", ownEarlierCommit)
+		require.NoError(t, err)
+		assert.Equal(t, want, gotScope)
+		require.NotNil(t, calls.baseRecorded)
+		assert.Equal(t, scopedID, *calls.baseRecorded)
+	})
+	t.Run("no report in that scope", func(t *testing.T) {
+		uc, calls := carryHarness(t, baselineOn(strRef("main"), false))
+		_, err := carryIngest(t, uc, "feat/x", "main")
+		require.NoError(t, err)
+		require.NotNil(t, calls.baseRecorded)
+		assert.Equal(t, carryBaselineID, *calls.baseRecorded, "the newest main report of any scope")
+	})
 }

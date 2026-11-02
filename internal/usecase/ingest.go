@@ -258,7 +258,7 @@ func (u *Usecases) ingestParsedReport(ctx context.Context, project port.Project,
 	if err != nil {
 		return nil, err
 	}
-	effectiveMode, fallbackReason, baselineID, err := u.resolveScanMode(ctx, project, sc, input)
+	effectiveMode, fallbackReason, baselineID, err := u.resolveScanMode(ctx, project, sc, input, nr)
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +269,7 @@ func (u *Usecases) ingestParsedReport(ctx context.Context, project port.Project,
 		nr.Completeness = domain.CompletenessPartial
 	}
 	input.ScanMode = effectiveMode
-	baselineID, err = u.resolveBaseRevision(ctx, project, input, baselineID)
+	baselineID, err = u.resolveBaseRevision(ctx, project, input, nr, baselineID)
 	if err != nil {
 		return nil, err
 	}
@@ -453,21 +453,42 @@ func reportTotalFindings(report port.Report) int {
 var errBaselineRefused = errors.New("base revision is not a trunk baseline")
 
 // findBaselineReport resolves a base revision to a completed full report that
-// may serve as the baseline of a report on branch. A commit SHA matches the
-// newest full report for that exact commit. CI passes a branch name for pull
-// requests, so when no commit matches, the newest full report on that branch
-// is the baseline. A resolved report that acceptBaseline refuses comes back
-// as errBaselineRefused.
-func (u *Usecases) findBaselineReport(ctx context.Context, project port.Project, scanner, revision, branch string) (port.CompletedReport, error) {
+// may serve as the baseline of the report input describes. A commit SHA matches
+// the newest full report for that exact commit. CI passes a branch name for
+// pull requests, so when no commit matches, the newest full report on that
+// branch is the baseline. Either way a report in the uploading report's scan
+// scope moved to the baseline's branch wins (see trunkScopeHash): a trunk that
+// scans two images has a newest report per image, and only the one of the same
+// image may vouch for it. Without one the newest report of any scope is used,
+// as before. A resolved report that acceptBaseline refuses comes back as
+// errBaselineRefused.
+func (u *Usecases) findBaselineReport(ctx context.Context, project port.Project, input IngestReportInput, nr *domain.NormalizedReport) (port.CompletedReport, error) {
+	reports := u.deps.Stores.Reports
+	revision := input.BaseRevision
 	// Commits are stored lowercase; a branch name keeps its case.
-	base, err := u.deps.Stores.Reports.GetCompletedByCommit(ctx, project.ID, scanner, normalizeRevision(revision))
-	if errors.Is(err, port.ErrNotFound) {
-		base, err = u.deps.Stores.Reports.GetLatestFullByBranch(ctx, project.ID, scanner, revision)
+	commit := normalizeRevision(revision)
+	base, err := reports.GetCompletedByCommit(ctx, project.ID, input.Scanner, commit)
+	if err == nil {
+		baseBranch := ""
+		if base.Branch != nil {
+			baseBranch = *base.Branch
+		}
+		scoped, scopedErr := reports.GetCompletedByCommitInScope(ctx, project.ID, input.Scanner, commit, trunkScopeHash(input, nr, baseBranch))
+		if scopedErr == nil {
+			base = scoped
+		} else if !errors.Is(scopedErr, port.ErrNotFound) {
+			return port.CompletedReport{}, scopedErr
+		}
+	} else if errors.Is(err, port.ErrNotFound) {
+		base, err = reports.GetLatestFullByBranchInScope(ctx, project.ID, input.Scanner, revision, trunkScopeHash(input, nr, revision))
+		if errors.Is(err, port.ErrNotFound) {
+			base, err = reports.GetLatestFullByBranch(ctx, project.ID, input.Scanner, revision)
+		}
 	}
 	if err != nil {
 		return port.CompletedReport{}, err
 	}
-	if err := u.acceptBaseline(ctx, project, base, branch); err != nil {
+	if err := u.acceptBaseline(ctx, project, base, input.Branch); err != nil {
 		return port.CompletedReport{}, err
 	}
 	return base, nil
@@ -553,11 +574,11 @@ func looksLikeCommit(s string) bool {
 
 // resolveBaseRevision fills the baseline from the base revision when scan
 // mode resolution did not already provide one.
-func (u *Usecases) resolveBaseRevision(ctx context.Context, project port.Project, input IngestReportInput, baselineID string) (string, error) {
+func (u *Usecases) resolveBaseRevision(ctx context.Context, project port.Project, input IngestReportInput, nr *domain.NormalizedReport, baselineID string) (string, error) {
 	if baselineID != "" || input.BaseRevision == "" {
 		return baselineID, nil
 	}
-	base, err := u.findBaselineReport(ctx, project, input.Scanner, input.BaseRevision, input.Branch)
+	base, err := u.findBaselineReport(ctx, project, input, nr)
 	if err == nil {
 		return base.ID, nil
 	}
@@ -577,14 +598,14 @@ func (u *Usecases) resolveBaseRevision(ctx context.Context, project port.Project
 // incremental analysis and a completed full baseline for the base revision.
 // Anything else degrades to a full scan with an explicit reason — gates
 // must never silently pass on omitted coverage.
-func (u *Usecases) resolveScanMode(ctx context.Context, project port.Project, sc scanner.Scanner, input IngestReportInput) (string, string, string, error) {
+func (u *Usecases) resolveScanMode(ctx context.Context, project port.Project, sc scanner.Scanner, input IngestReportInput, nr *domain.NormalizedReport) (string, string, string, error) {
 	if input.ScanMode != ScanModeIncremental {
 		return ScanModeFull, "", "", nil
 	}
 	if !scanner.SupportsIncremental(sc) {
 		return ScanModeFull, fmt.Sprintf("scanner %q does not support incremental scans; recorded as full scan", input.Scanner), "", nil
 	}
-	base, err := u.findBaselineReport(ctx, project, input.Scanner, input.BaseRevision, input.Branch)
+	base, err := u.findBaselineReport(ctx, project, input, nr)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			return ScanModeFull, fmt.Sprintf("no completed full baseline for base_revision %q; recorded as full scan", input.BaseRevision), "", nil
@@ -820,6 +841,13 @@ func scopeHashMaterial(input IngestReportInput, nr *domain.NormalizedReport) str
 		input.Branch,
 		input.Environment,
 	}, "\x00")
+}
+
+// trunkScopeHash is the scan scope the uploading report would have on branch:
+// the same scanner, target, artifact name and environment.
+func trunkScopeHash(input IngestReportInput, nr *domain.NormalizedReport, branch string) string {
+	input.Branch = branch
+	return scanScopeHash(input, nr)
 }
 
 // scanScopeHash returns the hex SHA-256 of the scope material for one request
