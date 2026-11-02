@@ -84,6 +84,20 @@ describe("BlockerRowView", () => {
     expect(screen.getByText("Upgrade lodash")).toBeInTheDocument();
   });
 
+  it("lets a long title and location wrap so a phone does not scroll sideways", () => {
+    const title = "x".repeat(90);
+    const file = `src/${"deeply-nested-directory-name/".repeat(4)}file.ts`;
+    renderRow({
+      finding: finding({ current_title: title, location: { file, start_line: 3 } }),
+    });
+
+    expect(screen.getByRole("link", { name: title })).toHaveClass(
+      "min-w-0",
+      "[overflow-wrap:anywhere]",
+    );
+    expect(screen.getByText(`${file}:3`)).toHaveClass("[overflow-wrap:anywhere]");
+  });
+
   it("falls back to the suggestion and then to no fix", () => {
     renderRow({
       finding: finding({
