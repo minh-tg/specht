@@ -1750,6 +1750,8 @@ func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 func TestEscapeWorkflowCommand(t *testing.T) {
 	assert.Equal(t, "foo%25bar%3Abaz%2Cqux%0Aline", escapeCommandProperty("foo%bar:baz,qux\nline"))
 	assert.Equal(t, "foo%25bar%0Aline", escapeCommandData("foo%bar\nline"))
+	assert.Equal(t, "a ## [warning]b", escapeCommandData("a ##[warning]b"))
+	assert.Equal(t, "a ## [group]b", escapeCommandProperty("a ##[group]b"))
 }
 
 func TestParseFlags_IntroducedOnlyIsTriState(t *testing.T) {

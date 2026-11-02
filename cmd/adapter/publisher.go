@@ -23,7 +23,7 @@ func escapeCommandProperty(s string) string {
 	s = strings.ReplaceAll(s, "\n", "%0A")
 	s = strings.ReplaceAll(s, ":", "%3A")
 	s = strings.ReplaceAll(s, ",", "%2C")
-	return s
+	return strings.ReplaceAll(s, "##[", "## [")
 }
 
 // escapeCommandData escapes special characters for GitHub Actions workflow command messages.
@@ -31,7 +31,7 @@ func escapeCommandData(s string) string {
 	s = strings.ReplaceAll(s, "%", "%25")
 	s = strings.ReplaceAll(s, "\r", "%0D")
 	s = strings.ReplaceAll(s, "\n", "%0A")
-	return s
+	return strings.ReplaceAll(s, "##[", "## [")
 }
 
 // emitGitHubWorkflowAnnotations formats annotations as GitHub Actions workflow commands.
