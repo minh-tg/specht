@@ -930,7 +930,9 @@ type ingestFindingsState struct {
 	// a finding's first and last entry write its row (see upsertFindingRow):
 	// updating one row thousands of times in a single transaction makes each
 	// later update slower, so the cost of a report that names one finding many
-	// times grew with the square of its length.
+	// times grew with the square of its length. An entry is kept only while the
+	// finding has entries still to come, so a report of distinct findings holds
+	// no rows here.
 	upserts map[string]findingUpsert
 	// attributed holds the finding keys whose introduced-by attribution this
 	// report already wrote.
@@ -1273,6 +1275,9 @@ func (u *Usecases) upsertFindingRow(ctx context.Context, st *ingestFindingsState
 	// later entry that is not the finding's last writes values the last entry
 	// overwrites, and one that repeats the stored values changes nothing.
 	if prior, ok := st.upserts[key]; ok && (!final || prior.findingUpsertValues == values) {
+		if final {
+			delete(st.upserts, key)
+		}
 		return prior.row, nil
 	}
 	upserted, err := u.deps.Stores.Findings.Upsert(ctx, port.UpsertFindingInput{
@@ -1294,7 +1299,11 @@ func (u *Usecases) upsertFindingRow(ctx context.Context, st *ingestFindingsState
 		slog.Error("upsert finding failed", "scanner", st.input.Scanner, "fingerprint", f.Fingerprint, "error", err)
 		return port.Finding{}, fmt.Errorf("scanner %s: upsert finding %q: %w", st.input.Scanner, f.Fingerprint, err)
 	}
-	st.upserts[key] = findingUpsert{findingUpsertValues: values, row: upserted}
+	if final {
+		delete(st.upserts, key)
+	} else {
+		st.upserts[key] = findingUpsert{findingUpsertValues: values, row: upserted}
+	}
 	return upserted, nil
 }
 
