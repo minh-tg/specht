@@ -56,7 +56,7 @@ func NewJWTAuthenticatorWithRevoker(secret string, revoker Revoker) (*JWTAuthent
 	if len(secret) < 32 {
 		return nil, fmt.Errorf("JWT_SECRET must be at least 32 bytes")
 	}
-	if reason := weakSecret(secret); reason != "" {
+	if reason := WeakSecret(secret); reason != "" {
 		return nil, fmt.Errorf("JWT_SECRET is too weak: %s; generate one with `openssl rand -hex 32`", reason)
 	}
 	if revoker == nil {
@@ -70,11 +70,11 @@ func NewJWTAuthenticatorWithRevoker(secret string, revoker Revoker) (*JWTAuthent
 // character or a short pattern has few.
 const minDistinctSecretBytes = 8
 
-// weakSecret names why a secret of acceptable length is still unusable, or
+// WeakSecret names why a secret of acceptable length is still unusable, or
 // returns "" when it passes. It is not an entropy test: it catches the
 // placeholders shipped in the example files and keys made of a few repeated
-// bytes.
-func weakSecret(secret string) string {
+// bytes. JWT_SECRET and SETUP_TOKEN both go through it.
+func WeakSecret(secret string) string {
 	if lower := strings.ToLower(secret); strings.Contains(lower, "change-me") || strings.Contains(lower, "changeme") {
 		return "it looks like a placeholder from an example file"
 	}

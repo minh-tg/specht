@@ -38,10 +38,16 @@ type SetupToken struct {
 const minSetupTokenLength = 16
 
 // NewSetupToken wraps a given token, or generates a random one when value is
-// empty. A given token shorter than minSetupTokenLength is refused.
+// empty. A given token shorter than minSetupTokenLength, a placeholder from an
+// example file, or one made of a few repeated characters is refused.
 func NewSetupToken(value string) (*SetupToken, error) {
-	if value != "" && len(value) < minSetupTokenLength {
-		return nil, fmt.Errorf("setup token must be at least %d characters", minSetupTokenLength)
+	if value != "" {
+		if len(value) < minSetupTokenLength {
+			return nil, fmt.Errorf("setup token must be at least %d characters", minSetupTokenLength)
+		}
+		if reason := auth.WeakSecret(value); reason != "" {
+			return nil, fmt.Errorf("setup token is too weak: %s", reason)
+		}
 	}
 	if value == "" {
 		raw := make([]byte, 24)

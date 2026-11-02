@@ -209,6 +209,17 @@ func TestSetupToken(t *testing.T) {
 		_, err := NewSetupToken("short")
 		assert.Error(t, err)
 	})
+	t.Run("an operator-chosen token gets the weak and placeholder refusal of JWT_SECRET", func(t *testing.T) {
+		for name, value := range map[string]string{
+			"repeated character": "aaaaaaaaaaaaaaaaaaaa",
+			"short pattern":      "abababababababababab",
+			"placeholder":        "change-me-to-a-real-token",
+			"placeholder, glued": "My-ChangeMe-Token-2026",
+		} {
+			_, err := NewSetupToken(value)
+			assert.ErrorContains(t, err, "setup token is too weak", name)
+		}
+	})
 }
 
 // A request that read "setup required" just before another request finished
