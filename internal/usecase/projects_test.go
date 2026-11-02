@@ -30,10 +30,13 @@ func TestUpdateProject_GlobalAdminAllowed(t *testing.T) {
 	pr := projectUpdateRepos()
 	var gotName string
 	var gotDesc *string
-	pr.updateFn = func(ctx context.Context, slug, name string, description, defaultBranch *string) (port.Project, error) {
-		gotName = name
-		gotDesc = description
-		return port.Project{ID: findingFixtureProjectID, Slug: slug, Name: name, Description: description}, nil
+	pr.updateFn = func(ctx context.Context, slug string, change port.ProjectUpdate) (port.Project, error) {
+		require.NotNil(t, change.Name)
+		gotName = *change.Name
+		gotDesc = change.Description
+		assert.True(t, change.SetDescription)
+		assert.False(t, change.SetDefaultBranch, "a field that was not sent is not written")
+		return port.Project{ID: findingFixtureProjectID, Slug: slug, Name: *change.Name, Description: change.Description}, nil
 	}
 	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
 	resp, err := uc.UpdateProject(sessionCtx("admin-1", auth.RoleAdmin), "my-app", strptr("Renamed"), strptr("new desc"), nil)
@@ -49,8 +52,8 @@ func TestUpdateProject_ProjectAdminAllowed(t *testing.T) {
 	pr.listMembersFn = func(ctx context.Context, projectID string) ([]port.ProjectMember, error) {
 		return []port.ProjectMember{{ProjectID: projectID, UserID: "admin-1", Role: auth.RoleAdmin}}, nil
 	}
-	pr.updateFn = func(ctx context.Context, slug, name string, description, defaultBranch *string) (port.Project, error) {
-		return port.Project{ID: findingFixtureProjectID, Slug: slug, Name: name, Description: description}, nil
+	pr.updateFn = func(ctx context.Context, slug string, change port.ProjectUpdate) (port.Project, error) {
+		return port.Project{ID: findingFixtureProjectID, Slug: slug, Name: *change.Name}, nil
 	}
 	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
 	resp, err := uc.UpdateProject(sessionCtx("admin-1", auth.RoleViewer), "my-app", strptr("Renamed"), nil, nil)

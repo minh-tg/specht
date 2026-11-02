@@ -215,15 +215,27 @@ type ProjectMember struct {
 // not touching an admin, be judged on the row the write will replace.
 type MemberCheck func(existing *ProjectMember) error
 
+// ProjectUpdate names the project fields an update changes. A nil Name leaves
+// the name alone. Description and DefaultBranch are written only when their
+// Set flag is true, and then a nil value clears the field.
+type ProjectUpdate struct {
+	Name             *string
+	SetDescription   bool
+	Description      *string
+	SetDefaultBranch bool
+	DefaultBranch    *string
+}
+
 type ProjectStore interface {
 	Create(ctx context.Context, input CreateProjectInput) (Project, error)
 	List(ctx context.Context) ([]Project, error)
 	ListByIDs(ctx context.Context, ids []string) ([]Project, error)
 	GetBySlug(ctx context.Context, slug string) (Project, error)
 	GetByID(ctx context.Context, id string) (Project, error)
-	// Update writes name, description and default branch; a nil description
-	// or default branch clears it.
-	Update(ctx context.Context, slug, name string, description, defaultBranch *string) (Project, error)
+	// Update writes the fields change names and leaves the others as the
+	// database holds them at that moment, so two updates of different fields
+	// do not overwrite each other.
+	Update(ctx context.Context, slug string, change ProjectUpdate) (Project, error)
 	Delete(ctx context.Context, slug string) (Project, error)
 	// UpdateSettings replaces the namespaced project configuration
 	// document (policy overrides live under "policy").

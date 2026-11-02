@@ -470,23 +470,23 @@ func (u *Usecases) UpdateProject(ctx context.Context, slug string, name, descrip
 	if err := u.requireProjectAdmin(ctx, p.ID); err != nil {
 		return nil, err
 	}
-	if defaultBranch == nil {
-		newBranch = p.DefaultBranch
-	}
-	newName := p.Name
-	if name != nil && strings.TrimSpace(*name) != "" {
-		newName = strings.TrimSpace(*name)
-	}
-	newDesc := p.Description
-	if description != nil {
-		trimmed := strings.TrimSpace(*description)
-		if trimmed == "" {
-			newDesc = nil
-		} else {
-			newDesc = &trimmed
+	change := port.ProjectUpdate{}
+	if name != nil {
+		if trimmed := strings.TrimSpace(*name); trimmed != "" {
+			change.Name = &trimmed
 		}
 	}
-	updated, err := u.deps.Stores.Projects.Update(ctx, slug, newName, newDesc, newBranch)
+	if description != nil {
+		change.SetDescription = true
+		if trimmed := strings.TrimSpace(*description); trimmed != "" {
+			change.Description = &trimmed
+		}
+	}
+	if defaultBranch != nil {
+		change.SetDefaultBranch = true
+		change.DefaultBranch = newBranch
+	}
+	updated, err := u.deps.Stores.Projects.Update(ctx, slug, change)
 	if err != nil {
 		return nil, fmt.Errorf("update project %q: %w", slug, err)
 	}
