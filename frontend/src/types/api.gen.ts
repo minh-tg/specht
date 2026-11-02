@@ -4937,9 +4937,11 @@ export interface operations {
         };
       };
       /**
-       * @description Identical report bytes for the same commit, but the stored report
-       *     could not be found for a replay (for example, a concurrent retention
-       *     purge removed it).
+       * @description `duplicate_report`: identical report bytes for the same commit, but the
+       *     stored report could not be found for a replay (for example, a concurrent
+       *     retention purge removed it). `report_interrupted`: the upload ran so long
+       *     that the server marked its report failed before it finished; upload the
+       *     scan again.
        */
       409: {
         headers: {

@@ -27,6 +27,11 @@ import (
 // has already been ingested for the project.
 var ErrDuplicateReport = errors.New("duplicate report")
 
+// ErrReportInterrupted is returned when an ingest finishes after the stale
+// report sweep already failed its report. The report stays failed and the
+// scan has to be uploaded again. Handlers map it to a 409.
+var ErrReportInterrupted = errors.New("report was interrupted")
+
 // ErrUnknownScanner is returned when an ingest names a scanner that is not
 // registered. Handlers map it to a 422 that names the scanner.
 var ErrUnknownScanner = errors.New("unknown scanner")

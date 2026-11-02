@@ -12,14 +12,14 @@ const StaleReportReason = "Interrupted: the server stopped before this report fi
 
 // ReportReaper settles reports an ingest left in processing.
 type ReportReaper interface {
-	FailStale(ctx context.Context, cutoff time.Time, reason string) (int64, error)
+	FailStale(ctx context.Context, olderThan time.Duration, reason string) (int64, error)
 }
 
 // ReapStaleReports settles every report that has been processing for longer than olderThan as
 // failed and returns how many it changed. A report stays in processing only while its ingest
 // request runs, so one this old belongs to a server that stopped under it.
 func ReapStaleReports(ctx context.Context, store ReportReaper, olderThan time.Duration, logger *slog.Logger) (int, error) {
-	n, err := store.FailStale(ctx, time.Now().Add(-olderThan), StaleReportReason)
+	n, err := store.FailStale(ctx, olderThan, StaleReportReason)
 	if err != nil {
 		return 0, err
 	}

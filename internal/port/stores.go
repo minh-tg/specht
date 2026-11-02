@@ -59,6 +59,11 @@ var ErrSetupClosed = errors.New("setup is closed")
 // ErrInviteEmailMismatch is returned when an invite is bound to another address.
 var ErrInviteEmailMismatch = errors.New("invite is for another email address")
 
+// ErrReportNotProcessing is returned by a report status update when no
+// processing report matches: it was settled meanwhile, for example failed by
+// the stale report sweep, and a late write must not resurrect it.
+var ErrReportNotProcessing = errors.New("report is no longer processing")
+
 // ErrReportProcessing is returned when a report cannot be deleted because a
 // scan is still writing it.
 var ErrReportProcessing = errors.New("report is still processing")
@@ -1263,6 +1268,8 @@ type ReportStore interface {
 	Create(ctx context.Context, input CreateReportInput) (Report, error)
 	GetByID(ctx context.Context, id string) (Report, error)
 	ListByProject(ctx context.Context, projectID string, filter ReportFilter, limit, offset int32) ([]Report, error)
+	// UpdateStatus settles a processing report as completed or failed. It
+	// returns ErrReportNotProcessing when the report is no longer processing.
 	UpdateStatus(ctx context.Context, id, projectID string, status string, totalFindings int32, errorMessage *string) (Report, error)
 	// LatestCompletedByScanner returns the newest completed report from
 	// one scanner, or ErrNotFound when the scanner never completed.
@@ -1294,12 +1301,12 @@ type ReportStore interface {
 	// CountStaleReports counts settled (completed/failed) reports older
 	// than the cutoff. Processing reports are never counted.
 	CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error)
-	// FailStale settles reports still processing since before the cutoff as
-	// failed, with the reason as their error message, and returns how many it
-	// changed. It also settles the findings each one left half written (see
+	// FailStale settles reports that have been processing for longer than
+	// olderThan as failed, with the reason as their error message, and returns
+	// how many it changed. The age is measured on the database clock. It also settles the findings each one left half written (see
 	// SettleFailedReport). It is the recovery for an ingest the server stopped
 	// under.
-	FailStale(ctx context.Context, cutoff time.Time, reason string) (int64, error)
+	FailStale(ctx context.Context, olderThan time.Duration, reason string) (int64, error)
 	// SettleFailedReport cleans up the findings an ingest left when it stopped
 	// before writing their occurrences: findings the failed report created and
 	// nothing supports are deleted, and ones it only brought back or that were

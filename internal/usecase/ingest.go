@@ -1454,6 +1454,11 @@ func (u *Usecases) markReportFailed(ctx context.Context, input IngestReportInput
 	defer cancel()
 	msg := reason
 	_, err := u.deps.Stores.Reports.UpdateStatus(ctx, report.ID, report.ProjectID, "failed", 0, &msg)
+	if errors.Is(err, port.ErrReportNotProcessing) {
+		// The stale report sweep already failed it and settled its findings.
+		slog.Warn("report was settled before the ingest could fail it", "scanner", input.Scanner, "report_id", report.ID, "error", cause)
+		return
+	}
 	if err != nil {
 		slog.Error("mark report failed errored", "scanner", input.Scanner, "report_id", report.ID, "error", err)
 		return
@@ -1498,6 +1503,12 @@ func (u *Usecases) checkGateAfterIngest(ctx context.Context, project port.Projec
 	if err != nil {
 		if errors.Is(err, port.ErrDuplicateReport) {
 			return u.replayRaceWinner(ctx, project, input, report.ID, scopeHash, rawHash)
+		}
+		if errors.Is(err, port.ErrReportNotProcessing) {
+			// The stale report sweep failed this report while the ingest was
+			// still running. It stays failed; the scan has to be uploaded again.
+			slog.Warn("report was settled before the ingest finished", "scanner", input.Scanner, "report_id", report.ID)
+			return false, nil, fmt.Errorf("scanner %s: %w", input.Scanner, ErrReportInterrupted)
 		}
 		slog.Error("update report status failed", "scanner", input.Scanner, "report_id", report.ID, "error", err)
 		u.markReportFailed(ctx, input, report, reportFailureCompletion, err)

@@ -375,6 +375,10 @@ releases.
 
 ### Fixed
 
+- The stale report sweep measures a report's age on the database clock, so a server
+  whose clock runs ahead no longer fails an upload that is still running. A report that
+  was already marked failed can no longer be set back to completed by a late upload;
+  the upload answers 409 `report_interrupted` and the scan has to be sent again.
 - The analysis expiry sweep works in batches of 500 findings, skips rows an upload or a
   triage holds, and no longer deadlocks with a report upload or delays other projects'
   rows. Skipped rows are reset by the next sweep. A new index on `findings.analysis_expires_at`

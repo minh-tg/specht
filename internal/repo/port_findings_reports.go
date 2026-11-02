@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/minh-tg/specht/internal/db/sqlc"
@@ -271,13 +272,18 @@ func (r *pgReportPort) UpdateStatus(ctx context.Context, id, projectID, status s
 		if isDuplicateReport(err) {
 			return port.Report{}, port.ErrDuplicateReport
 		}
+		// The update only matches a report that is still processing. No row
+		// means the stale report sweep (or another path) settled it first.
+		if errors.Is(err, pgx.ErrNoRows) {
+			return port.Report{}, port.ErrReportNotProcessing
+		}
 		return port.Report{}, err
 	}
 	return reportRowToPort(row), nil
 }
 
-func (r *pgReportPort) FailStale(ctx context.Context, cutoff time.Time, reason string) (int64, error) {
-	return r.inner.FailStaleReports(ctx, cutoff, reason)
+func (r *pgReportPort) FailStale(ctx context.Context, olderThan time.Duration, reason string) (int64, error) {
+	return r.inner.FailStaleReports(ctx, olderThan, reason)
 }
 
 func (r *pgReportPort) SettleFailedReport(ctx context.Context, reportID, projectID string) error {
