@@ -128,12 +128,15 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a # v3.8.1
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
+      # cosign v3 writes a single new-format bundle by default. The release keeps the legacy
+      # signature, certificate and image signature tag, which the action, the deploy docs and
+      # cosign v2 verify; the legacy format cannot use a TUF signing config.
       - name: Sign image
         env:
           COSIGN_EXPERIMENTAL: "1"
-        run: cosign sign --yes "ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}"
+        run: cosign sign --yes --new-bundle-format=false --use-signing-config=false "ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}"
 
   verify-image:
     name: boot + verify the published image
@@ -162,7 +165,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a # v3.8.1
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Verify image signature
         run: >-
@@ -252,11 +255,11 @@ jobs:
         run: ./scripts/build-release.sh "${GITHUB_REF_NAME#v}" dist
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a # v3.8.1
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign the checksum manifest (keyless)
         run: |
-          cosign sign-blob --yes \
+          cosign sign-blob --yes --new-bundle-format=false --use-signing-config=false \
             --output-signature dist/SHA256SUMS.sig \
             --output-certificate dist/SHA256SUMS.pem \
             dist/SHA256SUMS
@@ -331,12 +334,12 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a # v3.8.1
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign image
         env:
           COSIGN_EXPERIMENTAL: "1"
-        run: cosign sign --yes "ghcr.io/${{ github.repository_owner }}/specht-adapter@${{ steps.build.outputs.digest }}"
+        run: cosign sign --yes --new-bundle-format=false --use-signing-config=false "ghcr.io/${{ github.repository_owner }}/specht-adapter@${{ steps.build.outputs.digest }}"
 
       - name: Verify image signature
         run: >-
@@ -387,7 +390,7 @@ jobs:
           path: dist
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a # v3.8.1
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       # The manifest signature is checked against this workflow's own tag
       # identity before anything is published.
