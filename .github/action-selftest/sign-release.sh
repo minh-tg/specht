@@ -23,7 +23,7 @@ export COSIGN_PASSWORD=""
 (cd "$keydir/signing" && cosign generate-key-pair >/dev/null)
 (cd "$keydir/other" && cosign generate-key-pair >/dev/null)
 
-cosign sign-blob --yes \
+cosign sign-blob --yes --new-bundle-format=false --use-signing-config=false \
   --key "$keydir/signing/cosign.key" \
   --output-signature "$dist/SHA256SUMS.sig" \
   "$dist/SHA256SUMS"
