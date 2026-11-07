@@ -20,10 +20,10 @@ function finding(over: Partial<Finding>): Finding {
   } as Finding;
 }
 
-const NOTE = /cannot prove a fix/;
+const NOTE = /findings by hand/;
 
 describe("AutoCloseNote", () => {
-  it("names a scanner that cannot prove a fix", () => {
+  it("names a scanner the project keeps manual", () => {
     render(
       <AutoCloseNote
         finding={finding({
@@ -31,7 +31,7 @@ describe("AutoCloseNote", () => {
         })}
       />,
     );
-    expect(screen.getByText(NOTE)).toHaveTextContent("Gitleaks reports cannot prove a fix");
+    expect(screen.getByText(NOTE)).toHaveTextContent("closes Gitleaks findings by hand");
   });
 
   it("shows the note for a reopened finding", () => {

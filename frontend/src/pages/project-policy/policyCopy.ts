@@ -1,6 +1,6 @@
 import type { PolicyEffective } from "@/types/api";
 
-export type PolicyKey = "severity_floor" | "watcher_gate";
+export type PolicyKey = "severity_floor" | "watcher_gate" | "manual_close_scanners";
 export type PolicySource = PolicyEffective["severity_source"];
 
 export interface PolicyOption {
@@ -50,5 +50,8 @@ export function overridesOf(policy: PolicyEffective): Record<string, string> {
   const out: Record<string, string> = {};
   if (policy.severity_source === "override") out["severity_floor"] = policy.severity_floor;
   if (policy.watcher_source === "override") out["watcher_gate"] = policy.watcher_gate;
+  if (policy.manual_close_source === "override") {
+    out["manual_close_scanners"] = (policy.manual_close_scanners ?? []).join(",");
+  }
   return out;
 }

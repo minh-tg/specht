@@ -282,6 +282,9 @@ export interface PolicyEffective {
   severity_source: "default" | "template" | "override";
   watcher_gate: string;
   watcher_source: "default" | "template" | "override";
+  /** Scanners whose clean scans leave findings open in this project. */
+  manual_close_scanners?: string[];
+  manual_close_source?: "default" | "template" | "override";
 }
 
 /** A shared baseline a project can link. Its definition holds the same keys an override can set. */

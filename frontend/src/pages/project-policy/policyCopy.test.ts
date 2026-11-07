@@ -16,6 +16,16 @@ describe("overridesOf", () => {
     expect(overridesOf(base)).toEqual({});
   });
 
+  it("keeps the manual scanners when another key is saved", () => {
+    expect(
+      overridesOf({
+        ...base,
+        manual_close_scanners: ["nuclei", "semgrep"],
+        manual_close_source: "override",
+      }),
+    ).toEqual({ manual_close_scanners: "nuclei,semgrep" });
+  });
+
   it("ignores values that come from a template", () => {
     expect(overridesOf({ ...base, severity_floor: "critical", severity_source: "template" }))
       .toEqual({});
