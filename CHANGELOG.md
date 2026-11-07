@@ -413,6 +413,8 @@ releases.
   highest fixed version. Two lodash findings fixed in 4.17.21 and 4.18.0 read as separate work,
   with "None share a fix", though 4.18.0 clears both. A fixed version that cannot be ordered, such
   as a prerelease, stays on its own row.
+- A 30 day waiver reads "ends in 30 days" straight after it is requested. The count rounded down,
+  so it read 29.
 - Access, API keys and Teams show dates as "7 Nov 2026", like the rest of the app. They used the
   browser's numeric format, which reads `07/11/2026` and does not say which number is the month.
 - First-run setup marks every missing field when submitted empty. It flagged only the password,
