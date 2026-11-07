@@ -403,6 +403,9 @@ releases.
 - A refused SSO sign-in returns to the sign-in page with a reason. It left the browser on a plain text
   error at the callback address, such as `sso account not provisioned`, and a provider that denied
   access read as `missing code`. Clients that do not ask for HTML still get the status codes.
+- Standalone text links on a touch screen are at least 24px tall, the WCAG 2.2 minimum: "Open the full
+  finding", the back links, breadcrumbs and finding titles in the list. Some were 14px. A mouse sees
+  no change.
 - Signing in from a deep link, such as the change link in a CI log, returns to that page. Login
   sent everyone to the projects list because its already-signed-in check ran after the token was
   set and overrode the redirect.

@@ -89,6 +89,25 @@ test("a finding detail fits a 360px phone and passes axe", async ({ page, reques
   await auditPhone(page, "finding detail");
 });
 
+test("standalone links on the finding pages are big enough to tap", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("mobile-targets");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH);
+  await uiLogin(page);
+  await page.goto(`/${slug}/findings`);
+  const title = page.locator("tbody a[href*=\"/findings/\"]").first();
+  await expect(title).toBeVisible();
+  expect((await title.boundingBox())?.height).toBeGreaterThanOrEqual(24);
+  const crumb = page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link").first();
+  expect((await crumb.boundingBox())?.height).toBeGreaterThanOrEqual(24);
+
+  await title.click();
+  const back = page.getByRole("link", { name: /Back to findings/ });
+  await expect(back).toBeVisible();
+  expect((await back.boundingBox())?.height).toBeGreaterThanOrEqual(24);
+});
+
 test("the project access page fits a 360px phone and passes axe", async ({ page, request }) => {
   const token = await apiToken(request);
   const slug = uniq("mobile-access");

@@ -1,6 +1,6 @@
 import { APIError } from "@/api/client";
 import { useProject, useProjectRole } from "@/api/hooks";
-import { INLINE_LINK } from "@/components/inlineLink";
+import { INLINE_LINK, TOUCH_TARGET } from "@/components/inlineLink";
 import { ProjectNavigation } from "@/components/ProjectNavigation";
 import { VerdictBand } from "@/components/VerdictBand";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
@@ -82,7 +82,10 @@ export function ProjectLayout(
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-2">
-        <Link to="/" className="text-muted-foreground hover:text-foreground text-body">
+        <Link
+          to="/"
+          className={`text-muted-foreground hover:text-foreground text-body ${TOUCH_TARGET}`}
+        >
           Projects
         </Link>
         <span aria-hidden="true" className="text-muted-foreground">

@@ -444,7 +444,9 @@ export function DecisionForm(
       <PartResults results={results} busy={busy} onRetry={(part) => void save(part)} />
 
       <details className="text-body">
-        <summary className="text-muted-foreground cursor-pointer text-meta">Other states</summary>
+        <summary className="text-muted-foreground cursor-pointer text-meta pointer-coarse:py-1">
+          Other states
+        </summary>
         <div className="mt-2 flex flex-wrap gap-2">
           {(["in_triage", "unanalyzed"] as const).map((state) => (
             <DisabledReason key={state} reason={lockedReason}>

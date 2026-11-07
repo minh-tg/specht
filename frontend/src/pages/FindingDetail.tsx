@@ -9,6 +9,7 @@ import {
 } from "@/api/hooks";
 import { usePendingTriage } from "@/api/pendingTriage";
 import { ErrorState } from "@/components/ErrorState";
+import { TOUCH_TARGET } from "@/components/inlineLink";
 import { Section } from "@/components/Section";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UpdatedHint } from "@/components/UpdatedHint";
@@ -105,7 +106,7 @@ export function FindingDetail() {
       <div className="mx-auto max-w-3xl px-4 py-8">
         <Link
           to={backToFindingsPath(slug ?? "", location.state)}
-          className="text-muted-foreground hover:text-foreground mb-6 inline-block text-body"
+          className={`text-muted-foreground hover:text-foreground mb-6 inline-block text-body ${TOUCH_TARGET}`}
         >
           &larr; Back to findings
         </Link>
@@ -214,7 +215,7 @@ export function FindingDetail() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <Link
           to={changeBack ?? backToFindingsPath(slug ?? "", location.state)}
-          className="text-muted-foreground hover:text-foreground inline-block text-body"
+          className={`text-muted-foreground hover:text-foreground inline-block text-body ${TOUCH_TARGET}`}
         >
           {changeBack ? <>&larr; Back to the change</> : <>&larr; Back to findings</>}
         </Link>

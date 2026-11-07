@@ -8,7 +8,7 @@ import {
   useScanSignal,
 } from "@/api/hooks";
 import { ErrorState } from "@/components/ErrorState";
-import { INLINE_LINK } from "@/components/inlineLink";
+import { INLINE_LINK, TOUCH_TARGET } from "@/components/inlineLink";
 import { formatRelativeTime } from "@/lib/format";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { useOnline } from "@/lib/useOnline";
@@ -54,9 +54,14 @@ function Crumbs(
       aria-label="Breadcrumb"
       className="text-muted-foreground mb-5 flex flex-wrap items-center gap-2 text-meta"
     >
-      <Link to="/" className="text-muted-foreground hover:text-foreground">Projects</Link>
+      <Link to="/" className={`text-muted-foreground hover:text-foreground ${TOUCH_TARGET}`}>
+        Projects
+      </Link>
       <span aria-hidden="true">/</span>
-      <Link to={`/${slug}/findings`} className="text-muted-foreground hover:text-foreground">
+      <Link
+        to={`/${slug}/findings`}
+        className={`text-muted-foreground hover:text-foreground ${TOUCH_TARGET}`}
+      >
         {projectName}
       </Link>
       <span aria-hidden="true">/</span>
