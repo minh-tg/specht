@@ -19,7 +19,7 @@ func newGateCmd(d Deps, s *settings) *cobra.Command {
 }
 
 func newGateCheckCmd(d Deps, s *settings) *cobra.Command {
-	var project, severity, reportID string
+	var project, severity, reportID, branch string
 	var introducedOnly bool
 	cmd := &cobra.Command{
 		Use:   "check",
@@ -42,7 +42,7 @@ func newGateCheckCmd(d Deps, s *settings) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			gs, err := fetchGateStatus(d, project, severity, reportID, introducedOnly)
+			gs, err := fetchGateStatus(d, project, severity, reportID, branch, introducedOnly)
 			if err != nil {
 				return err
 			}
@@ -61,6 +61,7 @@ func newGateCheckCmd(d Deps, s *settings) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&project, "project", "", "project slug")
 	cmd.Flags().StringVar(&severity, "severity", "", "severity threshold")
+	cmd.Flags().StringVar(&branch, "branch", "", "also count the findings seen on this branch; the project verdict answers for the default branch")
 	cmd.Flags().BoolVar(&introducedOnly, "introduced-only", false, "evaluate only findings introduced by a report")
 	cmd.Flags().StringVar(&reportID, "report-id", "", "report ID for --introduced-only")
 	return cmd
@@ -68,7 +69,7 @@ func newGateCheckCmd(d Deps, s *settings) *cobra.Command {
 
 // fetchGateStatus loads the project gate, scoped to a introducing report
 // when --introduced-only is set.
-func fetchGateStatus(d Deps, project, severity, reportID string, introducedOnly bool) (*client.GateStatus, error) {
+func fetchGateStatus(d Deps, project, severity, reportID, branch string, introducedOnly bool) (*client.GateStatus, error) {
 	cl, err := d.NewClient()
 	if err != nil {
 		return nil, err
@@ -76,7 +77,7 @@ func fetchGateStatus(d Deps, project, severity, reportID string, introducedOnly 
 	if introducedOnly {
 		return cl.GetIntroducedGateStatus(project, severity, reportID)
 	}
-	return cl.GetGateStatus(project, severity)
+	return cl.GetBranchGateStatus(project, severity, branch)
 }
 
 // formatGateStatus renders a gate evaluation for CLI output. "human" is the

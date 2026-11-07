@@ -113,6 +113,16 @@ export function FindingsFilters(
         ]}
       />
       <SelectField
+        aria-label="Filter by branch"
+        value={filters.branchScope}
+        onValueChange={(v) => onFilterChange("branch_scope", v)}
+        options={[
+          { value: "", label: "All branches" },
+          { value: "default", label: "Default branch" },
+          { value: "change", label: "Unmerged branches only" },
+        ]}
+      />
+      <SelectField
         aria-label="Filter by finding type"
         value={filters.kind}
         onValueChange={(v) => onFilterChange("kind", v)}

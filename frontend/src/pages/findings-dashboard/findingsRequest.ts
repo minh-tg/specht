@@ -10,6 +10,7 @@ const NO_FILTERS: FindingsFilters = {
   status: "",
   kind: "",
   analysisState: "",
+  branchScope: "",
   q: "",
 };
 
@@ -28,6 +29,7 @@ export function findingsRequest(
     status: filters.status || undefined,
     kind: filters.kind || undefined,
     analysisState: filters.analysisState || undefined,
+    branchScope: filters.branchScope || undefined,
     q: filters.q || undefined,
     sort: sort.by,
     dir: sort.dir,

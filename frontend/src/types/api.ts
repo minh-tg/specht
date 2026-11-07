@@ -184,6 +184,8 @@ export interface FindingIntel {
 
 export interface Finding {
   id: string;
+  /** Change branches of a finding seen only there. The verdict leaves it out. */
+  only_on_branches?: string[];
   project_id: string;
   finding_kind: string;
   fingerprint: string;
@@ -503,6 +505,8 @@ export interface ProjectStats {
   waiver_count: number;
   /** Waiver requests still waiting for a decision. They do not count in the gate. */
   pending_waiver_count?: number;
+  /** Open findings seen only on change branches, which the verdict leaves out. */
+  only_on_change_branches_count?: number;
   report_count: number;
   by_severity: SeverityCount[];
   by_analysis_state?: AnalysisStateCount[];

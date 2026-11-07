@@ -284,6 +284,7 @@ func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID st
 			IntroducedByReportID: derefOrEmpty(c.IntroducedByReportID),
 			IntroducedCommitSha:  derefOrEmpty(c.IntroducedCommitSha),
 			Aliases:              c.Aliases,
+			ChangeBranches:       c.ChangeBranches,
 		}
 	}
 	return result, nil

@@ -41,6 +41,7 @@ export function FindingHeader({
         </h1>
       </div>
       <WhyItBlocks
+        onlyOnBranches={finding.only_on_branches}
         severity={finding.current_severity}
         gateResult={gateResult}
         floor={floor}

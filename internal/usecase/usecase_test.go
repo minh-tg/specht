@@ -862,6 +862,10 @@ func (m *mockFindingRepo) ListGateCandidates(ctx context.Context, projectID stri
 	return m.listGateCandidatesFn(ctx, projectID, minSeverityRank)
 }
 
+func (m *mockFindingRepo) ListChangeBranches(context.Context, []string) (map[string][]string, error) {
+	return map[string][]string{}, nil
+}
+
 func (m *mockFindingRepo) ListIntroducedGateCandidates(ctx context.Context, projectID, reportID string, minSeverityRank int16) ([]port.GateCandidate, error) {
 	if m.listIntroducedGateCandidatesFn == nil {
 		if m.listGateCandidatesFn != nil {

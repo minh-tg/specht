@@ -778,7 +778,7 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 	// of introduced findings alone cannot decide a whole-project gate.
 	var projectGate *client.GateStatus
 	if !payload.GateIntroducedOnly {
-		projectGate, err = cl.GetGateStatus(payload.Project, f.severity)
+		projectGate, err = cl.GetBranchGateStatus(payload.Project, f.severity, payload.Branch)
 		if err != nil {
 			writeDiagnostic(stderr, "error: gate check failed: %v\n", err)
 			return 2
