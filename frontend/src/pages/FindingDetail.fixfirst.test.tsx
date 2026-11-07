@@ -438,7 +438,7 @@ describe("FindingDetail decide-first order", () => {
       "History",
     ];
     expect(names.filter((name) => order.includes(name))).toEqual(order);
-    expect(screen.queryByRole("button", { name: /^Details/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /reachability, context/ })).not.toBeInTheDocument();
 
     const decide = screen.getByRole("heading", { level: 2, name: "Decide" }).parentElement!;
     expect(within(decide).getByRole("group", { name: /Can an attacker reach this code/ }))

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { changeViewState, fromChangePath } from "@/lib/entryMode";
 import { normalizeSeverity } from "@/lib/enums";
+import { findingHeadline } from "@/lib/findingTitle";
 import { pluralize } from "@/lib/format";
 import { useCopyToClipboard } from "@/lib/useCopyToClipboard";
 import type { WaiverAction } from "@/lib/waiverRequest";
@@ -21,6 +22,8 @@ import { Link, useLocation } from "react-router-dom";
 export interface FixGroupEntryProps {
   readonly slug: string;
   readonly item: GroupItem;
+  /** Where this row reads in the list. */
+  readonly rowNumber: number;
   readonly findings: ReadonlyMap<string, Finding>;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -59,6 +62,7 @@ export function FixGroupEntry(
   {
     slug,
     item,
+    rowNumber,
     findings,
     open,
     onOpenChange,
@@ -88,7 +92,7 @@ export function FixGroupEntry(
   return (
     <LedgerEntry
       entryId={item.key}
-      index={item.position}
+      index={rowNumber}
       open={open}
       onOpenChange={onOpenChange}
       tone={toneFor(severity)}
@@ -144,7 +148,7 @@ export function FixGroupEntry(
             The {pluralize(count, "blocker")} it clears
           </p>
           <ul className="m-0 mt-1 list-none p-0">
-            {item.ids.map((id, index) => {
+            {item.ids.map((id) => {
               const finding = findings.get(id);
               const view = views.get(id);
               return (
@@ -152,16 +156,13 @@ export function FixGroupEntry(
                   key={id}
                   className="border-border flex flex-wrap items-center gap-x-2 gap-y-1 border-b py-1.5 last:border-b-0"
                 >
-                  <span className="text-muted-foreground w-[22px] flex-none font-mono text-code max-sm:hidden">
-                    {String(item.positions[index]).padStart(2, "0")}
-                  </span>
                   {finding && <SeverityBadge severity={finding.current_severity} plain />}
                   <Link
                     to={fromChangePath(`/${slug}/findings/${id}`)}
                     state={state}
                     className={`${INLINE_LINK} min-w-0 text-body [overflow-wrap:anywhere]`}
                   >
-                    {finding?.current_title ?? id}
+                    {finding ? findingHeadline(finding) : id}
                   </Link>
                   {view && (
                     <span className="font-label text-muted-foreground text-label">

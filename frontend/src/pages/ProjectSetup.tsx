@@ -63,7 +63,7 @@ function firstReportState(stats: ProjectStats | undefined): FirstReport {
 const FIRST_REPORT_COPY: Record<FirstReport, { heading: string; message: string; }> = {
   waiting: {
     heading: "Waiting for the first report",
-    message: "Waiting for the first report...",
+    message: "Send a report from CI, or upload one below. This page updates by itself.",
   },
   processing: {
     heading: "Processing the first report",
@@ -263,7 +263,7 @@ export function ProjectSetup() {
           No pipeline needed: send one report and see findings, a verdict and the fixes.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <SampleReportButton slug={project.slug} />
+          {(stats.data?.report_count ?? 0) === 0 && <SampleReportButton slug={project.slug} />}
           <Link to={`/${slug}/reports/upload`} className={buttonVariants({ variant: "outline" })}>
             Upload a report
           </Link>

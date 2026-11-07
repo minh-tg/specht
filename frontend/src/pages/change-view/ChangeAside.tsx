@@ -58,6 +58,7 @@ export function ChangeAside(
       {fixesText && (
         <Button
           type="button"
+          variant="outline"
           onClick={() => void copy(fixesText)}
           className="h-9 w-full"
         >

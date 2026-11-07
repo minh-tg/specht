@@ -3,6 +3,7 @@ import { INLINE_LINK } from "@/components/inlineLink";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { changeViewState, fromChangePath } from "@/lib/entryMode";
+import { findingHeadline } from "@/lib/findingTitle";
 import { fixAction, locationLine } from "@/pages/change-view/resolve";
 import type { Finding } from "@/types/api";
 import { type ReactNode } from "react";
@@ -77,7 +78,7 @@ export function BlockerRowView(
           state={targetState}
           className="min-w-0 font-medium [overflow-wrap:anywhere] hover:underline"
         >
-          {finding.current_title}
+          {findingHeadline(finding)}
         </Link>
         <Link to={target} state={targetState} className={`${INLINE_LINK} ml-auto text-body`}>
           Decide

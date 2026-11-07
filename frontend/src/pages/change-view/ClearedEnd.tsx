@@ -3,6 +3,7 @@ import { INLINE_LINK } from "@/components/inlineLink";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Skeleton } from "@/components/ui/skeleton";
 import { changeViewState, fromChangePath } from "@/lib/entryMode";
+import { findingHeadline } from "@/lib/findingTitle";
 import { pluralize } from "@/lib/format";
 import { BlockerRow } from "@/pages/change-view/BlockerRow";
 import { MAX_BLOCKER_ROWS } from "@/pages/change-view/BlockerSection";
@@ -90,7 +91,7 @@ function ClearedRow(
           state={changeViewState(routerLocation)}
           className="text-body font-semibold hover:underline"
         >
-          {query.data.current_title}
+          {findingHeadline(query.data)}
         </Link>
         <span className="text-muted-foreground text-meta">{causeText(cause)}</span>
       </span>

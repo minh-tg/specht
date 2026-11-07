@@ -13,7 +13,9 @@ export function HowToFix({ finding }: { readonly finding: Finding; }) {
           <div className="space-y-2 text-body">
             <div className="bg-muted flex items-center gap-3 rounded-md py-2 pr-2 pl-3.5">
               <p className="min-w-0 flex-1 font-medium">{finding.remediation.summary}</p>
-              <CopyButton text={finding.remediation.summary} label="fix" />
+              {!finding.remediation.fallback && (
+                <CopyButton text={finding.remediation.summary} label="fix" />
+              )}
             </div>
             {finding.remediation.fallback && (
               <p className="text-muted-foreground text-meta">
@@ -37,7 +39,7 @@ export function HowToFix({ finding }: { readonly finding: Finding; }) {
                 Source: {finding.remediation.source}
               </p>
             )}
-            {finding.suggestion && (
+            {finding.suggestion && !finding.remediation.fallback && (
               <p className="text-muted-foreground text-meta">
                 Suggested: {finding.suggestion.action}
                 {finding.suggestion.target ? ` ${finding.suggestion.target}` : ""} (confidence{" "}

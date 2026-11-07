@@ -7,6 +7,7 @@ import { SeverityBadge } from "@/components/ui/severity-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { changeViewState, fromChangePath } from "@/lib/entryMode";
 import { normalizeSeverity } from "@/lib/enums";
+import { findingHeadline } from "@/lib/findingTitle";
 import { useCopyToClipboard } from "@/lib/useCopyToClipboard";
 import type { WaiverAction } from "@/lib/waiverRequest";
 import { fixSentence, locationLine } from "@/pages/change-view/resolve";
@@ -119,7 +120,7 @@ function LoadedEntry(
         <>
           <SeverityBadge severity={finding.current_severity} plain />{" "}
           <span className="min-w-[10rem] font-semibold [overflow-wrap:anywhere] max-sm:min-w-0">
-            {finding.current_title}
+            {findingHeadline(finding)}
           </span>
           {waiver && (
             <>
@@ -129,8 +130,8 @@ function LoadedEntry(
               </span>
             </>
           )}
-          {fix && " "}
-          {fix && (
+          {fix && !open && " "}
+          {fix && !open && (
             <span
               title={fix}
               className="text-muted-foreground ml-auto min-w-0 max-w-[40%] truncate text-meta max-sm:hidden"
@@ -181,7 +182,7 @@ function LoadedEntry(
           <WaiverPath
             slug={slug}
             findingId={findingId}
-            title={finding.current_title}
+            title={findingHeadline(finding)}
             view={waiver}
             who={who}
             canApprove={canApprove}
@@ -193,7 +194,7 @@ function LoadedEntry(
             <Button
               type="button"
               variant="outline"
-              aria-label={`${copyLabel}: ${finding.current_title}`}
+              aria-label={`${copyLabel}: ${findingHeadline(finding)}`}
               onClick={() => void copy(fix)}
             >
               {copyLabel}
@@ -216,7 +217,7 @@ function LoadedEntry(
               type="checkbox"
               checked={handled}
               onChange={(event) => onHandledChange(event.target.checked)}
-              aria-label={`I've done this: ${finding.current_title}`}
+              aria-label={`I've done this: ${findingHeadline(finding)}`}
               className="border-input accent-foreground size-5 rounded-sm"
             />
             I&apos;ve done this

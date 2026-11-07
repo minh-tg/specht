@@ -169,6 +169,13 @@ beforeEach(() => {
   );
 });
 
+/** The dropdowns of the decision form, without the one that assigns the finding. */
+function decisionSelects() {
+  return screen.getAllByRole("combobox").filter((c) =>
+    c.getAttribute("aria-label") !== "Assigned to"
+  );
+}
+
 describe("FindingDetail dates", () => {
   it("leaves out the first seen row when first_seen_at is invalid", async () => {
     findingFixture = { first_seen_at: "not-a-date", last_seen_at: "2025-01-02T00:00:00Z" };
@@ -256,7 +263,7 @@ describe("FindingDetail triage validation", () => {
     renderDetail(undefined, FIX_FIRST);
     await screen.findByRole("heading", { name: "Test Vulnerability" });
 
-    await chooseOption(user, screen.getAllByRole("combobox")[0], "False positive");
+    await chooseOption(user, decisionSelects()[0], "False positive");
     await user.type(screen.getByPlaceholderText("Reason"), "not reachable");
     const findingLoads = () =>
       vi.mocked(fetch).mock.calls.filter(([input, init]) =>
@@ -280,7 +287,7 @@ describe("FindingDetail triage validation", () => {
     renderDetail(undefined, FIX_FIRST);
     await screen.findByRole("heading", { name: "Test Vulnerability" });
 
-    const selects = screen.getAllByRole("combobox");
+    const selects = decisionSelects();
     const triageSelect = selects[0];
     await chooseOption(user, triageSelect, "False positive");
     const apply = screen.getByRole("button", { name: "Apply" });
@@ -765,7 +772,7 @@ describe("FindingDetail reachability rendering", () => {
     await screen.findByRole("heading", { name: "Test Vulnerability" });
     await openDetails();
 
-    const selects = screen.getAllByRole("combobox");
+    const selects = decisionSelects();
     const reachSelect = selects[1];
     await chooseOption(user, reachSelect, "Reachable");
 

@@ -1,4 +1,5 @@
 import { normalizeSeverity } from "@/lib/enums";
+import { findingHeadline } from "@/lib/findingTitle";
 import { fixSentence } from "@/pages/change-view/resolve";
 import type { Finding } from "@/types/api";
 
@@ -196,14 +197,13 @@ export function itemFixesText(
   return items
     .map((item) => {
       if (item.kind === "group") {
-        return `${item.position}. ${
-          upgradeInstruction(item.target)
-        } (clears ${item.ids.length} blockers)`;
+        return `${upgradeInstruction(item.target)} (clears ${item.ids.length} blockers)`;
       }
       const finding = findings.get(item.id);
       const fix = finding ? fixSentence(finding) : null;
-      return finding && fix ? `${item.position}. ${finding.current_title}: ${fix}` : null;
+      return finding && fix ? `${findingHeadline(finding).replace(/[.:]+$/, "")}: ${fix}` : null;
     })
     .filter((line): line is string => line !== null)
+    .map((line, index) => `${index + 1}. ${line}`)
     .join("\n");
 }

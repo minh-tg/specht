@@ -43,7 +43,6 @@ export function ReportFreshness({ latest, latestCompleted }: {
           <RelativeTime iso={latest.created_at} />
         </p>
       )}
-      <p className="text-meta">Report times describe receipt and processing in Specht.</p>
     </section>
   );
 }

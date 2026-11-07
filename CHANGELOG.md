@@ -35,6 +35,13 @@ releases.
 
 ### Changed
 
+- Findings read better on screen. A scanner message used as a title becomes a one-line name with the
+  rest below it, a repeated prefix goes, and an advisory id gains its package. Long paths in the findings
+  list keep the file name. Someone who cannot record a decision sees the fix first, evidence and sign-off
+  fold away, a phone no longer scrolls sideways on a long title, and branch names and commits are no
+  longer shown in capitals.
+- The change view numbers its rows in the order they read, stops repeating the fix in an open row, and
+  "Copy all fixes" no longer outranks the fixes themselves.
 - The finding page explains when to fix, accept, waive or mark a finding unreachable. The waiver dialog
   says a waiver applies on every branch. A manager sees why they cannot approve their own request, and a
   waiver a global admin approved for themselves says so.

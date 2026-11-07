@@ -286,7 +286,7 @@ export function DataGrid<Row>({
                       <button
                         type="button"
                         onClick={() => onSortChange(column.id)}
-                        className="inline-flex items-center gap-1 hover:text-foreground"
+                        className="font-label inline-flex items-center gap-1 text-[11px] uppercase hover:text-foreground"
                       >
                         {column.header}
                         {active

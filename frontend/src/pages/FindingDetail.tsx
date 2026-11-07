@@ -145,6 +145,8 @@ export function FindingDetail() {
   const changeBack = mode === "unblock" ? changeViewBackPath(slug ?? "", location.state) : null;
 
   const unblock = mode === "unblock";
+  // Someone who cannot record a decision came here for the fix, whichever way they arrived.
+  const cannotDecide = !projectLoading && project?.permissions?.triage === false;
   const reachabilitySection = (
     <ReachabilitySection
       findingId={finding.id}
@@ -239,12 +241,14 @@ export function FindingDetail() {
         floor={gate?.policy?.severity_floor}
       />
 
-      {mode === "unblock"
+      {mode === "unblock" || cannotDecide
         ? (
           <div className="mt-2 max-w-3xl">
             <FixFirst finding={finding} />
 
             <WhereItOccurs finding={finding} />
+
+            <AssigneeControl finding={shown} slug={slug ?? ""} />
 
             {decideSection}
 
@@ -253,7 +257,6 @@ export function FindingDetail() {
               <VerifyFixSection findingId={finding.id} projectSlug={slug} />
               <ContextGrid context={finding.context} />
               <Section title="About this finding">
-                <AssigneeControl finding={shown} slug={slug ?? ""} />
                 <MetadataGrid finding={shown} />
               </Section>
               {cveBlock}
@@ -282,15 +285,16 @@ export function FindingDetail() {
 
               {cveBlock}
 
-              <EvidenceSection findingId={finding.id} projectSlug={slug} />
-
-              <SignoffSection findingId={finding.id} projectSlug={slug} />
-
               <HistorySection
                 events={events}
                 isLoading={eventsLoading}
                 isError={eventsIsError}
               />
+
+              <DetailsDisclosure summary="evidence and reviewer sign-off">
+                <EvidenceSection findingId={finding.id} projectSlug={slug} />
+                <SignoffSection findingId={finding.id} projectSlug={slug} />
+              </DetailsDisclosure>
             </div>
 
             <aside aria-label="About this finding" className="mt-8 grid content-start gap-5">
