@@ -389,6 +389,9 @@ releases.
 
 ### Fixed
 
+- The admin page no longer calls a working watcher stale when every project polls less often than
+  twice `WATCHER_POLL_INTERVAL`. The window now covers the longest interval of a project with the
+  watcher on.
 - A changed watcher interval, or a project added or switched on, takes effect within a minute. The
   daemon slept until the next poll due, up to the longest interval, so a project moved from hourly
   to every two minutes waited out the hour while the page already showed the new value.
