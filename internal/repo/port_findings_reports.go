@@ -1273,6 +1273,36 @@ func (r *pgFindingPort) FindScaFindingIDForPurlAndCve(ctx context.Context, proje
 	return toUUID(row), nil
 }
 
+func (r *pgFindingPort) SetAssignee(ctx context.Context, findingID, userID string) error {
+	fid, err := parseID(findingID)
+	if err != nil {
+		return err
+	}
+	return mappingErr(r.inner.q.SetFindingAssignee(ctx, sqlc.SetFindingAssigneeParams{
+		ID: fid, AssigneeID: optionalUUIDParam(userID),
+	}))
+}
+
+func (r *pgFindingPort) ListAssignees(ctx context.Context, findingIDs []string) (map[string]port.FindingAssignee, error) {
+	uuids := make([]pgtype.UUID, 0, len(findingIDs))
+	for _, id := range findingIDs {
+		fid, err := parseID(id)
+		if err != nil {
+			return nil, err
+		}
+		uuids = append(uuids, fid)
+	}
+	rows, err := r.inner.q.ListFindingAssignees(ctx, uuids)
+	if err != nil {
+		return nil, mappingErr(err)
+	}
+	out := make(map[string]port.FindingAssignee, len(rows))
+	for _, row := range rows {
+		out[toUUID(row.ID)] = port.FindingAssignee{UserID: toUUID(row.AssigneeID), Name: row.AssigneeName}
+	}
+	return out, nil
+}
+
 func (r *pgFindingPort) ListChangeBranches(ctx context.Context, findingIDs []string) (map[string][]string, error) {
 	uuids := make([]pgtype.UUID, 0, len(findingIDs))
 	for _, id := range findingIDs {

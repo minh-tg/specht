@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/minh-tg/specht/internal/finding"
 )
 
@@ -30,9 +32,10 @@ const maxFindingSearchLen = 100
 var FindingSortKeys = []string{"severity", "first_seen", "last_seen", "title"}
 
 type findingQuery struct {
-	search  string
-	sortKey string
-	sortDir string
+	assigneeID string
+	search     string
+	sortKey    string
+	sortDir    string
 }
 
 // normalize validates the sort, direction, analysis states and search text
@@ -54,6 +57,13 @@ func (f FindingFilter) normalize() (findingQuery, error) {
 	case "asc", "desc":
 	default:
 		return q, invalidFindingQuery("dir must be asc or desc")
+	}
+	if f.Assignee != "" {
+		id, err := uuid.Parse(f.Assignee)
+		if err != nil {
+			return q, invalidFindingQuery("assignee must be a user id or me")
+		}
+		q.assigneeID = id.String()
 	}
 	switch f.BranchScope {
 	case "", "default", "change":

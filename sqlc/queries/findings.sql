@@ -101,6 +101,7 @@ WHERE f.project_id = $1
   AND (sqlc.arg(branch_scope)::text = ''
     OR (sqlc.arg(branch_scope)::text = 'default' AND cardinality(finding_change_branches(f.id)) = 0)
     OR (sqlc.arg(branch_scope)::text = 'change' AND cardinality(finding_change_branches(f.id)) > 0))
+  AND (sqlc.narg(assignee_id)::uuid IS NULL OR f.assignee_id = sqlc.narg(assignee_id)::uuid)
 ORDER BY
   CASE WHEN sqlc.arg(sort_key)::text = 'severity' AND sqlc.arg(sort_dir)::text = 'desc' THEN f.current_severity_rank END DESC,
   CASE WHEN sqlc.arg(sort_key)::text = 'severity' AND sqlc.arg(sort_dir)::text = 'asc' THEN f.current_severity_rank END ASC,
@@ -139,7 +140,8 @@ WHERE f.project_id = $1
     OR f.fingerprint ILIKE '%' || sqlc.arg(search)::text || '%')
   AND (sqlc.arg(branch_scope)::text = ''
     OR (sqlc.arg(branch_scope)::text = 'default' AND cardinality(finding_change_branches(f.id)) = 0)
-    OR (sqlc.arg(branch_scope)::text = 'change' AND cardinality(finding_change_branches(f.id)) > 0));
+    OR (sqlc.arg(branch_scope)::text = 'change' AND cardinality(finding_change_branches(f.id)) > 0))
+  AND (sqlc.narg(assignee_id)::uuid IS NULL OR f.assignee_id = sqlc.narg(assignee_id)::uuid);
 
 -- name: ListFindingChangeBranches :many
 -- The change branches of each finding seen only there. A finding that counts
@@ -156,6 +158,17 @@ SELECT COUNT(*) FROM findings f
 WHERE f.project_id = $1
   AND f.state IN ('open', 'reopened')
   AND cardinality(finding_change_branches(f.id)) > 0;
+
+-- name: SetFindingAssignee :exec
+UPDATE findings SET assignee_id = sqlc.narg(assignee_id)::uuid, updated_at = NOW()
+WHERE id = sqlc.arg(id);
+
+-- name: ListFindingAssignees :many
+-- Who each given finding is assigned to, by display name when they have one.
+SELECT f.id, f.assignee_id, COALESCE(NULLIF(u.display_name, ''), u.email)::text AS assignee_name
+FROM findings f
+JOIN users u ON u.id = f.assignee_id
+WHERE f.id = ANY(sqlc.arg(finding_ids)::uuid[]);
 
 -- name: CountOpenUnratedFindings :one
 -- Open findings of the project with no severity that the verdict would otherwise

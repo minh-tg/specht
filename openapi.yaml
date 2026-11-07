@@ -1473,6 +1473,10 @@ paths:
             false_positive, not_affected, accepted_risk, wont_fix). A finding nobody has
             looked at counts as `unanalyzed`.
           schema: { type: string, example: "unanalyzed,in_triage" }
+        - name: assignee
+          in: query
+          description: Keeps the findings assigned to this person. `me` is the caller.
+          schema: { type: string, example: me }
         - name: branch_scope
           in: query
           description: >-
@@ -1856,6 +1860,48 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/v1/findings/{id}/assignee:
+    put:
+      tags: [Findings]
+      operationId: assignFinding
+      summary: Set who owns a finding
+      description: |
+        A manager can assign anyone in the project. A member can take a finding or let go of
+        their own. An empty `user_id` clears it. Sessions only.
+      x-required-scope: none
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id: { type: string, description: The person to assign. Empty clears it. }
+      responses:
+        "200":
+          description: The new owner.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assignee:
+                    type: object
+                    nullable: true
+                    required: [user_id, name]
+                    properties:
+                      user_id: { type: string, format: uuid }
+                      name: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/findings/{id}/patch-preview:
     get:
       tags: [Previews]
@@ -4413,6 +4459,13 @@ components:
           description: "Set on GET /findings/{id} when raw_data_expired is true and a retention window is set: the date the window ended for that report. Absent otherwise."
         remediation: { $ref: "#/components/schemas/Remediation" }
         location: { $ref: "#/components/schemas/Location" }
+        assignee:
+          type: object
+          required: [user_id, name]
+          description: Who owns this finding. Absent means nobody does.
+          properties:
+            user_id: { type: string, format: uuid }
+            name: { type: string }
         only_on_branches:
           type: array
           items: { type: string }

@@ -44,6 +44,7 @@ func (r *pgFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UUID
 		AnalysisStates: params.AnalysisStates,
 		Search:         params.Search,
 		BranchScope:    params.BranchScope,
+		AssigneeID:     optionalUUIDParam(params.AssigneeID),
 		SortKey:        orDefault(params.SortKey, "severity"),
 		SortDir:        orDefault(params.SortDir, "desc"),
 	})
@@ -63,7 +64,20 @@ func (r *pgFindingRepo) CountByProject(ctx context.Context, projectID pgtype.UUI
 		AnalysisStates: params.AnalysisStates,
 		Search:         params.Search,
 		BranchScope:    params.BranchScope,
+		AssigneeID:     optionalUUIDParam(params.AssigneeID),
 	})
+}
+
+// optionalUUIDParam reads an id the use case already validated. Empty means no filter.
+func optionalUUIDParam(id string) pgtype.UUID {
+	if id == "" {
+		return pgtype.UUID{}
+	}
+	parsed, err := parseID(id)
+	if err != nil {
+		return pgtype.UUID{}
+	}
+	return parsed
 }
 
 func orDefault(value, fallback string) string {

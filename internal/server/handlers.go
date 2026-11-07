@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/minh-tg/specht/internal/audit"
@@ -207,6 +209,7 @@ type (
 
 	GateUsecases interface {
 		GetGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16) (*usecase.GateStatusOutput, error)
+		AssignFinding(ctx context.Context, findingID, assigneeID string) (*usecase.AssigneeResponse, error)
 		GetBranchGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, branch string) (*usecase.GateStatusOutput, error)
 		GetIntroducedGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, reportID string) (*usecase.GateStatusOutput, error)
 		PreviewPRCheck(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error)
@@ -840,6 +843,16 @@ func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 	}
 	filter.Search = r.URL.Query().Get("q")
 	filter.BranchScope = r.URL.Query().Get("branch_scope")
+	filter.Assignee = r.URL.Query().Get("assignee")
+	if filter.Assignee == "me" {
+		// A key has no person behind it, so it matches nobody's findings. An empty
+		// filter would match everyone's.
+		ident := auth.ContextIdentity(r.Context())
+		filter.Assignee = uuid.Nil.String()
+		if ident != nil && !ident.IsAPIKey {
+			filter.Assignee = ident.UserID
+		}
+	}
 	filter.Sort = r.URL.Query().Get("sort")
 	filter.Dir = r.URL.Query().Get("dir")
 

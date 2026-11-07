@@ -605,6 +605,14 @@ func authzRows() []authzRow {
 			Want:    writers, Audit: audit.EventUndoTriage + ",db:analysis_changed",
 		},
 		{
+			// Clearing an unassigned finding is allowed for anyone in the project, and
+			// keys have no person behind them.
+			Method: "PUT", Pattern: "/api/v1/findings/{id}/assignee", Path: onFinding("/assignee"),
+			Body:  func(*authzFixtures, *authzAttempt) any { return map[string]string{"user_id": ""} },
+			Want:  with(with(readers, outcomeDeny403, callerKeyRead, callerKeyIngest), outcomeDeny401, callerKeyAdmin),
+			Audit: audit.EventAssignFinding,
+		},
+		{
 			Method: "POST", Pattern: "/api/v1/findings/{id}/verify", Path: onFinding("/verify"),
 			Want: writers, Audit: audit.EventVerifyFix,
 		},

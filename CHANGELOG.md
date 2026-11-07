@@ -35,6 +35,10 @@ releases.
 
 ### Added
 
+- A finding can have an owner. `PUT /api/v1/findings/{id}/assignee` sets it: a manager can assign anyone
+  in the project, and a member can take a finding or let go of their own. The findings list shows it and
+  gains an "Assigned to me" view, and `GET /projects/{slug}/findings` takes `assignee`, with `me` for the
+  caller.
 - Waiver changes reach people. A request, an approval, a rejection, a waiver ending within a week and
   a waiver that ended now go out over the Slack and webhook channels the server already has, whether or
   not the watcher runs. The project page says how many requests wait for a decision and how many

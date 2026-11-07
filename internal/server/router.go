@@ -287,6 +287,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.With(adminScope).Patch("/api/v1/findings/{id}", h.TriageFinding)
 		r.With(h.audited(audit.EventUndoTriage, "id"), adminScope).Post("/api/v1/findings/{id}/analysis/undo", h.UndoTriage)
 		r.With(h.audited(audit.EventVerifyFix, "id"), adminScope).Post("/api/v1/findings/{id}/verify", h.VerifyFinding)
+		r.With(h.audited(audit.EventAssignFinding, "id"), session).Put("/api/v1/findings/{id}/assignee", h.AssignFinding)
 		r.With(readScope).Get("/api/v1/findings/{id}/patch-preview", h.PreviewPatch)
 		r.With(readScope).Get("/api/v1/findings/{id}/notify-preview", h.PreviewNotification)
 		r.With(h.audited(audit.EventBulkTriage), adminScope).Post("/api/v1/findings/bulk-analysis", h.BulkTriage)

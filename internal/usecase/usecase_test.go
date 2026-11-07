@@ -862,6 +862,12 @@ func (m *mockFindingRepo) ListGateCandidates(ctx context.Context, projectID stri
 	return m.listGateCandidatesFn(ctx, projectID, minSeverityRank)
 }
 
+func (m *mockFindingRepo) SetAssignee(context.Context, string, string) error { return nil }
+
+func (m *mockFindingRepo) ListAssignees(context.Context, []string) (map[string]port.FindingAssignee, error) {
+	return map[string]port.FindingAssignee{}, nil
+}
+
 func (m *mockFindingRepo) ListChangeBranches(context.Context, []string) (map[string][]string, error) {
 	return map[string][]string{}, nil
 }
