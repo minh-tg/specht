@@ -85,6 +85,7 @@ function upgradeFinding(
     ecosystem?: string;
     severity?: string;
     fallback?: boolean;
+    installed?: string;
   } = {},
 ) {
   const { packageName = "lodash", fixed = "4.17.21", ecosystem = "npm", severity = "high" } =
@@ -99,7 +100,7 @@ function upgradeFinding(
       fallback: options.fallback ?? false,
       package: packageName,
       ecosystem,
-      installed_version: "4.17.15",
+      installed_version: options.installed ?? "4.17.15",
       fixed_version: fixed,
     },
   };
@@ -1316,8 +1317,8 @@ describe("ChangeView grouping by fix", { timeout: 40_000 }, () => {
   it("folds blockers that share a real fix into one entry, with the others as plain rows", async () => {
     const group = lodashBlockers(24);
     findings.y0 = upgradeFinding("y0", { packageName: "express", fixed: "4.19.0", fallback: true });
-    findings.x0 = upgradeFinding("x0", { fixed: "4.17.19" });
-    findings.x1 = upgradeFinding("x1", { fixed: "4.17.19" });
+    findings.x0 = upgradeFinding("x0", { fixed: "4.17.19", installed: "3.10.1" });
+    findings.x1 = upgradeFinding("x1", { fixed: "4.17.19", installed: "3.10.1" });
     findings.z0 = { ...finding("z0"), finding_kind: "sast" };
     setBlockers(["y0", ...group, "x0", "x1", "z0"]);
     renderPage();
@@ -1341,7 +1342,7 @@ describe("ChangeView grouping by fix", { timeout: 40_000 }, () => {
 
     const { entry } = await openGroup();
 
-    expect(entry.getByText(/The scanner reports the same package, ecosystem and fixed version/))
+    expect(entry.getByText(/highest fixed version the scanner reports for them clears all of them/))
       .toBeInTheDocument();
     expect(entry.getByText(/each one still blocks this change until a new scan no longer finds it/))
       .toBeInTheDocument();

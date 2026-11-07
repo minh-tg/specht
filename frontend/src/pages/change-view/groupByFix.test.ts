@@ -60,6 +60,7 @@ describe("fixTarget", () => {
       packageName: "lodash",
       ecosystem: "npm",
       fixedVersion: "4.17.21",
+      installedVersion: "1.0.0",
     });
   });
 
@@ -100,20 +101,76 @@ describe("buildBlockerItems", () => {
     });
   });
 
-  it("keeps different fixed versions of one package apart", () => {
+  it("groups different fixed versions of one installed version under the highest", () => {
     const items = buildBlockerItems(
-      ["a", "b", "c", "d"],
+      ["a", "b", "c"],
       byId(
-        found("a"),
-        found("b", { suggestion: upgrade("lodash", "4.17.19") }),
-        found("c"),
-        found("d", { suggestion: upgrade("lodash", "4.17.19") }),
+        found("a", { suggestion: upgrade("lodash", "4.17.21") }),
+        found("b", { suggestion: upgrade("lodash", "4.18.0") }),
+        found("c", { suggestion: upgrade("lodash", "4.9.1") }),
+      ),
+    );
+
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      kind: "group",
+      ids: ["a", "b", "c"],
+      target: { packageName: "lodash", fixedVersion: "4.18.0" },
+    });
+  });
+
+  it("compares release numbers, not text, and accepts a v prefix", () => {
+    const items = buildBlockerItems(
+      ["a", "b"],
+      byId(
+        found("a", { suggestion: upgrade("gin", "v1.9.1") }),
+        found("b", { suggestion: upgrade("gin", "v1.10.0") }),
+      ),
+    );
+
+    expect(items[0]).toMatchObject({ kind: "group", target: { fixedVersion: "v1.10.0" } });
+  });
+
+  it("keeps a fixed version that cannot be ordered apart", () => {
+    for (const unordered of ["4.18.0-rc1", "4.17.21, 4.18.0", "latest"]) {
+      const items = buildBlockerItems(
+        ["a", "b"],
+        byId(
+          found("a", { suggestion: upgrade("lodash", "4.17.21") }),
+          found("b", { suggestion: upgrade("lodash", unordered) }),
+        ),
+      );
+
+      expect(items.map((item) => item.kind)).toEqual(["single", "single"]);
+    }
+  });
+
+  it("keeps different installed versions of one package apart", () => {
+    const items = buildBlockerItems(
+      ["a", "b"],
+      byId(
+        found("a", { suggestion: upgrade("lodash", "4.17.21", { installed_version: "4.17.0" }) }),
+        found("b", { suggestion: upgrade("lodash", "4.18.0", { installed_version: "3.10.1" }) }),
+      ),
+    );
+
+    expect(items.map((item) => item.kind)).toEqual(["single", "single"]);
+  });
+
+  it("needs an exact fixed version match when the installed version is unknown", () => {
+    const unknown = { installed_version: undefined };
+    const items = buildBlockerItems(
+      ["a", "b", "c"],
+      byId(
+        found("a", { suggestion: upgrade("lodash", "4.17.21", unknown) }),
+        found("b", { suggestion: upgrade("lodash", "4.18.0", unknown) }),
+        found("c", { suggestion: upgrade("lodash", "4.17.21", unknown) }),
       ),
     );
 
     expect(items.map((item) => [item.kind, itemIds(item)])).toEqual([
       ["group", ["a", "c"]],
-      ["group", ["b", "d"]],
+      ["single", ["b"]],
     ]);
   });
 
@@ -249,14 +306,14 @@ describe("groupWaiverNoteId", () => {
   it("is made of words, digits and hyphens, so a selector and CSS can use it", () => {
     const id = groupWaiverNoteId(keyOf("lodash", "4.17.21"));
 
-    expect(id).toMatch(/^group-waiver-npm-lodash-4-17-21-[0-9a-f]{6}$/);
+    expect(id).toMatch(/^group-waiver-npm-lodash-installed-1-0-0-[0-9a-f]{6}$/);
     document.body.innerHTML = `<p id="${id}"></p>`;
     expect(document.querySelector(`#${id}`)).not.toBeNull();
   });
 
   it("handles scoped packages and odd characters", () => {
     expect(groupWaiverNoteId(keyOf("@types/node", "20.1.0"))).toMatch(
-      /^group-waiver-npm-types-node-20-1-0-[0-9a-f]{6}$/,
+      /^group-waiver-npm-types-node-installed-1-0-0-[0-9a-f]{6}$/,
     );
     expect(groupWaiverNoteId(keyOf("a b\"c", "1"))).toMatch(/^[a-z0-9-]+$/);
   });
