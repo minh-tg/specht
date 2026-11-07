@@ -173,14 +173,17 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   // the change blocked.
   await page.getByRole("radio", { name: /^Real issue/ }).check();
   await page.getByRole("radio", { name: "Yes", exact: true }).check();
-  // A toast can start to leave during the audit, which runs for seconds and in two themes, and
-  // axe then reads blended colours. With no transitions a toast is fully shown or gone.
+  // The audit runs for seconds, in two themes. A toast that arrives or starts to leave during it
+  // would read as blended colours, so with no transitions a toast is fully shown or gone.
   await page.addStyleTag({
     content:
       "[data-sonner-toast],[data-sonner-toast] *{transition:none!important;animation:none!important}",
   });
   await page.getByRole("button", { name: "Save decision" }).click();
+  // This form sends two requests and each raises a toast. Wait for both, or the second can arrive
+  // while axe runs.
   await expect(page.getByText("Reachability saved", { exact: true })).toBeVisible();
+  await expect(page.getByText(/^Triage saved/)).toBeVisible();
   // When a second toast arrives the one behind hides its content. Wait until every toast and each
   // part of it is either fully shown or fully hidden, so the audit sees what stays on screen.
   await expect.poll(
