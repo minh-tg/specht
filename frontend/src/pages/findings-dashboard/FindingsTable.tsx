@@ -109,6 +109,9 @@ export function FindingsTable(
           {blocksGate(f, gate)?.blocks && (
             <span className="text-destructive ml-2 text-meta font-medium">Blocks gate</span>
           )}
+          {f.assignee && (
+            <span className="text-muted-foreground ml-2 text-meta">{f.assignee.name}</span>
+          )}
           {(f.only_on_branches?.length ?? 0) > 0 && (
             <span className="text-muted-foreground ml-2 text-meta">
               {onlyOnBranchesLabel(f.only_on_branches ?? [])}

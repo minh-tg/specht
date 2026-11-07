@@ -86,7 +86,7 @@ export function FindingsDashboard() {
   const sorted = findings ?? [];
   const hasFilters = Boolean(
     filters.severity || filters.status || filters.kind || filters.analysisState
-      || filters.branchScope || filters.q,
+      || filters.branchScope || filters.assignee || filters.q,
   );
   // Rows already on screen stay put while the next request is in flight, so the
   // toolbar the user is operating never unmounts under them.
@@ -114,6 +114,12 @@ export function FindingsDashboard() {
           className={`${INLINE_LINK} inline-flex min-h-8 items-center`}
         >
           Open critical/high
+        </Link>
+        <Link
+          to={`/${slug}/findings?assignee=me`}
+          className={`${INLINE_LINK} inline-flex min-h-8 items-center`}
+        >
+          Assigned to me
         </Link>
       </nav>
       <FindingsFilters

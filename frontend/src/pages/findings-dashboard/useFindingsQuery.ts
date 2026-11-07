@@ -12,6 +12,8 @@ export interface FindingsFilters {
   q: string;
   /** "default" for what counts toward the verdict, "change" for unmerged branches, empty for both. */
   branchScope: string;
+  /** "me" for what the signed-in person owns, or empty for everyone's. */
+  assignee: string;
 }
 
 export interface FindingsSort {
@@ -28,7 +30,15 @@ export function defaultSortDir(by: FindingSort): "asc" | "desc" {
 
 const DEFAULT_SORT = DEFAULT_FINDINGS_SORT;
 
-const FILTER_KEYS = ["severity", "status", "kind", "analysis_state", "q", "branch_scope"] as const;
+const FILTER_KEYS = [
+  "severity",
+  "status",
+  "kind",
+  "analysis_state",
+  "q",
+  "branch_scope",
+  "assignee",
+] as const;
 
 /**
  * Reads the list's filters, sort and page from its query string. The finding page reads the same
@@ -44,6 +54,7 @@ export function findingsViewFromSearch(
     analysisState: searchParams.get("analysis_state") ?? "",
     q: searchParams.get("q") ?? "",
     branchScope: searchParams.get("branch_scope") ?? "",
+    assignee: searchParams.get("assignee") ?? "",
   };
 
   const rawSort = searchParams.get("sort");
