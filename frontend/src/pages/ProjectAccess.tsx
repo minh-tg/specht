@@ -37,6 +37,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { looksLikeEmail } from "@/lib/email";
+import { formatDate } from "@/lib/format";
 import type { ProjectMember, ProjectRole } from "@/types/api";
 import { LockIcon, ShieldCheckIcon } from "lucide-react";
 import { useState } from "react";
@@ -251,7 +252,7 @@ export function ProjectAccess() {
                         </div>
                         <RoleBadge role={member.role} />
                         <span className="text-muted-foreground text-meta">
-                          Added {new Date(member.created_at).toLocaleDateString()}
+                          Added {formatDate(member.created_at)}
                         </span>
                         <div className="sm:text-right">
                           {canManageMembers

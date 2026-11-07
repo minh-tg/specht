@@ -1,4 +1,5 @@
 import { AuthContext, type AuthContextValue } from "@/auth/context";
+import { formatDate } from "@/lib/format";
 import { chooseOption, createTestQueryClient, jsonResponse, listOptions } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -255,14 +256,14 @@ describe("ApiKeys", () => {
     expect(screen.getByText(/sk-foo\.\.\.efgh/)).toBeInTheDocument();
     expect(screen.getByText(/sk-foo\.\.\.ijkl/)).toBeInTheDocument();
     expect(screen.getByText("Never")).toBeInTheDocument();
-    expect(screen.getByText(new Date("2027-01-01T00:00:00Z").toLocaleDateString()))
+    expect(screen.getByText(formatDate("2027-01-01T00:00:00Z")))
       .toBeInTheDocument();
     expect(screen.getAllByText(/^Ends\s*$/), "only keys that still work say when they end")
       .toHaveLength(2);
     const expired = screen.getByText(/^Expired /);
-    expect(expired).toHaveTextContent(new Date("2026-01-01T00:00:00Z").toLocaleDateString());
+    expect(expired).toHaveTextContent(formatDate("2026-01-01T00:00:00Z"));
     expect(expired).toHaveClass("text-destructive");
-    expect(screen.getByText(new Date("2027-01-01T00:00:00Z").toLocaleDateString()))
+    expect(screen.getByText(formatDate("2027-01-01T00:00:00Z")))
       .not.toHaveClass("text-destructive");
   });
 

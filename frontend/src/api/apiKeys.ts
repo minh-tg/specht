@@ -1,5 +1,6 @@
 import { apiFetch } from "@/api/client";
 import { queryKeys } from "@/api/hooks";
+import { formatDate } from "@/lib/format";
 import type { ApiKey } from "@/types/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -63,7 +64,7 @@ export function keyEndLabel(
 ): { label: string; expired: boolean; } {
   if (!expiresAt) return { label: "Never", expired: false };
   const date = new Date(expiresAt);
-  const text = date.toLocaleDateString();
+  const text = formatDate(expiresAt);
   if (date.getTime() <= now.getTime()) return { label: `Expired ${text}`, expired: true };
   return { label: text, expired: false };
 }
