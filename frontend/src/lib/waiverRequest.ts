@@ -63,6 +63,18 @@ export function waiverAction({ permissions, loading, pending, blocking, gateRech
       reason: "This finding is below the severity floor, so it does not block the gate.",
     };
   }
+  if (blocking.reason === "needs_triage") {
+    return {
+      kind: "disabled",
+      reason: "This finding does not block the gate until someone triages it.",
+    };
+  }
+  if (blocking.reason === "watcher_off") {
+    return {
+      kind: "disabled",
+      reason: "This project's policy keeps CVE watcher findings out of the gate.",
+    };
+  }
   return { kind: "disabled", reason: "This finding does not block the gate." };
 }
 

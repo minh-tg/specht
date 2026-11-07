@@ -15,7 +15,7 @@ import type { GateStatus } from "@/types/api";
  */
 export interface BlocksGateResult {
   blocks: boolean;
-  reason?: "ignored" | "below_floor" | "waived";
+  reason?: "ignored" | "below_floor" | "waived" | "needs_triage" | "watcher_off";
 }
 
 /**
@@ -24,7 +24,13 @@ export interface BlocksGateResult {
  * instead of an invented "No".
  */
 export function blocksGate(
-  finding: { id: string; current_severity: string; gate_effect: string; },
+  finding: {
+    id: string;
+    current_severity: string;
+    gate_effect: string;
+    finding_kind?: string;
+    analysis_state?: string;
+  },
   gate: GateStatus | undefined,
 ): BlocksGateResult | null {
   if (!gate) return null;
@@ -46,6 +52,16 @@ export function blocksGate(
     return { blocks: false, reason: "below_floor" };
   }
 
+  // The project's watcher policy keeps these out of the gate. Which ones is the rule in
+  // internal/gate: off admits none, require_triage admits all but the untouched.
+  if (finding.finding_kind === "cve_watcher") {
+    const mode = gate.policy?.watcher_gate;
+    if (mode === "off") return { blocks: false, reason: "watcher_off" };
+    if (mode === "require_triage" && finding.analysis_state === "unanalyzed") {
+      return { blocks: false, reason: "needs_triage" };
+    }
+  }
+
   return { blocks: false };
 }
 
@@ -56,6 +72,8 @@ export function blocksGateLabel(result: BlocksGateResult | null): string {
   if (result.reason === "ignored") return "No (ignored by triage)";
   if (result.reason === "below_floor") return "No (below the floor)";
   if (result.reason === "waived") return "Waived";
+  if (result.reason === "needs_triage") return "Not until triaged";
+  if (result.reason === "watcher_off") return "No (watcher findings are off)";
   return "No";
 }
 
@@ -70,5 +88,7 @@ export function blocksGateSentence(result: BlocksGateResult | null): string | nu
   if (result.reason === "ignored") return "Does not block gate (ignored by triage)";
   if (result.reason === "below_floor") return "Does not block gate (below the floor)";
   if (result.reason === "waived") return "Waived: does not block gate";
+  if (result.reason === "needs_triage") return "Does not block gate until someone triages it";
+  if (result.reason === "watcher_off") return "Does not block gate (watcher findings are off)";
   return "Does not block gate";
 }
