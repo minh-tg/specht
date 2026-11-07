@@ -93,7 +93,8 @@ export function WaiverRequestDialog(
             <DialogTitle>Request a waiver</DialogTitle>
             <DialogDescription>
               Ask a manager to let <strong className="text-foreground">{subject}</strong>{" "}
-              through until the date you pick. The verdict does not change until they approve it.
+              through until the date you pick, on every branch of this project. The verdict does not
+              change until they approve it.
             </DialogDescription>
           </DialogHeader>
           {tooMany && (

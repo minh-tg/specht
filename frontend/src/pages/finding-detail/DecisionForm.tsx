@@ -444,6 +444,20 @@ export function DecisionForm(
       <PartResults results={results} busy={busy} onRetry={(part) => void save(part)} />
 
       <details className="text-body">
+        <summary className="text-muted-foreground cursor-pointer text-meta">
+          Which one do I use?
+        </summary>
+        <ul className="text-muted-foreground mt-2 grid list-disc gap-1 pl-5 text-meta">
+          <li>Fixed it? Send a new scan. A clean full scan closes the finding.</li>
+          <li>The scanner got it wrong: Not a problem.</li>
+          <li>
+            Real, and you can't fix it yet: Accept for now, until a date. A manager decides this.
+          </li>
+          <li>Real, and you want someone else to agree: Request waiver. A manager approves it.</li>
+          <li>Real, but nothing can reach it: answer the question below with No.</li>
+        </ul>
+      </details>
+      <details className="text-body">
         <summary className="text-muted-foreground cursor-pointer text-meta pointer-coarse:py-1">
           Other states
         </summary>
