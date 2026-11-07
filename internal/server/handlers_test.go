@@ -132,6 +132,7 @@ type mockUsecases struct {
 	upsertReachabilityFn    func(ctx context.Context, findingID, userID, state, evidence string) (*usecase.ReachabilityResponse, error)
 	listReachabilityFn      func(ctx context.Context, findingID string) ([]usecase.ReachabilityResponse, error)
 	upsertSignoffFn         func(ctx context.Context, findingID, userID, status, comment string) (*usecase.SignoffResponse, error)
+	bulkUndoTriageFn        func(context.Context, usecase.BulkUndoTriageInput) ([]usecase.BulkUndoResult, error)
 	getSignoffFn            func(ctx context.Context, findingID string) (*usecase.SignoffResponse, error)
 	removeProjectMemberFn   func(ctx context.Context, projectSlug, userID string) error
 }
@@ -869,6 +870,13 @@ func (m *mockUsecases) UpsertSignoff(ctx context.Context, findingID, userID, sta
 		return nil, fmt.Errorf("unexpected call to UpsertSignoff")
 	}
 	return m.upsertSignoffFn(ctx, findingID, userID, status, comment)
+}
+
+func (m *mockUsecases) BulkUndoTriage(ctx context.Context, input usecase.BulkUndoTriageInput) ([]usecase.BulkUndoResult, error) {
+	if m.bulkUndoTriageFn == nil {
+		return nil, fmt.Errorf("unexpected call to BulkUndoTriage")
+	}
+	return m.bulkUndoTriageFn(ctx, input)
 }
 
 func (m *mockUsecases) GetSignoff(ctx context.Context, findingID string) (*usecase.SignoffResponse, error) {
