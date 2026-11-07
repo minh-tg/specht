@@ -395,6 +395,8 @@ releases.
 - A changed watcher interval, or a project added or switched on, takes effect within a minute. The
   daemon slept until the next poll due, up to the longest interval, so a project moved from hourly
   to every two minutes waited out the hour while the page already showed the new value.
+- A CVE watcher finding writes fixed versions the way the ecosystem does. npm findings read
+  `v4.19.0` because the matcher compares versions in Go semver form.
 - A CVE watcher finding shows its fix and the package it is about on the finding page and in the
   findings list. Its observation belongs to no report, so the page said "No remediation reported" and
   "The scanner gave no file" even though the advisory named a fixed version.

@@ -244,7 +244,7 @@ func findingExtensions(input DecideInput, d findingDisplay) map[string]any {
 // assembleCreatedDecision builds the create outcome for one decided pair.
 func assembleCreatedDecision(input DecideInput, primary string, aliases []string, aff Affected, nameLevel string) Decision {
 	severity, rank, score, vector := advisorySeverity(input.Advisory.Severity)
-	fixed := fixedVersions([]Affected{aff})
+	fixed := displayVersions(fixedVersions([]Affected{aff}), input.Ecosystem)
 	remediation := remediationText(fixed, advisoryURLs(input.Advisory.Refs))
 
 	// Provenance: persist the raw upstream bytes when the client captured
@@ -552,6 +552,20 @@ func fixedVersions(affs []Affected) []string {
 		}
 	}
 	sort.Strings(out)
+	return out
+}
+
+// displayVersions writes versions the way their ecosystem does. The matcher
+// compares them in Go's semver form, which needs a v, but only Go modules are
+// published with one: npm has 4.19.0, not v4.19.0.
+func displayVersions(versions []string, ecosystem string) []string {
+	if normalizeEcosystem(ecosystem) == normalizeEcosystem("Go") {
+		return versions
+	}
+	out := make([]string, len(versions))
+	for i, v := range versions {
+		out[i] = strings.TrimPrefix(v, "v")
+	}
 	return out
 }
 
