@@ -25,6 +25,8 @@ type mockClient struct {
 	teams            []client.Team
 	projectTeams     []client.ProjectTeam
 	introducedReport string
+	gateBranch       string
+	gateCalled       bool
 	projects         []client.Project
 	stats            *client.ProjectStats
 	aging            *client.AgingResponse
@@ -57,7 +59,9 @@ func (m *mockClient) GetFinding(findingID string) (*client.Finding, error) {
 	return nil, m.err
 }
 
-func (m *mockClient) GetGateStatus(projectSlug string, severity string) (*client.GateStatus, error) {
+func (m *mockClient) GetBranchGateStatus(projectSlug, severity, branch string) (*client.GateStatus, error) {
+	m.gateBranch = branch
+	m.gateCalled = true
 	return m.gate, m.err
 }
 
