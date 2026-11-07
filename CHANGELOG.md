@@ -13,9 +13,6 @@ releases.
 - The API keys page marks a key as "Creator is not a project member" when its creator has
   left the project or is a global admin who never joined it, and shows a Revoke button on
   that row. The key still works until it is revoked.
-- A project can name its default branch. A project admin sets it with
-  `default_branch` on `PUT /api/v1/projects/{slug}`, and the project response
-  returns it. Reports on that branch count as the baseline for
 - A project can name its default branch. A project admin sets it on the project's
   Settings page or with `default_branch` on `PUT /api/v1/projects/{slug}`, and the
   project response returns it. Reports on that branch count as the baseline for
