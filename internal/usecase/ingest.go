@@ -1787,7 +1787,7 @@ func (u *Usecases) evaluateIngestGate(ctx context.Context, project port.Project,
 	if input.GateIntroducedOnly {
 		decision, err = u.gate.EvaluateIntroducedOnly(ctx, project.ID, minRank, reportID, policies)
 	} else {
-		decision, err = u.gate.EvaluateWithPolicies(ctx, project.ID, minRank, policies)
+		decision, err = u.gate.EvaluateForBranch(ctx, project.ID, minRank, policies, input.Branch)
 	}
 	if err != nil {
 		return false, err

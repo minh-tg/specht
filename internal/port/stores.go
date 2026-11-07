@@ -1031,6 +1031,9 @@ type ListFindingsParams struct {
 	// Search is a LIKE pattern, already escaped, matched against the title
 	// and the fingerprint. Empty means no text filter.
 	Search string
+	// BranchScope is "default" for findings that count toward the verdict,
+	// "change" for those seen only on change branches, empty for both.
+	BranchScope string
 	// SortKey is severity, first_seen, last_seen or title; SortDir is asc or
 	// desc. Empty values give the default order: severity, most severe first.
 	SortKey string
@@ -1114,6 +1117,9 @@ type FindingStore interface {
 	// latest reachability in one batch (kills the per-finding N+1 context
 	// lookups). Reachability is empty when no assessment exists.
 	ListGateCandidates(ctx context.Context, projectID string, minSeverityRank int16) ([]GateCandidate, error)
+	// ListChangeBranches maps each given finding seen only on change branches
+	// to those branches. A finding that counts toward the verdict has no entry.
+	ListChangeBranches(ctx context.Context, findingIDs []string) (map[string][]string, error)
 	// ListIntroducedGateCandidates returns the findings one report introduced,
 	// filtered by the report's project so a foreign report id can never pull
 	// another tenant's rows into a gate evaluation.
@@ -1213,6 +1219,9 @@ type GateCandidate struct {
 	Aliases      []string
 	Context      FindingContext
 	Reachability string
+	// ChangeBranches names the branches the finding was seen on when it was
+	// seen only on change branches. Empty means it counts toward the verdict.
+	ChangeBranches []string
 }
 
 // PersistWatcherFindingInput carries one watcher finding unit-of-work.
@@ -1558,6 +1567,9 @@ type StatsStore interface {
 	GetProjectAnalysisStateCounts(ctx context.Context, projectID string) ([]AnalysisStateStat, error)
 	GetProjectWaiverCount(ctx context.Context, projectID string) (int32, error)
 	GetProjectPendingWaiverCount(ctx context.Context, projectID string) (int32, error)
+	// CountFindingsOnlyOnChangeBranches counts open findings left out of the
+	// project verdict because they were seen only on change branches.
+	CountFindingsOnlyOnChangeBranches(ctx context.Context, projectID string) (int32, error)
 	GetProjectReportCount(ctx context.Context, projectID string) (int32, error)
 	GetProjectLatestReport(ctx context.Context, projectID string) (Report, error)
 	// GetProjectLatestCompletedReport returns the most recently completed

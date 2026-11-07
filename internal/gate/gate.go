@@ -100,6 +100,10 @@ type Finding struct {
 	// IntroducedCommitSha is legacy first-observation metadata, not the
 	// candidate source for commit-scoped evaluations.
 	IntroducedCommitSha string
+	// ChangeBranches names the branches the finding was seen on when it was
+	// seen only on change branches. Empty means it counts toward the verdict
+	// of the default branch.
+	ChangeBranches []string
 }
 
 // WaiverCondition is a predicate on a finding field: Field is one of
@@ -214,10 +218,15 @@ type Gate interface {
 	// Evaluate returns the gate decision: pass when every blocking finding
 	// is waived, fail listing the unwaived blockers otherwise.
 	Evaluate(ctx context.Context, projectID string, minSeverityRank int16) (Decision, error)
-	// EvaluateWithPolicies evaluates the gate while applying per-source
-	// admission policies. Policies decide which findings are gate candidates
-	// before waiver matching; findings from ungoverned sources always gate.
+	// EvaluateWithPolicies evaluates the project's verdict, which answers for
+	// its default branch: a finding seen only on change branches is left out.
+	// Policies decide which findings are gate candidates before waiver
+	// matching; findings from ungoverned sources always gate.
 	EvaluateWithPolicies(ctx context.Context, projectID string, minSeverityRank int16, policies []GatePolicy) (Decision, error)
+	// EvaluateForBranch is the project verdict plus the findings seen on one
+	// branch, for a full gate run on that branch. A build of a change branch
+	// must not pass because its own findings are not on the default branch yet.
+	EvaluateForBranch(ctx context.Context, projectID string, minSeverityRank int16, policies []GatePolicy, branch string) (Decision, error)
 	// EvaluateIntroducedOnly evaluates the gate over findings one report
 	// introduced, letting policies target introduced risk without ignoring
 	// existing debt (the full gate still covers it). Waivers, reachability
@@ -255,7 +264,19 @@ func (g *gate) Evaluate(ctx context.Context, projectID string, minSeverityRank i
 }
 
 func (g *gate) EvaluateWithPolicies(ctx context.Context, projectID string, minSeverityRank int16, policies []GatePolicy) (Decision, error) {
-	return g.evaluate(ctx, projectID, minSeverityRank, policies, nil)
+	return g.evaluate(ctx, projectID, minSeverityRank, policies, countsOnBranch(""))
+}
+
+func (g *gate) EvaluateForBranch(ctx context.Context, projectID string, minSeverityRank int16, policies []GatePolicy, branch string) (Decision, error) {
+	return g.evaluate(ctx, projectID, minSeverityRank, policies, countsOnBranch(branch))
+}
+
+// countsOnBranch keeps the findings that count toward the default branch, and
+// those seen on branch when one is named.
+func countsOnBranch(branch string) func(Finding) bool {
+	return func(f Finding) bool {
+		return len(f.ChangeBranches) == 0 || (branch != "" && slices.Contains(f.ChangeBranches, branch))
+	}
 }
 
 func (g *gate) EvaluateIntroducedOnly(ctx context.Context, projectID string, minSeverityRank int16, reportID string, policies []GatePolicy) (Decision, error) {

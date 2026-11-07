@@ -55,6 +55,11 @@ func (f FindingFilter) normalize() (findingQuery, error) {
 	default:
 		return q, invalidFindingQuery("dir must be asc or desc")
 	}
+	switch f.BranchScope {
+	case "", "default", "change":
+	default:
+		return q, invalidFindingQuery("branch_scope must be default or change")
+	}
 	for _, state := range f.AnalysisStates {
 		if _, ok := finding.ParseAnalysisState(state); !ok {
 			valid := make([]string, len(finding.AllAnalysisStates))

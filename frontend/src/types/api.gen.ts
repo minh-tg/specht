@@ -1196,7 +1196,9 @@ export interface paths {
     /**
      * Evaluate the deployment gate
      * @description With no `severity` parameter the project's effective policy supplies the
-     *     floor. With `introduced_only` the verdict covers only the findings
+     *     floor. The verdict answers for the project's default branch: a finding seen
+     *     only on change branches is left out until the default branch sees it. With
+     *     `introduced_only` the verdict covers only the findings
      *     `report_id` introduced, so pre-existing debt on the long-lived branch
      *     never fails a pull request. A `report_id` that is missing and one that
      *     belongs to another project both answer 403 `project_access_denied`, so
@@ -2756,6 +2758,8 @@ export interface components {
       raw_data_expires_at?: string;
       remediation?: components["schemas"]["Remediation"];
       location?: components["schemas"]["Location"];
+      /** @description The change branches of a finding seen only there. The project verdict leaves it out until the default branch sees it. Absent means it counts toward the verdict. */
+      only_on_branches?: string[];
       suggestion?: components["schemas"]["Suggestion"];
       /** @description Present for CVE-shaped findings whose identifier a configured feed knows. */
       intel?: components["schemas"]["Intel"];
@@ -3490,6 +3494,8 @@ export interface components {
     ProjectStats: {
       /** @description Open and reopened findings; fixed and archived findings are not counted. */
       total_findings: number;
+      /** @description Open findings seen only on change branches, which the verdict leaves out. */
+      only_on_change_branches_count?: number;
       /** @description Findings the gate holds back right now, so the number always equals the gate's `blocking_count`: open findings at or above the policy's severity floor, admitted by source policy, not exempted by a reachability assessment and not covered by an approved waiver. */
       blocking_count: number;
       /** @description Approved */
@@ -5243,6 +5249,8 @@ export interface operations {
          *     looked at counts as `unanalyzed`.
          */
         analysis_state?: string;
+        /** @description `default` keeps findings that count toward the project verdict. `change` keeps those seen only on change branches, which the verdict leaves out. Absent keeps both. */
+        branch_scope?: "default" | "change";
         /** @description Text to find in the title or the fingerprint, which carries the CVE id and package for dependency findings. Case-insensitive, matched literally, at most 100 characters. */
         q?: string;
         /** @description Sort key. `severity` is the default. */
@@ -5951,6 +5959,8 @@ export interface operations {
         severity?: string;
         /** @description Scope the verdict to what one report introduced. */
         introduced_only?: boolean;
+        /** @description Adds the findings seen on this branch to the project verdict, for a full gate run on a change branch. Without it the verdict answers for the default branch. */
+        branch?: string;
         /** @description Required when `introduced_only` is set. */
         report_id?: string;
       };

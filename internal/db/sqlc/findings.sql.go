@@ -417,6 +417,9 @@ WHERE f.project_id = $1
   AND ($8::text = ''
     OR f.current_title ILIKE '%' || $8::text || '%'
     OR f.fingerprint ILIKE '%' || $8::text || '%')
+  AND ($9::text = ''
+    OR ($9::text = 'default' AND cardinality(finding_change_branches(f.id)) = 0)
+    OR ($9::text = 'change' AND cardinality(finding_change_branches(f.id)) > 0))
 `
 
 type CountFindingsByProjectParams struct {
@@ -428,6 +431,7 @@ type CountFindingsByProjectParams struct {
 	Column6        []string    `json:"column_6"`
 	AnalysisStates []string    `json:"analysis_states"`
 	Search         string      `json:"search"`
+	BranchScope    string      `json:"branch_scope"`
 }
 
 // The same filter predicates as ListFindingsByProject, without the page
@@ -443,7 +447,24 @@ func (q *Queries) CountFindingsByProject(ctx context.Context, arg CountFindingsB
 		arg.Column6,
 		arg.AnalysisStates,
 		arg.Search,
+		arg.BranchScope,
 	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countFindingsOnlyOnChangeBranches = `-- name: CountFindingsOnlyOnChangeBranches :one
+SELECT COUNT(*) FROM findings f
+WHERE f.project_id = $1
+  AND f.state IN ('open', 'reopened')
+  AND cardinality(finding_change_branches(f.id)) > 0
+`
+
+// Open findings of the project that are left out of its verdict because they
+// were seen only on change branches.
+func (q *Queries) CountFindingsOnlyOnChangeBranches(ctx context.Context, projectID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countFindingsOnlyOnChangeBranches, projectID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -988,6 +1009,40 @@ func (q *Queries) ListBaselineEvidence(ctx context.Context, arg ListBaselineEvid
 	return items, nil
 }
 
+const listFindingChangeBranches = `-- name: ListFindingChangeBranches :many
+SELECT f.id, finding_change_branches(f.id)::text[] AS branches
+FROM findings f
+WHERE f.id = ANY($1::uuid[])
+  AND cardinality(finding_change_branches(f.id)) > 0
+`
+
+type ListFindingChangeBranchesRow struct {
+	ID       pgtype.UUID `json:"id"`
+	Branches []string    `json:"branches"`
+}
+
+// The change branches of each finding seen only there. A finding that counts
+// toward the project verdict has no row.
+func (q *Queries) ListFindingChangeBranches(ctx context.Context, findingIds []pgtype.UUID) ([]ListFindingChangeBranchesRow, error) {
+	rows, err := q.db.Query(ctx, listFindingChangeBranches, findingIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListFindingChangeBranchesRow
+	for rows.Next() {
+		var i ListFindingChangeBranchesRow
+		if err := rows.Scan(&i.ID, &i.Branches); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFindingDimensions = `-- name: ListFindingDimensions :many
 SELECT dim_key, dim_value, source
 FROM finding_dimensions
@@ -1409,15 +1464,18 @@ WHERE f.project_id = $1
   AND ($10::text = ''
     OR f.current_title ILIKE '%' || $10::text || '%'
     OR f.fingerprint ILIKE '%' || $10::text || '%')
+  AND ($11::text = ''
+    OR ($11::text = 'default' AND cardinality(finding_change_branches(f.id)) = 0)
+    OR ($11::text = 'change' AND cardinality(finding_change_branches(f.id)) > 0))
 ORDER BY
-  CASE WHEN $11::text = 'severity' AND $12::text = 'desc' THEN f.current_severity_rank END DESC,
-  CASE WHEN $11::text = 'severity' AND $12::text = 'asc' THEN f.current_severity_rank END ASC,
-  CASE WHEN $11::text = 'first_seen' AND $12::text = 'desc' THEN f.first_seen_at END DESC,
-  CASE WHEN $11::text = 'first_seen' AND $12::text = 'asc' THEN f.first_seen_at END ASC,
-  CASE WHEN $11::text = 'last_seen' AND $12::text = 'desc' THEN f.last_seen_at END DESC,
-  CASE WHEN $11::text = 'last_seen' AND $12::text = 'asc' THEN f.last_seen_at END ASC,
-  CASE WHEN $11::text = 'title' AND $12::text = 'desc' THEN lower(f.current_title) END DESC,
-  CASE WHEN $11::text = 'title' AND $12::text = 'asc' THEN lower(f.current_title) END ASC,
+  CASE WHEN $12::text = 'severity' AND $13::text = 'desc' THEN f.current_severity_rank END DESC,
+  CASE WHEN $12::text = 'severity' AND $13::text = 'asc' THEN f.current_severity_rank END ASC,
+  CASE WHEN $12::text = 'first_seen' AND $13::text = 'desc' THEN f.first_seen_at END DESC,
+  CASE WHEN $12::text = 'first_seen' AND $13::text = 'asc' THEN f.first_seen_at END ASC,
+  CASE WHEN $12::text = 'last_seen' AND $13::text = 'desc' THEN f.last_seen_at END DESC,
+  CASE WHEN $12::text = 'last_seen' AND $13::text = 'asc' THEN f.last_seen_at END ASC,
+  CASE WHEN $12::text = 'title' AND $13::text = 'desc' THEN lower(f.current_title) END DESC,
+  CASE WHEN $12::text = 'title' AND $13::text = 'asc' THEN lower(f.current_title) END ASC,
   f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 LIMIT $7 OFFSET $8
 `
@@ -1433,6 +1491,7 @@ type ListFindingsByProjectParams struct {
 	Offset         int32       `json:"offset"`
 	AnalysisStates []string    `json:"analysis_states"`
 	Search         string      `json:"search"`
+	BranchScope    string      `json:"branch_scope"`
 	SortKey        string      `json:"sort_key"`
 	SortDir        string      `json:"sort_dir"`
 }
@@ -1451,6 +1510,7 @@ func (q *Queries) ListFindingsByProject(ctx context.Context, arg ListFindingsByP
 		arg.Offset,
 		arg.AnalysisStates,
 		arg.Search,
+		arg.BranchScope,
 		arg.SortKey,
 		arg.SortDir,
 	)
@@ -1657,7 +1717,8 @@ SELECT
     COALESCE(obs.artifact_ids, '{}')::text[] AS observed_artifact_ids,
     ARRAY(SELECT DISTINCT d.dim_value FROM finding_dimensions d
           WHERE d.finding_id = f.id AND d.dim_key = 'alias'
-          ORDER BY d.dim_value)::text[] AS aliases
+          ORDER BY d.dim_value)::text[] AS aliases,
+    finding_change_branches(f.id)::text[] AS change_branches
 FROM open_findings f
 LEFT JOIN LATERAL (
     SELECT r.environment_id, r.target_id, r.artifact_id
@@ -1718,6 +1779,7 @@ type ListGateCandidatesRow struct {
 	ObservedTargetIds      []string          `json:"observed_target_ids"`
 	ObservedArtifactIds    []string          `json:"observed_artifact_ids"`
 	Aliases                []string          `json:"aliases"`
+	ChangeBranches         []string          `json:"change_branches"`
 }
 
 // Batch gate-candidate loader: one round trip returns every finding that may
@@ -1757,6 +1819,7 @@ func (q *Queries) ListGateCandidates(ctx context.Context, arg ListGateCandidates
 			&i.ObservedTargetIds,
 			&i.ObservedArtifactIds,
 			&i.Aliases,
+			&i.ChangeBranches,
 		); err != nil {
 			return nil, err
 		}

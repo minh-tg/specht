@@ -43,6 +43,7 @@ func (r *pgFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UUID
 
 		AnalysisStates: params.AnalysisStates,
 		Search:         params.Search,
+		BranchScope:    params.BranchScope,
 		SortKey:        orDefault(params.SortKey, "severity"),
 		SortDir:        orDefault(params.SortDir, "desc"),
 	})
@@ -61,6 +62,7 @@ func (r *pgFindingRepo) CountByProject(ctx context.Context, projectID pgtype.UUI
 
 		AnalysisStates: params.AnalysisStates,
 		Search:         params.Search,
+		BranchScope:    params.BranchScope,
 	})
 }
 
