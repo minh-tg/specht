@@ -1555,3 +1555,150 @@ func TestRunCveWatcher_ConfigWGTracksNotifier(t *testing.T) {
 		t.Fatal("wg.Wait() did not complete")
 	}
 }
+
+// A project moved from an hourly to a two minute interval is polled on the new
+// schedule, without waiting out the hour it was sleeping through. A project added
+// while the daemon sleeps is picked up the same way.
+func TestRunCveWatcher_SettingsApplyWithoutWaitingOutTheSleep(t *testing.T) {
+	newProject := "44444444-4444-4444-4444-444444444444"
+	deps := baseDeps()
+	deps.Projects = []string{projectID}
+
+	var mu sync.Mutex
+	clock := fixedNow
+	var polls []time.Time
+	var newProjectPolledAt time.Time
+	var longestSleep time.Duration
+	interval := int32(3600)
+	projects := []port.Project{{ID: projectID, CveWatcherEnabled: true, CveWatcherIntervalSecs: interval}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	finished := make(chan struct{})
+	deps.Inventory = func(_ context.Context, pid string, _ time.Duration) ([]port.InventoryPackage, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch pid {
+		case newProject:
+			newProjectPolledAt = clock
+		case projectID:
+			polls = append(polls, clock)
+			if len(polls) == 1 {
+				// The hourly schedule is set. Shorten it and add a project.
+				projects = []port.Project{
+					{ID: projectID, CveWatcherEnabled: true, CveWatcherIntervalSecs: 120},
+					{ID: newProject, CveWatcherEnabled: true, CveWatcherIntervalSecs: 3600},
+				}
+			}
+			if len(polls) == 2 {
+				close(finished)
+				cancel()
+			}
+		}
+		return nil, nil
+	}
+
+	runDaemon(ctx, RunCveWatcherConfig{
+		PollDeps:         deps,
+		PollInterval:     6 * time.Hour,
+		ProjectIntervals: map[string]time.Duration{projectID: time.Hour},
+		ReloadProjects: func(context.Context) ([]port.Project, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			return append([]port.Project(nil), projects...), nil
+		},
+		Jitter: func(d time.Duration) time.Duration { return d },
+		Now: func() time.Time {
+			mu.Lock()
+			defer mu.Unlock()
+			return clock
+		},
+		Sleep: func(ctx context.Context, d time.Duration) error {
+			mu.Lock()
+			clock = clock.Add(d)
+			longestSleep = max(longestSleep, d)
+			mu.Unlock()
+			return ctx.Err()
+		},
+		Logger: testLogger(),
+	})
+	select {
+	case <-finished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the daemon never polled again on the shortened interval")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(polls) != 2 {
+		t.Fatalf("polls = %d, want 2", len(polls))
+	}
+	if gap := polls[1].Sub(polls[0]); gap > 5*time.Minute {
+		t.Fatalf("second poll came %s after the first, want the two minute schedule", gap)
+	}
+	if longestSleep > time.Minute {
+		t.Fatalf("daemon slept %s in one go, want at most a minute between reloads", longestSleep)
+	}
+	if newProjectPolledAt.IsZero() || newProjectPolledAt.Sub(polls[0]) > 2*time.Minute {
+		t.Fatalf("new project polled at %s, first poll at %s", newProjectPolledAt, polls[0])
+	}
+}
+
+// A failing project stays on its backoff when its interval has not changed, even
+// though every reload now wakes the daemon well before the backoff ends.
+func TestRunCveWatcher_ReloadDoesNotUndoBackoff(t *testing.T) {
+	deps := baseDeps()
+	deps.Projects = []string{projectID}
+
+	var mu sync.Mutex
+	clock := fixedNow
+	var attempts []time.Time
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	finished := make(chan struct{})
+	deps.Inventory = func(context.Context, string, time.Duration) ([]port.InventoryPackage, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		attempts = append(attempts, clock)
+		if len(attempts) == 3 {
+			close(finished)
+			cancel()
+		}
+		return nil, errors.New("database gone")
+	}
+
+	runDaemon(ctx, RunCveWatcherConfig{
+		PollDeps:         deps,
+		PollInterval:     time.Second,
+		ProjectIntervals: map[string]time.Duration{projectID: 10 * time.Second},
+		ReloadProjects: func(context.Context) ([]port.Project, error) {
+			return []port.Project{{ID: projectID, CveWatcherEnabled: true, CveWatcherIntervalSecs: 10}}, nil
+		},
+		Jitter: func(d time.Duration) time.Duration { return d },
+		Now: func() time.Time {
+			mu.Lock()
+			defer mu.Unlock()
+			return clock
+		},
+		Sleep: func(ctx context.Context, d time.Duration) error {
+			mu.Lock()
+			clock = clock.Add(d)
+			mu.Unlock()
+			return ctx.Err()
+		},
+		Logger: testLogger(),
+	})
+	select {
+	case <-finished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the daemon stopped polling")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	first, second := attempts[1].Sub(attempts[0]), attempts[2].Sub(attempts[1])
+	if second <= first {
+		t.Fatalf("gaps between failed polls %s then %s, want the backoff to grow", first, second)
+	}
+}
