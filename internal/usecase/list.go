@@ -105,8 +105,9 @@ type FindingResponse struct {
 type FindingScannerResponse struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name"`
-	// SupportsAutoClose is false when the scanner's report cannot prove a fix,
-	// so a later scan that omits the finding leaves it open.
+	// SupportsAutoClose is false when a later scan that omits the finding leaves
+	// it open: the project keeps this scanner manual, or the scanner cannot
+	// close findings at all.
 	SupportsAutoClose bool `json:"supports_auto_close"`
 }
 
@@ -809,7 +810,7 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 			Branch:          dc.Branch,
 			CommitSha:       dc.CommitSha,
 		}
-		resp.Scanner = u.findingScanner(dc.ToolName)
+		resp.Scanner = u.findingScanner(ctx, f.ProjectID, dc.ToolName)
 		resp.RawDataExpired = &dc.RawDataExpired
 		resp.RawDataExpiresAt = rawExpiresAt(dc.ReportCreatedAt, dc.RawDataExpired, u.deps.RawRetentionDays)
 		dims, err := u.deps.Stores.Findings.ListDimensions(ctx, id.String())
@@ -838,7 +839,7 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 
 // findingScanner describes the registered scanner called name, or nil when
 // there is none.
-func (u *Usecases) findingScanner(name string) *FindingScannerResponse {
+func (u *Usecases) findingScanner(ctx context.Context, projectID, name string) *FindingScannerResponse {
 	if u.deps.Registry == nil || name == "" {
 		return nil
 	}
@@ -846,10 +847,15 @@ func (u *Usecases) findingScanner(name string) *FindingScannerResponse {
 	if err != nil {
 		return nil
 	}
+	closes := scanner.SupportsAutoClose(sc)
+	if closes {
+		project, err := u.deps.Stores.Projects.GetByID(ctx, projectID)
+		closes = err == nil && !u.closesByHand(ctx, project, name)
+	}
 	return &FindingScannerResponse{
 		Name:              name,
 		DisplayName:       sc.Descriptor().ShownName(),
-		SupportsAutoClose: scanner.SupportsAutoClose(sc),
+		SupportsAutoClose: closes,
 	}
 }
 

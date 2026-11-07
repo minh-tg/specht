@@ -306,6 +306,9 @@ run_adapter() {
   chmod +x "$bin" || error "${asset} holds no adapter binary"
 
   local args=(-file "$SPECHT_INPUT_FILE" -tool "$SPECHT_INPUT_TOOL")
+  if [[ -n "${SPECHT_INPUT_ARTIFACT:-}" ]]; then
+    args+=(-artifact "$SPECHT_INPUT_ARTIFACT")
+  fi
   if [[ -n "${SPECHT_INPUT_PROJECT:-}" ]]; then
     args+=(-project "$SPECHT_INPUT_PROJECT")
   fi

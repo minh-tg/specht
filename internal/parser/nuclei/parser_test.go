@@ -208,3 +208,15 @@ func redact(t *testing.T, data []byte) []byte {
 	require.NoError(t, err)
 	return out
 }
+
+// A scan with no matches writes nothing. Named as this scanner, that is a clean
+// report, and detection still does not claim an empty file.
+func TestParse_EmptyInputIsACleanReport(t *testing.T) {
+	s := &Scanner{}
+	for _, input := range []string{"", "  \n", "[]"} {
+		report, err := s.Parse(context.Background(), []byte(input))
+		require.NoError(t, err, "%q", input)
+		assert.Empty(t, report.Findings, "%q", input)
+	}
+	assert.Equal(t, scanner.NotRecognized, s.Recognize(nil))
+}

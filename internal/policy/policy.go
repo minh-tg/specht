@@ -15,6 +15,9 @@ const (
 	// KeyWatcherGate admits watcher findings:
 	// immediate|off|require_triage.
 	KeyWatcherGate = "watcher_gate"
+	// KeyManualCloseScanners names the scanners whose clean scans do not close
+	// findings, as a comma-separated list. Empty keeps none manual.
+	KeyManualCloseScanners = "manual_close_scanners"
 )
 
 // Provenance names where an effective value came from.
@@ -48,6 +51,10 @@ type Effective struct {
 	SeveritySource  string  `json:"severity_source"`
 	WatcherGate     string  `json:"watcher_gate"`
 	WatcherSource   string  `json:"watcher_source"`
+	// ManualCloseScanners lists the scanners whose clean scans leave findings
+	// open, and ManualCloseSource where that list came from.
+	ManualCloseScanners []string `json:"manual_close_scanners"`
+	ManualCloseSource   string   `json:"manual_close_source"`
 }
 
 // ParseDefinition validates a template or override definition: known keys
@@ -65,7 +72,7 @@ func ParseDefinition(raw json.RawMessage) (map[string]string, error) {
 	out := make(map[string]string, len(loose))
 	for k, v := range loose {
 		allowed, ok := validValues[k]
-		if !ok {
+		if !ok && k != KeyManualCloseScanners {
 			return nil, fmt.Errorf("unknown policy key %q", k)
 		}
 		s, ok := v.(string)
@@ -73,6 +80,14 @@ func ParseDefinition(raw json.RawMessage) (map[string]string, error) {
 			return nil, fmt.Errorf("policy key %q must be a string", k)
 		}
 		s = strings.ToLower(strings.TrimSpace(s))
+		if k == KeyManualCloseScanners {
+			names, err := parseScannerList(s)
+			if err != nil {
+				return nil, err
+			}
+			out[k] = strings.Join(names, ",")
+			continue
+		}
 		valid := false
 		for _, a := range allowed {
 			if s == a {
@@ -88,6 +103,37 @@ func ParseDefinition(raw json.RawMessage) (map[string]string, error) {
 	return out, nil
 }
 
+// parseScannerList reads a comma-separated list of scanner names into a sorted
+// list without duplicates. Whether each name exists is the caller's question:
+// this package does not know the scanner registry.
+func parseScannerList(raw string) ([]string, error) {
+	seen := map[string]bool{}
+	names := []string{}
+	for _, part := range strings.Split(raw, ",") {
+		name := strings.TrimSpace(part)
+		if name == "" || seen[name] {
+			continue
+		}
+		if strings.Trim(name, "abcdefghijklmnopqrstuvwxyz0123456789-") != "" {
+			return nil, fmt.Errorf("policy key %q has invalid scanner name %q", KeyManualCloseScanners, name)
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+// ScannerList splits a stored manual_close_scanners value. The value was
+// validated on the way in, and nothing that fails to parse keeps a scanner manual.
+func ScannerList(value string) []string {
+	names, err := parseScannerList(value)
+	if err != nil {
+		return []string{}
+	}
+	return names
+}
+
 // Resolve merges template, overrides, and defaults with precedence:
 // project overrides beat the template, the template beats built-ins.
 // Every returned key carries its provenance.
@@ -95,6 +141,9 @@ func Resolve(templateName *string, templateVersion int, template, overrides map[
 	eff := Effective{TemplateName: templateName, TemplateVersion: templateVersion}
 	eff.SeverityFloor, eff.SeveritySource = resolveKey(template, overrides, KeySeverityFloor, DefaultSeverityFloor)
 	eff.WatcherGate, eff.WatcherSource = resolveKey(template, overrides, KeyWatcherGate, DefaultWatcherGate)
+	var manual string
+	manual, eff.ManualCloseSource = resolveKey(template, overrides, KeyManualCloseScanners, "")
+	eff.ManualCloseScanners = ScannerList(manual)
 	return eff
 }
 
@@ -153,7 +202,7 @@ func LowestListedRank(labels []string) int16 {
 // Keys returns the sorted definition keys, for stable error messages and
 // documentation.
 func Keys() []string {
-	out := []string{KeySeverityFloor, KeyWatcherGate}
+	out := []string{KeyManualCloseScanners, KeySeverityFloor, KeyWatcherGate}
 	sort.Strings(out)
 	return out
 }

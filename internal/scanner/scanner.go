@@ -144,16 +144,46 @@ func SupportsIncremental(s Scanner) bool {
 	return ok && incremental.SupportsIncremental()
 }
 
-// AutoCloser is optionally implemented by scanners whose report can prove a
-// finding is gone, so a later scan that omits it closes it: a whole-kind
-// guarantee (Trivy), a rule and file list or passed check (SARIF, Checkov) or
-// an unfiltered run (Grype). Whether a given report does depends on its
+// AutoCloser is optionally implemented by scanners whose report can close a
+// finding that a later scan omits. Some reports show what they looked for: a
+// whole-kind guarantee (Trivy), a rule and file list or passed check (SARIF,
+// Checkov) or an unfiltered run (Grype). The rest are taken at their word as a
+// CoverageAssumer. Whether a given report closes anything depends on its
 // content. Scanners that do not implement it never close a finding by absence.
 type AutoCloser interface {
 	Scanner
-	// SupportsAutoClose reports whether a report from this scanner can prove
-	// a fix.
+	// SupportsAutoClose reports whether a report from this scanner can close a
+	// finding by absence.
 	SupportsAutoClose() bool
+}
+
+// CoverageAssumer is implemented by scanners whose output does not say what the
+// run looked at. A full scan is taken to have covered the kinds it returns, so a
+// fix closes the finding on the next scan. The caller opts out by declaring an
+// incremental scan or a filter, and a project can keep a scanner manual. A run
+// narrowed some other way can close a finding early; the finding returns as a
+// regression when a wider scan sees it again.
+type CoverageAssumer interface {
+	Scanner
+	// AssumedCoverage returns the finding kinds a full run of this report is
+	// taken to have covered. Empty means the report vouches for nothing.
+	AssumedCoverage(nr *domain.NormalizedReport) []string
+}
+
+// ApplyAssumedCoverage marks a report whose output does not state its coverage
+// as complete for the kinds its scanner is taken to have covered. A report that
+// states its completeness keeps what it stated.
+func ApplyAssumedCoverage(s Scanner, nr *domain.NormalizedReport) {
+	assumer, ok := s.(CoverageAssumer)
+	if !ok || nr == nil || nr.Completeness != domain.CompletenessUnknown {
+		return
+	}
+	kinds := assumer.AssumedCoverage(nr)
+	if len(kinds) == 0 {
+		return
+	}
+	nr.Completeness = domain.CompletenessComplete
+	nr.CoveredFindingKinds = kinds
 }
 
 // SupportsAutoClose reports whether s can close findings by absence. A nil

@@ -233,6 +233,11 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	// ingests normally: scanner output is often byte-identical when nothing
 	// changed.
 	rawHash := reportHash(sc, originalData, nr, redactionFailed, input.ScanFilter)
+
+	input.closesByHand = u.closesByHand(ctx, project, input.Scanner)
+	if !input.closesByHand {
+		scanner.ApplyAssumedCoverage(sc, nr)
+	}
 	if u.deps.Stores.Ingest != nil {
 		return u.ingestAtomically(ctx, project, input, nr, scopeHash, rawHash)
 	}
@@ -332,7 +337,7 @@ func (u *Usecases) ingestParsedReport(ctx context.Context, project port.Project,
 // nothing by absence, and parsers that cannot vouch for completeness
 // default to unknown, neither of which ever reaches the store.
 func (u *Usecases) autoFixAbsentFindings(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, nr *domain.NormalizedReport, scopeHash string) error {
-	if input.ScanMode != ScanModeFull || nr.Completeness == domain.CompletenessPartial {
+	if input.ScanMode != ScanModeFull || nr.Completeness == domain.CompletenessPartial || input.closesByHand {
 		return nil
 	}
 	kindsVouched := nr.Completeness == domain.CompletenessComplete && len(nr.CoveredFindingKinds) > 0
@@ -832,7 +837,7 @@ func changedFilesDocument(files []string) json.RawMessage {
 // scopeTargetIdentifier).
 func scopeHashMaterial(input IngestReportInput, nr *domain.NormalizedReport) string {
 	target := ""
-	if nr.Target != nil {
+	if nr.Target != nil && !nr.Target.FromFindings {
 		target = scopeTargetIdentifier(nr.Target.Kind, nr.Target.Identifier)
 	}
 	return strings.Join([]string{

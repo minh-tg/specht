@@ -245,7 +245,7 @@ func convert(g gitleaksFinding, key []byte) (domain.NormalizedFinding, error) {
 		Severity:    domain.SeverityHigh,
 		Location:    location,
 		Fix: &domain.FixInfo{
-			Summary: "Revoke the exposed credential with its provider, issue a replacement, purge it from VCS history, then resolve this finding. Specht never retrieves or validates secret values.",
+			Summary: "Revoke the exposed credential with its provider, issue a replacement and purge it from VCS history. A clean scan then closes this finding. Specht never retrieves or validates secret values.",
 		},
 		CodeLocation: &domain.CodeLocation{
 			File:      file,

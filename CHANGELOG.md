@@ -17,6 +17,18 @@ releases.
   `GET /projects/{slug}/findings` takes `branch_scope` and returns `only_on_branches`, and project
   stats return `only_on_change_branches_count`. Findings with no branch to go by still count.
 
+- A full scan closes a finding it no longer reports, for every scanner. OSV-Scanner, Semgrep,
+  Dependency-Check, Gitleaks, tfsec, Nuclei and SBOMs with a vulnerability section left findings open
+  for good, so fixing one left the gate blocked. A failed run, a Semgrep run with errors, a rule a
+  Semgrep SARIF does not list, a plain SBOM inventory and a scan declared incremental or filtered
+  still close nothing. A project can keep a scanner manual on its Policy page or with the
+  `manual_close_scanners` policy key, and `supports_auto_close` on a finding's scanner reflects that.
+- `specht-adapter -tool nuclei` accepts an empty file, which is what a clean Nuclei run writes, and
+  reports it as a clean scan instead of failing.
+- The scan scope of OSV-Scanner and Dependency-Check reports no longer depends on their results, and
+  Dependency-Check names its target from `projectInfo.name` instead of the first dependency. Before,
+  a clean run landed in another scope, and a lodash finding could show a jQuery target.
+
 ### Added
 
 - Bulk triage can be undone. The toast after a bulk decision offers Undo, and

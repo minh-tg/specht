@@ -158,6 +158,9 @@ type PolicyEffective struct {
 	SeveritySource  string  `json:"severity_source"`
 	WatcherGate     string  `json:"watcher_gate"`
 	WatcherSource   string  `json:"watcher_source"`
+	// ManualCloseScanners lists the scanners whose clean scans leave findings open.
+	ManualCloseScanners []string `json:"manual_close_scanners"`
+	ManualCloseSource   string   `json:"manual_close_source"`
 }
 
 // Team is a named group of users that projects link for access.

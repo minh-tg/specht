@@ -7,12 +7,11 @@ import (
 )
 
 // runProof reads the rules a SARIF run loaded, the files it lists and whether
-// it finished. Semgrep SARIF lists no scanned files, so in practice it proves
-// nothing: a rule only counts for files its own run listed (see
-// parseutil.ExaminedFromRuns). The native JSON format lists no rules and
-// proves nothing either.
+// it finished. Semgrep SARIF lists no scanned files, so a finished run is taken
+// to have run its listed rules over every file. A rule it did not list, or a run
+// that failed, still closes nothing.
 func runProof(run sarifRun) parseutil.RuleRun {
-	proof := parseutil.RuleRun{Kind: "sast"}
+	proof := parseutil.RuleRun{Kind: "sast", AssumeAllFiles: true}
 	for _, r := range run.Tool.Driver.Rules {
 		proof.RuleIDs = append(proof.RuleIDs, r.ID)
 	}

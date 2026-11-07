@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Semgrep SARIF lists its rules but not the files it scanned, so it cannot
-// show a rule ran over a file and proves nothing.
-func TestSARIFRuleListWithoutFilesExaminesNothing(t *testing.T) {
+// Semgrep SARIF lists its rules but not the files it scanned, so a finished run
+// is taken to have run each listed rule over every file.
+func TestSARIFRuleListWithoutFilesCoversEveryFile(t *testing.T) {
 	doc := `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"Semgrep OSS","rules":[{"id":"a.b"},{"id":"c.d"}]}},"results":[]}]}`
 	nr, err := NewScanner().Parse(context.Background(), []byte(doc))
 	require.NoError(t, err)
-	assert.Empty(t, nr.ExaminedKeys)
+	assert.Equal(t, []string{"run:0:allfiles", "run:0:rule:sast:a.b", "run:0:rule:sast:c.d"}, nr.ExaminedKeys)
 }
 
 func TestSARIFExaminedKeysPairRulesWithListedFiles(t *testing.T) {

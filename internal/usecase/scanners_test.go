@@ -1,8 +1,10 @@
 package usecase
 
 import (
+	"context"
 	"testing"
 
+	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/scanner"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -86,11 +88,25 @@ func TestFindingScannerNamesTheLastObserver(t *testing.T) {
 	registry := scanner.NewRegistry()
 	require.NoError(t, registry.Register(&closingScanner{mockScanner{name: "trivy"}}))
 	require.NoError(t, registry.Register(&mockScanner{name: "gitleaks"}))
-	uc := New(Deps{Registry: registry})
+	uc := New(Deps{Registry: registry, Stores: &port.Stores{Projects: &mockProjectRepo{
+		getByIDFn: func(context.Context, string) (port.Project, error) { return port.Project{ID: "p"}, nil },
+	}}})
 
-	assert.Equal(t, &FindingScannerResponse{Name: "trivy", DisplayName: "trivy", SupportsAutoClose: true}, uc.findingScanner("trivy"))
-	assert.False(t, uc.findingScanner("gitleaks").SupportsAutoClose)
-	assert.Nil(t, uc.findingScanner("unregistered"))
-	assert.Nil(t, uc.findingScanner(""))
-	assert.Nil(t, New(Deps{}).findingScanner("trivy"))
+	assert.Equal(t, &FindingScannerResponse{Name: "trivy", DisplayName: "trivy", SupportsAutoClose: true}, uc.findingScanner(context.Background(), "", "trivy"))
+	assert.False(t, uc.findingScanner(context.Background(), "", "gitleaks").SupportsAutoClose)
+	assert.Nil(t, uc.findingScanner(context.Background(), "", "unregistered"))
+	assert.Nil(t, uc.findingScanner(context.Background(), "", ""))
+	assert.Nil(t, New(Deps{}).findingScanner(context.Background(), "", "trivy"))
+}
+
+func TestFindingScannerSaysWhenTheProjectKeepsItManual(t *testing.T) {
+	registry := scanner.NewRegistry()
+	require.NoError(t, registry.Register(&closingScanner{mockScanner{name: "trivy"}}))
+	uc := New(Deps{Registry: registry, Stores: &port.Stores{Projects: &mockProjectRepo{
+		getByIDFn: func(context.Context, string) (port.Project, error) {
+			return projectWithSettings(`{"policy":{"manual_close_scanners":"trivy"}}`), nil
+		},
+	}}})
+
+	assert.False(t, uc.findingScanner(context.Background(), "p", "trivy").SupportsAutoClose)
 }
