@@ -549,13 +549,13 @@ func idTokenSubject(idToken string) (string, error) {
 func (a *OIDCAuthenticator) verifySSOCallbackState(w http.ResponseWriter, r *http.Request) (verifier, wantNonce, returnTo, binding string, ok bool) {
 	state := r.URL.Query().Get("state")
 	if state == "" {
-		http.Error(w, "missing state", http.StatusBadRequest)
+		refuseSSO(w, r, "", http.StatusBadRequest, ssoRefusedExpired, "missing state")
 		return "", "", "", "", false
 	}
 	name := ssoStateCookieName(state)
 	cookie, err := r.Cookie(name)
 	if err != nil {
-		http.Error(w, "state mismatch: sso login not found or expired, start sign-in again", http.StatusBadRequest)
+		refuseSSO(w, r, "", http.StatusBadRequest, ssoRefusedExpired, "state mismatch: sso login not found or expired, start sign-in again")
 		return "", "", "", "", false
 	}
 	login, err := a.openLogin(state, cookie.Value)
@@ -564,7 +564,7 @@ func (a *OIDCAuthenticator) verifySSOCallbackState(w http.ResponseWriter, r *htt
 		if errors.Is(err, errSSOLoginExpired) {
 			msg = "state mismatch: sso login expired, start sign-in again"
 		}
-		http.Error(w, msg, http.StatusBadRequest)
+		refuseSSO(w, r, "", http.StatusBadRequest, ssoRefusedExpired, msg)
 		return "", "", "", "", false
 	}
 
@@ -599,6 +599,33 @@ func (a *OIDCAuthenticator) extractCallbackIdentity(ctx context.Context, tokenRe
 	}
 }
 
+// Why a browser's sign-in was refused, as the sign-in page reads them from
+// sso_error. The page maps each to fixed text, so the link carries no wording.
+const (
+	ssoRefusedExpired     = "expired"
+	ssoRefusedDenied      = "denied"
+	ssoRefusedNotAllowed  = "not_allowed"
+	ssoRefusedBadEmail    = "bad_email"
+	ssoRefusedUnavailable = "unavailable"
+	ssoRefusedFailed      = "failed"
+)
+
+// refuseSSO ends a callback that cannot sign the person in. The callback is a full
+// page navigation, so a browser goes back to the sign-in page with the reason
+// instead of being left on a plain text error at an API address. Other clients get
+// the status and message as they are.
+func refuseSSO(w http.ResponseWriter, r *http.Request, returnTo string, status int, reason, message string) {
+	if !strings.Contains(r.Header.Get("Accept"), "text/html") {
+		http.Error(w, message, status)
+		return
+	}
+	query := url.Values{"sso_error": {reason}}
+	if returnTo != "" && returnTo != "/" {
+		query.Set("redirect", returnTo)
+	}
+	http.Redirect(w, r, "/login?"+query.Encode(), http.StatusFound)
+}
+
 // issueCallbackSession mints the session token for the validated identity
 // and delivers it in the redirect URL fragment.
 func issueCallbackSession(w http.ResponseWriter, r *http.Request, issuer func(ctx context.Context, claims SSOClaims) (token string, err error), providerIssuer string, ident *Identity, returnTo, binding string) {
@@ -612,14 +639,14 @@ func issueCallbackSession(w http.ResponseWriter, r *http.Request, issuer func(ct
 	})
 	if err != nil {
 		if errors.Is(err, ErrSSONotProvisioned) {
-			http.Error(w, "sso account not provisioned", http.StatusForbidden)
+			refuseSSO(w, r, returnTo, http.StatusForbidden, ssoRefusedNotAllowed, "sso account not provisioned")
 			return
 		}
 		if errors.Is(err, ErrSSOInvalidEmail) {
-			http.Error(w, "the identity provider sent an email address this server cannot accept", http.StatusForbidden)
+			refuseSSO(w, r, returnTo, http.StatusForbidden, ssoRefusedBadEmail, "the identity provider sent an email address this server cannot accept")
 			return
 		}
-		http.Error(w, "token issuance failed", http.StatusInternalServerError)
+		refuseSSO(w, r, returnTo, http.StatusInternalServerError, ssoRefusedFailed, "token issuance failed")
 		return
 	}
 
@@ -650,9 +677,16 @@ func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, cla
 			return
 		}
 
+		if denied := r.URL.Query().Get("error"); denied != "" {
+			if a.logger != nil {
+				a.logger("oidc provider refused sign-in", "error", denied)
+			}
+			refuseSSO(w, r, returnTo, http.StatusBadRequest, ssoRefusedDenied, "the identity provider refused the sign-in")
+			return
+		}
 		code := r.URL.Query().Get("code")
 		if code == "" {
-			http.Error(w, "missing code", http.StatusBadRequest)
+			refuseSSO(w, r, returnTo, http.StatusBadRequest, ssoRefusedFailed, "missing code")
 			return
 		}
 
@@ -662,16 +696,16 @@ func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, cla
 				a.logger("oidc token exchange failed", "error", err)
 			}
 			if errors.Is(err, ErrSSOProviderUnavailable) {
-				http.Error(w, "the identity provider is unavailable, try signing in again later", http.StatusServiceUnavailable)
+				refuseSSO(w, r, returnTo, http.StatusServiceUnavailable, ssoRefusedUnavailable, "the identity provider is unavailable, try signing in again later")
 				return
 			}
-			http.Error(w, "token exchange failed", http.StatusInternalServerError)
+			refuseSSO(w, r, returnTo, http.StatusInternalServerError, ssoRefusedFailed, "token exchange failed")
 			return
 		}
 
 		ident, err := a.extractCallbackIdentity(r.Context(), tokenResp, wantNonce)
 		if err != nil {
-			http.Error(w, "identity extraction failed", http.StatusInternalServerError)
+			refuseSSO(w, r, returnTo, http.StatusInternalServerError, ssoRefusedFailed, "identity extraction failed")
 			return
 		}
 

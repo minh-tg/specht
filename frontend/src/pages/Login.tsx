@@ -15,6 +15,24 @@ import { type SubmitEvent, useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { safeRedirect } from "./safeRedirect";
 
+/** What to tell someone the server sent back from SSO. An unknown value says nothing. */
+const SSO_REFUSALS: Readonly<Record<string, string>> = {
+  expired: "That sign-in expired. Start again from this browser.",
+  denied:
+    "Your identity provider did not allow this sign-in. Ask your administrator if you expected it to.",
+  not_allowed:
+    "Your identity provider signed you in, but this server has no account it can let you into. Ask an administrator to add you.",
+  bad_email:
+    "Your identity provider sent an email address this server cannot accept. Ask your administrator to check it.",
+  unavailable: "Your identity provider is not responding. Try again in a few minutes.",
+  failed:
+    "Sign-in could not be finished. Try again, and tell your administrator if it keeps happening.",
+};
+
+function ssoRefusalMessage(reason: string | null): string | null {
+  return reason && Object.hasOwn(SSO_REFUSALS, reason) ? SSO_REFUSALS[reason] : null;
+}
+
 export function Login() {
   const auth = useAuth();
   const navigate = useNavigate();
@@ -22,6 +40,7 @@ export function Login() {
   const capabilities = useCapabilities();
   const redirect = safeRedirect(searchParams.get("redirect"));
   const sessionRevoked = searchParams.get("reason") === SESSION_REUSED_REASON;
+  const ssoRefusal = ssoRefusalMessage(searchParams.get("sso_error"));
   const ssoHref = redirect === "/"
     ? "/api/v1/auth/sso/login"
     : `/api/v1/auth/sso/login?redirect=${encodeURIComponent(redirect)}`;
@@ -79,6 +98,14 @@ export function Login() {
       subtitle="Use the account you were given for this server."
     >
       <form onSubmit={handleSubmit} className="grid gap-4">
+        {ssoRefusal && !error && (
+          <p
+            role="alert"
+            className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-body"
+          >
+            {ssoRefusal}
+          </p>
+        )}
         {sessionRevoked && !error && (
           <p
             role="status"
