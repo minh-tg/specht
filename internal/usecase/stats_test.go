@@ -79,6 +79,10 @@ func (m *mockStatsStore) CountFindingsOnlyOnChangeBranches(context.Context, stri
 	return 0, nil
 }
 
+func (m *mockStatsStore) CountOpenUnratedFindings(context.Context, string) (int32, error) {
+	return 0, nil
+}
+
 func (m *mockStatsStore) GetProjectReportCount(context.Context, string) (int32, error) { return 0, nil }
 
 func (m *mockStatsStore) GetProjectLatestReport(context.Context, string) (port.Report, error) {

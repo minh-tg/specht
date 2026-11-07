@@ -3086,6 +3086,13 @@ export interface components {
       manual_close_scanners?: string[];
       /** @enum {string} */
       manual_close_source?: "default" | "template" | "override";
+      /**
+       * @description `block` makes findings without a severity block the gate. `ignore` leaves them out, because no severity floor can judge them, and the gate reports how many.
+       * @enum {string}
+       */
+      unrated_gate?: "ignore" | "block";
+      /** @enum {string} */
+      unrated_source?: "default" | "template" | "override";
     };
     PRCheckPreview: {
       /** @enum {string} */

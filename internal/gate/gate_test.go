@@ -2,6 +2,7 @@ package gate
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -868,3 +869,86 @@ func TestEvaluate_PassHasNoBlockingByRank(t *testing.T) {
 	assert.Equal(t, StatusPass, d.Status)
 	assert.Empty(t, d.BlockingByRank)
 }
+
+func TestUnratedPolicyAdmitsFindingsBelowEveryFloor(t *testing.T) {
+	findings := []Finding{
+		{ID: "unrated", CurrentSeverityRank: 0},
+		{ID: "medium", CurrentSeverityRank: 2},
+		{ID: "high", CurrentSeverityRank: 3},
+	}
+	repo := &floorRepo{findings: findings}
+	g := New(repo, emptyWaivers{})
+
+	off, err := g.EvaluateWithPolicies(context.Background(), "p", 3, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(off.BlockedBy, []string{"high"}) {
+		t.Fatalf("without the policy only the high blocks, got %v", off.BlockedBy)
+	}
+
+	on, err := g.EvaluateWithPolicies(context.Background(), "p", 3, []GatePolicy{{Source: SourceUnrated, Mode: PolicyImmediate}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(on.BlockedBy, []string{"unrated", "high"}) {
+		t.Fatalf("the policy admits the unrated finding and no other below the floor, got %v", on.BlockedBy)
+	}
+}
+
+func TestChangeBranchFindingsCountOnlyOnTheirBranch(t *testing.T) {
+	repo := &floorRepo{findings: []Finding{
+		{ID: "main", CurrentSeverityRank: 3},
+		{ID: "branch", CurrentSeverityRank: 3, ChangeBranches: []string{"feat/x"}},
+	}}
+	g := New(repo, emptyWaivers{})
+
+	verdict, err := g.EvaluateWithPolicies(context.Background(), "p", 3, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(verdict.BlockedBy, []string{"main"}) {
+		t.Fatalf("the project verdict leaves the branch finding out, got %v", verdict.BlockedBy)
+	}
+
+	branch, err := g.EvaluateForBranch(context.Background(), "p", 3, nil, "feat/x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(branch.BlockedBy, []string{"main", "branch"}) {
+		t.Fatalf("a run on the branch counts the branch, got %v", branch.BlockedBy)
+	}
+
+	other, err := g.EvaluateForBranch(context.Background(), "p", 3, nil, "feat/y")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(other.BlockedBy, []string{"main"}) {
+		t.Fatalf("another branch's finding does not count, got %v", other.BlockedBy)
+	}
+}
+
+// floorRepo applies the rank filter the real query applies.
+type floorRepo struct{ findings []Finding }
+
+func (r *floorRepo) ListBlockingFindings(_ context.Context, _ string, minRank int16) ([]Finding, error) {
+	out := make([]Finding, 0, len(r.findings))
+	for _, f := range r.findings {
+		if f.CurrentSeverityRank >= minRank {
+			out = append(out, f)
+		}
+	}
+	return out, nil
+}
+
+func (r *floorRepo) ListIntroducedGateCandidates(ctx context.Context, p, _ string, minRank int16) ([]Finding, error) {
+	return r.ListBlockingFindings(ctx, p, minRank)
+}
+
+func (r *floorRepo) ListIntroducedCommitCandidates(ctx context.Context, p, _ string, minRank int16) ([]Finding, error) {
+	return r.ListBlockingFindings(ctx, p, minRank)
+}
+
+type emptyWaivers struct{}
+
+func (emptyWaivers) ListActiveWaivers(context.Context, string) ([]Waiver, error) { return nil, nil }
