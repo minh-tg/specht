@@ -127,6 +127,7 @@ func TestE2E_WatcherDaemonLifecycle(t *testing.T) {
 		time.Sleep(2500 * time.Millisecond)
 		ingestRaw(t, slug, "trivy", "trivy-npm-packages-scan.json", nil)
 		notifyBefore := fakes.notifySink.count()
+		trackerBefore := fakes.trackerSink.count()
 		armLodashAdvisory()
 
 		var found []scanFinding
@@ -195,6 +196,16 @@ func TestE2E_WatcherDaemonLifecycle(t *testing.T) {
 			http.StatusOK)
 		require.True(t, getGate(t, slug, "").ThresholdBreached,
 			"a triaged watcher finding blocks the gate")
+
+		// The tracker hears about it the way it hears about a scan's new finding.
+		require.Eventually(t, func() bool {
+			for _, ev := range trackerDeliveries(t, trackerBefore, "created") {
+				if ev.FindingID == f.ID {
+					return true
+				}
+			}
+			return false
+		}, 10*time.Second, 200*time.Millisecond, "the tracker gets a created event")
 
 		// Triaging it away opens the gate again.
 		request[triageOutput](t, http.MethodPatch, "/api/v1/findings/"+f.ID, adminToken,

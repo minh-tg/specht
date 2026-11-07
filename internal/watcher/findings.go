@@ -110,6 +110,8 @@ type Decision struct {
 	SkipReason string
 	// Finding carries the full finding payload when Created is true.
 	Finding FindingPayload
+	// FindingID is the persisted finding's id, set once the poll has written it.
+	FindingID string
 	// Event is the audit event to log: auto_rule_applied when Created,
 	// auto_rule_skipped when a scan-derived finding suppressed creation.
 	// It is nil when the pair produced no event title (for example an

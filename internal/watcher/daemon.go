@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/minh-tg/specht/internal/port"
+	"github.com/minh-tg/specht/internal/tracker"
 )
 
 // PollStore is the persistence surface a poll writes through. The production
@@ -88,6 +89,13 @@ type PollDeps struct {
 	// blocks or fails a poll; a nil notifier (or one configured with no
 	// webhook URL) disables the channel entirely.
 	Notifier Notifier
+	// Tracker receives a created event for each finding a poll files, as report
+	// ingest sends for a scan's new findings. Dispatched asynchronously like
+	// Notifier. A nil Tracker disables it.
+	Tracker TrackerDispatcher
+	// ProjectSlug resolves a project's slug for tracker events. When nil, the
+	// project ID string is used.
+	ProjectSlug func(ctx context.Context, projectID string) (string, error)
 	// ProjectName resolves a project's display name for notifications.
 	// When nil, the project ID string is used as the name.
 	ProjectName func(ctx context.Context, projectID string) (string, error)
@@ -168,6 +176,7 @@ func PollOnce(ctx context.Context, deps PollDeps) (PollOutcome, error) {
 	// The round's notification pass runs for every finding the successful
 	// projects created; a failed project only costs itself.
 	notifyCreated(ctx, deps, created)
+	dispatchCreated(ctx, deps, created)
 	deps.Logger.Info(msgPollComplete, "projects", outcome.Projects, "queried", outcome.Queried, "created", outcome.Created, "skipped", outcome.Skipped, "unchanged", outcome.Unchanged)
 	return outcome, errors.Join(projectErrs...)
 }
@@ -361,6 +370,51 @@ func notifyCreated(ctx context.Context, deps PollDeps, created []Decision) {
 	}()
 }
 
+// TrackerDispatcher publishes finding lifecycle events to an external tracker.
+type TrackerDispatcher interface {
+	Dispatch(ctx context.Context, event tracker.Event)
+}
+
+// dispatchCreated tells the tracker about the findings a poll filed. Like
+// notifyCreated it runs on its own goroutine, so a slow tracker cannot stall or
+// fail the poll.
+func dispatchCreated(ctx context.Context, deps PollDeps, created []Decision) {
+	if deps.Tracker == nil || len(created) == 0 {
+		return
+	}
+	events := make([]tracker.Event, 0, len(created))
+	for _, d := range created {
+		slug := d.Finding.ProjectID
+		if deps.ProjectSlug != nil {
+			if s, err := deps.ProjectSlug(ctx, d.Finding.ProjectID); err == nil && s != "" {
+				slug = s
+			}
+		}
+		events = append(events, tracker.Event{
+			Type:         tracker.EventCreated,
+			FindingID:    d.FindingID,
+			ProjectSlug:  slug,
+			Severity:     d.Finding.Severity,
+			SeverityRank: d.Finding.SeverityRank,
+			Title:        d.Finding.Title,
+			Fingerprint:  d.Finding.Fingerprint,
+			FindingKind:  d.Finding.FindingKind,
+			OccurredAt:   deps.Now().UTC(),
+		})
+	}
+	if deps.WG != nil {
+		deps.WG.Add(1)
+	}
+	go func() {
+		if deps.WG != nil {
+			defer deps.WG.Done()
+		}
+		for _, event := range events {
+			deps.Tracker.Dispatch(context.WithoutCancel(ctx), event)
+		}
+	}()
+}
+
 // pollCutoff resolves one project's advisory published-date lower bound: the
 // project's own watermark on warm polls, the configured cold-start window (or
 // full history) when that project has never polled.
@@ -459,7 +513,7 @@ func pairGapCheck(deps PollDeps, suppressing *string) GapCheck {
 // persistPairDecision writes a decided pair outcome to the store.
 func persistPairDecision(ctx context.Context, deps PollDeps, decision Decision, suppressing string) (decisionKind, bool, Decision, error) {
 	if decision.Created {
-		_, created, err := deps.Store.PersistFoundFinding(ctx, decision)
+		findingID, created, err := deps.Store.PersistFoundFinding(ctx, decision)
 		if err != nil {
 			return decisionIgnored, false, Decision{}, err
 		}
@@ -469,6 +523,7 @@ func persistPairDecision(ctx context.Context, deps PollDeps, decision Decision, 
 			// finding — backfill counters must stay honest.
 			return decisionUnchanged, false, Decision{}, nil
 		}
+		decision.FindingID = findingID
 		return decisionCreated, false, decision, nil
 	}
 	if decision.Event == nil {

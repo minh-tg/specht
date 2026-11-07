@@ -409,6 +409,8 @@ releases.
 - A CVE watcher finding that does not block says why. The page read "This finding does not block the
   gate" on a critical finding, when the reason was the project policy keeping watcher findings out
   until someone triages them.
+- A finding the CVE watcher files sends the tracker a created event, as a new finding from a scan does.
+  It sent nothing, so a tracker missed the advisories that arrive between scans.
 - Signing in from a deep link, such as the change link in a CI log, returns to that page. Login
   sent everyone to the projects list because its already-signed-in check ran after the token was
   set and overrode the redirect.
