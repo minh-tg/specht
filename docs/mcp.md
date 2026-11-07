@@ -80,7 +80,7 @@ Every credential can use these:
 |---|---|
 | `findings_list` | List findings for a project, filtered by severity or status |
 | `findings_get` | Show one finding |
-| `gate_check` | Check whether a project's gate passes, or only the findings one report introduced |
+| `gate_check` | Check whether a project's gate passes for its default branch, for one `branch`, or for only the findings one report introduced |
 | `pr_preview` | Preview the pull-request check for a commit |
 | `patch_preview` | Preview the safe patch for a finding |
 | `notify_preview` | Preview the issue or message Specht would send for a finding |

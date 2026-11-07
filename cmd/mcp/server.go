@@ -15,7 +15,7 @@ import (
 type API interface {
 	ListFindings(projectSlug string, severities, states []string, limit, offset int32) ([]client.Finding, error)
 	GetFinding(findingID string) (*client.Finding, error)
-	GetGateStatus(projectSlug string, severity string) (*client.GateStatus, error)
+	GetBranchGateStatus(projectSlug, severity, branch string) (*client.GateStatus, error)
 	GetIntroducedGateStatus(projectSlug string, severity string, reportID string) (*client.GateStatus, error)
 	PreviewPRCheck(projectSlug string, commit string, provider string, reportID string, severity string) (*client.PRCheckPreview, error)
 	PreviewPatch(findingID string) (*client.PatchOutcome, error)
@@ -64,6 +64,7 @@ type findingInput struct {
 type gateCheckInput struct {
 	Project        string `json:"project" jsonschema:"project slug"`
 	Severity       string `json:"severity,omitempty" jsonschema:"severity threshold"`
+	Branch         string `json:"branch,omitempty" jsonschema:"also count the findings seen on this branch; without it the verdict answers for the default branch"`
 	IntroducedOnly bool   `json:"introduced_only,omitempty" jsonschema:"only findings introduced by a report"`
 	ReportID       string `json:"report_id,omitempty" jsonschema:"report ID used with introduced_only"`
 }
@@ -166,7 +167,7 @@ func registerReadTools(server *mcp.Server, api API) {
 	addTool(server, &mcp.Tool{Name: "findings_get", Description: "Get finding details by ID"}, func(_ context.Context, _ *mcp.CallToolRequest, input findingInput) (*mcp.CallToolResult, any, error) {
 		return handleFindingsGet(api, input)
 	})
-	addTool(server, &mcp.Tool{Name: "gate_check", Description: "Check gate status for a project"}, func(_ context.Context, _ *mcp.CallToolRequest, input gateCheckInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "gate_check", Description: "Check gate status for a project. The verdict answers for its default branch; pass branch to also count the findings seen on one branch, such as a pull request's."}, func(_ context.Context, _ *mcp.CallToolRequest, input gateCheckInput) (*mcp.CallToolResult, any, error) {
 		return handleGateCheck(api, input)
 	})
 	addTool(server, &mcp.Tool{Name: "pr_preview", Description: "Preview the pull-request check for a commit"}, func(_ context.Context, _ *mcp.CallToolRequest, input prPreviewInput) (*mcp.CallToolResult, any, error) {
@@ -347,22 +348,29 @@ func handleGateCheck(api API, input gateCheckInput) (*mcp.CallToolResult, any, e
 	if input.IntroducedOnly && input.ReportID == "" {
 		return nil, nil, fmt.Errorf("report_id is required with introduced_only")
 	}
+	if input.IntroducedOnly && input.Branch != "" {
+		return nil, nil, fmt.Errorf("branch cannot be combined with introduced_only: a report already names its branch")
+	}
 	var status *client.GateStatus
 	var err error
 	if input.IntroducedOnly {
 		status, err = api.GetIntroducedGateStatus(input.Project, input.Severity, input.ReportID)
 	} else {
-		status, err = api.GetGateStatus(input.Project, input.Severity)
+		status, err = api.GetBranchGateStatus(input.Project, input.Severity, input.Branch)
 	}
 	if err != nil {
 		return nil, nil, err
 	}
-	if !status.ThresholdBreached {
-		return textToolResult("gate PASSED: no blocking findings")
+	scope := ""
+	if input.Branch != "" {
+		scope = " on branch " + untrusted(input.Branch)
 	}
-	text := fmt.Sprintf("gate FAILED: %d blocking finding(s)", status.BlockingCount)
+	if !status.ThresholdBreached {
+		return textToolResult(fmt.Sprintf("gate PASSED%s: no blocking findings", scope))
+	}
+	text := fmt.Sprintf("gate FAILED%s: %d blocking finding(s)", scope, status.BlockingCount)
 	if status.ReportOnly {
-		text = fmt.Sprintf("gate WOULD FAIL (report only): %d blocking finding(s)", status.BlockingCount)
+		text = fmt.Sprintf("gate WOULD FAIL (report only)%s: %d blocking finding(s)", scope, status.BlockingCount)
 	}
 	for _, id := range status.BlockedBy {
 		reachability := status.BlockedByReachability[id]
