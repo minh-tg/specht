@@ -301,6 +301,11 @@ export interface paths {
      *     tokens at `/api/v1/auth/sso/exchange`. The login's state cookie stays in
      *     the browser until that exchange redeems the code.
      *
+     *     A request that accepts `text/html`, which is how a browser arrives here,
+     *     is refused with a redirect to `/login?sso_error=<reason>` instead of the
+     *     4xx or 5xx below. `reason` is one of `expired`, `denied`, `not_allowed`,
+     *     `bad_email`, `unavailable` or `failed`.
+     *
      *     Unknown IdP subjects are provisioned only when their email domain is in
      *     `SSO_ALLOWED_DOMAINS`; otherwise the request is refused. An existing
      *     account keeps its local role regardless of IdP group membership.

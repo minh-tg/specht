@@ -300,6 +300,28 @@ describe("Login", () => {
     expect(await screen.findByText("Dashboard page")).toBeInTheDocument();
   });
 
+  it.each([
+    ["not_allowed", /no account it can let you into/],
+    ["denied", /did not allow this sign-in/],
+    ["expired", /expired/],
+    ["bad_email", /email address this server cannot accept/],
+    ["unavailable", /not responding/],
+    ["failed", /could not be finished/],
+  ])("explains an SSO refusal of %s", (reason, text) => {
+    renderLoginWithAuth(`/login?sso_error=${reason}`);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(text);
+  });
+
+  it.each(["<b>phish</b>", "constructor", "__proto__", ""])(
+    "says nothing for an SSO refusal it does not know: %s",
+    (reason) => {
+      renderLoginWithAuth(`/login?sso_error=${encodeURIComponent(reason)}`);
+
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    },
+  );
+
   it("sends someone already signed in to the redirect", () => {
     authState.token = "token";
     renderLoginWithAuth("/login?redirect=%2Fdashboard");

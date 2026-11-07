@@ -400,6 +400,9 @@ releases.
 - A CVE watcher finding shows its fix and the package it is about on the finding page and in the
   findings list. Its observation belongs to no report, so the page said "No remediation reported" and
   "The scanner gave no file" even though the advisory named a fixed version.
+- A refused SSO sign-in returns to the sign-in page with a reason. It left the browser on a plain text
+  error at the callback address, such as `sso account not provisioned`, and a provider that denied
+  access read as `missing code`. Clients that do not ask for HTML still get the status codes.
 - Signing in from a deep link, such as the change link in a CI log, returns to that page. Login
   sent everyone to the projects list because its already-signed-in check ran after the token was
   set and overrode the redirect.
