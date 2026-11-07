@@ -1,11 +1,19 @@
 import { expiresAtFor, EXPIRY_OPTIONS, type ExpiryOption, useApiKeys } from "@/api/apiKeys";
 import { APIError } from "@/api/client";
-import { queryKeys, useCreateApiKey, useProject, useProjectStats, useVersion } from "@/api/hooks";
+import {
+  queryKeys,
+  useCreateApiKey,
+  useProject,
+  useProjectStats,
+  useScanners,
+  useVersion,
+} from "@/api/hooks";
 import { CopyButton } from "@/components/CopyButton";
 import { ErrorState } from "@/components/ErrorState";
 import { INLINE_LINK, TOUCH_TARGET } from "@/components/inlineLink";
 import { SelectField } from "@/components/SelectField";
 import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -20,8 +28,21 @@ import type { ProjectStats } from "@/types/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { GateModeStep } from "./project-setup/GateModeStep";
+import { PipelineTabs } from "./project-setup/PipelineTabs";
+import { SampleReportButton } from "./project-setup/SampleReportButton";
 
 const PRE_CLASS = "bg-muted rounded-md p-3 text-code break-words whitespace-pre-wrap";
+
+/** Whether an address only reaches this machine or its network, never a hosted runner. */
+function isLocalAddress(hostname: string): boolean {
+  return hostname === "localhost"
+    || hostname === "[::1]"
+    || hostname.endsWith(".local")
+    || /^(127|10)\./.test(hostname)
+    || /^192\.168\./.test(hostname)
+    || /^172\.(1[6-9]|2\d|3[01])\./.test(hostname);
+}
 
 type FirstReport = "waiting" | "processing" | "failed" | "received";
 
@@ -82,13 +103,15 @@ export function ProjectSetup() {
     refetch: refetchProject,
   } = useProject(slug);
   const { data: serverVersion, isLoading: versionLoading, isError: versionError } = useVersion();
+  const { data: scanners } = useScanners();
+  const scannerNames = (scanners ?? []).map((s) => s.name).join(", ");
 
   const createKey = useCreateApiKey();
   const existingKeys = useApiKeys(slug);
   const keyCount = existingKeys.data?.length;
   const keysFailed = existingKeys.isError;
   const [keyName, setKeyName] = useState("ci");
-  const [expiry, setExpiry] = useState<ExpiryOption>("none");
+  const [expiry, setExpiry] = useState<ExpiryOption>("1y");
   const [rawKey, setRawKey] = useState<string | null>(null);
   const [keyError, setKeyError] = useState<string | null>(null);
 
@@ -187,7 +210,79 @@ export function ProjectSetup() {
     <div className="mx-auto max-w-2xl px-4 py-8">
       <h1 className="mb-6 text-title font-bold">Set up CI for {project.name}</h1>
 
-      <ol className="list-decimal space-y-8 pl-5">
+      <section
+        aria-label="First report"
+        className="bg-card rounded-lg border p-4"
+      >
+        <h2 className="text-body font-semibold">
+          {statsFailed
+            ? "First report status unavailable"
+            : FIRST_REPORT_COPY[firstReport].heading}
+        </h2>
+        {statsFailed
+          ? (
+            <div className="mt-1 flex items-center gap-3">
+              <p role="alert" className="text-destructive text-body">
+                Could not check for the first report.
+              </p>
+              <button
+                type="button"
+                className={`${INLINE_LINK} text-body`}
+                onClick={() => stats.refetch()}
+              >
+                Retry
+              </button>
+            </div>
+          )
+          : (
+            <p role="status" className="text-muted-foreground mt-1 text-body">
+              {firstReport === "received"
+                ? `First report received: ${pluralize(totalFindings, "finding")}.`
+                : FIRST_REPORT_COPY[firstReport].message}
+            </p>
+          )}
+        {!statsFailed && firstReport === "failed" && (
+          <div className="mt-2">
+            <Link to={`/${project.slug}/reports`} className={`${INLINE_LINK} text-body`}>
+              View reports
+            </Link>
+          </div>
+        )}
+        {!statsFailed && firstReport === "received" && (
+          <div className="mt-2 flex gap-4">
+            <Link to={`/${project.slug}/findings`} className={`${INLINE_LINK} text-body`}>
+              View findings
+            </Link>
+            <Link to="/" className={`${INLINE_LINK} text-body`}>Back to projects</Link>
+          </div>
+        )}
+      </section>
+      <section aria-labelledby="see-it-first" className="mt-6">
+        <h2 id="see-it-first" className="text-section font-semibold">See it first</h2>
+        <p className="text-muted-foreground mt-1 text-body">
+          No pipeline needed: send one report and see findings, a verdict and the fixes.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <SampleReportButton slug={project.slug} />
+          <Link to={`/${slug}/reports/upload`} className={buttonVariants({ variant: "outline" })}>
+            Upload a report
+          </Link>
+        </div>
+      </section>
+
+      <ol className="mt-8 list-decimal space-y-8 pl-5">
+        <li>
+          <h2 className="text-section font-semibold">Choose how strict to start</h2>
+          <p className="text-muted-foreground mt-1 text-body">
+            The pipeline also scans your default branch, so existing findings can fail its first
+            run.
+          </p>
+          <GateModeStep
+            slug={project.slug}
+            canEdit={project.permissions?.manage_members === true}
+          />
+        </li>
+
         <li>
           <h2 className="text-section font-semibold">Create an API key</h2>
           <p className="text-muted-foreground mt-1 text-body">
@@ -254,92 +349,48 @@ export function ProjectSetup() {
         <li>
           <h2 className="text-section font-semibold">Add it to your pipeline</h2>
           <p className="text-muted-foreground mt-1 text-body">
-            Store the key you just created as the SPECHT_API_KEY secret, then commit one of these
-            pipelines. The snippets only reference the secret; they never contain the key itself.
+            Store the key as the SPECHT_API_KEY secret, then commit this pipeline. It only
+            references the secret and never contains the key.
           </p>
           {versionNote && (
             <p className="text-muted-foreground mt-2 text-meta">
               {versionNote}
             </p>
           )}
+          {isLocalAddress(window.location.hostname) && (
+            <p role="note" className="text-sev-medium-fg mt-2 text-body">
+              These use{" "}
+              {apiUrl}, which a hosted CI runner cannot reach. Put an address the runner can reach
+              in place of it, or run the adapter yourself after a scan:{" "}
+              <code className="text-code break-all">
+                API_URL={apiUrl} API_KEY=... specht-adapter -project {project.slug}{" "}
+                -tool trivy -file trivy-results.json
+              </code>
+            </p>
+          )}
 
-          <div className="mt-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-body font-semibold">GitHub Actions</h3>
-              <CopyButton text={githubSnippet} label="GitHub Actions workflow" />
-            </div>
-            <pre className={`${PRE_CLASS} mt-1`}>
-              <code>{githubSnippet}</code>
-            </pre>
-          </div>
-
-          <div className="mt-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-body font-semibold">GitLab CI</h3>
-              <CopyButton text={gitlabSnippet} label="GitLab CI pipeline" />
-            </div>
-            <pre className={`${PRE_CLASS} mt-1`}>
-              <code>{gitlabSnippet}</code>
-            </pre>
-          </div>
+          <PipelineTabs
+            pipelines={[
+              {
+                id: "github",
+                label: "GitHub Actions",
+                copyLabel: "GitHub Actions workflow",
+                snippet: githubSnippet,
+              },
+              {
+                id: "gitlab",
+                label: "GitLab CI",
+                copyLabel: "GitLab CI pipeline",
+                snippet: gitlabSnippet,
+              },
+            ]}
+          />
 
           <p className="text-muted-foreground mt-2 text-meta">
-            More examples: examples/ci/ in the repository.
+            This pipeline scans with Trivy. For another scanner, change the scan step and set{" "}
+            <code className="text-code">tool</code>:{" "}
+            {scannerNames || "see the README"}. More examples: examples/ci/ in the repository.
           </p>
-        </li>
-
-        <li>
-          <h2 className="text-section font-semibold">Or upload a report by hand</h2>
-          <p className="mt-1 text-body">
-            <Link to={`/${slug}/reports/upload`} className={`${INLINE_LINK} text-body`}>
-              Upload a report
-            </Link>
-          </p>
-        </li>
-
-        <li>
-          <h2 className="text-section font-semibold">
-            {statsFailed
-              ? "First report status unavailable"
-              : FIRST_REPORT_COPY[firstReport].heading}
-          </h2>
-          {statsFailed
-            ? (
-              <div className="mt-1 flex items-center gap-3">
-                <p role="alert" className="text-destructive text-body">
-                  Could not check for the first report.
-                </p>
-                <button
-                  type="button"
-                  className={`${INLINE_LINK} text-body`}
-                  onClick={() => stats.refetch()}
-                >
-                  Retry
-                </button>
-              </div>
-            )
-            : (
-              <p role="status" className="text-muted-foreground mt-1 text-body">
-                {firstReport === "received"
-                  ? `First report received: ${pluralize(totalFindings, "finding")}.`
-                  : FIRST_REPORT_COPY[firstReport].message}
-              </p>
-            )}
-          {!statsFailed && firstReport === "failed" && (
-            <div className="mt-2">
-              <Link to={`/${project.slug}/reports`} className={`${INLINE_LINK} text-body`}>
-                View reports
-              </Link>
-            </div>
-          )}
-          {!statsFailed && firstReport === "received" && (
-            <div className="mt-2 flex gap-4">
-              <Link to={`/${project.slug}/findings`} className={`${INLINE_LINK} text-body`}>
-                View findings
-              </Link>
-              <Link to="/" className={`${INLINE_LINK} text-body`}>Back to projects</Link>
-            </div>
-          )}
         </li>
       </ol>
     </div>

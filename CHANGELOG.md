@@ -35,6 +35,10 @@ releases.
 
 ### Added
 
+- The CI setup page shows the first report's status at the top and offers a sample report, so someone
+  can see findings and a verdict before touching a pipeline. It asks how strict to start, shows one
+  pipeline at a time, warns when the address it puts in the snippets cannot be reached from a hosted
+  runner, and starts a new key with a one-year expiry instead of none.
 - A link opened in a new tab stays signed in. Each tab still keeps its session in its own storage,
   and signing in now also sets an `HttpOnly`, `SameSite=Strict` session cookie scoped to the new
   `POST /api/v1/auth/resume`, which gives a new tab its own session in the same sign-in. Closing the

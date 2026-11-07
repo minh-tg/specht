@@ -71,7 +71,9 @@ export function ProjectList() {
     return (
       <EmptyState
         title="No projects yet"
-        description={isAdmin ? undefined : "Ask an administrator to create one."}
+        description={isAdmin
+          ? "A project holds one repository's findings and the gate its CI checks."
+          : "Ask an administrator to create one."}
         action={isAdmin
           ? (
             <Link to="/projects/new" className={buttonVariants()}>

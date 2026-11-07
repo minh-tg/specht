@@ -32,8 +32,8 @@
 # The step exit code is the adapter's: 0 pass, 1 blocked (findings), 2 error.
 # A failure before the adapter runs (missing api-key, unsupported runner,
 # download, signature or checksum failure) also exits 2.
-# A non-zero exit fails the job, so use continue-on-error when the gate should
-# report without blocking.
+# A non-zero exit fails the job. To report without blocking, set the project's
+# gate mode on its Policy page; the adapter then exits 0.
 #
 # Fork pull requests do not receive repository secrets. An empty api-key on a
 # pull_request from a fork logs a notice and exits 0 with output skipped=true;

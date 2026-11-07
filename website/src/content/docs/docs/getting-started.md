@@ -33,6 +33,8 @@ cp deploy/.env.prod.example deploy/.env.prod
 Open `deploy/.env.prod` in your editor. Set:
 
 - `POSTGRES_PASSWORD` to a password you generate for this database.
+- `SPECHT_APP_DB_PASSWORD` to a second generated password, letters and digits only, for the
+  role the server runs as. Compose refuses to start without it.
 - `JWT_SECRET` to at least 32 random bytes.
 - `SETUP_TOKEN` to a value of your choice, at least 16 characters. Uncomment
   its line in the example file.

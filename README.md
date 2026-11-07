@@ -57,7 +57,9 @@ docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml \
 ```
 
 Open <http://localhost:8080>, enter the setup token, and create the first administrator.
-Create a project, then follow its CI setup page to make an API key and connect a scanner.
+Create a project. Its CI setup page has a sample report you can send with one click, which shows
+findings, a verdict and the fixes before you touch a pipeline, and you can delete it from the
+Reports page afterwards. From there it walks you through an API key and a scanner.
 
 [`deploy/README.md`](deploy/README.md) covers TLS, backups, upgrades and every setting.
 The defaults above suit an evaluation, not an internet-facing deployment.
@@ -92,6 +94,13 @@ your user is still missing there, set `users.users.<name>.subUidRanges` and
 
 ## Connect your CI
 
+A hosted CI runner has to reach your server, so `localhost` will not do. To try the gate first, build
+the adapter (`go build -o specht-adapter ./cmd/adapter`) and run it on a scan file on your own machine:
+
+```bash
+API_URL=http://localhost:8080 API_KEY=... ./specht-adapter -project my-app -tool trivy -file trivy.json
+```
+
 Store the project's API key as the `SPECHT_API_KEY` repository secret, then add the
 gate after your scan:
 
@@ -113,6 +122,30 @@ server must be the same release, so pin the tag that matches your server. The st
 error.
 
 Complete pipelines for GitHub Actions and GitLab are in [`examples/ci/`](examples/ci/).
+
+### Adopt it on a repository with existing findings
+
+The gate blocks at severity high by default, on the default branch as well as on pull requests, so
+existing findings fail the first run. Pick a gate mode on the project's Policy or CI setup page first:
+
+| Mode | What fails CI |
+| --- | --- |
+| Block new findings only (`changes_only`) | A pull request that introduces a blocking finding. Existing findings are reported. |
+| Report only (`report_only`) | Nothing. Every verdict still shows, and a check on the pull request concludes neutral. |
+| Block (`enforce`, the default) | Any blocking finding. |
+
+### How the gate decides
+
+- **Severity floor.** A finding at or above the floor blocks: high unless the project's policy says
+  otherwise.
+- **Findings with no severity.** No floor can judge them, so they do not block and the verdict says how
+  many it left out. Checkov's open-source output rates nothing, so a Checkov-only project passes unless
+  its policy sets these findings to block.
+- **Branches.** The project's verdict answers for its default branch. A finding seen only on change
+  branches stays out of it until the default branch reports it. Name the default branch on the
+  project's Settings page; without one, a branch counts as a change once a report on it names another base.
+- **Pull requests.** A pull request is judged on what it introduces against the default branch.
+- **Waivers and triage.** An approved waiver or a triage decision stops one finding from blocking.
 
 ## Supported scanners
 
@@ -163,7 +196,7 @@ The table is generated from the parsers, so it lists exactly what they read.
 
 - **Trivy**: `trivy image` and `trivy config` write the same format.
 - **Semgrep**: Both formats give the same findings.
-- **Checkov**: A run over several kinds of files, such as Terraform and Kubernetes, writes one report per framework; all of them are read. Checkov's open-source output has no severity, so its findings show as unknown.
+- **Checkov**: A run over several kinds of files, such as Terraform and Kubernetes, writes one report per framework; all of them are read. Checkov's open-source output has no severity, so its findings show as unknown and block only if the project's policy sets findings with no severity to block.
 - **Grype**: Its CycloneDX output (`-o cyclonedx-json`) goes to the SBOM scanner.
 - **SBOM (CycloneDX or SPDX)**: A CycloneDX file that lists vulnerabilities, such as Grype's, also gives findings.
 - **SARIF (any tool)**: For tools without a scanner of their own here, such as Gosec, Hadolint (`--format sarif`) and CodeQL. Trivy, Grype and Semgrep also write it, but use their own scanner when there is one.

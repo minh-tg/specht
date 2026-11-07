@@ -6,6 +6,13 @@ description: Send a scanner report with change metadata and understand the gate 
 Specht evaluates reports against a project's policy. A failed check links to the
 report and decision it evaluated, rather than a generic project overview.
 
+## Start without breaking your default branch
+
+The pipeline also scans your default branch, so existing findings can fail its first run. Set the
+project's gate mode first, on its CI setup or Policy page. **Block new findings only** fails a pull
+request that introduces a blocking finding and only reports what is already there. **Report only**
+fails nothing. Turn on **Block** once the backlog is under control.
+
 ## Choose the gate
 
 An introduced-findings gate asks whether the report introduced blocking findings.

@@ -1,6 +1,6 @@
 import { chooseOption, createTestQueryClient, jsonResponse } from "@/test/utils";
 import { type QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,6 +27,7 @@ let lastClient: QueryClient;
 const VERSION_COMMIT = "4f93c32a1b2c3d4e5f60718293a4b5c6d7e8f901";
 
 beforeEach(() => {
+  localStorage.removeItem("specht:setup-pipeline");
   meRole = "admin";
   managesProject = true;
   projectSlug = "acme";
@@ -55,6 +56,18 @@ beforeEach(() => {
     const url = String(input);
     const method = ((init as RequestInit | undefined)?.method ?? "GET").toUpperCase();
 
+    if (url === "/api/v1/scanners") return jsonResponse([{ name: "trivy" }, { name: "semgrep" }]);
+    if (url.endsWith("/policy") || url.endsWith("/policy/overrides")) {
+      return jsonResponse({
+        template_version: 0,
+        severity_floor: "high",
+        severity_source: "default",
+        watcher_gate: "require_triage",
+        watcher_source: "default",
+        gate_mode: "enforce",
+        gate_mode_source: "default",
+      });
+    }
     if (url === "/api/v1/me") {
       return jsonResponse({ id: "u1", email: "user@example.com", role: meRole, created_at: "" });
     }
@@ -117,6 +130,14 @@ function projectPermissions() {
     manage_ci: manageCI,
     triage: manageCI,
   };
+}
+
+/** Every pipeline snippet, opening each tab in turn: only one shows at a time. */
+function pipelineSnippets(): string[] {
+  return screen.getAllByRole("tab").map((tab) => {
+    fireEvent.click(tab);
+    return document.querySelector("pre")?.textContent ?? "";
+  });
 }
 
 function renderPage() {
@@ -211,7 +232,7 @@ describe("ProjectSetup", () => {
     await user.click(screen.getByRole("button", { name: "Create a key for this pipeline" }));
 
     expect(await screen.findByText(RAW_KEY)).toBeInTheDocument();
-    expect(postCalls).toEqual([{ project: "acme", name: "gitlab-main" }]);
+    expect(postCalls).toEqual([expect.objectContaining({ project: "acme", name: "gitlab-main" })]);
   });
 
   it("creates the CI key with the expiry chosen on the page", async () => {
@@ -242,7 +263,7 @@ describe("ProjectSetup", () => {
     await user.click(await screen.findByRole("button", { name: "Create a key for this pipeline" }));
 
     expect(await screen.findByText(RAW_KEY)).toBeInTheDocument();
-    expect(postCalls).toEqual([{ project: "acme", name: "ci" }]);
+    expect(postCalls).toEqual([expect.objectContaining({ project: "acme", name: "ci" })]);
     expect(screen.getByText("Copy it now. It will not be shown again.")).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -263,6 +284,7 @@ describe("ProjectSetup", () => {
     globalThis.fetch = vi.fn().mockImplementation(async (input, init) => {
       const url = String(input);
       const method = ((init as RequestInit | undefined)?.method ?? "GET").toUpperCase();
+      if (url === "/api/v1/scanners") return jsonResponse([]);
       if (url === "/api/v1/me") {
         return jsonResponse({ id: "u1", email: "user@example.com", role: "admin", created_at: "" });
       }
@@ -300,7 +322,7 @@ describe("ProjectSetup", () => {
       expect(document.body.textContent).toContain("minh-tg/specht@v0.1.0");
     });
 
-    const snippets = [...document.querySelectorAll("pre")].map((pre) => pre.textContent ?? "");
+    const snippets = pipelineSnippets();
     expect(snippets).toHaveLength(2);
     for (const snippet of snippets) {
       expect(snippet).toContain("acme");
@@ -312,7 +334,8 @@ describe("ProjectSetup", () => {
       expect(snippet).not.toContain("raw_key");
       expect(snippet).not.toContain(RAW_KEY);
     }
-    expect(screen.getByText("More examples: examples/ci/ in the repository.")).toBeInTheDocument();
+    expect(screen.getByText(/More examples: examples\/ci\/ in the repository\./))
+      .toBeInTheDocument();
   });
 
   it("pins the GitHub action and the GitLab adapter image to the release", async () => {
@@ -322,7 +345,7 @@ describe("ProjectSetup", () => {
     await waitFor(() => {
       expect(document.body.textContent).toContain("minh-tg/specht@v0.1.0");
     });
-    const snippets = [...document.querySelectorAll("pre")].map((pre) => pre.textContent ?? "");
+    const snippets = pipelineSnippets();
     expect(snippets[0]).toContain("uses: minh-tg/specht@v0.1.0");
     expect(snippets[1]).toContain("ghcr.io/minh-tg/specht-adapter:v0.1.0");
     expect(screen.queryByText(/development build/)).not.toBeInTheDocument();
@@ -336,7 +359,7 @@ describe("ProjectSetup", () => {
       expect(document.body.textContent).toContain("minh-tg/specht@vX.Y.Z");
     });
 
-    const snippets = [...document.querySelectorAll("pre")].map((pre) => pre.textContent ?? "");
+    const snippets = pipelineSnippets();
     expect(snippets).toHaveLength(2);
     for (const snippet of snippets) {
       expect(snippet).toContain("vX.Y.Z");
@@ -353,7 +376,7 @@ describe("ProjectSetup", () => {
       expect(document.body.textContent).toContain("minh-tg/specht@vX.Y.Z");
     });
 
-    const snippets = [...document.querySelectorAll("pre")].map((pre) => pre.textContent ?? "");
+    const snippets = pipelineSnippets();
     expect(snippets).toHaveLength(2);
     for (const snippet of snippets) {
       expect(snippet).toContain("vX.Y.Z");
@@ -373,7 +396,7 @@ describe("ProjectSetup", () => {
     await screen.findByRole("heading", { name: "Set up CI for Acme API" });
 
     expect(await screen.findByText(/development build/)).toBeInTheDocument();
-    const snippets = [...document.querySelectorAll("pre")].map((pre) => pre.textContent ?? "");
+    const snippets = pipelineSnippets();
     expect(snippets).toHaveLength(2);
     for (const snippet of snippets) {
       expect(snippet).toContain("vX.Y.Z");
@@ -399,7 +422,7 @@ describe("ProjectSetup", () => {
     renderPage();
     await screen.findByRole("heading", { name: "Set up CI for Acme API" });
 
-    const snippets = [...document.querySelectorAll("pre")].map((pre) => pre.textContent ?? "");
+    const snippets = pipelineSnippets();
     expect(snippets).toHaveLength(2);
     for (const snippet of snippets) {
       expect(snippet).not.toMatch(/^\s*evil-job:/m);
@@ -571,5 +594,49 @@ describe("ProjectSetup", () => {
       await vi.advanceTimersByTimeAsync(6000);
     });
     expect(statsRequests).toBeGreaterThan(requests);
+  });
+
+  it("warns that a hosted runner cannot reach a local address", async () => {
+    renderPage();
+    expect(await screen.findByRole("note")).toHaveTextContent("a hosted CI runner cannot reach");
+  });
+
+  it("starts a new key with an expiry", async () => {
+    renderPage();
+    expect(await screen.findByRole("combobox", { name: /expires/i })).toHaveTextContent("1 year");
+  });
+
+  it("saves the gate mode the person chooses, keeping the other overrides", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("radio", { name: /Block new findings only/ }));
+    await waitFor(() => {
+      const puts = vi.mocked(globalThis.fetch).mock.calls.filter(([u, init]) =>
+        String(u).endsWith("/policy/overrides") && (init as RequestInit)?.method === "PUT"
+      );
+      expect(JSON.parse(String((puts[0][1] as RequestInit).body)))
+        .toEqual({ overrides: { gate_mode: "changes_only" } });
+    });
+  });
+
+  it("sends the sample report through the same path as an upload", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockImplementation((input, init) =>
+      String(input) === "/sample-trivy-report.json"
+        ? Promise.resolve(jsonResponse({ SchemaVersion: 2 }))
+        : (original as typeof fetch)(input as RequestInfo, init as RequestInit)
+    );
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "Try a sample report" }));
+    await waitFor(() => {
+      const sent = vi.mocked(globalThis.fetch).mock.calls.find(([u]) =>
+        String(u) === "/api/v1/reports"
+      );
+      expect(JSON.parse(String((sent?.[1] as RequestInit).body))).toMatchObject({
+        project: "acme",
+        scanner: "trivy",
+      });
+    });
   });
 });

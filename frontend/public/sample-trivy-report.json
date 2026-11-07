@@ -1,0 +1,58 @@
+{
+  "SchemaVersion": 2,
+  "Trivy": { "Version": "0.74.0" },
+  "ArtifactName": "sample-app",
+  "ArtifactType": "filesystem",
+  "Results": [
+    {
+      "Target": "package-lock.json",
+      "Class": "lang-pkgs",
+      "Type": "npm",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2021-23337",
+          "PkgName": "lodash",
+          "PkgIdentifier": { "PURL": "pkg:npm/lodash@4.17.20" },
+          "InstalledVersion": "4.17.20",
+          "FixedVersion": "4.17.21",
+          "Status": "fixed",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2021-23337",
+          "Title": "Command injection in lodash's template function",
+          "Description": "Sample finding. lodash before 4.17.21 lets the variable option of its template function run commands.",
+          "Severity": "HIGH"
+        },
+        {
+          "VulnerabilityID": "CVE-2020-28500",
+          "PkgName": "lodash",
+          "PkgIdentifier": { "PURL": "pkg:npm/lodash@4.17.20" },
+          "InstalledVersion": "4.17.20",
+          "FixedVersion": "4.17.21",
+          "Status": "fixed",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2020-28500",
+          "Title": "Slow regular expression in lodash's toNumber and trim",
+          "Description": "Sample finding. A long crafted string makes these lodash functions very slow.",
+          "Severity": "MEDIUM"
+        }
+      ]
+    },
+    {
+      "Target": "main.tf",
+      "Class": "config",
+      "Type": "terraform",
+      "Misconfigurations": [
+        {
+          "Type": "Terraform Security Check",
+          "ID": "AWS-0086",
+          "Title": "S3 Access block should block public ACL",
+          "Description": "Sample finding. A bucket without this block accepts objects with a public ACL.",
+          "Message": "No public access block so not blocking public acls",
+          "Resolution": "Enable blocking any PUT calls with a public ACL specified",
+          "Severity": "HIGH",
+          "PrimaryURL": "https://avd.aquasec.com/misconfig/aws-0086",
+          "Status": "FAIL",
+          "CauseMetadata": { "Resource": "aws_s3_bucket.assets", "Provider": "AWS", "Service": "s3", "StartLine": 1, "EndLine": 4 }
+        }
+      ]
+    }
+  ]
+}
