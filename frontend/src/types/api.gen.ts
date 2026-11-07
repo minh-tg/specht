@@ -3544,6 +3544,8 @@ export interface components {
     ProjectStats: {
       /** @description Open and reopened findings; fixed and archived findings are not counted. */
       total_findings: number;
+      /** @description Approved waivers that end within seven days, after which their findings block again. */
+      expiring_waiver_count?: number;
       /** @description Open findings seen only on change branches, which the verdict leaves out. */
       only_on_change_branches_count?: number;
       /** @description Findings the gate holds back right now, so the number always equals the gate's `blocking_count`: open findings at or above the policy's severity floor, admitted by source policy, not exempted by a reachability assessment and not covered by an approved waiver. */

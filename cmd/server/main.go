@@ -161,8 +161,8 @@ func buildLifecycleStores(pool *pgxpool.Pool) (port.AnalysisExpiryStore, port.Wa
 // ingest request is cut off after two and a half minutes, so anything this old was stranded.
 const staleReportAge = 10 * time.Minute
 
-func startLifecycle(ctx context.Context, stores *port.Stores, analysisStore port.AnalysisExpiryStore, waiverStore port.WaiverExpiryStore, revocations lifecycle.AccessTokenPruner, cfg *config.Server, dispatcher watcher.TrackerDispatcher) {
-	exitOnError("start waiver expiry daemon", lifecycle.RunWaiverExpiry(ctx, waiverStore, cfg.SweepInterval, slog.Default()))
+func startLifecycle(ctx context.Context, stores *port.Stores, analysisStore port.AnalysisExpiryStore, waiverStore port.WaiverExpiryStore, waiverAnnouncer lifecycle.WaiverAnnouncer, revocations lifecycle.AccessTokenPruner, cfg *config.Server, dispatcher watcher.TrackerDispatcher) {
+	exitOnError("start waiver expiry daemon", lifecycle.RunWaiverExpiry(ctx, waiverStore, waiverAnnouncer, usecase.WaiverExpiryWarning, cfg.SweepInterval, slog.Default()))
 	exitOnError("start analysis expiry daemon", lifecycle.RunAnalysisExpiry(ctx, analysisStore, cfg.SweepInterval, slog.Default()))
 	exitOnError("start refresh token prune", lifecycle.RunRefreshTokenPrune(ctx, stores.RefreshTokens, cfg.SweepInterval, slog.Default()))
 	exitOnError("start access token prune", lifecycle.RunAccessTokenPrune(ctx, revocations, cfg.SweepInterval, slog.Default()))
@@ -235,6 +235,15 @@ func main() {
 			slog.Error("close tracker", "error", err)
 		}
 	}()
+	// Waiver changes go out over the channels the watcher uses, whether or not the
+	// watcher itself runs.
+	var waiverNotifier usecase.WaiverNotifier
+	var waiverAnnouncer lifecycle.WaiverAnnouncer
+	if channels := buildWatcherNotifier(); channels != nil {
+		sender := &waiverNoticeSender{channels: channels, baseURL: os.Getenv("SPECHT_BASE_URL"), projects: stores.Projects}
+		waiverNotifier, waiverAnnouncer = sender, sender
+	}
+
 	uc := usecase.New(usecase.Deps{
 		SetupToken:              setupToken,
 		Stores:                  stores,
@@ -249,6 +258,7 @@ func main() {
 		SSOAllowUnverifiedEmail: cfg.SSO.AllowUnverifiedEmail,
 		Watcher:                 usecase.WatcherSettings{Enabled: cfg.Watcher.Enable, PollInterval: cfg.Watcher.PollInterval},
 		Tracker:                 dispatcher,
+		WaiverNotifier:          waiverNotifier,
 		Intel:                   intelStore,
 		CVEDetail:               cveDetail,
 		IngestMaxFindings:       cfg.IngestMaxFindings,
@@ -303,7 +313,7 @@ func main() {
 	defer stop()
 
 	analysisExpiryStore, waiverExpiryStore := buildLifecycleStores(pool)
-	startLifecycle(ctx, stores, analysisExpiryStore, waiverExpiryStore, revoker, cfg, dispatcher)
+	startLifecycle(ctx, stores, analysisExpiryStore, waiverExpiryStore, waiverAnnouncer, revoker, cfg, dispatcher)
 	startCVEDetail(ctx, cveResolver, cveDetailStore, cfg)
 
 	go func() {

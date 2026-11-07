@@ -108,6 +108,22 @@ func NewWaiverExpiryStore(pool *pgxpool.Pool) port.WaiverExpiryStore {
 	return &pgWaiverExpiryStore{pool: pool}
 }
 
+func (s *pgWaiverExpiryStore) ClaimExpiring(ctx context.Context, endingBefore time.Time) ([]port.Waiver, error) {
+	rows, err := sqlc.New(s.pool).ClaimExpiringWaivers(ctx, pgtype.Timestamptz{Time: endingBefore, Valid: true})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]port.Waiver, len(rows))
+	for i, row := range rows {
+		out[i] = port.Waiver{ID: toUUID(row.ID), ProjectID: toUUID(row.ProjectID), Name: row.Name}
+		if row.ExpiresAt.Valid {
+			at := row.ExpiresAt.Time
+			out[i].ExpiresAt = &at
+		}
+	}
+	return out, nil
+}
+
 func (s *pgWaiverExpiryStore) ExpireExpired(ctx context.Context) ([]port.Waiver, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

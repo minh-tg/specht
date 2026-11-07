@@ -20,7 +20,7 @@ func TestRunAnalysisExpiryRejectsNonPositiveInterval(t *testing.T) {
 func TestRunWaiverExpiryRejectsNonPositiveInterval(t *testing.T) {
 	for _, interval := range []time.Duration{0, -time.Second} {
 		t.Run(interval.String(), func(t *testing.T) {
-			err := RunWaiverExpiry(context.Background(), nil, interval, nil)
+			err := RunWaiverExpiry(context.Background(), nil, nil, time.Hour, interval, nil)
 			if err == nil {
 				t.Fatalf("expected error for interval %s", interval)
 			}

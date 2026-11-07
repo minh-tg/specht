@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/minh-tg/specht/internal/db/sqlc"
@@ -13,6 +14,7 @@ type StatsRepo interface {
 	GetProjectAnalysisStateCounts(ctx context.Context, projectID pgtype.UUID) ([]sqlc.GetProjectAnalysisStateCountsRow, error)
 	GetProjectWaiverCount(ctx context.Context, projectID pgtype.UUID) (int32, error)
 	GetProjectPendingWaiverCount(ctx context.Context, projectID pgtype.UUID) (int32, error)
+	CountExpiringWaivers(ctx context.Context, projectID pgtype.UUID, endingBefore time.Time) (int32, error)
 	CountFindingsOnlyOnChangeBranches(ctx context.Context, projectID pgtype.UUID) (int32, error)
 	CountOpenUnratedFindings(ctx context.Context, projectID pgtype.UUID) (int32, error)
 	GetProjectReportCount(ctx context.Context, projectID pgtype.UUID) (int32, error)
@@ -50,6 +52,13 @@ func (r *pgStatsRepo) CountFindingsOnlyOnChangeBranches(ctx context.Context, pro
 func (r *pgStatsRepo) CountOpenUnratedFindings(ctx context.Context, projectID pgtype.UUID) (int32, error) {
 	n, err := r.q.CountOpenUnratedFindings(ctx, projectID)
 	return int32(n), err
+}
+
+func (r *pgStatsRepo) CountExpiringWaivers(ctx context.Context, projectID pgtype.UUID, endingBefore time.Time) (int32, error) {
+	return r.q.CountExpiringWaivers(ctx, sqlc.CountExpiringWaiversParams{
+		ProjectID:    projectID,
+		EndingBefore: pgtype.Timestamptz{Time: endingBefore, Valid: true},
+	})
 }
 
 func (r *pgStatsRepo) GetProjectWaiverCount(ctx context.Context, projectID pgtype.UUID) (int32, error) {

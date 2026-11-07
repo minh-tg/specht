@@ -35,6 +35,10 @@ releases.
 
 ### Added
 
+- Waiver changes reach people. A request, an approval, a rejection, a waiver ending within a week and
+  a waiver that ended now go out over the Slack and webhook channels the server already has, whether or
+  not the watcher runs. The project page says how many requests wait for a decision and how many
+  waivers end soon. `SPECHT_BASE_URL` puts a link in those messages.
 - The CI setup page shows the first report's status at the top and offers a sample report, so someone
   can see findings and a verdict before touching a pipeline. It asks how strict to start, shows one
   pipeline at a time, warns when the address it puts in the snippets cannot be reached from a hosted

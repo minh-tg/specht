@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -182,4 +183,21 @@ func TestWebhookNotifier_BlocksSSRF(t *testing.T) {
 	n.sleeper = func(ctx context.Context, _ time.Duration) error { return nil }
 	err := n.Notify(context.Background(), []Notification{{Title: "x"}})
 	assert.NoError(t, err)
+}
+
+func TestBuildWebhookPayloadNamesANonWatcherEvent(t *testing.T) {
+	body, err := BuildWebhookPayload([]Notification{{Title: "lodash", Event: "waiver.requested"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"event":"waiver.requested"`) {
+		t.Fatalf("payload: %s", body)
+	}
+	watcherBody, err := BuildWebhookPayload([]Notification{{Title: "CVE"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(watcherBody), `"event":"`+WebhookEventCreated+`"`) {
+		t.Fatalf("payload: %s", watcherBody)
+	}
 }

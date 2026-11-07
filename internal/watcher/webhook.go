@@ -59,9 +59,16 @@ type webhookRow struct {
 func BuildWebhookPayload(notifications []Notification) ([]byte, error) {
 	rows := make([]webhookRow, len(notifications))
 	for i, n := range notifications {
-		rows[i] = webhookRow(n)
+		rows[i] = webhookRow{
+			Title: n.Title, CVE: n.CVE, Package: n.Package,
+			Project: n.Project, Severity: n.Severity, Link: n.Link,
+		}
 	}
-	return json.Marshal(webhookPayload{Event: WebhookEventCreated, Notifications: rows})
+	event := WebhookEventCreated
+	if len(notifications) > 0 && notifications[0].Event != "" {
+		event = notifications[0].Event
+	}
+	return json.Marshal(webhookPayload{Event: event, Notifications: rows})
 }
 
 // WebhookNotifier posts Notification batches to a generic webhook URL with

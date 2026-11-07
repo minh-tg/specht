@@ -33,6 +33,9 @@ type ProjectStats struct {
 	// PendingWaiverCount is the number of waiver requests waiting for a
 	// decision. They do not count in the gate until approved.
 	PendingWaiverCount int32 `json:"pending_waiver_count"`
+	// ExpiringWaiverCount is the number of approved waivers that end within
+	// WaiverExpiryWarning, after which their findings block again.
+	ExpiringWaiverCount int32 `json:"expiring_waiver_count"`
 	// OnlyOnChangeBranchesCount is the number of open findings left out of the
 	// verdict because they were seen only on change branches.
 	OnlyOnChangeBranchesCount int32                `json:"only_on_change_branches_count"`
@@ -70,6 +73,11 @@ func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*Pr
 	pendingWaiverCount, err := u.deps.Stores.Stats.GetProjectPendingWaiverCount(ctx, project.ID)
 	if err != nil {
 		return nil, fmt.Errorf("get pending waiver count: %w", err)
+	}
+
+	expiring, err := u.deps.Stores.Stats.CountExpiringWaivers(ctx, project.ID, u.clock().Add(WaiverExpiryWarning))
+	if err != nil {
+		return nil, fmt.Errorf("count expiring waivers: %w", err)
 	}
 
 	onlyOnChangeBranches, err := u.deps.Stores.Stats.CountFindingsOnlyOnChangeBranches(ctx, project.ID)
@@ -138,6 +146,7 @@ func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*Pr
 		WaiverCount:               waiverCount,
 		PendingWaiverCount:        pendingWaiverCount,
 		OnlyOnChangeBranchesCount: onlyOnChangeBranches,
+		ExpiringWaiverCount:       expiring,
 		ReportCount:               reportCount,
 		BySeverity:                sevCounts,
 		ByAnalysisState:           stateCounts,

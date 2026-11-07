@@ -70,6 +70,11 @@ type Notification struct {
 	// Link is the first advisory reference URL, empty when the advisory
 	// carries no references.
 	Link string
+	// Event names what happened, for a notification that is not a new watcher
+	// finding. Empty is the watcher's own event.
+	Event string
+	// Heading replaces the message's opening line when set.
+	Heading string
 }
 
 // Notifier is the surface the daemon wiring can inject. It is deliberately
@@ -170,7 +175,7 @@ const slackMaxAttachments = 50
 // slackMaxAttachments entries (Notify splits larger ones).
 func BuildSlackPayload(notifications []Notification) ([]byte, error) {
 	payload := slackPayload{
-		Text:        fmt.Sprintf("CVE watcher: %d new finding(s)", len(notifications)),
+		Text:        slackHeading(notifications),
 		Attachments: make([]slackAttachment, 0, len(notifications)),
 	}
 	for _, n := range notifications {
@@ -181,6 +186,14 @@ func BuildSlackPayload(notifications []Notification) ([]byte, error) {
 		return nil, fmt.Errorf("marshal slack payload: %w", err)
 	}
 	return b, nil
+}
+
+// slackHeading opens a message: the notification's own heading, or the watcher's.
+func slackHeading(notifications []Notification) string {
+	if len(notifications) > 0 && notifications[0].Heading != "" {
+		return notifications[0].Heading
+	}
+	return fmt.Sprintf("CVE watcher: %d new finding(s)", len(notifications))
 }
 
 // slackPayload is the wire form of the envelope; field names are the exact

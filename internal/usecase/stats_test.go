@@ -83,6 +83,10 @@ func (m *mockStatsStore) CountOpenUnratedFindings(context.Context, string) (int3
 	return 0, nil
 }
 
+func (m *mockStatsStore) CountExpiringWaivers(context.Context, string, time.Time) (int32, error) {
+	return 0, nil
+}
+
 func (m *mockStatsStore) GetProjectReportCount(context.Context, string) (int32, error) { return 0, nil }
 
 func (m *mockStatsStore) GetProjectLatestReport(context.Context, string) (port.Report, error) {

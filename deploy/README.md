@@ -387,9 +387,10 @@ the last document it fetched.
 | `WATCHER_OSV_VULN_ENDPOINT` | `https://api.osv.dev/v1/vulns/{id}` | Full-advisory template; `{id}` is substituted. Keep it inside the same trust boundary as the batch endpoint. |
 | `WATCHER_BATCH_SIZE` | `0` (unlimited; compose sets `100`) | Identifiers per batch. |
 | `WATCHER_COLD_START_WINDOW` | `full` | `full` for full-history cold start, or a Go duration to backfill since. |
-| `WATCHER_SLACK_URL` | *(empty)* | Slack webhook for new advisories. Empty disables the channel. Must be `https`, or `http` to a loopback host; startup fails otherwise. |
+| `SPECHT_BASE_URL` | *(empty)* | This server's public address. Links in waiver notifications use it; empty sends them without a link. |
+| `WATCHER_SLACK_URL` | *(empty)* | Slack webhook for new advisories and waiver changes. Empty disables the channel. Must be `https`, or `http` to a loopback host; startup fails otherwise. |
 | `WATCHER_SLACK_SIGNING_SECRET` | *(empty)* | **Secret.** Signs Slack deliveries. |
-| `WATCHER_WEBHOOK_URL` | *(empty)* | Generic webhook for new advisories. Same scheme rule as the Slack URL. |
+| `WATCHER_WEBHOOK_URL` | *(empty)* | Generic webhook for new advisories and waiver changes (`waiver.requested`, `waiver.approved`, `waiver.rejected`, `waiver.expiring`, `waiver.expired`). Same scheme rule as the Slack URL. |
 | `WATCHER_WEBHOOK_SIGNING_SECRET` | *(empty)* | **Secret.** Signs both this webhook and tracker deliveries. |
 
 ### Tracker dispatch
