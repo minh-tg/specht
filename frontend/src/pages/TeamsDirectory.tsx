@@ -39,6 +39,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { looksLikeEmail } from "@/lib/email";
+import { formatDate } from "@/lib/format";
 import type { Team, TeamMember } from "@/types/api";
 import { useState } from "react";
 
@@ -101,7 +102,7 @@ function TeamCard({
               </span>
             )
             : <span>{members?.length ?? 0} members</span>}
-          {team.created_at && <span>Created {new Date(team.created_at).toLocaleDateString()}</span>}
+          {team.created_at && <span>Created {formatDate(team.created_at)}</span>}
         </div>
 
         <div className="flex gap-2">

@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatDate } from "@/lib/format";
 import type { Project } from "@/types/api";
 import { type ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
@@ -151,8 +152,7 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
                     )}
                   </div>
                   <p className="text-muted-foreground text-meta">
-                    {k.key_prefix}...{k.last_four ?? ""} &middot; created{" "}
-                    {new Date(k.created_at).toLocaleDateString()}
+                    {k.key_prefix}...{k.last_four ?? ""} &middot; created {formatDate(k.created_at)}
                   </p>
                   <p className="text-meta">
                     {!end.expired && <span className="text-muted-foreground">Ends{" "}</span>}
