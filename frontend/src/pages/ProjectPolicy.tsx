@@ -12,6 +12,7 @@ import { SkeletonLines } from "@/components/SkeletonLines";
 import { latestFailure } from "@/lib/latestFailure";
 import { InfoIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
+import { ManualCloseRow } from "./project-policy/ManualCloseRow";
 import {
   overridesOf,
   type PolicyKey,
@@ -115,6 +116,15 @@ export function ProjectPolicy() {
           saving={setOverrides.isPending}
           onSave={override("watcher_gate")}
           onClear={clear("watcher_gate")}
+        />
+
+        <ManualCloseRow
+          value={policy.manual_close_scanners ?? []}
+          source={policy.manual_close_source ?? "default"}
+          editable={isAdmin}
+          saving={setOverrides.isPending}
+          onSave={override("manual_close_scanners")}
+          onClear={clear("manual_close_scanners")}
         />
       </div>
 
