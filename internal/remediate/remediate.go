@@ -17,6 +17,7 @@ package remediate
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/minh-tg/specht/internal/domain"
@@ -70,6 +71,12 @@ type Suggestion struct {
 // one suggestion: source-backed when evidence allows, labeled fallback
 // otherwise.
 func Suggest(in Input) Suggestion {
+	if in.FindingKind == kindWatcher {
+		in.FindingKind = "sca"
+		if in.Dims["package_name"] == "" {
+			in = withPackageFromPURL(in)
+		}
+	}
 	s := suggest(in)
 	if in.FindingKind == "sca" {
 		s.Package = in.Dims["package_name"]
@@ -82,6 +89,19 @@ func Suggest(in Input) Suggestion {
 		s.FixedVersion = in.Dims["fixed_version"]
 	}
 	return s
+}
+
+// kindWatcher is a finding the CVE watcher filed from an advisory. It names a
+// package and fixed versions like a dependency finding, but records the package
+// only in its package URL.
+const kindWatcher = "cve_watcher"
+
+func withPackageFromPURL(in Input) Input {
+	dims := make(map[string]string, len(in.Dims)+1)
+	maps.Copy(dims, in.Dims)
+	dims["package_name"], _ = domain.PackageFromPURL(in.Dims[domain.DimPURL])
+	in.Dims = dims
+	return in
 }
 
 func suggest(in Input) Suggestion {

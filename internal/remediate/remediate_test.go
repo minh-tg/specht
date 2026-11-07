@@ -1,6 +1,7 @@
 package remediate
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -168,5 +169,27 @@ func TestSuggestPrefersAnEcosystemTheFindingNames(t *testing.T) {
 	})
 	if got.Ecosystem != "PyPI" {
 		t.Fatalf("Ecosystem = %q, want PyPI", got.Ecosystem)
+	}
+}
+
+// A watcher finding has no scanner evidence, only what the advisory said about a
+// package in the inventory, so it was left with the generic "review" fallback.
+func TestSuggestTreatsAWatcherFindingAsADependencyUpgrade(t *testing.T) {
+	got := Suggest(Input{
+		FindingKind: "cve_watcher",
+		Tool:        "CVE watcher",
+		Dims: map[string]string{
+			"purl": "pkg:npm/lodash@4.17.20", "ecosystem": "npm",
+			"installed_version": "4.17.20", "fixed_version": "4.19.0",
+		},
+	})
+	if got.Fallback || got.Action != "upgrade" || got.Confidence != ConfidenceHigh {
+		t.Fatalf("suggestion = %+v, want a high confidence upgrade", got)
+	}
+	if got.Package != "lodash" || got.FixedVersion != "4.19.0" || got.Ecosystem != "npm" {
+		t.Fatalf("suggestion = %+v, want lodash, 4.19.0, npm", got)
+	}
+	if !strings.Contains(got.Detail, "Upgrade lodash from 4.17.20 to 4.19.0") {
+		t.Fatalf("detail = %q", got.Detail)
 	}
 }
