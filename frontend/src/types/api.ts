@@ -184,6 +184,8 @@ export interface FindingIntel {
 
 export interface Finding {
   id: string;
+  /** Who owns this finding. Absent means nobody does. */
+  assignee?: { user_id: string; name: string; };
   /** Change branches of a finding seen only there. The verdict leaves it out. */
   only_on_branches?: string[];
   project_id: string;

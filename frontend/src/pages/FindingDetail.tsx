@@ -21,6 +21,7 @@ import { useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { WaiverRequestDialog } from "./change-view/WaiverRequestDialog";
 import { AnalysisNote } from "./finding-detail/AnalysisNote";
+import { AssigneeControl } from "./finding-detail/AssigneeControl";
 import { AutoCloseNote } from "./finding-detail/AutoCloseNote";
 import { ContextGrid } from "./finding-detail/ContextGrid";
 import { showsCveBlock } from "./finding-detail/cveBlock";
@@ -252,6 +253,7 @@ export function FindingDetail() {
               <VerifyFixSection findingId={finding.id} projectSlug={slug} />
               <ContextGrid context={finding.context} />
               <Section title="About this finding">
+                <AssigneeControl finding={shown} slug={slug ?? ""} />
                 <MetadataGrid finding={shown} />
               </Section>
               {cveBlock}
@@ -292,6 +294,7 @@ export function FindingDetail() {
             </div>
 
             <aside aria-label="About this finding" className="mt-8 grid content-start gap-5">
+              <AssigneeControl finding={shown} slug={slug ?? ""} />
               <MetadataGrid finding={shown} />
             </aside>
             <p role="status" aria-live="polite" className="sr-only">{announcement}</p>

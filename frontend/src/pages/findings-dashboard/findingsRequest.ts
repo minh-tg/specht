@@ -11,6 +11,7 @@ const NO_FILTERS: FindingsFilters = {
   kind: "",
   analysisState: "",
   branchScope: "",
+  assignee: "",
   q: "",
 };
 
@@ -30,6 +31,7 @@ export function findingsRequest(
     kind: filters.kind || undefined,
     analysisState: filters.analysisState || undefined,
     branchScope: filters.branchScope || undefined,
+    assignee: filters.assignee || undefined,
     q: filters.q || undefined,
     sort: sort.by,
     dir: sort.dir,

@@ -51,6 +51,7 @@ export interface FindingsQuery {
   /** Comma list of analysis states; `unanalyzed` matches findings nobody has looked at. */
   analysisState?: string;
   branchScope?: string;
+  assignee?: string;
   /** Text matched against the title and the fingerprint. */
   q?: string;
   sort?: FindingSort;
@@ -356,6 +357,7 @@ export function findingsQueryOptions(projectSlug: string, filters: FindingsQuery
       if (filters.analysisState) params.set("analysis_state", filters.analysisState);
       if (filters.q) params.set("q", filters.q);
       if (filters.branchScope) params.set("branch_scope", filters.branchScope);
+      if (filters.assignee) params.set("assignee", filters.assignee);
       if (filters.sort) params.set("sort", filters.sort);
       if (filters.dir) params.set("dir", filters.dir);
       if (filters.offset != null) params.set("offset", String(filters.offset));
@@ -516,6 +518,25 @@ export const TRIAGE_MUTATION_KEY = ["triage-finding"] as const;
  * while `isPending` also knows when the gate verdict beside it has caught up. Nothing is written to
  * the query cache before the server answers, so a refusal needs no rollback.
  */
+/** Sets who owns a finding. An empty id clears it. */
+export function useAssignFinding() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ findingId, userId }: { findingId: string; userId: string; }) =>
+      apiFetch<{ assignee: { user_id: string; name: string; } | null; }>(
+        `/api/v1/findings/${encodeURIComponent(findingId)}/assignee`,
+        { method: "PUT", body: JSON.stringify({ user_id: userId }) },
+      ),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.finding() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.findings() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.findingEvents() }),
+      ]);
+    },
+  });
+}
+
 export function useTriageFinding() {
   const queryClient = useQueryClient();
   const refresh = () =>
