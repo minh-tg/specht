@@ -18,6 +18,8 @@ package remediate
 import (
 	"fmt"
 	"strings"
+
+	"github.com/minh-tg/specht/internal/domain"
 )
 
 // Confidence grades how actionable a suggestion is.
@@ -72,6 +74,10 @@ func Suggest(in Input) Suggestion {
 	if in.FindingKind == "sca" {
 		s.Package = in.Dims["package_name"]
 		s.Ecosystem = in.Dims["ecosystem"]
+		if s.Ecosystem == "" {
+			// Scanners name the ecosystem only inside the package URL.
+			s.Ecosystem = domain.EcosystemFromPURL(in.Dims[domain.DimPURL])
+		}
 		s.InstalledVersion = in.Dims["installed_version"]
 		s.FixedVersion = in.Dims["fixed_version"]
 	}
