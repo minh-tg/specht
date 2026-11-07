@@ -43,6 +43,60 @@ func (q *Queries) BulkCreateFindingEvents(ctx context.Context, arg BulkCreateFin
 	return err
 }
 
+const bulkCreateTriageEvents = `-- name: BulkCreateTriageEvents :many
+INSERT INTO finding_events (
+    finding_id, user_id, event_type, old_value, new_value, comment, changes
+)
+SELECT
+    UNNEST($1::uuid[]), $2, $3, $4, $5, $6, UNNEST($7::text[])::jsonb
+RETURNING id, finding_id
+`
+
+type BulkCreateTriageEventsParams struct {
+	Column1   []pgtype.UUID `json:"column_1"`
+	UserID    pgtype.UUID   `json:"user_id"`
+	EventType string        `json:"event_type"`
+	OldValue  pgtype.Text   `json:"old_value"`
+	NewValue  pgtype.Text   `json:"new_value"`
+	Comment   pgtype.Text   `json:"comment"`
+	Column7   []string      `json:"column_7"`
+}
+
+type BulkCreateTriageEventsRow struct {
+	ID        pgtype.UUID `json:"id"`
+	FindingID pgtype.UUID `json:"finding_id"`
+}
+
+// One event per finding with its own changes, which hold that finding's earlier
+// analysis so the decision can be undone.
+func (q *Queries) BulkCreateTriageEvents(ctx context.Context, arg BulkCreateTriageEventsParams) ([]BulkCreateTriageEventsRow, error) {
+	rows, err := q.db.Query(ctx, bulkCreateTriageEvents,
+		arg.Column1,
+		arg.UserID,
+		arg.EventType,
+		arg.OldValue,
+		arg.NewValue,
+		arg.Comment,
+		arg.Column7,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BulkCreateTriageEventsRow
+	for rows.Next() {
+		var i BulkCreateTriageEventsRow
+		if err := rows.Scan(&i.ID, &i.FindingID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const bulkInsertOccurrences = `-- name: BulkInsertOccurrences :exec
 INSERT INTO finding_occurrences (
     finding_id, report_id, title, description,
@@ -1965,6 +2019,60 @@ func (q *Queries) LockFindingForUpdate(ctx context.Context, id pgtype.UUID) (Fin
 		&i.IntroducedCommitSha,
 	)
 	return i, err
+}
+
+const lockFindingsForUpdate = `-- name: LockFindingsForUpdate :many
+SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version, introduced_by_report_id, introduced_commit_sha FROM findings WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE
+`
+
+// In id order, so two bulk writes over the same findings cannot deadlock.
+func (q *Queries) LockFindingsForUpdate(ctx context.Context, dollar_1 []pgtype.UUID) ([]Finding, error) {
+	rows, err := q.db.Query(ctx, lockFindingsForUpdate, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Finding
+	for rows.Next() {
+		var i Finding
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.FindingKind,
+			&i.Fingerprint,
+			&i.CurrentTitle,
+			&i.CurrentSeverity,
+			&i.CurrentSeverityRank,
+			&i.CurrentScore,
+			&i.State,
+			&i.TriageStatus,
+			&i.AssigneeID,
+			&i.FirstSeenAt,
+			&i.LastSeenAt,
+			&i.FixedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AnalysisState,
+			&i.GateEffect,
+			&i.AnalysisExpiresAt,
+			&i.AnalysisReason,
+			&i.AnalysisSource,
+			&i.AnalysisUpdatedAt,
+			&i.AnalysisUpdatedBy,
+			&i.ManualOverride,
+			&i.ReviewRequired,
+			&i.FingerprintVersion,
+			&i.IntroducedByReportID,
+			&i.IntroducedCommitSha,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const markAbsentScopedFindingsFixed = `-- name: MarkAbsentScopedFindingsFixed :many

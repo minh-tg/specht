@@ -815,22 +815,30 @@ func (m *mockFindingRepo) BulkUpdateAnalysis(ctx context.Context, arg port.Updat
 	return m.bulkUpdateAnalysisFn(ctx, arg, ids)
 }
 
-func (m *mockFindingRepo) BulkTriage(ctx context.Context, arg port.UpdateAnalysisInput, ids []string, event port.FindingEventInput) ([]port.Finding, error) {
+func (m *mockFindingRepo) BulkTriage(ctx context.Context, arg port.UpdateAnalysisInput, ids []string, event port.FindingEventInput) ([]port.BulkTriagedFinding, error) {
+	var findings []port.Finding
+	var err error
 	if m.bulkTriageFn != nil {
-		return m.bulkTriageFn(ctx, arg, ids, event)
+		findings, err = m.bulkTriageFn(ctx, arg, ids, event)
+	} else {
+		findings, err = m.BulkUpdateAnalysis(ctx, arg, ids)
+		for _, f := range findings {
+			ev := event
+			ev.FindingID = f.ID
+			ev.Changes = event.ChangesFor(f)
+			if _, createErr := m.CreateEvent(ctx, ev); createErr != nil {
+				return nil, createErr
+			}
+		}
 	}
-	findings, err := m.BulkUpdateAnalysis(ctx, arg, ids)
 	if err != nil {
 		return nil, err
 	}
-	for _, f := range findings {
-		ev := event
-		ev.FindingID = f.ID
-		if _, err := m.CreateEvent(ctx, ev); err != nil {
-			return nil, err
-		}
+	out := make([]port.BulkTriagedFinding, len(findings))
+	for i, f := range findings {
+		out[i] = port.BulkTriagedFinding{Finding: f, EventID: "event-" + f.ID}
 	}
-	return findings, nil
+	return out, nil
 }
 
 func (m *mockFindingRepo) ListEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]port.FindingEvent, error) {
@@ -3798,7 +3806,7 @@ func TestBulkTriage_RepeatedIDCountsOnce(t *testing.T) {
 	assert.Len(t, results, 1)
 	assert.Equal(t, []string{id}, gotIDs)
 	var changes map[string]any
-	require.NoError(t, json.Unmarshal(gotEvent.Changes, &changes))
+	require.NoError(t, json.Unmarshal(gotEvent.ChangesFor(row), &changes))
 	assert.EqualValues(t, 1, changes["count"])
 }
 

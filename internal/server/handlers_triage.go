@@ -1101,3 +1101,44 @@ func (h *Handler) GetAging(w http.ResponseWriter, r *http.Request) {
 	}
 	respondJSON(w, http.StatusOK, resp)
 }
+
+// BulkUndoTriage takes back a bulk decision and says what happened to each finding.
+func (h *Handler) BulkUndoTriage(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Undos []usecase.BulkUndoTarget `json:"undos"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", triageMsgInvalidBody) {
+		return
+	}
+	if len(req.Undos) == 0 {
+		respondError(w, http.StatusBadRequest, "missing_field", "undos is required")
+		return
+	}
+	if len(req.Undos) > maxBulkFindingIDs {
+		respondError(w, http.StatusBadRequest, "too_many_ids", tooManyIDsMessage)
+		return
+	}
+	ident := auth.ContextIdentity(r.Context())
+	if ident == nil || ident.UserID == "" {
+		respondError(w, http.StatusUnauthorized, "unauthorized", "user id required")
+		return
+	}
+	results, err := h.usecase.BulkUndoTriage(r.Context(), usecase.BulkUndoTriageInput{Undos: req.Undos, UserID: ident.UserID})
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrFindingNotFound):
+			respondError(w, http.StatusNotFound, "not_found", triageMsgFindingNotFound)
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondAccessDenied(w, r, "finding")
+		case errors.Is(err, usecase.ErrInvalidFindingID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
+		case errors.Is(err, usecase.ErrInvalidEventID):
+			respondError(w, http.StatusBadRequest, "invalid_event_id", "invalid event id format")
+		default:
+			slog.Error("bulk undo triage", "error", err)
+			respondError(w, http.StatusInternalServerError, "undo_failed", "could not undo the analysis changes")
+		}
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{"results": results})
+}

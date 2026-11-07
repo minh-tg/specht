@@ -78,3 +78,39 @@ func TestGetSignoff_NoDecisionYetIs204(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, w.Code)
 	assert.Empty(t, w.Body.Bytes())
 }
+
+// A caller with no access to a finding is told it was not found, like every other
+// finding route, and never sees a server error.
+func TestBulkUndoTriage_AnswersEachRefusal(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{"hidden finding", usecase.ErrFindingNotFound, http.StatusNotFound, "not_found"},
+		{"bad finding id", usecase.ErrInvalidFindingID, http.StatusBadRequest, "invalid_id"},
+		{"bad event id", usecase.ErrInvalidEventID, http.StatusBadRequest, "invalid_event_id"},
+		{"store failure", errors.New("connection reset"), http.StatusInternalServerError, "undo_failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := &Handler{usecase: &mockUsecases{
+				bulkUndoTriageFn: func(context.Context, usecase.BulkUndoTriageInput) ([]usecase.BulkUndoResult, error) {
+					return nil, tc.err
+				},
+			}}
+			req := authRequest("POST", "/api/v1/findings/bulk-analysis/undo", `{"undos":[{"finding_id":"a","event_id":"b"}]}`)
+			w := httptest.NewRecorder()
+			h.BulkUndoTriage(w, req)
+			requireAPIError(t, w, tc.status, tc.code)
+		})
+	}
+}
+
+func TestBulkUndoTriage_NeedsSomethingToUndo(t *testing.T) {
+	h := &Handler{usecase: &mockUsecases{}}
+	req := authRequest("POST", "/api/v1/findings/bulk-analysis/undo", `{"undos":[]}`)
+	w := httptest.NewRecorder()
+	h.BulkUndoTriage(w, req)
+	requireAPIError(t, w, http.StatusBadRequest, "missing_field")
+}

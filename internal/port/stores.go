@@ -945,6 +945,15 @@ type FindingEventInput struct {
 	NewValue  *string
 	Comment   *string
 	Changes   json.RawMessage
+	// ChangesFor builds a finding's own changes from the finding as it stood before
+	// the write. Bulk triage uses it; other writes use Changes.
+	ChangesFor func(Finding) json.RawMessage
+}
+
+// BulkTriagedFinding is one finding a bulk triage changed and the event it wrote.
+type BulkTriagedFinding struct {
+	Finding
+	EventID string
 }
 
 // FindingScopeSeverity is the severity one scan scope last reported for a
@@ -1051,7 +1060,7 @@ type FindingStore interface {
 	// ErrNotFound means the finding does not exist.
 	UndoAnalysis(ctx context.Context, findingID string, decide AnalysisUndoDecider) (Finding, FindingEvent, error)
 	BulkUpdateAnalysis(ctx context.Context, input UpdateAnalysisInput, ids []string) ([]Finding, error)
-	BulkTriage(ctx context.Context, input UpdateAnalysisInput, ids []string, event FindingEventInput) ([]Finding, error)
+	BulkTriage(ctx context.Context, input UpdateAnalysisInput, ids []string, event FindingEventInput) ([]BulkTriagedFinding, error)
 	CreateEvent(ctx context.Context, input FindingEventInput) (FindingEvent, error)
 	ListEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]FindingEvent, error)
 	// ListDimensions returns every persisted dimension of a finding,

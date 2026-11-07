@@ -926,8 +926,9 @@ export interface paths {
      *     the finding is still in the state that event set. Anyone who may triage
      *     the project may undo, not only the person who made the change.
      *
-     *     Events written by bulk triage, by a scan's review flag or before this
-     *     endpoint existed carry no snapshot and answer `undo_unavailable`.
+     *     Events written by a scan's review flag, or by bulk triage or a single
+     *     decision before this endpoint existed, carry no snapshot and answer
+     *     `undo_unavailable`.
      */
     post: operations["undoTriage"];
     delete?: never;
@@ -950,9 +951,33 @@ export interface paths {
      * @description Same analysis-state vocabulary and validation as the single-finding
      *     path, applied atomically across up to 1000 findings. Partial success is
      *     not reported: any invalid id, unknown finding, or missing reason fails
-     *     the whole batch.
+     *     the whole batch. Each result names the event it wrote, which
+     *     `/api/v1/findings/bulk-analysis/undo` takes back.
      */
     post: operations["bulkTriage"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/findings/bulk-analysis/undo": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Take back a bulk decision
+     * @description Undoes each named event as `POST /api/v1/findings/{id}/analysis/undo`
+     *     does, one finding at a time. Unlike the decision itself this can partly
+     *     succeed: a finding someone has decided on since keeps that decision, and
+     *     its result says why it was left. Access is all or nothing.
+     */
+    post: operations["bulkUndoTriage"];
     delete?: never;
     options?: never;
     head?: never;
@@ -2839,7 +2864,7 @@ export interface components {
       gate_effect: "block" | "ignore";
       /**
        * Format: uuid
-       * @description The finding event this decision wrote. Absent in bulk results.
+       * @description The finding event this decision wrote, which an undo names.
        */
       event_id?: string;
     };
@@ -2860,6 +2885,26 @@ export interface components {
     };
     BulkTriageResponse: {
       results: components["schemas"]["TriageResult"][];
+    };
+    BulkUndoTriageRequest: {
+      undos: {
+        /** Format: uuid */
+        finding_id: string;
+        /** Format: uuid */
+        event_id: string;
+      }[];
+    };
+    BulkUndoTriageResponse: {
+      results: {
+        /** Format: uuid */
+        finding_id: string;
+        undone: boolean;
+        /**
+         * @description Why the finding was left as it is. Absent when undone.
+         * @enum {string}
+         */
+        reason?: "analysis_conflict" | "undo_unavailable" | "previous_expiry_passed";
+      }[];
     };
     VerifyResponse: {
       /** Format: uuid */
@@ -5395,6 +5440,34 @@ export interface operations {
       403: components["responses"]["Forbidden"];
       404: components["responses"]["NotFound"];
       422: components["responses"]["Unprocessable"];
+    };
+  };
+  bulkUndoTriage: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BulkUndoTriageRequest"];
+      };
+    };
+    responses: {
+      /** @description What happened to each finding. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BulkUndoTriageResponse"];
+        };
+      };
+      400: components["responses"]["BadRequest"];
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
     };
   };
   listFindingEvents: {

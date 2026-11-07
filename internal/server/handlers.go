@@ -190,6 +190,7 @@ type (
 		UndoTriage(ctx context.Context, input usecase.UndoTriageInput) (*usecase.TriageOutput, error)
 		VerifyFix(ctx context.Context, findingID string) (*usecase.VerifyResponse, error)
 		BulkTriage(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
+		BulkUndoTriage(ctx context.Context, input usecase.BulkUndoTriageInput) ([]usecase.BulkUndoResult, error)
 		GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error)
 		PreviewPatch(ctx context.Context, findingID string) (*patch.Outcome, error)
 		PreviewNotification(ctx context.Context, findingID, channel, target string, alreadyLinked bool) (*notify.Outcome, error)

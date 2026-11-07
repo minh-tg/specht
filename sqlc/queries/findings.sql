@@ -210,6 +210,20 @@ SELECT
     f_id, $2, $3, $4, $5, $6, $7
 FROM UNNEST($1::uuid[]) AS f_id;
 
+-- name: LockFindingsForUpdate :many
+-- In id order, so two bulk writes over the same findings cannot deadlock.
+SELECT * FROM findings WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE;
+
+-- name: BulkCreateTriageEvents :many
+-- One event per finding with its own changes, which hold that finding's earlier
+-- analysis so the decision can be undone.
+INSERT INTO finding_events (
+    finding_id, user_id, event_type, old_value, new_value, comment, changes
+)
+SELECT
+    UNNEST($1::uuid[]), $2, $3, $4, $5, $6, UNNEST($7::text[])::jsonb
+RETURNING id, finding_id;
+
 -- name: ListFindingEvents :many
 SELECT * FROM finding_events
 WHERE finding_id = $1

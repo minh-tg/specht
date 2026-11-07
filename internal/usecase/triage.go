@@ -63,8 +63,28 @@ type TriageOutput struct {
 	AnalysisState string `json:"analysis_state"`
 	GateEffect    string `json:"gate_effect"`
 	// EventID is the finding event the write recorded. It is the handle a
-	// later undo names. Empty for bulk triage.
+	// later undo names.
 	EventID string `json:"event_id,omitempty"`
+}
+
+// BulkUndoTriageInput names the analysis events one bulk decision wrote.
+type BulkUndoTriageInput struct {
+	Undos  []BulkUndoTarget
+	UserID string
+}
+
+// BulkUndoTarget is one finding and the event to take back on it.
+type BulkUndoTarget struct {
+	FindingID string `json:"finding_id"`
+	EventID   string `json:"event_id"`
+}
+
+// BulkUndoResult says what happened to one finding. Reason is set when Undone is
+// false: analysis_conflict, undo_unavailable or previous_expiry_passed.
+type BulkUndoResult struct {
+	FindingID string `json:"finding_id"`
+	Undone    bool   `json:"undone"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 // UndoTriageInput names the analysis event to take back.
@@ -266,6 +286,52 @@ func (u *Usecases) UndoTriage(ctx context.Context, input UndoTriageInput) (*Tria
 	}, nil
 }
 
+// BulkUndoTriage takes back a bulk decision finding by finding. Each undo is its
+// own transaction and refuses like a single undo, so a finding someone has decided
+// on since keeps that decision and the rest are still restored: the result says
+// which. Access is all or nothing, as for the bulk decision itself.
+func (u *Usecases) BulkUndoTriage(ctx context.Context, input BulkUndoTriageInput) ([]BulkUndoResult, error) {
+	if len(input.Undos) > MaxBulkTriageFindings {
+		return nil, fmt.Errorf("%w: at most %d", ErrTooManyFindings, MaxBulkTriageFindings)
+	}
+	ids := make([]string, len(input.Undos))
+	for i, undo := range input.Undos {
+		if _, err := uuid.Parse(undo.FindingID); err != nil {
+			return nil, fmt.Errorf("%w: %q", ErrInvalidFindingID, undo.FindingID)
+		}
+		if _, err := uuid.Parse(undo.EventID); err != nil {
+			return nil, fmt.Errorf("%w: %q", ErrInvalidEventID, undo.EventID)
+		}
+		ids[i] = undo.FindingID
+	}
+	findings, err := u.deps.Stores.Findings.ListByIDs(ctx, distinctUUIDs(ids))
+	if err != nil {
+		return nil, fmt.Errorf("lookup findings: %w", err)
+	}
+	if err := u.checkFindingRowsProjectEditor(ctx, findings); err != nil {
+		return nil, err
+	}
+
+	results := make([]BulkUndoResult, len(input.Undos))
+	for i, undo := range input.Undos {
+		results[i].FindingID = undo.FindingID
+		_, err := u.UndoTriage(ctx, UndoTriageInput{FindingID: undo.FindingID, EventID: undo.EventID, UserID: input.UserID})
+		switch {
+		case err == nil:
+			results[i].Undone = true
+		case errors.Is(err, ErrAnalysisConflict), errors.Is(err, ErrFindingNotFound):
+			results[i].Reason = "analysis_conflict"
+		case errors.Is(err, ErrUndoUnavailable):
+			results[i].Reason = "undo_unavailable"
+		case errors.Is(err, ErrPreviousExpiryPassed):
+			results[i].Reason = "previous_expiry_passed"
+		default:
+			return nil, err
+		}
+	}
+	return results, nil
+}
+
 // planUndo checks that eventID may be undone against the locked finding and
 // builds the write that restores the event's before snapshot.
 func planUndo(current port.Finding, newest *port.FindingEvent, eventID, userID string, now time.Time) (port.UpdateAnalysisInput, port.FindingEventInput, error) {
@@ -273,7 +339,7 @@ func planUndo(current port.Finding, newest *port.FindingEvent, eventID, userID s
 	if newest == nil || newest.ID != eventID {
 		return none, port.FindingEventInput{}, ErrAnalysisConflict
 	}
-	if newest.EventType != "analysis_changed" {
+	if newest.EventType != "analysis_changed" && newest.EventType != "bulk_triage_applied" {
 		return none, port.FindingEventInput{}, ErrUndoUnavailable
 	}
 	var changes struct {
@@ -353,11 +419,6 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 	gateEffect := stateToGateEffect(input.AnalysisState)
 	userIDStr := userID.String()
 
-	changes, _ := json.Marshal(map[string]any{
-		"to":     input.AnalysisState,
-		"reason": input.Reason,
-		"count":  len(input.FindingIDs),
-	})
 	updated, err := u.deps.Stores.Findings.BulkTriage(ctx, port.UpdateAnalysisInput{
 		AnalysisState:     input.AnalysisState,
 		GateEffect:        gateEffect,
@@ -371,7 +432,16 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 		UserID:    &userIDStr,
 		EventType: "bulk_triage_applied",
 		NewValue:  stringPtr(input.AnalysisState),
-		Changes:   changes,
+		ChangesFor: func(before port.Finding) json.RawMessage {
+			changes, _ := json.Marshal(map[string]any{
+				"from":   before.AnalysisState,
+				"to":     input.AnalysisState,
+				"reason": input.Reason,
+				"count":  len(input.FindingIDs),
+				"before": snapshotOf(before),
+			})
+			return changes
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("bulk triage: %w", err)
@@ -383,6 +453,7 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 			FindingID:     f.ID,
 			AnalysisState: f.AnalysisState,
 			GateEffect:    f.GateEffect,
+			EventID:       f.EventID,
 		}
 	}
 	return results, nil

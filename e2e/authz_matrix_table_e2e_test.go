@@ -182,6 +182,18 @@ func undoPrepare(t *testing.T, f *authzFixtures, a *authzAttempt) {
 	a.Obj["event"] = f.latestAnalysisEvent(t, a.T.FindingID)
 }
 
+// bulkUndoPrepare makes a bulk decision on the attempt's finding and notes its event.
+func bulkUndoPrepare(t *testing.T, f *authzFixtures, a *authzAttempt) {
+	applied := request[struct {
+		Results []struct {
+			EventID string `json:"event_id"`
+		} `json:"results"`
+	}](t, http.MethodPost, "/api/v1/findings/bulk-analysis", adminToken,
+		map[string]any{"finding_ids": []string{a.T.FindingID}, "analysis_state": f.otherAnalysisState(t, a.T.FindingID), "reason": "authz matrix"}, http.StatusOK)
+	require.Len(t, applied.Results, 1)
+	a.Obj["event"] = applied.Results[0].EventID
+}
+
 func ssoCallbackPrepare(t *testing.T, _ *authzFixtures, a *authzAttempt) {
 	authorize, cookies, _ := ssoLoginLeg(t, "")
 	resp, err := noRedirectClient().Get(authorize)
@@ -609,6 +621,28 @@ func authzRows() []authzRow {
 				return map[string]any{"finding_ids": []string{f.X.Finding2ID, f.Y.Finding2ID}, "analysis_state": "exploitable", "reason": "authz mixed"}
 			},
 			Want: instanceAdmin, Tenants: onlyX, Audit: audit.EventBulkTriage,
+		},
+		{
+			Method: "POST", Pattern: "/api/v1/findings/bulk-analysis/undo", Path: api("/findings/bulk-analysis/undo"),
+			Prepare: bulkUndoPrepare,
+			Body: func(_ *authzFixtures, a *authzAttempt) any {
+				return map[string]any{"undos": []map[string]string{{"finding_id": a.T.FindingID, "event_id": a.Obj["event"]}}}
+			},
+			Want: writers, Audit: audit.EventUndoTriage + ",db:analysis_changed",
+		},
+		{
+			// One batch naming an X finding and a Y finding: a manager of X only must
+			// be refused as a whole. The event ids are not the newest, so even an
+			// allowed caller changes nothing.
+			Method: "POST", Pattern: "/api/v1/findings/bulk-analysis/undo", Variant: "mixed-tenants", Path: api("/findings/bulk-analysis/undo"),
+			Body: func(f *authzFixtures, _ *authzAttempt) any {
+				const event = "00000000-0000-0000-0000-00000000dead"
+				return map[string]any{"undos": []map[string]string{
+					{"finding_id": f.X.Finding2ID, "event_id": event},
+					{"finding_id": f.Y.Finding2ID, "event_id": event},
+				}}
+			},
+			Want: instanceAdmin, Tenants: onlyX, Audit: audit.EventUndoTriage,
 		},
 		{Method: "GET", Pattern: "/api/v1/findings/{id}/events", Path: onFinding("/events"), Want: readers},
 		{

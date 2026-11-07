@@ -649,7 +649,7 @@ func (r *pgFindingPort) BulkUpdateAnalysis(ctx context.Context, input port.Updat
 	return out, nil
 }
 
-func (r *pgFindingPort) BulkTriage(ctx context.Context, input port.UpdateAnalysisInput, ids []string, event port.FindingEventInput) ([]port.Finding, error) {
+func (r *pgFindingPort) BulkTriage(ctx context.Context, input port.UpdateAnalysisInput, ids []string, event port.FindingEventInput) ([]port.BulkTriagedFinding, error) {
 	uids := make([]pgtype.UUID, len(ids))
 	for i, id := range ids {
 		uid, err := parseID(id)
@@ -682,14 +682,15 @@ func (r *pgFindingPort) BulkTriage(ctx context.Context, input port.UpdateAnalysi
 		OldValue:  textPtrFromString(event.OldValue),
 		NewValue:  textPtrFromString(event.NewValue),
 		Comment:   textPtrFromString(event.Comment),
-		Changes:   event.Changes,
+	}, func(row sqlc.Finding) []byte {
+		return event.ChangesFor(findingRowToPort(row))
 	})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]port.Finding, len(rows))
+	out := make([]port.BulkTriagedFinding, len(rows))
 	for i, row := range rows {
-		out[i] = findingRowToPort(row)
+		out[i] = port.BulkTriagedFinding{Finding: findingRowToPort(row.Finding), EventID: toUUID(row.EventID)}
 	}
 	return out, nil
 }

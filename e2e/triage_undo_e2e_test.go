@@ -217,25 +217,6 @@ func TestE2E_TriageExpectedState(t *testing.T) {
 }
 
 func TestE2E_TriageUndo_RefusesWhatCannotBeRestored(t *testing.T) {
-	t.Run("a bulk triage event has no snapshot", func(t *testing.T) {
-		slug, id := undoSubject(t, "undo-bulk")
-		_ = slug
-		request[map[string]any](t, http.MethodPost, "/api/v1/findings/bulk-analysis", adminToken,
-			map[string]any{"finding_ids": []string{id}, "analysis_state": "in_triage"}, http.StatusOK)
-		var bulkID string
-		for _, e := range undoEvents(t, id) {
-			if e.EventType == "bulk_triage_applied" {
-				bulkID = e.ID
-			}
-		}
-		require.NotEmpty(t, bulkID)
-
-		status, raw := undoCall(t, adminToken, id, bulkID)
-		require.Equal(t, http.StatusConflict, status, string(raw))
-		require.Contains(t, string(raw), "undo_unavailable")
-		require.Equal(t, "in_triage", undoReadFinding(t, id).AnalysisState)
-	})
-
 	t.Run("the earlier decision has expired", func(t *testing.T) {
 		_, id := undoSubject(t, "undo-expired")
 		triage(t, id, triageBody("accepted_risk", time.Now().Add(3*time.Second)))
@@ -282,4 +263,68 @@ func TestE2E_TriageUndo_Permissions(t *testing.T) {
 		}
 	}
 	require.Equal(t, me.ID, actor, "the undo is attributed to the person who ran it")
+}
+
+type bulkTriageResults struct {
+	Results []struct {
+		FindingID string `json:"finding_id"`
+		EventID   string `json:"event_id"`
+	} `json:"results"`
+}
+
+type bulkUndoResults struct {
+	Results []struct {
+		FindingID string `json:"finding_id"`
+		Undone    bool   `json:"undone"`
+		Reason    string `json:"reason"`
+	} `json:"results"`
+}
+
+// TestE2E_BulkTriageUndo walks a bulk decision and its undo through real SQL: each
+// finding gets back its own earlier analysis, and one decided on since keeps that
+// decision.
+func TestE2E_BulkTriageUndo(t *testing.T) {
+	_, kept := undoSubject(t, "bulk-undo-kept")
+	_, restored := undoSubject(t, "bulk-undo-restored")
+	_, plain := undoSubject(t, "bulk-undo-plain")
+	triage(t, restored, map[string]any{"analysis_state": "not_affected", "reason": "not reachable"})
+	want := undoReadFinding(t, restored)
+
+	applied := request[bulkTriageResults](t, http.MethodPost, "/api/v1/findings/bulk-analysis", adminToken,
+		map[string]any{"finding_ids": []string{kept, restored, plain}, "analysis_state": "false_positive", "reason": "noise"}, http.StatusOK)
+	require.Len(t, applied.Results, 3)
+	undos := make([]map[string]string, 0, 3)
+	for _, r := range applied.Results {
+		require.NotEmpty(t, r.EventID, "the result names the event an undo needs")
+		undos = append(undos, map[string]string{"finding_id": r.FindingID, "event_id": r.EventID})
+	}
+	require.Equal(t, "false_positive", undoReadFinding(t, restored).AnalysisState)
+
+	// Someone decides on one of them after the bulk decision.
+	triage(t, kept, map[string]any{"analysis_state": "exploitable"})
+
+	out := request[bulkUndoResults](t, http.MethodPost, "/api/v1/findings/bulk-analysis/undo", adminToken,
+		map[string]any{"undos": undos}, http.StatusOK)
+	require.Len(t, out.Results, 3)
+	byID := map[string]bool{}
+	for _, r := range out.Results {
+		byID[r.FindingID] = r.Undone
+		if r.FindingID == kept {
+			require.Equal(t, "analysis_conflict", r.Reason)
+		}
+	}
+	require.False(t, byID[kept], "a later decision is not overridden")
+	require.True(t, byID[restored])
+	require.True(t, byID[plain])
+
+	require.Equal(t, "exploitable", undoReadFinding(t, kept).AnalysisState)
+	requireSameStanding(t, want, undoReadFinding(t, restored))
+	require.Equal(t, "unanalyzed", undoReadFinding(t, plain).AnalysisState)
+
+	// A second undo has nothing left to take back.
+	again := request[bulkUndoResults](t, http.MethodPost, "/api/v1/findings/bulk-analysis/undo", adminToken,
+		map[string]any{"undos": undos}, http.StatusOK)
+	for _, r := range again.Results {
+		require.False(t, r.Undone)
+	}
 }

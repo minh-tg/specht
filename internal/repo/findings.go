@@ -424,7 +424,7 @@ func (r *pgFindingRepo) BulkUpdateAnalysis(ctx context.Context, arg BulkUpdateAn
 	})
 }
 
-func (r *pgFindingRepo) BulkTriage(ctx context.Context, arg BulkUpdateAnalysisParams, event CreateEventParams) ([]sqlc.Finding, error) {
+func (r *pgFindingRepo) BulkTriage(ctx context.Context, arg BulkUpdateAnalysisParams, event CreateEventParams, changesFor func(sqlc.Finding) []byte) ([]BulkTriagedRow, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -435,6 +435,12 @@ func (r *pgFindingRepo) BulkTriage(ctx context.Context, arg BulkUpdateAnalysisPa
 	}()
 
 	q := sqlc.New(tx)
+	// Read the findings under lock, so the changes record the analysis this update
+	// replaces and not one a concurrent decision has since overwritten.
+	locked, err := q.LockFindingsForUpdate(ctx, arg.IDs)
+	if err != nil {
+		return nil, fmt.Errorf("lock findings: %w", err)
+	}
 	updated, err := q.BulkUpdateFindingAnalysis(ctx, sqlc.BulkUpdateFindingAnalysisParams{
 		Column1:           arg.IDs,
 		AnalysisState:     arg.AnalysisState,
@@ -450,28 +456,43 @@ func (r *pgFindingRepo) BulkTriage(ctx context.Context, arg BulkUpdateAnalysisPa
 		return nil, fmt.Errorf("bulk update analysis: %w", err)
 	}
 
-	if len(updated) > 0 {
-		updatedIDs := make([]pgtype.UUID, len(updated))
-		for i, f := range updated {
-			updatedIDs[i] = f.ID
-		}
-		if err := q.BulkCreateFindingEvents(ctx, sqlc.BulkCreateFindingEventsParams{
-			Column1:   updatedIDs,
-			UserID:    event.UserID,
-			EventType: event.EventType,
-			OldValue:  event.OldValue,
-			NewValue:  event.NewValue,
-			Comment:   event.Comment,
-			Changes:   event.Changes,
-		}); err != nil {
-			return nil, fmt.Errorf("bulk create events: %w", err)
-		}
+	ids := make([]pgtype.UUID, len(locked))
+	changes := make([]string, len(locked))
+	for i, f := range locked {
+		ids[i] = f.ID
+		changes[i] = string(changesFor(f))
+	}
+	events, err := q.BulkCreateTriageEvents(ctx, sqlc.BulkCreateTriageEventsParams{
+		Column1:   ids,
+		UserID:    event.UserID,
+		EventType: event.EventType,
+		OldValue:  event.OldValue,
+		NewValue:  event.NewValue,
+		Comment:   event.Comment,
+		Column7:   changes,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("bulk create events: %w", err)
+	}
+	eventIDs := make(map[pgtype.UUID]pgtype.UUID, len(events))
+	for _, e := range events {
+		eventIDs[e.FindingID] = e.ID
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit tx: %w", err)
 	}
-	return updated, nil
+	out := make([]BulkTriagedRow, len(updated))
+	for i, f := range updated {
+		out[i] = BulkTriagedRow{Finding: f, EventID: eventIDs[f.ID]}
+	}
+	return out, nil
+}
+
+// BulkTriagedRow is one finding a bulk triage changed and the event it wrote.
+type BulkTriagedRow struct {
+	Finding sqlc.Finding
+	EventID pgtype.UUID
 }
 
 // CreateEventParams is the input to creating a finding audit event.

@@ -21,6 +21,7 @@ const undoEventID = "00000000-0000-0000-0000-0000000000e1"
 // way the locking store does, and applies the result.
 type undoFixture struct {
 	uc      *Usecases
+	repo    *mockFindingRepo
 	current port.Finding
 	newest  *port.FindingEvent
 	applied *port.UpdateAnalysisInput
@@ -42,6 +43,7 @@ func newUndoFixture(t *testing.T, current port.Finding, newest *port.FindingEven
 		updated.AnalysisState, updated.GateEffect = in.AnalysisState, in.GateEffect
 		return updated, port.FindingEvent{ID: "00000000-0000-0000-0000-0000000000e2"}, nil
 	}
+	fx.repo = fr
 	fx.uc = New(Deps{Stores: &port.Stores{Findings: fr, Projects: memberProjects()}})
 	return fx
 }
@@ -181,8 +183,7 @@ func TestUndoTriage_UnavailableWithoutSnapshot(t *testing.T) {
 		newest *port.FindingEvent
 	}{
 		{"event written before snapshots existed", triageEvent(t, undoEventID, "unanalyzed", "in_triage", nil)},
-		{"bulk triage event", &port.FindingEvent{ID: undoEventID, EventType: "bulk_triage_applied", Changes: json.RawMessage(`{"to":"in_triage","count":3}`)}},
-		{"bulk triage event even with a snapshot", &port.FindingEvent{ID: undoEventID, EventType: "bulk_triage_applied", Changes: json.RawMessage(`{"to":"in_triage","before":{"analysis_state":"unanalyzed","analysis_source":"manual"}}`)}},
+		{"bulk triage event written before snapshots existed", &port.FindingEvent{ID: undoEventID, EventType: "bulk_triage_applied", Changes: json.RawMessage(`{"to":"in_triage","count":3}`)}},
 		{"scan review event", &port.FindingEvent{ID: undoEventID, EventType: "reopened_fix_available", Changes: json.RawMessage(`{"event":"fix_available"}`)}},
 		{"expiry sweep event", &port.FindingEvent{ID: undoEventID, EventType: "analysis_changed", Changes: json.RawMessage(`{"analysis_state":{"old":"accepted_risk","new":"unanalyzed"}}`)}},
 		{"unreadable changes", &port.FindingEvent{ID: undoEventID, EventType: "analysis_changed", Changes: json.RawMessage(`not json`)}},
@@ -269,4 +270,94 @@ func TestUndoTriage_StoreErrorsSurface(t *testing.T) {
 	}
 	_, err = fx.undo(undoEventID)
 	require.ErrorIs(t, err, boom)
+}
+
+func TestUndoTriage_TakesBackABulkDecisionWithASnapshot(t *testing.T) {
+	reason := "scanner noise"
+	before := analysisSnapshot{AnalysisState: "not_affected", AnalysisReason: &reason, AnalysisSource: "manual", ManualOverride: true}
+	newest := triageEvent(t, undoEventID, "not_affected", "false_positive", &before)
+	newest.EventType = "bulk_triage_applied"
+	fx := newUndoFixture(t, findingIn("false_positive"), newest)
+
+	out, err := fx.undo(undoEventID)
+
+	require.NoError(t, err)
+	assert.Equal(t, "not_affected", out.AnalysisState)
+	require.NotNil(t, fx.applied)
+	assert.Equal(t, &reason, fx.applied.AnalysisReason)
+	assert.True(t, fx.applied.ManualOverride)
+}
+
+func TestBulkTriage_RecordsEachFindingsOwnEarlierAnalysis(t *testing.T) {
+	first, second := findingIn("unanalyzed"), findingIn("not_affected")
+	second.ID = "00000000-0000-0000-0000-000000000022"
+	reason := "not reachable"
+	second.AnalysisReason = &reason
+	var event port.FindingEventInput
+	fr := &mockFindingRepo{
+		listByIDsFn: func(context.Context, []string) ([]port.Finding, error) {
+			return []port.Finding{first, second}, nil
+		},
+		bulkTriageFn: func(_ context.Context, _ port.UpdateAnalysisInput, _ []string, ev port.FindingEventInput) ([]port.Finding, error) {
+			event = ev
+			return []port.Finding{first, second}, nil
+		},
+	}
+	uc := New(Deps{Stores: &port.Stores{Findings: fr, Projects: memberProjects()}})
+
+	results, err := uc.BulkTriage(findingScopeCtx(findingFixtureProjectID), BulkTriageInput{
+		FindingIDs: []string{first.ID, second.ID}, AnalysisState: "false_positive", Reason: "noise", UserID: snapshotUserID,
+	})
+
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	assert.Equal(t, "event-"+first.ID, results[0].EventID, "the response names the event an undo needs")
+	var changes struct {
+		From   string           `json:"from"`
+		To     string           `json:"to"`
+		Before analysisSnapshot `json:"before"`
+	}
+	require.NoError(t, json.Unmarshal(event.ChangesFor(second), &changes))
+	assert.Equal(t, "not_affected", changes.From)
+	assert.Equal(t, "false_positive", changes.To)
+	assert.Equal(t, "not_affected", changes.Before.AnalysisState)
+	assert.Equal(t, &reason, changes.Before.AnalysisReason)
+}
+
+func TestBulkUndoTriage_SaysWhatHappenedToEachFinding(t *testing.T) {
+	before := analysisSnapshot{AnalysisState: "unanalyzed", AnalysisSource: "manual"}
+	fx := newUndoFixture(t, findingIn("false_positive"), func() *port.FindingEvent {
+		e := triageEvent(t, undoEventID, "unanalyzed", "false_positive", &before)
+		e.EventType = "bulk_triage_applied"
+		return e
+	}())
+	fx.repo.listByIDsFn = func(context.Context, []string) ([]port.Finding, error) {
+		return []port.Finding{findingIn("false_positive")}, nil
+	}
+
+	results, err := fx.uc.BulkUndoTriage(findingScopeCtx(findingFixtureProjectID), BulkUndoTriageInput{UserID: snapshotUserID, Undos: []BulkUndoTarget{
+		{FindingID: findingIn("x").ID, EventID: undoEventID},
+		{FindingID: findingIn("x").ID, EventID: "00000000-0000-0000-0000-00000000ffff"},
+	}})
+
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	assert.True(t, results[0].Undone)
+	assert.False(t, results[1].Undone, "an event that is not the newest keeps the later decision")
+	assert.Equal(t, "analysis_conflict", results[1].Reason)
+}
+
+func TestBulkUndoTriage_RefusesBadInputBeforeWriting(t *testing.T) {
+	uc := New(Deps{Stores: &port.Stores{Findings: &mockFindingRepo{}, Projects: memberProjects()}})
+	ctx := findingScopeCtx(findingFixtureProjectID)
+
+	_, err := uc.BulkUndoTriage(ctx, BulkUndoTriageInput{UserID: snapshotUserID, Undos: []BulkUndoTarget{{FindingID: "nope", EventID: undoEventID}}})
+	require.ErrorIs(t, err, ErrInvalidFindingID)
+
+	_, err = uc.BulkUndoTriage(ctx, BulkUndoTriageInput{UserID: snapshotUserID, Undos: []BulkUndoTarget{{FindingID: findingIn("x").ID, EventID: "nope"}}})
+	require.ErrorIs(t, err, ErrInvalidEventID)
+
+	too := make([]BulkUndoTarget, MaxBulkTriageFindings+1)
+	_, err = uc.BulkUndoTriage(ctx, BulkUndoTriageInput{UserID: snapshotUserID, Undos: too})
+	require.ErrorIs(t, err, ErrTooManyFindings)
 }
