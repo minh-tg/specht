@@ -69,6 +69,11 @@ describe("expiresIn", () => {
     expect(expiresIn("2026-10-13T20:00:00Z", now)).toBe("8 hours");
     expect(expiresIn("2026-10-13T12:20:00Z", now)).toBe("1 hour");
   });
+  it("rounds days to the nearest, so a fresh 30 day waiver reads 30", () => {
+    expect(expiresIn("2026-11-12T11:59:00Z", now)).toBe("30 days");
+    expect(expiresIn("2026-10-15T00:00:00Z", now)).toBe("2 days");
+    expect(expiresIn("2026-10-14T13:00:00Z", now)).toBe("1 day");
+  });
   it("says so once it has passed", () => {
     expect(expiresIn("2026-10-13T11:59:59Z", now)).toBe("expired");
   });
