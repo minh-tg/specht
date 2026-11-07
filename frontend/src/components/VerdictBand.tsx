@@ -21,6 +21,10 @@ import { Link } from "react-router-dom";
 /** Plain-language verdict line; unknown is resolved before this point. */
 function verdictSentence(verdict: Verdict, blockers: number): string {
   switch (verdict) {
+    case "would_block":
+      return blockers === 1
+        ? "1 finding would block this project, and CI is not failing"
+        : `${blockers} findings would block this project, and CI is not failing`;
     case "blocked":
       return `${pluralize(blockers, "finding")} ${
         blockers === 1 ? "blocks" : "block"

@@ -1,7 +1,7 @@
 import { triageBucket } from "@/lib/enums";
 import type { AnalysisStateCount, GateStatus, ProjectStats } from "@/types/api";
 
-export type Verdict = "blocked" | "passing" | "no_scans" | "unknown";
+export type Verdict = "blocked" | "would_block" | "passing" | "no_scans" | "unknown";
 
 /**
  * Project-level verdict for a dashboard header.
@@ -13,7 +13,7 @@ export type Verdict = "blocked" | "passing" | "no_scans" | "unknown";
 export function projectVerdict(input: { gate?: GateStatus; stats?: ProjectStats; }): Verdict {
   if (!input.gate || !input.stats) return "unknown";
   if (input.stats.report_count === 0) return "no_scans";
-  if (input.gate.threshold_breached) return "blocked";
+  if (input.gate.threshold_breached) return input.gate.report_only ? "would_block" : "blocked";
   return "passing";
 }
 

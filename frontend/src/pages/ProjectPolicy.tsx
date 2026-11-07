@@ -14,6 +14,8 @@ import { InfoIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { ManualCloseRow } from "./project-policy/ManualCloseRow";
 import {
+  GATE_MODE_OPTIONS,
+  gateModeHelp,
   overridesOf,
   type PolicyKey,
   SEVERITY_FLOOR_OPTIONS,
@@ -94,6 +96,18 @@ export function ProjectPolicy() {
             </span>
           )}
         </SettingLine>
+
+        <PolicyRow
+          title="When findings block"
+          help={gateModeHelp(policy.gate_mode ?? "enforce")}
+          value={policy.gate_mode ?? "enforce"}
+          source={policy.gate_mode_source ?? "default"}
+          options={GATE_MODE_OPTIONS}
+          editable={isAdmin}
+          saving={setOverrides.isPending}
+          onSave={override("gate_mode")}
+          onClear={clear("gate_mode")}
+        />
 
         <PolicyRow
           title="Severity floor"

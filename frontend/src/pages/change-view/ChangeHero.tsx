@@ -37,6 +37,8 @@ export interface ChangeHeroProps {
   readonly earlierOpen?: number;
   readonly policy?: PolicyEffective;
   readonly projectWide?: boolean;
+  /** The project's gate mode keeps this breach from failing CI. */
+  readonly reportOnly?: boolean;
   /** Under the verdict sentence: the strip that says the page is watching for the scan. */
   readonly watch?: ReactNode;
   /** Between the verdict and the facts: why the verdict may not be current. */
@@ -55,9 +57,15 @@ function headline(
   projectWide: boolean,
   commit: string,
   earlierOpen: number,
+  reportOnly: boolean,
 ): string {
   switch (state) {
     case "blocked":
+      if (reportOnly) {
+        return `${pluralize(blockers, "finding")} would block this ${
+          projectWide ? "project" : "change"
+        }.`;
+      }
       return `${pluralize(blockers, "finding")} ${blockers === 1 ? "blocks" : "block"} this ${
         projectWide ? "project" : "change"
       }.`;
@@ -87,10 +95,13 @@ function subline(
   commit: string,
   policy: PolicyEffective | undefined,
   waived: number,
+  reportOnly: boolean,
 ): string {
   switch (state) {
     case "blocked":
-      return "Fix the findings and send a fresh scanner report, or request a waiver.";
+      return reportOnly
+        ? "This project only reports for now, so CI is not failing. A project admin can turn blocking on in Policy."
+        : "Fix the findings and send a fresh scanner report, or request a waiver.";
     case "passing":
       if (projectWide) return "No project findings block this gate at the selected severity floor.";
       return `No new finding at ${
@@ -116,10 +127,11 @@ function subline(
 /** Verdict of the stamp for a header state. */
 function stampFor(
   state: ChangeState,
-): { verdict: "blocked" | "passing" | "unknown"; scanning: boolean; } {
+  reportOnly: boolean,
+): { verdict: "blocked" | "would_block" | "passing" | "unknown"; scanning: boolean; } {
   switch (state) {
     case "blocked":
-      return { verdict: "blocked", scanning: false };
+      return { verdict: reportOnly ? "would_block" : "blocked", scanning: false };
     case "passing":
     case "unblocked":
     case "unconfirmed":
@@ -147,11 +159,12 @@ export function ChangeHero(
     earlierOpen = 0,
     policy,
     projectWide = false,
+    reportOnly = false,
     watch,
     notice,
   }: ChangeHeroProps,
 ) {
-  const stamp = stampFor(state);
+  const stamp = stampFor(state, reportOnly);
   const branch = report?.branch;
   return (
     <section aria-label="Change verdict" aria-live="polite">
@@ -171,10 +184,10 @@ export function ChangeHero(
         <VerdictBadge verdict={stamp.verdict} scanning={stamp.scanning} size="lg" />
         <div className="grid min-w-0 gap-1.5">
           <h1 className="text-title font-bold text-balance">
-            {headline(state, blockers, projectWide, commit, earlierOpen)}
+            {headline(state, blockers, projectWide, commit, earlierOpen, reportOnly)}
           </h1>
           <p className="max-w-[58ch] text-section font-normal leading-snug">
-            {subline(state, report, projectWide, commit, policy, waived)}
+            {subline(state, report, projectWide, commit, policy, waived, reportOnly)}
           </p>
           {watch}
         </div>

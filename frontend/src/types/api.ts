@@ -285,6 +285,9 @@ export interface PolicyEffective {
   /** Scanners whose clean scans leave findings open in this project. */
   manual_close_scanners?: string[];
   manual_close_source?: "default" | "template" | "override";
+  /** Whether a breached gate fails CI. */
+  gate_mode?: "enforce" | "changes_only" | "report_only";
+  gate_mode_source?: "default" | "template" | "override";
   /** Whether findings with no severity block the gate. */
   unrated_gate?: "ignore" | "block";
   unrated_source?: "default" | "template" | "override";
@@ -308,6 +311,8 @@ export interface GateStatus {
   /** IDs of the blocking findings an active waiver silences. */
   waived_finding_ids?: string[];
   policy?: PolicyEffective;
+  /** The project's gate mode keeps a breach of this gate from failing CI. */
+  report_only?: boolean;
   /** Open findings with no severity that the gate left out. */
   unrated_count?: number;
 }
@@ -527,6 +532,10 @@ export interface IngestResponse {
   report_id: string;
   total_findings: number;
   threshold_breached: boolean;
+  /** The project's gate mode keeps this breach from failing CI. */
+  report_only?: boolean;
+  /** This report scans a change, not the default branch. */
+  change_report?: boolean;
   /** The mode actually used. */
   scan_mode: "full" | "incremental";
   /** Present when an incremental scan had to fall back to full. */

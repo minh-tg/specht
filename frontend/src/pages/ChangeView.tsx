@@ -362,6 +362,7 @@ export function ChangeView() {
         earlierOpen={cleared?.kind === "open" ? cleared.ids.length : 0}
         policy={gate.policy}
         projectWide={projectWide}
+        reportOnly={gate.report_only === true}
         notice={notice}
       />
       {gate.threshold_breached && (
