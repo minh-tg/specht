@@ -617,6 +617,17 @@ func printChangeLink(w io.Writer, link string) {
 	}
 }
 
+// introducedBlockers is how many findings block this change. The summary counts
+// cover every blocker; annotations cover only those with a file to point at and
+// stop at the provider's limit, so a dependency finding is counted but not listed.
+func introducedBlockers(preview *client.PRCheckPreview) int {
+	total := 0
+	for _, n := range preview.SummaryCounts {
+		total += n
+	}
+	return max(total, len(preview.Annotations))
+}
+
 // reportIntroducedGate prints the change-scoped verdict and returns its
 // exit code (0 pass, 1 breached).
 func reportIntroducedGate(resp *client.IngestResponse, preview *client.PRCheckPreview, payload client.IngestPayload, stderr io.Writer) int {
@@ -631,8 +642,10 @@ func reportIntroducedGate(resp *client.IngestResponse, preview *client.PRCheckPr
 
 	writeDiagnosticLine(stderr, "❌ SPECHT SECURITY GATE: FAILED")
 	printContextBanner(stderr, payload)
-	if preview != nil && len(preview.Annotations) > 0 {
-		writeDiagnostic(stderr, "\n🚨 NEW BLOCKING FINDINGS INTRODUCED IN THIS CHANGE (%d):\n", len(preview.Annotations))
+	switch {
+	case preview != nil && len(preview.Annotations) > 0:
+		total := introducedBlockers(preview)
+		writeDiagnostic(stderr, "\n🚨 NEW BLOCKING FINDINGS INTRODUCED IN THIS CHANGE (%d):\n", total)
 		for _, a := range preview.Annotations {
 			loc := a.File
 			if a.StartLine > 0 {
@@ -640,7 +653,12 @@ func reportIntroducedGate(resp *client.IngestResponse, preview *client.PRCheckPr
 			}
 			writeDiagnostic(stderr, "  • [%s] %s: %s\n", strings.ToUpper(a.Level), a.Title, loc)
 		}
-	} else {
+		if unlisted := total - len(preview.Annotations); unlisted > 0 {
+			writeDiagnostic(stderr, "  • and %d more with no line to point at, such as dependency findings: the change link lists them\n", unlisted)
+		}
+	case preview != nil && introducedBlockers(preview) > 0:
+		writeDiagnostic(stderr, "\n🚨 NEW BLOCKING FINDINGS INTRODUCED IN THIS CHANGE: %d\n", introducedBlockers(preview))
+	default:
 		writeDiagnostic(stderr, "\n🚨 NEW BLOCKING FINDINGS INTRODUCED IN THIS CHANGE: %d\n", resp.IntroducedCount)
 	}
 	if resp.PreExistingCount > 0 {
