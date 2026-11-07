@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/minh-tg/specht/internal/gate"
+	"github.com/minh-tg/specht/internal/policy"
 	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/provider"
 )
@@ -160,11 +161,12 @@ func (u *Usecases) PreviewPRCheck(ctx context.Context, input PRCheckPreviewInput
 	}
 
 	plan, err := p.PlanCheck(provider.CheckInput{
-		CommitSha: input.CommitSha,
-		ReportID:  input.ReportID,
-		Branch:    scope.branch,
-		Breached:  scope.decision.Status == gate.StatusFail,
-		Findings:  findings,
+		CommitSha:  input.CommitSha,
+		ReportID:   input.ReportID,
+		Branch:     scope.branch,
+		Breached:   scope.decision.Status == gate.StatusFail,
+		ReportOnly: policy.ReportOnly(effective.GateMode, true),
+		Findings:   findings,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("plan check: %w", err)

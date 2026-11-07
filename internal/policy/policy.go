@@ -15,6 +15,9 @@ const (
 	// KeyWatcherGate admits watcher findings:
 	// immediate|off|require_triage.
 	KeyWatcherGate = "watcher_gate"
+	// KeyGateMode decides whether a breached gate fails CI:
+	// enforce|changes_only|report_only.
+	KeyGateMode = "gate_mode"
 	// KeyUnratedGate decides what happens to findings without a severity, which
 	// no floor can judge: ignore|block.
 	KeyUnratedGate = "unrated_gate"
@@ -39,13 +42,41 @@ const (
 	// separate project column with this same default, so the policy screen
 	// and the gate disagreed.
 	DefaultWatcherGate = "require_triage"
+	// DefaultGateMode fails CI on a breach. A project turns that down on purpose.
+	DefaultGateMode = GateModeEnforce
 	// DefaultUnratedGate leaves findings without a severity out of the gate, and
 	// the verdict says how many it left out. Blocking by default would fail every
 	// Checkov run, whose open-source output rates nothing.
 	DefaultUnratedGate = "ignore"
 )
 
+// Gate modes. Each still evaluates and reports the same verdict; they differ in
+// whether a breach fails CI.
+const (
+	// GateModeEnforce fails every breached gate.
+	GateModeEnforce = "enforce"
+	// GateModeChangesOnly fails a change that introduces a blocker and leaves a
+	// project-wide gate reporting, so existing debt does not fail main.
+	GateModeChangesOnly = "changes_only"
+	// GateModeReportOnly fails nothing.
+	GateModeReportOnly = "report_only"
+)
+
+// ReportOnly reports whether a breached gate of this scope stays out of CI's way.
+// An unknown mode enforces, so a bad value can never loosen the gate.
+func ReportOnly(mode string, introducedOnly bool) bool {
+	switch mode {
+	case GateModeReportOnly:
+		return true
+	case GateModeChangesOnly:
+		return !introducedOnly
+	default:
+		return false
+	}
+}
+
 var validValues = map[string][]string{
+	KeyGateMode:      {GateModeEnforce, GateModeChangesOnly, GateModeReportOnly},
 	KeySeverityFloor: {"critical", "high", "medium", "low"},
 	KeyWatcherGate:   {"immediate", "off", "require_triage"},
 	KeyUnratedGate:   {"ignore", "block"},
@@ -63,6 +94,10 @@ type Effective struct {
 	// open, and ManualCloseSource where that list came from.
 	ManualCloseScanners []string `json:"manual_close_scanners"`
 	ManualCloseSource   string   `json:"manual_close_source"`
+	// GateMode says whether a breached gate fails CI, and GateModeSource where
+	// that came from.
+	GateMode       string `json:"gate_mode"`
+	GateModeSource string `json:"gate_mode_source"`
 	// UnratedGate says whether findings without a severity block, and
 	// UnratedSource where that came from.
 	UnratedGate   string `json:"unrated_gate"`
@@ -153,6 +188,7 @@ func Resolve(templateName *string, templateVersion int, template, overrides map[
 	eff := Effective{TemplateName: templateName, TemplateVersion: templateVersion}
 	eff.SeverityFloor, eff.SeveritySource = resolveKey(template, overrides, KeySeverityFloor, DefaultSeverityFloor)
 	eff.WatcherGate, eff.WatcherSource = resolveKey(template, overrides, KeyWatcherGate, DefaultWatcherGate)
+	eff.GateMode, eff.GateModeSource = resolveKey(template, overrides, KeyGateMode, DefaultGateMode)
 	eff.UnratedGate, eff.UnratedSource = resolveKey(template, overrides, KeyUnratedGate, DefaultUnratedGate)
 	var manual string
 	manual, eff.ManualCloseSource = resolveKey(template, overrides, KeyManualCloseScanners, "")
@@ -215,7 +251,7 @@ func LowestListedRank(labels []string) int16 {
 // Keys returns the sorted definition keys, for stable error messages and
 // documentation.
 func Keys() []string {
-	out := []string{KeyManualCloseScanners, KeySeverityFloor, KeyUnratedGate, KeyWatcherGate}
+	out := []string{KeyGateMode, KeyManualCloseScanners, KeySeverityFloor, KeyUnratedGate, KeyWatcherGate}
 	sort.Strings(out)
 	return out
 }

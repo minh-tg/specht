@@ -77,3 +77,25 @@ func TestLowestListedRank(t *testing.T) {
 		assert.Equal(t, tc.want, LowestListedRank(tc.labels), "%q", tc.labels)
 	}
 }
+
+func TestReportOnly(t *testing.T) {
+	cases := []struct {
+		mode           string
+		introducedOnly bool
+		want           bool
+	}{
+		{GateModeEnforce, false, false},
+		{GateModeEnforce, true, false},
+		{GateModeChangesOnly, false, true},
+		{GateModeChangesOnly, true, false},
+		{GateModeReportOnly, false, true},
+		{GateModeReportOnly, true, true},
+		{"", false, false},
+		{"something-new", false, false},
+	}
+	for _, tc := range cases {
+		if got := ReportOnly(tc.mode, tc.introducedOnly); got != tc.want {
+			t.Errorf("ReportOnly(%q, %v) = %v, want %v", tc.mode, tc.introducedOnly, got, tc.want)
+		}
+	}
+}
