@@ -554,6 +554,40 @@ func (r *pgRefreshTokenPort) CreateForLogin(ctx context.Context, in port.NewRefr
 	return version, nil
 }
 
+// CreateInChain implements port.RefreshTokenStore.
+func (r *pgRefreshTokenPort) CreateInChain(ctx context.Context, anchorID string, in port.NewRefreshToken, tokenVersion int32) error {
+	uid, err := parseID(in.UserID)
+	if err != nil {
+		return err
+	}
+	aid, err := parseID(anchorID)
+	if err != nil {
+		return err
+	}
+	return r.withTx(ctx, func(q *sqlc.Queries) error {
+		row, err := q.LockUserForRefresh(ctx, uid)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return port.ErrSessionStale
+		} else if err != nil {
+			return err
+		}
+		if row.DisabledAt.Valid || row.TokenVersion != tokenVersion {
+			return port.ErrSessionStale
+		}
+		live, err := q.RefreshTokenIsLive(ctx, aid)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return port.ErrSessionStale
+		} else if err != nil {
+			return err
+		}
+		if !live {
+			return port.ErrSessionStale
+		}
+		_, err = insertRefreshToken(ctx, q, in)
+		return err
+	})
+}
+
 // Rotate spends oldID and stores its successor in one transaction. The account
 // row is share-locked first, so a password change, a reset, an SSO link or a
 // deactivation, which all update it, cannot commit between the checks below and

@@ -1277,6 +1277,8 @@ func (m *mockUserRepo) ListByIDs(ctx context.Context, ids []string) ([]port.User
 	return m.listByIDsFn(ctx, ids)
 }
 
+func (m *mockRefreshTokenRepo) RevokeFamily(context.Context, string) error { return nil }
+
 type mockRefreshTokenRepo struct {
 	port.RefreshTokenStore
 	createFn func(context.Context, port.NewRefreshToken) (port.RefreshToken, error)

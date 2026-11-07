@@ -35,6 +35,10 @@ releases.
 
 ### Added
 
+- A link opened in a new tab stays signed in. Each tab still keeps its session in its own storage,
+  and signing in now also sets an `HttpOnly`, `SameSite=Strict` session cookie scoped to the new
+  `POST /api/v1/auth/resume`, which gives a new tab its own session in the same sign-in. Closing the
+  browser usually ends it, and a browser left idle for a week signs in again. Signing out in one tab now signs out every tab of that sign-in; other sign-ins stay.
 - A project can roll the gate out gradually with the `gate_mode` policy key. `enforce` is the default
   and fails every breached gate. `changes_only` fails a pull request that introduces a blocker and
   lets existing debt report without failing the default branch. `report_only` fails nothing. The verdict

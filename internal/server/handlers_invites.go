@@ -139,6 +139,7 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
+	h.setResumeCookie(w, r, resp.RefreshToken)
 	respondJSON(w, http.StatusCreated, resp)
 	h.audit.HTTP(r, audit.EventAcceptInvite, audit.OutcomeSuccess, resp.ProjectSlug, resp.UserID, nil)
 }

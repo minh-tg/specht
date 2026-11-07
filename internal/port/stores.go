@@ -503,6 +503,12 @@ type LoginGuard struct {
 // RefreshTokenStore persists refresh tokens.
 type RefreshTokenStore interface {
 	Create(ctx context.Context, in NewRefreshToken) (RefreshToken, error)
+	// CreateInChain adds a token to the sign-in chain anchorID belongs to, without
+	// spending anchorID, for a new tab of the same browser. It locks the account the
+	// way a rotation does, so a revocation of the chain either commits first, and
+	// the live anchor check refuses with ErrSessionStale, or waits and then revokes
+	// the new token too. A password is not required: an SSO account has none.
+	CreateInChain(ctx context.Context, anchorID string, in NewRefreshToken, tokenVersion int32) error
 	// CreateForLogin stores the refresh token of a password login. It locks the
 	// account row first and returns ErrLoginStale, storing nothing, unless the
 	// account is still active, still holds the verified password hash and still

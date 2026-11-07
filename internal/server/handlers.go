@@ -135,6 +135,8 @@ type (
 		CreateSSOExchangeCode(ctx context.Context, userID, browserBinding string) (string, error)
 		ExchangeSSOCode(ctx context.Context, code string, presented []auth.PresentedLogin) (*usecase.AuthResponse, auth.PresentedLogin, error)
 		Refresh(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
+		IssueResumeToken(ctx context.Context, refreshToken string) (string, error)
+		ResumeSession(ctx context.Context, resumeToken string) (*usecase.AuthResponse, error)
 		Logout(ctx context.Context, refreshToken string) error
 		GetProfile(ctx context.Context, userID string) (*usecase.UserProfile, error)
 		UpdateProfile(ctx context.Context, userID string, displayName *string) (*usecase.UserProfile, error)
