@@ -260,13 +260,14 @@ export function BlockerSection(
             </div>
           )}
           <Ledger label="Blocking findings">
-            {shown.map((item) => {
+            {shown.map((item, row) => {
               if (item.kind === "group") {
                 return (
                   <FixGroupEntry
                     key={item.key}
                     slug={slug}
                     item={item}
+                    rowNumber={row + 1}
                     findings={found.byId}
                     open={open.has(item.key) || item.ids.some((id) => open.has(id))}
                     onOpenChange={(next) => setOpenItem(item, next)}
@@ -294,7 +295,7 @@ export function BlockerSection(
                 <BlockerEntry
                   key={id}
                   slug={slug}
-                  index={item.position}
+                  index={row + 1}
                   findingId={id}
                   finding={found.list[at]}
                   isLoading={found.pending[at]}

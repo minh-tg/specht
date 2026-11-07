@@ -170,11 +170,11 @@ export function ChangeHero(
     <section aria-label="Change verdict" aria-live="polite">
       <p className="font-label text-muted-foreground mb-3.5 flex flex-wrap items-center gap-x-2.5 text-label">
         <span>Change</span>
-        <code className="text-foreground text-code">{shortCommit(commit)}</code>
+        <code className="text-foreground text-code normal-case">{shortCommit(commit)}</code>
         {branch && (
           <>
             <span aria-hidden="true">·</span>
-            <code className="text-foreground min-w-0 text-code [overflow-wrap:anywhere]">
+            <code className="text-foreground min-w-0 text-code normal-case [overflow-wrap:anywhere]">
               {branch}
             </code>
           </>

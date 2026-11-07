@@ -423,7 +423,9 @@ test("an admin creates a project and follows the guided CI setup", async ({ page
   await expect(page.getByText(/development build/)).toBeVisible();
 
   // The page notices the first report arriving without a reload.
-  await expect(page.getByText("Waiting for the first report...")).toBeVisible();
+  await expect(
+    page.getByText("Send a report from CI, or upload one below. This page updates by itself."),
+  ).toBeVisible();
   await ingestFixture(request, token, slug, FIXTURE_HIGH);
   await expect(page.getByText(/First report received: 1 finding\./)).toBeVisible({
     timeout: 15_000,

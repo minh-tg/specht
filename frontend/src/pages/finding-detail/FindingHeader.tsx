@@ -1,5 +1,6 @@
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { findingKindLabel, technicalStateLabel } from "@/lib/enums";
+import { findingTitleParts } from "@/lib/findingTitle";
 import { EMPTY_VALUE, formatAge } from "@/lib/format";
 import { type BlocksGateResult } from "@/lib/gate";
 import type { Finding } from "@/types/api";
@@ -27,6 +28,7 @@ export function FindingHeader({
   readonly gateResult: BlocksGateResult | null;
   readonly floor?: string;
 }) {
+  const title = findingTitleParts(finding);
   return (
     <header>
       <p className="font-label text-muted-foreground mb-3 flex flex-wrap items-center gap-x-2.5 text-label">
@@ -36,10 +38,15 @@ export function FindingHeader({
       </p>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <SeverityBadge severity={finding.current_severity} />
-        <h1 className="text-title font-bold break-words">
-          {finding.current_title}
+        <h1 className="text-title min-w-0 font-bold [overflow-wrap:anywhere]">
+          {title.headline}
         </h1>
       </div>
+      {title.rest && (
+        <p className="text-muted-foreground mt-2 max-w-3xl text-body [overflow-wrap:anywhere]">
+          {title.rest}
+        </p>
+      )}
       <WhyItBlocks
         onlyOnBranches={finding.only_on_branches}
         severity={finding.current_severity}

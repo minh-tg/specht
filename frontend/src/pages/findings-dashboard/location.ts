@@ -10,3 +10,15 @@ export function locationText(location: FindingLocation | undefined): string {
   }
   return location.resource ?? EMPTY_VALUE;
 }
+
+/**
+ * A location for a narrow column. A long path keeps its end, because the file name is what someone
+ * looks for, and the tooltip holds the whole thing.
+ */
+export function shortLocation(location: FindingLocation | undefined): string {
+  const text = locationText(location);
+  // "golang.org/x/crypto v0.57.0 in go.mod" is a package, not a path.
+  if (text.includes(" ")) return text;
+  const parts = text.split("/");
+  return parts.length > 3 ? `…/${parts.slice(-2).join("/")}` : text;
+}

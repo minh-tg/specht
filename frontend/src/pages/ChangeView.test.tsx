@@ -1341,10 +1341,10 @@ describe("ChangeView grouping by fix", { timeout: 40_000 }, () => {
     expect(await groupButton()).toHaveAccessibleName(
       /^02 \S+ Upgrade lodash to 4\.17\.21 clears 24 blockers$/,
     );
-    expect(await groupButton("Upgrade lodash to 4.17.19")).toHaveAccessibleName(/^26 /);
+    expect(await groupButton("Upgrade lodash to 4.17.19")).toHaveAccessibleName(/^03 /);
     // The fallback and the other kind stay as rows of their own, numbered by their place.
     expect(entryButton("Finding y0")).toHaveAccessibleName(/^01 /);
-    expect(entryButton("Finding z0")).toHaveAccessibleName(/^28 /);
+    expect(entryButton("Finding z0")).toHaveAccessibleName(/^04 /);
     const ledger = screen.getByRole("list", { name: "Blocking findings" });
     expect(ledger.querySelectorAll(":scope > li[data-entry-id]")).toHaveLength(4);
     // Grouping needed every suggestion, so every blocker was fetched.

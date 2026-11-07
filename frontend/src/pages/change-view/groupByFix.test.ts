@@ -263,7 +263,7 @@ describe("worstSeverity", () => {
 });
 
 describe("itemFixesText", () => {
-  it("writes one numbered line for a group and keeps plain rows' numbers", () => {
+  it("numbers the lines in the order they read", () => {
     const findings = byId(
       found("a", {
         suggestion: { action: "review", target: "src/db.ts", confidence: "low", fallback: true },
@@ -275,7 +275,7 @@ describe("itemFixesText", () => {
     const items = buildBlockerItems(["a", "b", "c", "d"], findings);
 
     expect(itemFixesText(items, findings)).toBe(
-      "2. Upgrade lodash to 4.17.21 (clears 2 blockers)\n4. Finding d: Rotate the token",
+      "1. Upgrade lodash to 4.17.21 (clears 2 blockers)\n2. Finding d: Rotate the token",
     );
   });
 

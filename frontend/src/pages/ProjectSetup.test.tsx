@@ -483,7 +483,9 @@ describe("ProjectSetup", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(statsRequests).toBe(1);
-    expect(screen.getByText("Waiting for the first report...")).toHaveAttribute("role", "status");
+    expect(
+      screen.getByText("Send a report from CI, or upload one below. This page updates by itself."),
+    ).toHaveAttribute("role", "status");
     expect(screen.getByRole("heading", { name: "Waiting for the first report" }))
       .toBeInTheDocument();
 
@@ -498,7 +500,11 @@ describe("ProjectSetup", () => {
     expect(screen.getByText("First report received: 1 finding.")).toHaveAttribute("role", "status");
     expect(screen.getByRole("heading", { name: "First report received" })).toBeInTheDocument();
     expect(statsRequests).toBe(2);
-    expect(screen.queryByText("Waiting for the first report...")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "Send a report from CI, or upload one below. This page updates by itself.",
+      ),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View findings" })).toHaveAttribute(
       "href",
       "/acme/findings",
@@ -523,12 +529,20 @@ describe("ProjectSetup", () => {
     );
     expect(screen.getByRole("heading", { name: "First report status unavailable" }))
       .toBeInTheDocument();
-    expect(screen.queryByText("Waiting for the first report...")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "Send a report from CI, or upload one below. This page updates by itself.",
+      ),
+    ).not.toBeInTheDocument();
 
     statsFailing = false;
     await user.click(screen.getByRole("button", { name: "Retry" }));
 
-    expect(await screen.findByText("Waiting for the first report...")).toHaveAttribute(
+    expect(
+      await screen.findByText(
+        "Send a report from CI, or upload one below. This page updates by itself.",
+      ),
+    ).toHaveAttribute(
       "role",
       "status",
     );

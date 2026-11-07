@@ -4,13 +4,14 @@ import { DataGrid, type DataGridColumn } from "@/components/ui/data-grid";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { findingKindLabel } from "@/lib/enums";
 import { findingWorkflowState } from "@/lib/findingState";
+import { findingHeadline } from "@/lib/findingTitle";
 import { EMPTY_VALUE, formatAge, formatDate } from "@/lib/format";
 import { blocksGate, onlyOnBranchesLabel } from "@/lib/gate";
 import type { Finding, GateStatus } from "@/types/api";
 import { ChevronRightIcon } from "lucide-react";
 import { type MouseEvent, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { locationText } from "./location";
+import { locationText, shortLocation } from "./location";
 import { compactMeta } from "./sort";
 import type { FindingsSort } from "./useFindingsQuery";
 
@@ -104,10 +105,12 @@ export function FindingsTable(
             warm={(queryClient) => prefetchFinding(queryClient, f.id)}
             className="font-medium underline-offset-2 hover:underline pointer-coarse:inline-block pointer-coarse:min-h-6"
           >
-            {f.current_title}
+            {findingHeadline(f)}
           </PrefetchLink>
           {blocksGate(f, gate)?.blocks && (
-            <span className="text-destructive ml-2 text-meta font-medium">Blocks gate</span>
+            <span className="text-destructive ml-2 text-meta font-medium">
+              {gate?.report_only ? "Would block" : "Blocks gate"}
+            </span>
           )}
           {f.assignee && (
             <span className="text-muted-foreground ml-2 text-meta">{f.assignee.name}</span>
@@ -129,7 +132,7 @@ export function FindingsTable(
       header: "Where",
       hideBelow: "md",
       cellClassName: "max-w-[22rem] font-mono text-code",
-      cell: (f) => <span title={locationText(f.location)}>{locationText(f.location)}</span>,
+      cell: (f) => <span title={locationText(f.location)}>{shortLocation(f.location)}</span>,
     },
     {
       id: "state",
@@ -184,7 +187,7 @@ export function FindingsTable(
       cell: (f) => (
         <input
           type="checkbox"
-          aria-label={`Select ${f.current_title}`}
+          aria-label={`Select ${findingHeadline(f)}`}
           checked={selection.keys.has(f.id)}
           onChange={() => selection.onToggle(f.id)}
           className="size-4 accent-foreground pointer-coarse:size-6"
