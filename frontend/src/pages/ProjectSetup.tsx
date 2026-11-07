@@ -205,7 +205,7 @@ export function ProjectSetup() {
             </p>
           )}
           <div className="mt-3">
-            <label htmlFor="ci-key-name" className="text-body font-medium">Key name</label>
+            <label htmlFor="ci-key-name" className="block text-body font-medium">Key name</label>
             <Input
               id="ci-key-name"
               className="mt-1 sm:w-72"
