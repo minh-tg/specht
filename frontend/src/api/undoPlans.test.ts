@@ -1,7 +1,7 @@
 import { jsonResponse } from "@/test/utils";
 import type { Waiver } from "@/types/api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { restoreMemberPlan, revokeUndoPlan, triageUndoPlan } from "./undoPlans";
+import { bulkTriageUndoPlan, restoreMemberPlan, revokeUndoPlan, triageUndoPlan } from "./undoPlans";
 
 interface Call {
   method: string;
@@ -242,5 +242,47 @@ describe("restoreMemberPlan", () => {
     const plan = restoreMemberPlan({ slug: "pay", userId: "u2", role: "manager", refresh });
     await expect(plan.run()).rejects.toThrow("They are a member again, so Undo did nothing.");
     expect(calls.map((c) => c.method)).toEqual(["GET"]);
+  });
+});
+
+describe("bulkTriageUndoPlan", () => {
+  const results = [
+    { finding_id: "f1", event_id: "e1" },
+    { finding_id: "f2", event_id: "e2" },
+  ];
+  const answer = (body: unknown) => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  };
+
+  it("offers nothing when a finding has no event to name", () => {
+    const refresh = vi.fn();
+    expect(bulkTriageUndoPlan({ results: [], refresh })).toBeUndefined();
+    expect(bulkTriageUndoPlan({ results: [{ finding_id: "f1" }], refresh })).toBeUndefined();
+  });
+
+  it("sends each finding's event and says how many it restored", async () => {
+    answer({ results: [{ undone: true }, { undone: true }] });
+    const plan = bulkTriageUndoPlan({ results, refresh: vi.fn() })!;
+
+    await plan.run();
+
+    expect(plan.done).toBe("Triage undone for 2 findings");
+    const [url, init] = vi.mocked(globalThis.fetch).mock.calls[0];
+    expect(String(url)).toBe("/api/v1/findings/bulk-analysis/undo");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      undos: [{ finding_id: "f1", event_id: "e1" }, { finding_id: "f2", event_id: "e2" }],
+    });
+  });
+
+  it("says so when a later decision kept some of them", async () => {
+    answer({ results: [{ undone: true }, { undone: false, reason: "analysis_conflict" }] });
+    const plan = bulkTriageUndoPlan({ results, refresh: vi.fn() })!;
+
+    await expect(plan.run()).rejects.toThrow(/Undid 1 of 2/);
   });
 });
