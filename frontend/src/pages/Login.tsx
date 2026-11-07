@@ -33,7 +33,7 @@ export function Login() {
   const retry = useRetryWait(() => setError(null));
 
   if (auth.token) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={redirect} replace />;
   }
   // A server with no account sends everyone to set it up first.
   if (capabilities.data?.setup.required) {

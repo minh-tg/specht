@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { ADMIN_EMAIL, ADMIN_PASSWORD } from "./helpers";
 
 // Browser smoke for the auth journey against the real artifact: Go server
 // with the embedded React build, real PostgreSQL, real API. Complements the
@@ -9,6 +10,16 @@ test("anonymous visitors are sent to sign in", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveURL(/\/login\?redirect=%2F/);
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+});
+
+test("signing in from a deep link returns to that page", async ({ page }) => {
+  await page.goto("/profile?from=ci");
+  await expect(page).toHaveURL(/\/login\?redirect=%2Fprofile%3Ffrom%3Dci/);
+  await page.getByLabel("Email").fill(ADMIN_EMAIL);
+  await page.getByLabel("Password").fill(ADMIN_PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).last().click();
+  await expect(page).toHaveURL(/\/profile\?from=ci$/);
+  await expect(page.getByRole("heading", { name: "Your profile" })).toBeVisible();
 });
 
 test("register, sign in, and land on the projects dashboard", async ({ page }) => {

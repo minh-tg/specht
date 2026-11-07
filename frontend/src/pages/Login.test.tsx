@@ -300,6 +300,13 @@ describe("Login", () => {
     expect(await screen.findByText("Dashboard page")).toBeInTheDocument();
   });
 
+  it("sends someone already signed in to the redirect", () => {
+    authState.token = "token";
+    renderLoginWithAuth("/login?redirect=%2Fdashboard");
+
+    expect(screen.getByText("Dashboard page")).toBeInTheDocument();
+  });
+
   it("returns to the full path and query after login", async () => {
     authState.login = async () => {};
     renderLoginWithAuth("/login?redirect=%2Fmy-app%2Ffindings%3Fseverity%3Dhigh%26tab%3Dopen");
