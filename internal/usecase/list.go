@@ -696,8 +696,50 @@ func (u *Usecases) attachLocations(ctx context.Context, findings []FindingRespon
 	for i := range findings {
 		if dc, ok := byID[findings[i].ID]; ok {
 			findings[i].Location = locationFromDisplay(dc.LocationSummary, dc.Metadata)
+			continue
 		}
+		if findings[i].FindingKind != findingKindWatcher {
+			continue
+		}
+		dims, err := u.deps.Stores.Findings.ListDimensions(ctx, findings[i].ID)
+		if err != nil {
+			return fmt.Errorf("list watcher finding dimensions: %w", err)
+		}
+		findings[i].Location = watcherLocation(dims)
 	}
+	return nil
+}
+
+// findingKindWatcher is a finding the CVE watcher filed from an advisory. Its
+// observation belongs to no report, so it has no display context: its package URL
+// and fixed versions are in its dimensions.
+const findingKindWatcher = "cve_watcher"
+
+// watcherLocation names the package a watcher finding is about, or nil when its
+// package URL does not say.
+func watcherLocation(dims []port.FindingDimension) *LocationResponse {
+	name, version := domain.PackageFromPURL(dimensionValues(dims)[domain.DimPURL])
+	if name == "" {
+		return nil
+	}
+	return &LocationResponse{Summary: strings.TrimSpace(name + " " + version)}
+}
+
+// attachWatcherDetails fills what GetFinding would read from a scan's display
+// context, from the dimensions the watcher recorded.
+func (u *Usecases) attachWatcherDetails(ctx context.Context, f port.Finding, resp *FindingResponse) error {
+	dims, err := u.deps.Stores.Findings.ListDimensions(ctx, f.ID)
+	if err != nil {
+		return fmt.Errorf("get finding dimensions: %w", err)
+	}
+	const source = "CVE watcher"
+	resp.Location = watcherLocation(dims)
+	resp.Suggestion = suggestionFromEvidence(f, dims, source, nil)
+	resp.Remediation = &RemediationResponse{Summary: fixFallback("sca"), Source: source, Fallback: true}
+	if !resp.Suggestion.Fallback {
+		resp.Remediation = &RemediationResponse{Summary: resp.Suggestion.Detail, Source: source}
+	}
+	u.attachIntel(ctx, dims, resp)
 	return nil
 }
 
@@ -751,6 +793,10 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 		}
 		resp.Suggestion = suggestionFromEvidence(f, dims, dc.ToolName, resp.Remediation)
 		u.attachIntel(ctx, dims, &resp)
+	} else if f.FindingKind == findingKindWatcher {
+		if err := u.attachWatcherDetails(ctx, f, &resp); err != nil {
+			return nil, err
+		}
 	}
 	return &resp, nil
 }

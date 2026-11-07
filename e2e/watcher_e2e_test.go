@@ -149,6 +149,39 @@ func TestE2E_WatcherDaemonLifecycle(t *testing.T) {
 			"CVSS 3.1 9.8 (C:H/I:H/A:H) maps to critical")
 		require.Equal(t, "open", f.State)
 
+		// The finding's observation belongs to no report, so its fix and location
+		// come from what the watcher recorded about the package.
+		type located struct {
+			Location *struct {
+				Summary string `json:"summary"`
+			} `json:"location"`
+		}
+		detail := request[struct {
+			located
+			Suggestion struct {
+				Action       string `json:"action"`
+				Detail       string `json:"detail"`
+				Fallback     bool   `json:"fallback"`
+				Package      string `json:"package"`
+				FixedVersion string `json:"fixed_version"`
+			} `json:"suggestion"`
+			Remediation struct {
+				Summary  string `json:"summary"`
+				Fallback bool   `json:"fallback"`
+			} `json:"remediation"`
+		}](t, http.MethodGet, "/api/v1/findings/"+f.ID, adminToken, nil, http.StatusOK)
+		require.NotNil(t, detail.Location)
+		require.Equal(t, "lodash 4.17.19", detail.Location.Summary)
+		require.Equal(t, "upgrade", detail.Suggestion.Action)
+		require.False(t, detail.Suggestion.Fallback)
+		require.Equal(t, "lodash", detail.Suggestion.Package)
+		require.False(t, detail.Remediation.Fallback)
+		require.Contains(t, detail.Remediation.Summary, "Upgrade lodash from 4.17.19 to")
+		listed := request[[]located](t, http.MethodGet, "/api/v1/projects/"+slug+"/findings", adminToken, nil, http.StatusOK)
+		require.Len(t, listed, 1)
+		require.NotNil(t, listed[0].Location, "the findings list says where it is too")
+		require.Equal(t, "lodash 4.17.19", listed[0].Location.Summary)
+
 		// require_triage (the column default): an UNTRIAGED watcher
 		// finding is dropped from the gate — analysts look before it
 		// counts. The default floor would otherwise see a critical.

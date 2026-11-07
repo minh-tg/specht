@@ -1,6 +1,9 @@
 package domain
 
-import "strings"
+import (
+	"net/url"
+	"strings"
+)
 
 // NormalizePURL strips the qualifiers (?...) and subpath (#...) sections from a
 // package URL while keeping its type, namespace, name, and version components.
@@ -58,4 +61,24 @@ func EcosystemFromPURL(purl string) string {
 		return ""
 	}
 	return strings.ToLower(kind)
+}
+
+// PackageFromPURL is the package name and version a package URL names:
+// pkg:npm/%40types/node@20.1.0?arch=x is @types/node and 20.1.0, and a Go module
+// keeps its whole path. Both are empty when the value is not a package URL.
+func PackageFromPURL(purl string) (name, version string) {
+	if !strings.HasPrefix(purl, "pkg:") {
+		return "", ""
+	}
+	_, rest, found := strings.Cut(NormalizePURL(purl), "/")
+	if !found {
+		return "", ""
+	}
+	if at := strings.LastIndex(rest, "@"); at > 0 {
+		rest, version = rest[:at], rest[at+1:]
+	}
+	if unescaped, err := url.PathUnescape(rest); err == nil {
+		rest = unescaped
+	}
+	return rest, version
 }

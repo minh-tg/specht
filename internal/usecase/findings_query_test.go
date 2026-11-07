@@ -150,3 +150,48 @@ func TestListFindingsFailsWhenLocationsCannotBeRead(t *testing.T) {
 
 	require.Error(t, err)
 }
+
+func TestWatcherFindingHasADetailAndLocationFromItsDimensions(t *testing.T) {
+	row := makeFindingRow(1)
+	row.FindingKind = "cve_watcher"
+	dims := []port.FindingDimension{
+		{Key: "purl", Value: "pkg:npm/lodash@4.17.20"},
+		{Key: "ecosystem", Value: "npm"},
+		{Key: "installed_version", Value: "4.17.20"},
+		{Key: "fixed_version", Value: "4.19.0"},
+	}
+	fr := &mockFindingRepo{
+		listByProjectFn: func(context.Context, string, port.ListFindingsParams) ([]port.Finding, error) {
+			return []port.Finding{row}, nil
+		},
+		countByProjectFn: func(context.Context, string, port.ListFindingsParams) (int64, error) {
+			return 1, nil
+		},
+		getByIDFn: func(context.Context, string) (port.Finding, error) { return row, nil },
+		getDisplayContextFn: func(context.Context, string) (port.FindingDisplayContext, error) {
+			return port.FindingDisplayContext{}, port.ErrNotFound
+		},
+		listDimensionsFn: func(context.Context, string) ([]port.FindingDimension, error) { return dims, nil },
+	}
+	pr := &mockProjectRepo{getBySlugFn: func(context.Context, string) (port.Project, error) {
+		return makeProject(true), nil
+	}}
+	uc := New(Deps{Stores: &port.Stores{Projects: pr, Findings: fr}})
+
+	got, err := uc.GetFinding(adminCtx(), row.ID)
+	require.NoError(t, err)
+	require.NotNil(t, got.Location)
+	assert.Equal(t, "lodash 4.17.20", got.Location.Summary)
+	require.NotNil(t, got.Suggestion)
+	assert.False(t, got.Suggestion.Fallback)
+	assert.Equal(t, "lodash", got.Suggestion.Package)
+	assert.Equal(t, "4.19.0", got.Suggestion.FixedVersion)
+	require.NotNil(t, got.Remediation)
+	assert.False(t, got.Remediation.Fallback)
+	assert.Contains(t, got.Remediation.Summary, "Upgrade lodash from 4.17.20 to 4.19.0")
+
+	listed, _, err := uc.ListFindings(adminCtx(), "my-app", FindingFilter{}, 20, 0)
+	require.NoError(t, err)
+	require.NotNil(t, listed[0].Location)
+	assert.Equal(t, "lodash 4.17.20", listed[0].Location.Summary)
+}
