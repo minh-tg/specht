@@ -1037,6 +1037,8 @@ type ListFindingsParams struct {
 	// Search is a LIKE pattern, already escaped, matched against the title
 	// and the fingerprint. Empty means no text filter.
 	Search string
+	// AssigneeID keeps the findings assigned to this person. Empty keeps everyone's.
+	AssigneeID string
 	// BranchScope is "default" for findings that count toward the verdict,
 	// "change" for those seen only on change branches, empty for both.
 	BranchScope string
@@ -1123,6 +1125,10 @@ type FindingStore interface {
 	// latest reachability in one batch (kills the per-finding N+1 context
 	// lookups). Reachability is empty when no assessment exists.
 	ListGateCandidates(ctx context.Context, projectID string, minSeverityRank int16) ([]GateCandidate, error)
+	// SetAssignee assigns a finding to a person, or to nobody with an empty id.
+	SetAssignee(ctx context.Context, findingID, userID string) error
+	// ListAssignees maps each given finding that has an assignee to that person.
+	ListAssignees(ctx context.Context, findingIDs []string) (map[string]FindingAssignee, error)
 	// ListChangeBranches maps each given finding seen only on change branches
 	// to those branches. A finding that counts toward the verdict has no entry.
 	ListChangeBranches(ctx context.Context, findingIDs []string) (map[string][]string, error)
@@ -1228,6 +1234,12 @@ type GateCandidate struct {
 	// ChangeBranches names the branches the finding was seen on when it was
 	// seen only on change branches. Empty means it counts toward the verdict.
 	ChangeBranches []string
+}
+
+// FindingAssignee is the person a finding is assigned to.
+type FindingAssignee struct {
+	UserID string
+	Name   string
 }
 
 // PersistWatcherFindingInput carries one watcher finding unit-of-work.

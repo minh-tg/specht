@@ -352,6 +352,10 @@ func (m *mockUsecases) GetGateStatus(ctx context.Context, slug string, minRank i
 	return m.getGateStatusFn(ctx, slug, minRank)
 }
 
+func (m *mockUsecases) AssignFinding(context.Context, string, string) (*usecase.AssigneeResponse, error) {
+	return nil, nil
+}
+
 func (m *mockUsecases) IssueResumeToken(context.Context, string) (string, error) {
 	return "", fmt.Errorf("no resume in this test")
 }

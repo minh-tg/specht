@@ -87,6 +87,8 @@ type FindingResponse struct {
 	// Location points at the exact package, rule, resource, file, or URL
 	// when the latest observation supplies one.
 	Location *LocationResponse `json:"location,omitempty"`
+	// Assignee is who owns this finding. Absent means nobody does.
+	Assignee *AssigneeResponse `json:"assignee,omitempty"`
 	// OnlyOnBranches names the change branches of a finding seen only there.
 	// Such a finding is left out of the project verdict. Absent means it counts.
 	OnlyOnBranches []string `json:"only_on_branches,omitempty"`
@@ -135,6 +137,12 @@ type RemediationResponse struct {
 	// Fallback is true when the source supplied nothing and the section
 	// is a kind-level label instead of tool guidance.
 	Fallback bool `json:"fallback,omitempty"`
+}
+
+// AssigneeResponse names the person a finding is assigned to.
+type AssigneeResponse struct {
+	UserID string `json:"user_id"`
+	Name   string `json:"name"`
 }
 
 // LocationResponse points at the affected subject.
@@ -622,6 +630,8 @@ type FindingFilter struct {
 	// Search is free text matched against the title and the fingerprint (which
 	// carries the CVE id and package for dependency findings).
 	Search string
+	// Assignee keeps the findings assigned to this person. "me" is the caller.
+	Assignee string
 	// BranchScope is "default" for findings that count toward the project
 	// verdict, "change" for those seen only on change branches, empty for both.
 	BranchScope string
@@ -657,6 +667,7 @@ func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, filter 
 		AnalysisStates: filter.AnalysisStates,
 		Search:         query.search,
 		BranchScope:    filter.BranchScope,
+		AssigneeID:     query.assigneeID,
 		SortKey:        query.sortKey,
 		SortDir:        query.sortDir,
 	}
@@ -683,7 +694,31 @@ func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, filter 
 	if err := u.attachChangeBranches(ctx, resp); err != nil {
 		return nil, 0, err
 	}
+	if err := u.attachAssignees(ctx, resp); err != nil {
+		return nil, 0, err
+	}
 	return resp, total, nil
+}
+
+// attachAssignees names who owns each finding, in one query for the page.
+func (u *Usecases) attachAssignees(ctx context.Context, findings []FindingResponse) error {
+	if len(findings) == 0 {
+		return nil
+	}
+	ids := make([]string, len(findings))
+	for i := range findings {
+		ids[i] = findings[i].ID
+	}
+	assignees, err := u.deps.Stores.Findings.ListAssignees(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("list finding assignees: %w", err)
+	}
+	for i := range findings {
+		if a, ok := assignees[findings[i].ID]; ok {
+			findings[i].Assignee = &AssigneeResponse{UserID: a.UserID, Name: a.Name}
+		}
+	}
+	return nil
 }
 
 // attachChangeBranches names the change branches of each finding seen only
@@ -795,6 +830,11 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 		return nil, fmt.Errorf("get finding change branches: %w", err)
 	}
 	resp.OnlyOnBranches = branches[id.String()]
+	one := []FindingResponse{resp}
+	if err := u.attachAssignees(ctx, one); err != nil {
+		return nil, err
+	}
+	resp = one[0]
 	dc, err := u.deps.Stores.Findings.GetFindingDisplayContext(ctx, id.String())
 	if err != nil && !errors.Is(err, port.ErrNotFound) {
 		return nil, fmt.Errorf("get finding context: %w", err)

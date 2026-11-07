@@ -420,6 +420,7 @@ WHERE f.project_id = $1
   AND ($9::text = ''
     OR ($9::text = 'default' AND cardinality(finding_change_branches(f.id)) = 0)
     OR ($9::text = 'change' AND cardinality(finding_change_branches(f.id)) > 0))
+  AND ($10::uuid IS NULL OR f.assignee_id = $10::uuid)
 `
 
 type CountFindingsByProjectParams struct {
@@ -432,6 +433,7 @@ type CountFindingsByProjectParams struct {
 	AnalysisStates []string    `json:"analysis_states"`
 	Search         string      `json:"search"`
 	BranchScope    string      `json:"branch_scope"`
+	AssigneeID     pgtype.UUID `json:"assignee_id"`
 }
 
 // The same filter predicates as ListFindingsByProject, without the page
@@ -448,6 +450,7 @@ func (q *Queries) CountFindingsByProject(ctx context.Context, arg CountFindingsB
 		arg.AnalysisStates,
 		arg.Search,
 		arg.BranchScope,
+		arg.AssigneeID,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -1029,6 +1032,40 @@ func (q *Queries) ListBaselineEvidence(ctx context.Context, arg ListBaselineEvid
 	return items, nil
 }
 
+const listFindingAssignees = `-- name: ListFindingAssignees :many
+SELECT f.id, f.assignee_id, COALESCE(NULLIF(u.display_name, ''), u.email)::text AS assignee_name
+FROM findings f
+JOIN users u ON u.id = f.assignee_id
+WHERE f.id = ANY($1::uuid[])
+`
+
+type ListFindingAssigneesRow struct {
+	ID           pgtype.UUID `json:"id"`
+	AssigneeID   pgtype.UUID `json:"assignee_id"`
+	AssigneeName string      `json:"assignee_name"`
+}
+
+// Who each given finding is assigned to, by display name when they have one.
+func (q *Queries) ListFindingAssignees(ctx context.Context, findingIds []pgtype.UUID) ([]ListFindingAssigneesRow, error) {
+	rows, err := q.db.Query(ctx, listFindingAssignees, findingIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListFindingAssigneesRow
+	for rows.Next() {
+		var i ListFindingAssigneesRow
+		if err := rows.Scan(&i.ID, &i.AssigneeID, &i.AssigneeName); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFindingChangeBranches = `-- name: ListFindingChangeBranches :many
 SELECT f.id, finding_change_branches(f.id)::text[] AS branches
 FROM findings f
@@ -1487,15 +1524,16 @@ WHERE f.project_id = $1
   AND ($11::text = ''
     OR ($11::text = 'default' AND cardinality(finding_change_branches(f.id)) = 0)
     OR ($11::text = 'change' AND cardinality(finding_change_branches(f.id)) > 0))
+  AND ($12::uuid IS NULL OR f.assignee_id = $12::uuid)
 ORDER BY
-  CASE WHEN $12::text = 'severity' AND $13::text = 'desc' THEN f.current_severity_rank END DESC,
-  CASE WHEN $12::text = 'severity' AND $13::text = 'asc' THEN f.current_severity_rank END ASC,
-  CASE WHEN $12::text = 'first_seen' AND $13::text = 'desc' THEN f.first_seen_at END DESC,
-  CASE WHEN $12::text = 'first_seen' AND $13::text = 'asc' THEN f.first_seen_at END ASC,
-  CASE WHEN $12::text = 'last_seen' AND $13::text = 'desc' THEN f.last_seen_at END DESC,
-  CASE WHEN $12::text = 'last_seen' AND $13::text = 'asc' THEN f.last_seen_at END ASC,
-  CASE WHEN $12::text = 'title' AND $13::text = 'desc' THEN lower(f.current_title) END DESC,
-  CASE WHEN $12::text = 'title' AND $13::text = 'asc' THEN lower(f.current_title) END ASC,
+  CASE WHEN $13::text = 'severity' AND $14::text = 'desc' THEN f.current_severity_rank END DESC,
+  CASE WHEN $13::text = 'severity' AND $14::text = 'asc' THEN f.current_severity_rank END ASC,
+  CASE WHEN $13::text = 'first_seen' AND $14::text = 'desc' THEN f.first_seen_at END DESC,
+  CASE WHEN $13::text = 'first_seen' AND $14::text = 'asc' THEN f.first_seen_at END ASC,
+  CASE WHEN $13::text = 'last_seen' AND $14::text = 'desc' THEN f.last_seen_at END DESC,
+  CASE WHEN $13::text = 'last_seen' AND $14::text = 'asc' THEN f.last_seen_at END ASC,
+  CASE WHEN $13::text = 'title' AND $14::text = 'desc' THEN lower(f.current_title) END DESC,
+  CASE WHEN $13::text = 'title' AND $14::text = 'asc' THEN lower(f.current_title) END ASC,
   f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 LIMIT $7 OFFSET $8
 `
@@ -1512,6 +1550,7 @@ type ListFindingsByProjectParams struct {
 	AnalysisStates []string    `json:"analysis_states"`
 	Search         string      `json:"search"`
 	BranchScope    string      `json:"branch_scope"`
+	AssigneeID     pgtype.UUID `json:"assignee_id"`
 	SortKey        string      `json:"sort_key"`
 	SortDir        string      `json:"sort_dir"`
 }
@@ -1531,6 +1570,7 @@ func (q *Queries) ListFindingsByProject(ctx context.Context, arg ListFindingsByP
 		arg.AnalysisStates,
 		arg.Search,
 		arg.BranchScope,
+		arg.AssigneeID,
 		arg.SortKey,
 		arg.SortDir,
 	)
@@ -2537,6 +2577,21 @@ type RetireScopeSeverityWithoutEvidenceParams struct {
 // those rows; a finding with no scope at all keeps its historical severity.
 func (q *Queries) RetireScopeSeverityWithoutEvidence(ctx context.Context, arg RetireScopeSeverityWithoutEvidenceParams) error {
 	_, err := q.db.Exec(ctx, retireScopeSeverityWithoutEvidence, arg.FindingIds, arg.ScopeHash)
+	return err
+}
+
+const setFindingAssignee = `-- name: SetFindingAssignee :exec
+UPDATE findings SET assignee_id = $1::uuid, updated_at = NOW()
+WHERE id = $2
+`
+
+type SetFindingAssigneeParams struct {
+	AssigneeID pgtype.UUID `json:"assignee_id"`
+	ID         pgtype.UUID `json:"id"`
+}
+
+func (q *Queries) SetFindingAssignee(ctx context.Context, arg SetFindingAssigneeParams) error {
+	_, err := q.db.Exec(ctx, setFindingAssignee, arg.AssigneeID, arg.ID)
 	return err
 }
 
