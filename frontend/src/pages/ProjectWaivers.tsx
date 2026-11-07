@@ -166,6 +166,7 @@ export function ProjectWaivers() {
                     canRevoke: !!permissions?.manage_waivers,
                     canManage: !!permissions?.manage_waivers,
                     currentUserId: userId,
+                    isGlobalAdmin: me?.role === "admin",
                     busy,
                     onApprove: (w) => setDeciding({ waiver: w, decision: "approve" }),
                     onReject: (w) => setDeciding({ waiver: w, decision: "reject" }),

@@ -33,6 +33,12 @@ releases.
   Dependency-Check names its target from `projectInfo.name` instead of the first dependency. Before,
   a clean run landed in another scope, and a lodash finding could show a jQuery target.
 
+### Changed
+
+- The finding page explains when to fix, accept, waive or mark a finding unreachable. The waiver dialog
+  says a waiver applies on every branch. A manager sees why they cannot approve their own request, and a
+  waiver a global admin approved for themselves says so.
+
 ### Added
 
 - A finding can have an owner. `PUT /api/v1/findings/{id}/assignee` sets it: a manager can assign anyone

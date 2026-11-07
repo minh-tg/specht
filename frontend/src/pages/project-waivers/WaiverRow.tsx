@@ -23,6 +23,7 @@ export interface WaiverRowActions {
   readonly canManage: boolean;
   /** The signed-in person, so they can take back their own request. */
   readonly currentUserId: string | null;
+  readonly isGlobalAdmin?: boolean;
   readonly busy: boolean;
   readonly onApprove: (waiver: Waiver) => void;
   readonly onReject: (waiver: Waiver) => void;
@@ -40,7 +41,9 @@ function decisionLine(waiver: Waiver, who: ActorContext, reason: string | null):
     ? actorLabel({ user_id: waiver.decided_by, user_name: waiver.decided_by_name }, who)
     : null;
   const verb = reason ?? "Decided";
-  const head = by ? `${verb} by ${by}` : verb;
+  const selfApproved = !!waiver.decided_by && waiver.decided_by === waiver.requested_by
+    && waiver.status === "approved";
+  const head = `${by ? `${verb} by ${by}` : verb}${selfApproved ? " (their own request)" : ""}`;
   return waiver.decision_note ? `${head}: ${waiver.decision_note}` : head;
 }
 
@@ -64,6 +67,9 @@ export function WaiverRow({ slug, waiver, bucket, now, who, actions }: {
     ? actorLabel({ user_id: waiver.requested_by, user_name: waiver.requested_by_name }, who)
     : null;
   const mine = !!waiver.requested_by && waiver.requested_by === actions.currentUserId;
+  // A request needs a second person. Only a global admin may approve their own, or a one-person
+  // project could never approve anything.
+  const ownRequest = mine && !actions.isGlobalAdmin;
   const decision = bucket === "pending" ? null : decisionLine(waiver, who, closed);
   const [historyOpen, setHistoryOpen] = useState(false);
   const historyId = `waiver-history-${waiver.id}`;
@@ -127,8 +133,11 @@ export function WaiverRow({ slug, waiver, bucket, now, who, actions }: {
           <>
             <Button
               size="sm"
-              disabled={actions.busy}
+              disabled={actions.busy || ownRequest}
               aria-label={`Approve ${title}`}
+              title={ownRequest
+                ? "You asked for this, so someone else has to approve it."
+                : undefined}
               onClick={() => actions.onApprove(waiver)}
             >
               Approve
