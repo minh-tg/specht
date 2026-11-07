@@ -331,7 +331,7 @@ describe("ChangeView after a blocked scan", () => {
     renderPage(undefined);
 
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
-      "Nothing first seen in this commit blocks this change.",
+      "Nothing new in this commit blocks this change.",
     );
     expect(screen.queryByText(/What cleared/)).not.toBeInTheDocument();
     expect(gateUrls.some((url) => url.includes("report_id=r1"))).toBe(false);
@@ -340,14 +340,14 @@ describe("ChangeView after a blocked scan", () => {
   it("ignores carried state from another project or for the report on screen", async () => {
     renderPage({ previousBlockers: { slug: "other", reportId: "r1", ids: ["x"] } });
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
-      "Nothing first seen in this commit",
+      "Nothing new in this commit",
     );
   });
 
   it("ignores carried state that is not a list of ids", async () => {
     renderPage({ previousBlockers: { slug: "acme", reportId: "r1", ids: null } });
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
-      "Nothing first seen in this commit",
+      "Nothing new in this commit",
     );
     expect(gateUrls.some((url) => url.includes("report_id=r1"))).toBe(false);
   });

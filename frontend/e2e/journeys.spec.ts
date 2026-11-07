@@ -1104,7 +1104,7 @@ test("a global admin creates a team, rosters a person and deletes the team", asy
   await uiLogin(page);
 
   await page.goto("/teams");
-  await page.getByRole("button", { name: "+ Create Team" }).click();
+  await page.getByRole("button", { name: "Create team" }).click();
   const create = page.getByRole("dialog", { name: "Create Company Team" });
   await create.getByLabel("Team Name").fill(teamName);
   await create.getByRole("button", { name: "Create Team" }).click();
@@ -1145,10 +1145,10 @@ test("a person who is not a global admin cannot reach admin tools", async ({ pag
   await expect(page.getByRole("list", { name: "People" })).toHaveCount(0);
 
   await page.goto("/teams");
-  await expect(page.getByRole("heading", { name: "Company Teams" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Teams" })).toBeVisible();
   await expect(page.getByText("Global Admin required to create teams")).toBeVisible();
-  await expect(page.getByRole("button", { name: "+ Create Team" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Create First Team" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Create team" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Create a team" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Manage Roster" })).toHaveCount(0);
 });
 
@@ -1183,7 +1183,7 @@ test("a project admin classifies an environment and a later scan leaves it alone
   await page.goto(`/${slug}/insights`);
   const environments = page.getByRole("list", { name: "Environments" });
   await expect(environments.getByRole("listitem")).toContainText("production");
-  await expect(environments.getByRole("listitem")).toContainText("Internal");
+  await expect(environments.getByRole("listitem")).toContainText("Not internet facing");
 
   await page.getByRole("button", { name: "Edit production" }).click();
   const dialog = page.getByRole("dialog", { name: "Classify production" });

@@ -216,14 +216,14 @@ export function TeamsDirectory() {
     <div className="mx-auto max-w-5xl px-4 py-8 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-title font-bold">Company Teams</h1>
+          <h1 className="text-title font-bold">Teams</h1>
           <p className="text-muted-foreground text-body mt-1">
-            Central organization teams for managing permissions across projects.
+            Groups of people you can give access to a project in one step.
           </p>
         </div>
 
         {isGlobalAdmin
-          ? <Button onClick={() => setShowCreateModal(true)}>+ Create Team</Button>
+          ? <Button onClick={() => setShowCreateModal(true)}>Create team</Button>
           : (
             <div className="text-muted-foreground text-meta bg-muted px-3 py-1.5 rounded-md border border-border">
               Global Admin required to create teams
@@ -261,9 +261,9 @@ export function TeamsDirectory() {
         )
         : (
           <EmptyState
-            title="No company teams exist yet."
+            title="No teams yet."
             action={isGlobalAdmin
-              ? <Button onClick={() => setShowCreateModal(true)}>Create First Team</Button>
+              ? <Button onClick={() => setShowCreateModal(true)}>Create a team</Button>
               : undefined}
           />
         )}

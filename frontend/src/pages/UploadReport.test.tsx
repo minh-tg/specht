@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { vi } from "vitest";
-import { UploadReport } from "./UploadReport";
+import { suggestedScanner, UploadReport } from "./UploadReport";
 
 const PROJECT = {
   id: "p1",
@@ -452,5 +452,26 @@ describe("UploadReport scanner loading and error states", () => {
         expect.stringContaining(".sarif"),
       );
     });
+  });
+});
+
+describe("suggestedScanner", () => {
+  it("reads the scanner the server named", () => {
+    expect(
+      suggestedScanner(
+        "The file is not trivy output. It looks like grype output; choose grype as the scanner.",
+      ),
+    )
+      .toBe("grype");
+  });
+
+  it("offers nothing when the server named none", () => {
+    expect(
+      suggestedScanner(
+        "The file is not trivy output. Check that you chose the scanner that wrote it.",
+      ),
+    )
+      .toBeNull();
+    expect(suggestedScanner(null)).toBeNull();
   });
 });

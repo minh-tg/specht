@@ -202,7 +202,7 @@ describe("ProjectAccess", () => {
     renderProjectAccess();
 
     await waitFor(() => {
-      expect(screen.getByText("Direct Members")).toBeInTheDocument();
+      expect(screen.getByText("Members")).toBeInTheDocument();
       expect(screen.getByText("Sarah Chen")).toBeInTheDocument();
       expect(screen.getByText("Alex Rivera")).toBeInTheDocument();
       expect(screen.getByText("Jordan Lee")).toBeInTheDocument();
@@ -268,7 +268,7 @@ describe("ProjectAccess", () => {
     renderProjectAccess();
 
     expect(await screen.findByText("No direct members granted yet.")).toBeInTheDocument();
-    expect(screen.getByText("No company teams linked to this project.")).toBeInTheDocument();
+    expect(screen.getByText("No teams linked to this project.")).toBeInTheDocument();
   });
 
   it("guards the last project admin from deletion", async () => {
@@ -295,10 +295,10 @@ describe("ProjectAccess", () => {
     renderProjectAccess();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "+ Add Member" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Add member" })).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "+ Add Member" }));
+    await user.click(screen.getByRole("button", { name: "Add member" }));
     expect(screen.getByRole("heading", { name: "Add Direct Member" })).toBeInTheDocument();
 
     await user.type(
@@ -327,7 +327,7 @@ describe("ProjectAccess", () => {
     const user = userEvent.setup();
     renderProjectAccess();
 
-    await user.click(await screen.findByRole("button", { name: "+ Add Member" }));
+    await user.click(await screen.findByRole("button", { name: "Add member" }));
     await user.type(screen.getByLabelText("Email address"), "lov");
     const option = await screen.findByRole("option", { name: /ada@acme\.example/ });
     expect(option).toHaveTextContent("Ada Lovelace");
@@ -351,7 +351,7 @@ describe("ProjectAccess", () => {
     const user = userEvent.setup();
     renderProjectAccess();
 
-    await user.click(await screen.findByRole("button", { name: "+ Add Member" }));
+    await user.click(await screen.findByRole("button", { name: "Add member" }));
     await user.type(screen.getByLabelText("Email address"), "ada@acme");
     await new Promise((r) => setTimeout(r, 300));
     expect(fetchCalls.some((c) => c.url.includes("/member-suggestions"))).toBe(false);
@@ -362,7 +362,7 @@ describe("ProjectAccess", () => {
     const user = userEvent.setup();
     renderProjectAccess();
 
-    const opener = await screen.findByRole("button", { name: "+ Add Member" });
+    const opener = await screen.findByRole("button", { name: "Add member" });
     await user.click(opener);
     const dialog = await screen.findByRole("dialog", { name: "Add Direct Member" });
     expect(dialog).toContainElement(screen.getByLabelText("Email address"));
@@ -378,7 +378,7 @@ describe("ProjectAccess", () => {
     const user = userEvent.setup();
     renderProjectAccess();
 
-    await user.click(await screen.findByRole("button", { name: "+ Add Member" }));
+    await user.click(await screen.findByRole("button", { name: "Add member" }));
     await user.type(
       screen.getByLabelText("Email address"),
       "ada@acme.example",
@@ -393,10 +393,10 @@ describe("ProjectAccess", () => {
     renderProjectAccess();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "+ Add Member" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Add member" })).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "+ Add Member" }));
+    await user.click(screen.getByRole("button", { name: "Add member" }));
     await user.type(screen.getByLabelText("Email address"), "newbie@acme");
     await user.click(await screen.findByRole("button", { name: "Add Member" }));
 
@@ -412,10 +412,10 @@ describe("ProjectAccess", () => {
     renderProjectAccess();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "+ Add Member" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Add member" })).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "+ Add Member" }));
+    await user.click(screen.getByRole("button", { name: "Add member" }));
     await user.type(
       screen.getByLabelText("Email address"),
       "ada@acme.example",
@@ -619,11 +619,11 @@ describe("ProjectAccess", () => {
     renderProjectAccess();
 
     await waitFor(() => {
-      expect(screen.getByText("Read-Only Member View:")).toBeInTheDocument();
+      expect(screen.getByText("You can look but not change this.")).toBeInTheDocument();
     });
 
-    expect(screen.queryByRole("button", { name: "+ Add Member" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "+ Link Team" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add member" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Link team" })).not.toBeInTheDocument();
     expect(screen.getAllByText("View only").length).toBeGreaterThan(0);
   });
 
@@ -657,7 +657,7 @@ describe("ProjectAccess", () => {
     ];
     renderProjectAccess();
 
-    await screen.findByText("Read-Only Member View:");
+    await screen.findByText("You can look but not change this.");
     expect(screen.queryByRole("heading", { name: "Invite links" })).not.toBeInTheDocument();
     expect(fetchCalls.some((c) => c.url.endsWith("/invites"))).toBe(false);
   });

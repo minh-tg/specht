@@ -100,7 +100,7 @@ describe("Inventory", () => {
     expect(rows[0]).toHaveTextContent("production");
     expect(rows[0]).toHaveTextContent("Internet facing");
     expect(rows[0]).toHaveTextContent("confidential");
-    expect(rows[1]).toHaveTextContent("Internal");
+    expect(rows[1]).toHaveTextContent("Not internet facing");
     expect(rows[1]).not.toHaveTextContent("Internet facing");
     expect(rows[1]).toHaveTextContent(EMPTY_VALUE);
   });

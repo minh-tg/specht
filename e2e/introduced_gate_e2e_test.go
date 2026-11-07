@@ -145,7 +145,7 @@ func TestE2E_AdapterIntroducedGateVerdicts(t *testing.T) {
 			"-introduced-only", "-base-ref", baseSHA)
 		require.Equal(t, 0, exit, "baseline debt must not fail the PR gate; stderr:\n%s", stderr)
 		require.Contains(t, stderr, "SPECHT SECURITY GATE: PASSED")
-		require.Contains(t, stderr, "PRE-EXISTING DEBT IN BASELINE: 1")
+		require.Contains(t, stderr, "1 finding(s) already on the base branch were not counted")
 	})
 
 	t.Run("an introduced blocking finding fails the build", func(t *testing.T) {

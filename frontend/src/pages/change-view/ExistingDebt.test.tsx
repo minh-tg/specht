@@ -67,21 +67,23 @@ describe("ExistingDebt", () => {
       .toHaveAttribute("href", "/acme/findings");
   });
 
-  it("calls the findings older, and not counted, when the change passed", () => {
+  it("calls the findings existing, and not counted, when the change passed", () => {
     renderDebt(["pre1", "pre2"], { passing: true, projectName: "Acme API" });
 
     expect(
       screen.getByText(
-        "2 older findings are open in Acme API. They are not counted for this change.",
+        "2 existing findings are open in Acme API. They are not counted for this change.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/block this project/)).not.toBeInTheDocument();
   });
 
-  it("uses the singular for one older finding, and the slug without a project name", () => {
+  it("uses the singular for one existing finding, and the slug without a project name", () => {
     renderDebt(["pre1"], { passing: true });
 
-    expect(screen.getByText("1 older finding is open in acme. It is not counted for this change."))
+    expect(
+      screen.getByText("1 existing finding is open in acme. It is not counted for this change."),
+    )
       .toBeInTheDocument();
   });
 

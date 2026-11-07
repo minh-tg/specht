@@ -1,8 +1,14 @@
 import { useProject, useScanners } from "@/api/hooks";
+import { Button } from "@/components/ui/button";
 import { Link, useParams } from "react-router-dom";
 import { UploadForm } from "./upload-report/UploadForm";
 import { UploadResultCard } from "./upload-report/UploadResultCard";
 import { useReportUpload } from "./upload-report/useReportUpload";
+
+/** The scanner a refused file looks like, when the server named exactly one. */
+export function suggestedScanner(message: string | null): string | null {
+  return message ? (/choose (\S+) as the scanner/.exec(message)?.[1] ?? null) : null;
+}
 
 export function UploadReport() {
   const { slug = "" } = useParams<{ slug: string; }>();
@@ -34,6 +40,8 @@ export function UploadReport() {
     );
   }
 
+  const suggested = suggestedScanner(upload.uploadError);
+
   return (
     <div className="mx-auto max-w-lg px-4 py-8">
       <Link
@@ -56,6 +64,17 @@ export function UploadReport() {
           className="bg-destructive/10 text-destructive mb-6 rounded-md px-4 py-3 text-body"
         >
           {upload.uploadError}
+          {suggested && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="ml-2"
+              onClick={() => upload.setSelectedScanner(suggested)}
+            >
+              Use {suggested}
+            </Button>
+          )}
         </div>
       )}
 
