@@ -107,8 +107,9 @@ export function FixGroupEntry(
     >
       <div className="grid gap-3.5 pr-[18px] pb-4 pl-[18px] sm:pl-[52px]">
         <p className="text-body">
-          The scanner reports the same package, ecosystem and fixed version for these {count}{" "}
-          findings, so one upgrade clears all of them. They stay {count}{" "}
+          These {count}{" "}
+          findings are in one package, and the highest fixed version the scanner reports for them
+          clears all of them. They stay {count}{" "}
           separate findings: each keeps its own number, waiver and verdict, and each one still
           blocks this change until a new scan no longer finds it.
         </p>

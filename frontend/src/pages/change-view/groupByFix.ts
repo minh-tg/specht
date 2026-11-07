@@ -7,6 +7,8 @@ export interface FixTarget {
   readonly packageName: string;
   readonly ecosystem: string;
   readonly fixedVersion: string;
+  /** The version in use, when the scanner named it. */
+  readonly installedVersion?: string;
 }
 
 /** A blocker that stands on its own row. */
@@ -50,18 +52,42 @@ export function fixTarget(finding: Finding | undefined): FixTarget | null {
   const ecosystem = present(suggestion.ecosystem);
   const fixedVersion = present(suggestion.fixed_version);
   if (!packageName || !ecosystem || !fixedVersion) return null;
-  return { packageName, ecosystem, fixedVersion };
+  const installedVersion = present(suggestion.installed_version);
+  return { packageName, ecosystem, fixedVersion, ...(installedVersion && { installedVersion }) };
 }
 
-function groupKey(target: FixTarget): string {
-  return JSON.stringify([target.ecosystem, target.packageName, target.fixedVersion]);
+/** The numbers of a plain release like "4.18.0" or "v1.2", or null for anything else. */
+function releaseNumbers(version: string): number[] | null {
+  return /^v?\d+(\.\d+)*$/.test(version) ? version.replace(/^v/, "").split(".").map(Number) : null;
+}
+
+function isHigherRelease(version: string, than: string): boolean {
+  const a = releaseNumbers(version) ?? [];
+  const b = releaseNumbers(than) ?? [];
+  for (let at = 0; at < Math.max(a.length, b.length); at += 1) {
+    const difference = (a[at] ?? 0) - (b[at] ?? 0);
+    if (difference !== 0) return difference > 0;
+  }
+  return false;
 }
 
 /**
- * Turns the gate's blocker ids into ledger items. Blockers that share ecosystem, package and fixed
- * version form one group; a different fixed version for the same package is a different upgrade
- * and stays apart. A group needs two members, so a lone match stays a plain row. Findings that
- * have not loaded stay plain rows too. Every item carries the place of its first finding in the
+ * Findings on one installed version of a package, each fixed in a plain release, are cleared by the
+ * highest of those releases, so they share a key whatever their own fixed version says. Without
+ * an installed version, or with a fixed version that cannot be ordered ("1.2.3-rc1", "1.2, 2.0"),
+ * only an exact match shares a key.
+ */
+function groupKey(target: FixTarget): string {
+  const { ecosystem, packageName, fixedVersion, installedVersion } = target;
+  return installedVersion && releaseNumbers(fixedVersion)
+    ? JSON.stringify([ecosystem, packageName, `installed ${installedVersion}`])
+    : JSON.stringify([ecosystem, packageName, fixedVersion]);
+}
+
+/**
+ * Turns the gate's blocker ids into ledger items. Blockers that one upgrade clears form one group
+ * (see groupKey), and the group names the highest fixed version among them. A group needs two
+ * members, so a lone match stays a plain row. Findings that have not loaded stay plain rows too. Every item carries the place of its first finding in the
  * original list, so the ledger numbers do not change when rows are folded together, and items
  * come out in that order.
  */
@@ -75,8 +101,12 @@ export function buildBlockerItems(
     if (!target) return;
     const key = groupKey(target);
     const entry = members.get(key);
-    if (entry) entry.at.push(index);
-    else members.set(key, { target, at: [index] });
+    if (entry) {
+      entry.at.push(index);
+      if (isHigherRelease(target.fixedVersion, entry.target.fixedVersion)) entry.target = target;
+    } else {
+      members.set(key, { target, at: [index] });
+    }
   });
 
   const items: BlockerItem[] = [];
