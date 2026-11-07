@@ -195,11 +195,14 @@ func TestProviders_FailureModes(t *testing.T) {
 		{"deeply nested json", func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte(`{"x":` + strings.Repeat("[", 20000) + strings.Repeat("]", 20000) + `}`))
 		}, ErrKindDecode},
-		{"slow server", func(w http.ResponseWriter, r *http.Request) {
+		{"slow server", func(_ http.ResponseWriter, r *http.Request) {
 			select {
 			case <-time.After(2 * time.Second):
 			case <-r.Context().Done():
 			}
+			// Returning would send an empty 200, which can reach the client as it
+			// gives up and then reads as a decode failure. A slow server sends nothing.
+			panic(http.ErrAbortHandler)
 		}, ErrKindTimeout},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
