@@ -265,6 +265,13 @@ func authzRows() []authzRow {
 			Prepare: ssoCallbackPrepare, Want: everyone(), Tenants: onlyX, Redirect: true,
 		},
 		{
+			// No cookie here, so nothing to resume: the row pins that the route is
+			// public and refuses a request without its header.
+			Method: "POST", Pattern: "/api/v1/auth/resume", Path: api("/auth/resume"),
+			Want: everyone(), Tenants: onlyX,
+			AllowCodes: []int{http.StatusForbidden}, AllowError: "resume_refused",
+		},
+		{
 			Method: "POST", Pattern: "/api/v1/auth/refresh", Path: api("/auth/refresh"),
 			Prepare: func(t *testing.T, f *authzFixtures, a *authzAttempt) { a.Obj["refresh"] = azRefreshToken(t, f.spare) },
 			Body: func(_ *authzFixtures, a *authzAttempt) any {

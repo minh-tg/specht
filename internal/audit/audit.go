@@ -27,6 +27,7 @@ const (
 	EventLogin                = "auth.login"
 	EventLogout               = "auth.logout"
 	EventRefresh              = "auth.refresh"
+	EventResume               = "auth.resume"
 	EventRegister             = "auth.register"
 	EventCreateAPIKey         = "auth.apikey.create"
 	EventListAPIKeys          = "auth.apikey.list"

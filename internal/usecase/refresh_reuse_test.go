@@ -70,6 +70,11 @@ func (m *memRefreshStore) Rotate(_ context.Context, oldID string, in port.NewRef
 	return nil
 }
 
+func (m *memRefreshStore) CreateInChain(ctx context.Context, _ string, in port.NewRefreshToken, _ int32) error {
+	_, err := m.Create(ctx, in)
+	return err
+}
+
 func (m *memRefreshStore) GetByHash(_ context.Context, hash string) (port.RefreshToken, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

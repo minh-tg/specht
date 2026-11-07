@@ -629,7 +629,8 @@ project, or adds the manager to it first.
 ## 6. Reverse proxy
 
 Terminate TLS at the proxy and forward plain HTTP. Set `TRUSTED_PROXIES` to
-only the proxy-hop CIDRs. `CORS_ORIGINS` stays empty unless the UI is served
+only the proxy-hop CIDRs. Without it the server cannot tell the browser is on TLS, so it
+sends its sign-in cookies without `Secure`. `CORS_ORIGINS` stays empty unless the UI is served
 from a different origin than the API.
 
 Duplicated browser tabs coordinate refresh through a same-origin SharedWorker.

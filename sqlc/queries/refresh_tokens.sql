@@ -6,6 +6,11 @@ RETURNING *;
 -- name: GetRefreshTokenByHash :one
 SELECT * FROM refresh_tokens WHERE token_hash = $1;
 
+-- name: RefreshTokenIsLive :one
+-- Whether a token is still unrevoked. Read under the account lock, so a chain
+-- revocation has either committed already or waits for this transaction.
+SELECT (revoked_at IS NULL)::boolean AS live FROM refresh_tokens WHERE id = $1;
+
 -- name: RevokeRefreshToken :one
 UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL RETURNING *;
 

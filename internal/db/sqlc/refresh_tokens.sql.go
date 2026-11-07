@@ -91,6 +91,19 @@ func (q *Queries) PruneRefreshTokens(ctx context.Context, arg PruneRefreshTokens
 	return result.RowsAffected(), nil
 }
 
+const refreshTokenIsLive = `-- name: RefreshTokenIsLive :one
+SELECT (revoked_at IS NULL)::boolean AS live FROM refresh_tokens WHERE id = $1
+`
+
+// Whether a token is still unrevoked. Read under the account lock, so a chain
+// revocation has either committed already or waits for this transaction.
+func (q *Queries) RefreshTokenIsLive(ctx context.Context, id pgtype.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, refreshTokenIsLive, id)
+	var live bool
+	err := row.Scan(&live)
+	return live, err
+}
+
 const revokeRefreshToken = `-- name: RevokeRefreshToken :one
 UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL RETURNING id, user_id, token_hash, expires_at, revoked_at, created_at, family_id, family_started_at
 `

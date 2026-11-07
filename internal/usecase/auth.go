@@ -951,7 +951,12 @@ func (u *Usecases) Logout(ctx context.Context, refreshToken string) error {
 		_ = u.refuseReuse(ctx, stored, u.clock())
 		return nil
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	// Signing out ends this sign-in everywhere it reached: the other tabs that
+	// resumed it and the cookie that would start another. Separate sign-ins stay.
+	return u.deps.Stores.RefreshTokens.RevokeFamily(ctx, stored.FamilyID)
 }
 
 func (u *Usecases) GetProfile(ctx context.Context, userID string) (*UserProfile, error) {
