@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
@@ -62,8 +62,10 @@ describe("SelectField", () => {
 
     screen.getByRole("combobox", { name: "Filter by severity" }).focus();
     await user.keyboard("{Enter}");
+    // The list opens asynchronously, and keys sent before it is there go nowhere.
+    await screen.findByRole("listbox");
     await user.keyboard("{ArrowDown}{Enter}");
 
-    expect(screen.getByTestId("value")).not.toHaveTextContent("(empty)");
+    await waitFor(() => expect(screen.getByTestId("value")).not.toHaveTextContent("(empty)"));
   });
 });
