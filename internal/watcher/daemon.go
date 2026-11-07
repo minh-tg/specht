@@ -837,9 +837,16 @@ func makeProjectReloader(ctx context.Context, cfg RunCveWatcherConfig, state *sc
 			}
 			activeIDs[p.ID] = true
 			interval := projectInterval(cfg, time.Duration(p.CveWatcherIntervalSecs)*time.Second)
+			previous, known := state.intervals[p.ID]
 			state.intervals[p.ID] = interval
-			if _, exists := state.nextDue[p.ID]; !exists {
+			due, exists := state.nextDue[p.ID]
+			switch {
+			case !exists:
 				state.nextDue[p.ID] = curNow
+			case known && interval < previous && due.After(curNow.Add(interval)):
+				// Only a change moves the schedule, so a backoff longer than the
+				// interval is not undone by the next reload.
+				state.nextDue[p.ID] = curNow.Add(interval)
 			}
 		}
 		pruneInactive(state, activeIDs)
@@ -864,6 +871,15 @@ func dropProject(state *scheduleState, projectID string) {
 	delete(state.failedProjects, projectID)
 }
 
+// reloadDelay is the longest the daemon waits between project reloads, so a
+// changed setting or a new project is seen within a minute.
+func reloadDelay(cfg RunCveWatcherConfig) time.Duration {
+	if cfg.PollInterval <= 0 || cfg.PollInterval > time.Minute {
+		return time.Minute
+	}
+	return cfg.PollInterval
+}
+
 // sleepIdle waits the capped idle delay between reloads with no active
 // project; it reports false when the daemon should stop.
 func sleepIdle(ctx context.Context, cfg RunCveWatcherConfig) bool {
@@ -871,11 +887,7 @@ func sleepIdle(ctx context.Context, cfg RunCveWatcherConfig) bool {
 		cfg.Logger.Info(msgDaemonStopped)
 		return false
 	}
-	idleDelay := cfg.PollInterval
-	if idleDelay <= 0 || idleDelay > time.Minute {
-		idleDelay = time.Minute
-	}
-	if err := cfg.Sleep(ctx, idleDelay); err != nil {
+	if err := cfg.Sleep(ctx, reloadDelay(cfg)); err != nil {
 		cfg.Logger.Info(msgDaemonStopped)
 		return false
 	}
@@ -887,6 +899,9 @@ func sleepIdle(ctx context.Context, cfg RunCveWatcherConfig) bool {
 func sleepUntil(ctx context.Context, cfg RunCveWatcherConfig, delay time.Duration) bool {
 	if jittered := cfg.Jitter(delay); jittered > 0 {
 		delay = jittered
+	}
+	if cfg.ReloadProjects != nil {
+		delay = min(delay, reloadDelay(cfg))
 	}
 	if err := cfg.Sleep(ctx, delay); err != nil {
 		cfg.Logger.Info(msgDaemonStopped)
