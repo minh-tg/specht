@@ -145,3 +145,28 @@ func TestSuggest_AlwaysOneSuggestion(t *testing.T) {
 		assert.NotEmpty(t, s.Confidence, kind)
 	}
 }
+
+// No parser records an ecosystem dimension, so a scanner's dependency finding has
+// only its package URL to say which ecosystem it is in.
+func TestSuggestReadsTheEcosystemFromThePackageURL(t *testing.T) {
+	got := Suggest(Input{
+		FindingKind: "sca",
+		Dims: map[string]string{
+			"package_name": "lodash", "purl": "pkg:npm/lodash@4.17.20",
+			"installed_version": "4.17.20", "fixed_version": "4.18.0",
+		},
+	})
+	if got.Ecosystem != "npm" {
+		t.Fatalf("Ecosystem = %q, want npm", got.Ecosystem)
+	}
+}
+
+func TestSuggestPrefersAnEcosystemTheFindingNames(t *testing.T) {
+	got := Suggest(Input{
+		FindingKind: "sca",
+		Dims:        map[string]string{"ecosystem": "PyPI", "purl": "pkg:pypi/django@4.0"},
+	})
+	if got.Ecosystem != "PyPI" {
+		t.Fatalf("Ecosystem = %q, want PyPI", got.Ecosystem)
+	}
+}

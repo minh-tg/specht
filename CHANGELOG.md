@@ -407,6 +407,8 @@ releases.
 - `GET /api/v1/findings/{id}/signoff` answers 204 when nobody has signed the finding off yet, and
   keeps 404 for a finding that does not exist. The old 404 logged a failed request in the browser
   console on every finding page.
+- A dependency finding's suggestion names its ecosystem, read from the package URL. No parser records
+  an ecosystem, so the change view could never group a scanner's findings under one upgrade.
 - The change view folds blockers on one installed version of a package into one upgrade to the
   highest fixed version. Two lodash findings fixed in 4.17.21 and 4.18.0 read as separate work,
   with "None share a fix", though 4.18.0 clears both. A fixed version that cannot be ordered, such

@@ -45,3 +45,17 @@ func SplitPURL(purl string) (pkgType, name, version string) {
 	}
 	return pkgType, nameWithVersion, ""
 }
+
+// EcosystemFromPURL is the ecosystem a package URL names (pkg:npm/lodash@1.0 is
+// npm), or empty when the value is not a package URL.
+func EcosystemFromPURL(purl string) string {
+	rest, ok := strings.CutPrefix(purl, "pkg:")
+	if !ok {
+		return ""
+	}
+	kind, _, found := strings.Cut(rest, "/")
+	if !found {
+		return ""
+	}
+	return strings.ToLower(kind)
+}

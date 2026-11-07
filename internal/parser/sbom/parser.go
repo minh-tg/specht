@@ -180,7 +180,7 @@ func parseCycloneDX(budget *parseutil.Budget, data []byte) (*domain.NormalizedRe
 		}
 		nr.Packages = append(nr.Packages, parseutil.HardenPackage(domain.PackageRef{
 			PURL:      domain.NormalizePURL(c.PURL),
-			Ecosystem: ecosystemFromPURL(c.PURL),
+			Ecosystem: domain.EcosystemFromPURL(c.PURL),
 			Name:      c.Name,
 			Version:   c.Version,
 		}))
@@ -258,23 +258,10 @@ func parseSPDX(budget *parseutil.Budget, data []byte) (*domain.NormalizedReport,
 		}
 		nr.Packages = append(nr.Packages, parseutil.HardenPackage(domain.PackageRef{
 			PURL:      domain.NormalizePURL(purl),
-			Ecosystem: ecosystemFromPURL(purl),
+			Ecosystem: domain.EcosystemFromPURL(purl),
 			Name:      p.Name,
 			Version:   p.VersionInfo,
 		}))
 	}
 	return nr, nil
-}
-
-// ecosystemFromPURL derives the ecosystem from a package URL type
-// (pkg:npm/... -> npm). Empty when no purl is present.
-func ecosystemFromPURL(purl string) string {
-	if !strings.HasPrefix(purl, "pkg:") {
-		return ""
-	}
-	rest := strings.TrimPrefix(purl, "pkg:")
-	if i := strings.Index(rest, "/"); i >= 0 {
-		return strings.ToLower(rest[:i])
-	}
-	return ""
 }
