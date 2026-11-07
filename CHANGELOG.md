@@ -23,6 +23,10 @@ releases.
   Semgrep SARIF does not list, a plain SBOM inventory and a scan declared incremental or filtered
   still close nothing. A project can keep a scanner manual on its Policy page or with the
   `manual_close_scanners` policy key, and `supports_auto_close` on a finding's scanner reflects that.
+- A finding with no severity no longer passes the gate silently. No floor can judge one, so a
+  Checkov-only project always passed. The gate response carries `unrated_count`, the project page and
+  the adapter say how many it left out, and the `unrated_gate` policy key (`ignore` by default, or
+  `block`) makes them block.
 - `specht-adapter -tool nuclei` accepts an empty file, which is what a clean Nuclei run writes, and
   reports it as a clean scan instead of failing.
 - The scan scope of OSV-Scanner and Dependency-Check reports no longer depends on their results, and

@@ -4769,6 +4769,13 @@ components:
             Scanners whose clean scans leave findings open in this project. Every other scanner
             closes a finding when a full scan of the same scope no longer reports it.
         manual_close_source: { type: string, enum: [default, template, override] }
+        unrated_gate:
+          type: string
+          enum: [ignore, block]
+          description: >-
+            `block` makes findings without a severity block the gate. `ignore` leaves them out,
+            because no severity floor can judge them, and the gate reports how many.
+        unrated_source: { type: string, enum: [default, template, override] }
 
     PRCheckPreview:
       type: object

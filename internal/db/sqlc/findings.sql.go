@@ -470,6 +470,26 @@ func (q *Queries) CountFindingsOnlyOnChangeBranches(ctx context.Context, project
 	return count, err
 }
 
+const countOpenUnratedFindings = `-- name: CountOpenUnratedFindings :one
+SELECT COUNT(*) FROM findings f
+WHERE f.project_id = $1
+  AND f.state IN ('open', 'reopened')
+  AND f.current_severity_rank = 0
+  AND f.gate_effect <> 'ignore'
+  AND cardinality(finding_change_branches(f.id)) = 0
+`
+
+// Open findings of the project with no severity that the verdict would otherwise
+// consider: no floor can judge them, so the gate leaves them out unless the policy
+// says to block them. Findings seen only on change branches and findings triage
+// already set aside are not part of that question.
+func (q *Queries) CountOpenUnratedFindings(ctx context.Context, projectID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countOpenUnratedFindings, projectID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createFindingEvent = `-- name: CreateFindingEvent :one
 INSERT INTO finding_events (
     finding_id, user_id, event_type, old_value, new_value, comment, changes

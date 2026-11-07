@@ -1,6 +1,10 @@
 import type { PolicyEffective } from "@/types/api";
 
-export type PolicyKey = "severity_floor" | "watcher_gate" | "manual_close_scanners";
+export type PolicyKey =
+  | "severity_floor"
+  | "watcher_gate"
+  | "manual_close_scanners"
+  | "unrated_gate";
 export type PolicySource = PolicyEffective["severity_source"];
 
 export interface PolicyOption {
@@ -19,6 +23,11 @@ export const WATCHER_GATE_OPTIONS: readonly PolicyOption[] = [
   { value: "require_triage", label: "Needs triage" },
   { value: "immediate", label: "Immediately" },
   { value: "off", label: "Never" },
+];
+
+export const UNRATED_GATE_OPTIONS: readonly PolicyOption[] = [
+  { value: "ignore", label: "Do not block" },
+  { value: "block", label: "Block" },
 ];
 
 export const SOURCE_LABEL: Record<PolicySource, string> = {
@@ -50,6 +59,9 @@ export function overridesOf(policy: PolicyEffective): Record<string, string> {
   const out: Record<string, string> = {};
   if (policy.severity_source === "override") out["severity_floor"] = policy.severity_floor;
   if (policy.watcher_source === "override") out["watcher_gate"] = policy.watcher_gate;
+  if (policy.unrated_source === "override" && policy.unrated_gate) {
+    out["unrated_gate"] = policy.unrated_gate;
+  }
   if (policy.manual_close_source === "override") {
     out["manual_close_scanners"] = (policy.manual_close_scanners ?? []).join(",");
   }

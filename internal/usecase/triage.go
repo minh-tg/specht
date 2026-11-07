@@ -119,6 +119,9 @@ type GateStatusOutput struct {
 	// Policy is the project's effective policy with provenance: which
 	// baseline and overrides produced this verdict.
 	Policy *PolicyEffectiveResponse `json:"policy,omitempty"`
+	// UnratedCount is how many open findings have no severity, so the gate left
+	// them out. It is zero when the policy makes them block.
+	UnratedCount int32 `json:"unrated_count"`
 }
 
 // stateRequiresReason delegates to the canonical lifecycle vocabulary. The
@@ -535,6 +538,15 @@ func gatePoliciesForMode(mode string) []gate.GatePolicy {
 	}
 }
 
+// gatePoliciesFor is every admission rule the effective policy sets.
+func gatePoliciesFor(eff *PolicyEffectiveResponse) []gate.GatePolicy {
+	policies := gatePoliciesForMode(eff.WatcherGate)
+	if eff.UnratedGate == "block" {
+		policies = append(policies, gate.GatePolicy{Source: gate.SourceUnrated, Mode: gate.PolicyImmediate})
+	}
+	return policies
+}
+
 // evaluateProjectGate runs the gate the way the gate endpoint does: the
 // project policy sets the floor (a positive requested rank can only tighten
 // it, zero means no explicit severity) and the watcher admission policies apply.
@@ -551,7 +563,7 @@ func (u *Usecases) evaluateBranchGate(ctx context.Context, project port.Project,
 		return gate.Decision{}, policy, fmt.Errorf("resolve policy: %w", err)
 	}
 	u.initGate()
-	decision, err := u.gate.EvaluateForBranch(ctx, project.ID, floor, gatePoliciesForMode(policy.WatcherGate), branch)
+	decision, err := u.gate.EvaluateForBranch(ctx, project.ID, floor, gatePoliciesFor(policy), branch)
 	if err != nil {
 		return gate.Decision{}, policy, fmt.Errorf("gate eval: %w", err)
 	}
@@ -584,6 +596,15 @@ func (u *Usecases) GetBranchGateStatus(ctx context.Context, projectSlug string, 
 		reachability[id] = string(state)
 	}
 
+	var unrated int32
+	// A nil stats store is a unit-test double that predates the count.
+	if policy.UnratedGate != "block" && u.deps.Stores.Stats != nil {
+		unrated, err = u.deps.Stores.Stats.CountOpenUnratedFindings(ctx, project.ID)
+		if err != nil {
+			return nil, fmt.Errorf("count unrated findings: %w", err)
+		}
+	}
+
 	return &GateStatusOutput{
 		ThresholdBreached:     decision.Status == gate.StatusFail,
 		BlockingCount:         int64(decision.TotalBlocking - decision.WaivedCount),
@@ -592,6 +613,7 @@ func (u *Usecases) GetBranchGateStatus(ctx context.Context, projectSlug string, 
 		WaivedCount:           decision.WaivedCount,
 		WaivedFindingIDs:      decision.WaivedFindingIDs,
 		Policy:                policy,
+		UnratedCount:          unrated,
 	}, nil
 }
 
@@ -629,7 +651,7 @@ func (u *Usecases) GetIntroducedGateStatus(ctx context.Context, projectSlug stri
 	}
 
 	u.initGate()
-	decision, err := u.gate.EvaluateIntroducedOnly(ctx, project.ID, floor, reportID, gatePoliciesForMode(policy.WatcherGate))
+	decision, err := u.gate.EvaluateIntroducedOnly(ctx, project.ID, floor, reportID, gatePoliciesFor(policy))
 	if err != nil {
 		return nil, fmt.Errorf("gate eval: %w", err)
 	}

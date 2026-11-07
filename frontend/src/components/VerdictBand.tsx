@@ -53,6 +53,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
   const canManageCI = project?.permissions?.manage_ci === true;
   const blockers = blockerCount(gate);
   const waived = gate?.waived_count ?? 0;
+  const unrated = gate?.unrated_count ?? 0;
   const onlyOnChangeBranches = stats?.only_on_change_branches_count ?? 0;
   const policy = gate?.policy;
 
@@ -167,6 +168,17 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
           </Link>
         )}
       </div>
+
+      {unrated > 0 && (
+        <p className="text-sev-medium-fg mt-1 text-body">
+          <Link to={`/${slug}/findings?severity=unknown`} className={INLINE_LINK}>
+            {unrated} {unrated === 1 ? "finding has" : "findings have"} no severity
+          </Link>
+          , so the gate does not judge {unrated === 1 ? "it" : "them"}. Review{" "}
+          {unrated === 1 ? "it" : "them"}, or block {unrated === 1 ? "it" : "them"} in{" "}
+          <Link to={`/${slug}/policy`} className={INLINE_LINK}>Policy</Link>.
+        </p>
+      )}
 
       {policy && (
         <p className="text-muted-foreground mt-1 text-body">

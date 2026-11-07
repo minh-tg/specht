@@ -187,6 +187,11 @@ type GatePolicy struct {
 	Mode string
 }
 
+// SourceUnrated governs findings without a severity rather than a finding
+// source. With this policy set to immediate they are gate candidates whatever
+// the severity floor is; no floor can judge them otherwise.
+const SourceUnrated = "severity:unrated"
+
 const (
 	PolicyImmediate     = "immediate"
 	PolicyOff           = "off"
@@ -211,6 +216,34 @@ func (p sourcePolicies) admits(f Finding) bool {
 	default: // PolicyImmediate and unknown modes admit everything
 		return true
 	}
+}
+
+// unratedBlocks reports whether the policies make unrated findings candidates.
+func unratedBlocks(policies []GatePolicy) bool {
+	return slices.Contains(policies, GatePolicy{Source: SourceUnrated, Mode: PolicyImmediate})
+}
+
+// candidateFloor is the rank to load candidates from. Unrated findings sit below
+// every floor, so admitting them means loading everything and filtering here.
+func candidateFloor(minSeverityRank int16, policies []GatePolicy) int16 {
+	if unratedBlocks(policies) {
+		return 0
+	}
+	return minSeverityRank
+}
+
+// keepFloor drops what candidateFloor loaded only to reach the unrated findings.
+func keepFloor(findings []Finding, minSeverityRank int16, policies []GatePolicy) []Finding {
+	if !unratedBlocks(policies) {
+		return findings
+	}
+	kept := make([]Finding, 0, len(findings))
+	for _, f := range findings {
+		if f.CurrentSeverityRank == 0 || f.CurrentSeverityRank >= minSeverityRank {
+			kept = append(kept, f)
+		}
+	}
+	return kept
 }
 
 // Gate evaluates deployment-readiness for a project.
@@ -283,30 +316,30 @@ func (g *gate) EvaluateIntroducedOnly(ctx context.Context, projectID string, min
 	if reportID == "" {
 		return Decision{Status: StatusPass, WaivedFindingIDs: []string{}}, nil
 	}
-	findings, err := g.findings.ListIntroducedGateCandidates(ctx, projectID, reportID, minSeverityRank)
+	findings, err := g.findings.ListIntroducedGateCandidates(ctx, projectID, reportID, candidateFloor(minSeverityRank, policies))
 	if err != nil {
 		return Decision{Status: StatusError}, fmt.Errorf("list introduced gate candidates: %w", err)
 	}
-	return g.evaluateFindings(ctx, projectID, findings, policies, nil)
+	return g.evaluateFindings(ctx, projectID, keepFloor(findings, minSeverityRank, policies), policies, nil)
 }
 
 func (g *gate) EvaluateIntroducedAtCommit(ctx context.Context, projectID string, minSeverityRank int16, commit string, policies []GatePolicy) (Decision, error) {
 	if commit == "" {
 		return Decision{Status: StatusPass, WaivedFindingIDs: []string{}}, nil
 	}
-	findings, err := g.findings.ListIntroducedCommitCandidates(ctx, projectID, commit, minSeverityRank)
+	findings, err := g.findings.ListIntroducedCommitCandidates(ctx, projectID, commit, candidateFloor(minSeverityRank, policies))
 	if err != nil {
 		return Decision{Status: StatusError}, fmt.Errorf("list commit gate candidates: %w", err)
 	}
-	return g.evaluateFindings(ctx, projectID, findings, policies, nil)
+	return g.evaluateFindings(ctx, projectID, keepFloor(findings, minSeverityRank, policies), policies, nil)
 }
 
 func (g *gate) evaluate(ctx context.Context, projectID string, minSeverityRank int16, policies []GatePolicy, keep func(Finding) bool) (Decision, error) {
-	findings, err := g.findings.ListBlockingFindings(ctx, projectID, minSeverityRank)
+	findings, err := g.findings.ListBlockingFindings(ctx, projectID, candidateFloor(minSeverityRank, policies))
 	if err != nil {
 		return Decision{Status: StatusError}, fmt.Errorf("list blocking findings: %w", err)
 	}
-	return g.evaluateFindings(ctx, projectID, findings, policies, keep)
+	return g.evaluateFindings(ctx, projectID, keepFloor(findings, minSeverityRank, policies), policies, keep)
 }
 
 // filterGateFindings drops findings exempted by reachability, unadmitted by

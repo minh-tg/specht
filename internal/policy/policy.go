@@ -15,6 +15,9 @@ const (
 	// KeyWatcherGate admits watcher findings:
 	// immediate|off|require_triage.
 	KeyWatcherGate = "watcher_gate"
+	// KeyUnratedGate decides what happens to findings without a severity, which
+	// no floor can judge: ignore|block.
+	KeyUnratedGate = "unrated_gate"
 	// KeyManualCloseScanners names the scanners whose clean scans do not close
 	// findings, as a comma-separated list. Empty keeps none manual.
 	KeyManualCloseScanners = "manual_close_scanners"
@@ -36,11 +39,16 @@ const (
 	// separate project column with this same default, so the policy screen
 	// and the gate disagreed.
 	DefaultWatcherGate = "require_triage"
+	// DefaultUnratedGate leaves findings without a severity out of the gate, and
+	// the verdict says how many it left out. Blocking by default would fail every
+	// Checkov run, whose open-source output rates nothing.
+	DefaultUnratedGate = "ignore"
 )
 
 var validValues = map[string][]string{
 	KeySeverityFloor: {"critical", "high", "medium", "low"},
 	KeyWatcherGate:   {"immediate", "off", "require_triage"},
+	KeyUnratedGate:   {"ignore", "block"},
 }
 
 // Effective is one project's resolved policy with per-key provenance.
@@ -55,6 +63,10 @@ type Effective struct {
 	// open, and ManualCloseSource where that list came from.
 	ManualCloseScanners []string `json:"manual_close_scanners"`
 	ManualCloseSource   string   `json:"manual_close_source"`
+	// UnratedGate says whether findings without a severity block, and
+	// UnratedSource where that came from.
+	UnratedGate   string `json:"unrated_gate"`
+	UnratedSource string `json:"unrated_source"`
 }
 
 // ParseDefinition validates a template or override definition: known keys
@@ -141,6 +153,7 @@ func Resolve(templateName *string, templateVersion int, template, overrides map[
 	eff := Effective{TemplateName: templateName, TemplateVersion: templateVersion}
 	eff.SeverityFloor, eff.SeveritySource = resolveKey(template, overrides, KeySeverityFloor, DefaultSeverityFloor)
 	eff.WatcherGate, eff.WatcherSource = resolveKey(template, overrides, KeyWatcherGate, DefaultWatcherGate)
+	eff.UnratedGate, eff.UnratedSource = resolveKey(template, overrides, KeyUnratedGate, DefaultUnratedGate)
 	var manual string
 	manual, eff.ManualCloseSource = resolveKey(template, overrides, KeyManualCloseScanners, "")
 	eff.ManualCloseScanners = ScannerList(manual)
@@ -202,7 +215,7 @@ func LowestListedRank(labels []string) int16 {
 // Keys returns the sorted definition keys, for stable error messages and
 // documentation.
 func Keys() []string {
-	out := []string{KeyManualCloseScanners, KeySeverityFloor, KeyWatcherGate}
+	out := []string{KeyManualCloseScanners, KeySeverityFloor, KeyUnratedGate, KeyWatcherGate}
 	sort.Strings(out)
 	return out
 }

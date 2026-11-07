@@ -150,19 +150,20 @@ describe("blocksGate", () => {
     ).toEqual({ blocks: false });
   });
 
-  it("ranks an unrated finding below every real floor", () => {
+  it("says an unrated finding has no severity for any floor to judge", () => {
     for (const current_severity of ["unknown", "none"]) {
       expect(
         blocksGate(
           finding({ current_severity }),
           gate({ policy: policy({ severity_floor: "low" }) }),
         ),
-      ).toEqual({ blocks: false, reason: "below_floor" });
+      ).toEqual({ blocks: false, reason: "unrated" });
     }
   });
 
-  it("has no reason when the policy carries no floor", () => {
-    expect(blocksGate(finding({ current_severity: "unknown" }), gate())).toEqual({ blocks: false });
+  it("gives the same reason when the policy carries no floor", () => {
+    expect(blocksGate(finding({ current_severity: "unknown" }), gate()))
+      .toEqual({ blocks: false, reason: "unrated" });
   });
 });
 
@@ -233,5 +234,19 @@ describe("a finding seen only on change branches", () => {
   it("names the first branch and how many more", () => {
     expect(onlyOnBranchesLabel(["feat/x"])).toBe("Only on feat/x");
     expect(onlyOnBranchesLabel(["feat/x", "feat/y", "feat/z"])).toBe("Only on feat/x +2 more");
+  });
+});
+
+describe("a finding with no severity", () => {
+  const finding = { id: "f1", current_severity: "unknown", gate_effect: "block" };
+
+  it("says no floor can judge it", () => {
+    const status = gate({ policy: { severity_floor: "high" } as GateStatus["policy"] });
+    expect(blocksGate(finding, status)).toEqual({ blocks: false, reason: "unrated" });
+    expect(blocksGateLabel({ blocks: false, reason: "unrated" })).toBe("No (no severity to judge)");
+  });
+
+  it("blocks when the gate lists it", () => {
+    expect(blocksGate(finding, gate({ blocked_by: ["f1"] }))).toEqual({ blocks: true });
   });
 });

@@ -17,6 +17,7 @@ import {
   overridesOf,
   type PolicyKey,
   SEVERITY_FLOOR_OPTIONS,
+  UNRATED_GATE_OPTIONS,
   WATCHER_GATE_OPTIONS,
   watcherGateHelp,
 } from "./project-policy/policyCopy";
@@ -116,6 +117,18 @@ export function ProjectPolicy() {
           saving={setOverrides.isPending}
           onSave={override("watcher_gate")}
           onClear={clear("watcher_gate")}
+        />
+
+        <PolicyRow
+          title="Findings with no severity"
+          help="No floor can judge a finding its scanner did not rate. Checkov's open-source output rates nothing, so with this off a Checkov-only project always passes."
+          value={policy.unrated_gate ?? "ignore"}
+          source={policy.unrated_source ?? "default"}
+          options={UNRATED_GATE_OPTIONS}
+          editable={isAdmin}
+          saving={setOverrides.isPending}
+          onSave={override("unrated_gate")}
+          onClear={clear("unrated_gate")}
         />
 
         <ManualCloseRow
