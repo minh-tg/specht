@@ -6,9 +6,11 @@ import type { BlocksGateResult } from "@/lib/gate";
  * colour. The reason is the gate's: the floor comes from the policy, the waiver from the waiver
  * list. While the gate is unknown nothing is claimed.
  */
-export function WhyItBlocks({ severity, gateResult, floor }: {
+export function WhyItBlocks({ severity, gateResult, floor, onlyOnBranches }: {
   readonly severity: string;
   readonly gateResult: BlocksGateResult | null;
+  /** The change branches of a finding seen only there. */
+  readonly onlyOnBranches?: readonly string[];
   /** The project's severity floor, when the gate has said what it is. */
   readonly floor?: string;
 }) {
@@ -30,6 +32,11 @@ export function WhyItBlocks({ severity, gateResult, floor }: {
   } else if (gateResult.reason === "ignored") {
     text =
       "Triage marked this finding as not blocking the gate. It stays on the list until someone fixes it.";
+  } else if (gateResult.reason === "change_branch") {
+    const branches = (onlyOnBranches ?? []).join(", ");
+    text = `Seen only on ${
+      branches || "a change branch"
+    }. The project's verdict answers for its default branch, so this counts once the default branch reports it. A pull request is still judged on what it introduces.`;
   } else if (gateResult.reason === "below_floor") {
     text = `Severity ${word} is below the project floor${
       floorWord ? ` (${floorWord})` : ""

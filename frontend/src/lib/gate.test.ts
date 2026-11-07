@@ -1,6 +1,6 @@
 import type { GateStatus } from "@/types/api";
 import { describe, expect, it } from "vitest";
-import { blocksGate, blocksGateLabel, blocksGateSentence } from "./gate";
+import { blocksGate, blocksGateLabel, blocksGateSentence, onlyOnBranchesLabel } from "./gate";
 
 /** A gate that blocks nothing and imposes no floor. */
 function gate(overrides: Partial<GateStatus> = {}): GateStatus {
@@ -205,3 +205,33 @@ function policy(overrides: Partial<NonNullable<GateStatus["policy"]>> = {}) {
     ...overrides,
   };
 }
+
+describe("a finding seen only on change branches", () => {
+  const finding = {
+    id: "f1",
+    current_severity: "high",
+    gate_effect: "block",
+    only_on_branches: ["feat/x"],
+  };
+  const status = gate({ policy: { severity_floor: "high" } as GateStatus["policy"] });
+
+  it("does not block the project's verdict, and says why", () => {
+    expect(blocksGate(finding, status)).toEqual({ blocks: false, reason: "change_branch" });
+  });
+
+  it("still blocks when the gate itself lists it", () => {
+    const onBranch = { ...status, blocked_by: ["f1"] };
+    expect(blocksGate(finding, onBranch)).toEqual({ blocks: true });
+  });
+
+  it("treats a missing list as counting toward the verdict", () => {
+    expect(blocksGate({ ...finding, only_on_branches: undefined }, status)).toEqual({
+      blocks: false,
+    });
+  });
+
+  it("names the first branch and how many more", () => {
+    expect(onlyOnBranchesLabel(["feat/x"])).toBe("Only on feat/x");
+    expect(onlyOnBranchesLabel(["feat/x", "feat/y", "feat/z"])).toBe("Only on feat/x +2 more");
+  });
+});
