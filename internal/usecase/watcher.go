@@ -34,15 +34,22 @@ type WatcherStatusResponse struct {
 	StalenessWindow string `json:"staleness_window,omitempty"`
 }
 
-// watcherStalenessWindow resolves the staleness threshold: WATCHER_POLL_INTERVAL
-// (the daemon's cadence) if set, else the 6h default. A watcher whose last
-// successful poll is older than 2x the cadence is stale.
-func watcherStalenessWindow() time.Duration {
+// watcherStalenessWindow resolves the staleness threshold: twice the longest gap
+// the daemon may leave between polls. That is WATCHER_POLL_INTERVAL (6h by default)
+// or the longest interval of a project with the watcher on, whichever is longer:
+// nothing is polled until a project is due, so a window shorter than every project's
+// interval calls a working watcher stale.
+func watcherStalenessWindow(projects []port.Project) time.Duration {
 	const defaultInterval = 6 * time.Hour
 	interval := defaultInterval
 	if v := os.Getenv("WATCHER_POLL_INTERVAL"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil && d > 0 {
 			interval = d
+		}
+	}
+	for _, p := range projects {
+		if p.CveWatcherEnabled {
+			interval = max(interval, time.Duration(p.CveWatcherIntervalSecs)*time.Second)
 		}
 	}
 	return 2 * interval
@@ -57,11 +64,14 @@ func (u *Usecases) GetWatcherStatus(ctx context.Context) (*WatcherStatusResponse
 	if err != nil {
 		return nil, fmt.Errorf("get watcher state: %w", err)
 	}
-	return watcherStatusFromState(st), nil
+	projects, err := u.deps.Stores.Projects.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list projects for watcher status: %w", err)
+	}
+	return watcherStatusFromState(st, watcherStalenessWindow(projects)), nil
 }
 
-func watcherStatusFromState(st port.WatcherState) *WatcherStatusResponse {
-	window := watcherStalenessWindow()
+func watcherStatusFromState(st port.WatcherState, window time.Duration) *WatcherStatusResponse {
 	resp := &WatcherStatusResponse{
 		ConsecutiveFailures: st.ConsecutiveFailures,
 		StalenessWindow:     window.String(),
