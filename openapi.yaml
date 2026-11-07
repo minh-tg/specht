@@ -4762,6 +4762,13 @@ components:
           enum: [default, template, override]
         watcher_gate: { type: string, enum: [require_triage, immediate, off] }
         watcher_source: { type: string, enum: [default, template, override] }
+        manual_close_scanners:
+          type: array
+          items: { type: string }
+          description: >-
+            Scanners whose clean scans leave findings open in this project. Every other scanner
+            closes a finding when a full scan of the same scope no longer reports it.
+        manual_close_source: { type: string, enum: [default, template, override] }
 
     PRCheckPreview:
       type: object

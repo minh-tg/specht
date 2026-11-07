@@ -73,6 +73,12 @@ inputs:
     description: Baseline git ref for the change scope. Defaults to GITHUB_BASE_REF on pull requests and to the repository default branch on pushes to other branches.
     required: false
     default: ""
+  artifact:
+    description: >-
+      What this scan covers, when one pipeline scans several things with one scanner,
+      such as one job per lockfile. A clean scan only closes findings of the same artifact.
+    required: false
+    default: ""
   scan-severities:
     description: Severities the scan kept, comma-separated, when it was run with a severity filter such as trivy --severity HIGH,CRITICAL. A severity-filtered scan closes no finding it omits, since the scanner may have re-rated it below the filter. For trivy, TRIVY_SEVERITY is used when this is empty.
     required: false
@@ -142,6 +148,7 @@ runs:
         SPECHT_INPUT_TOOL: ${{ inputs.tool }}
         SPECHT_INPUT_INTRODUCED_ONLY: ${{ inputs.introduced-only }}
         SPECHT_INPUT_BASE_REF: ${{ inputs.base-ref }}
+        SPECHT_INPUT_ARTIFACT: ${{ inputs.artifact }}
         SPECHT_INPUT_SCAN_SEVERITIES: ${{ inputs.scan-severities }}
         SPECHT_INPUT_FIXABLE_ONLY: ${{ inputs.fixable-only }}
         SPECHT_INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}

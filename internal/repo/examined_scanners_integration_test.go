@@ -154,7 +154,7 @@ func TestSARIFRuleListClosesAbsentFindings(t *testing.T) {
 			"semgrep, rule listed, no file list", "semgrep", "Semgrep OSS",
 			func() []byte {
 				return sarifDoc(t, "Semgrep OSS", []string{"go/sql-injection", "go/xss"}, nil, nil, nil)
-			}, "open",
+			}, "fixed",
 		},
 		{
 			"semgrep, rule listed, file scanned", "semgrep", "Semgrep OSS",

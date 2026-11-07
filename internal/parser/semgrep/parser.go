@@ -446,10 +446,11 @@ func parseNative(budget *parseutil.Budget, data []byte) (*domain.NormalizedRepor
 		FingerprintVersion: fingerprintVersion,
 		Completeness:       domain.CompletenessUnknown,
 		ScanType:           domain.ScanTypeFilesystem,
+		ScanScope:          &domain.ScanScope{Ext: map[string]string{formatKey: formatNative}},
 	}
 	if n := len(report.Errors); n > 0 {
 		// Files Semgrep could not scan are missing from the results, so say so.
-		nr.ScanScope = &domain.ScanScope{Ext: map[string]string{"semgrep_errors": strconv.Itoa(n)}}
+		nr.ScanScope.Ext["semgrep_errors"] = strconv.Itoa(n)
 	}
 	var seen []sighting
 	for _, r := range report.Results {

@@ -160,18 +160,21 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	if err != nil {
 		return nil, err
 	}
-	if s.Recognize(data) == scanner.NotRecognized {
-		return nil, scanner.Unrecognized("nuclei")
-	}
-	// A single JSON object or array is also accepted (convenience); the
-	// canonical form is one event per line.
+	// A scan with no matches writes nothing, so empty input is a clean report.
+	// It only arrives here when the caller named this scanner: detection does
+	// not recognize an empty file.
 	trimmed := bytes.TrimSpace(data)
-	if len(trimmed) == 0 {
-		return nil, fmt.Errorf("nuclei: empty input")
-	}
-	lines, err := splitNucleiLines(trimmed)
-	if err != nil {
-		return nil, err
+	var lines [][]byte
+	if len(trimmed) > 0 {
+		if s.Recognize(data) == scanner.NotRecognized {
+			return nil, scanner.Unrecognized("nuclei")
+		}
+		// A single JSON object or array is also accepted (convenience); the
+		// canonical form is one event per line.
+		lines, err = splitNucleiLines(trimmed)
+		if err != nil {
+			return nil, err
+		}
 	}
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,

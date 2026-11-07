@@ -59,7 +59,7 @@ func TestVerifyFixHonoursExaminedKeys(t *testing.T) {
 			"semgrep rule listed, no file list", "semgrep",
 			sarifDoc(t, "Semgrep OSS", []string{"go/sql-injection"}, hit, nil, nil),
 			sarifDoc(t, "Semgrep OSS", []string{"go/sql-injection", "go/xss"}, nil, nil, nil),
-			usecase.VerifyInconclusive, "open",
+			usecase.VerifyFixed, "fixed",
 		},
 		{
 			"semgrep rule listed and file scanned", "semgrep",

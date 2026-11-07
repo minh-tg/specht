@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/minh-tg/specht/internal/gate"
@@ -36,6 +38,10 @@ type PolicyEffectiveResponse struct {
 	SeveritySource  string  `json:"severity_source"`
 	WatcherGate     string  `json:"watcher_gate"`
 	WatcherSource   string  `json:"watcher_source"`
+	// ManualCloseScanners lists the scanners whose clean scans leave findings
+	// open in this project. It is an empty list, never null.
+	ManualCloseScanners []string `json:"manual_close_scanners"`
+	ManualCloseSource   string   `json:"manual_close_source"`
 }
 
 // CreatePolicyTemplate validates and stores a reusable baseline. Names are
@@ -48,6 +54,9 @@ func (u *Usecases) CreatePolicyTemplate(ctx context.Context, name, description s
 	}
 	def, err := policy.ParseDefinition(definition)
 	if err != nil {
+		return nil, err
+	}
+	if err := u.validatePolicyScanners(def); err != nil {
 		return nil, err
 	}
 	if _, err := u.deps.Stores.Policy.GetTemplateByName(ctx, name); err == nil {
@@ -94,6 +103,9 @@ func (u *Usecases) UpdatePolicyTemplate(ctx context.Context, id, name, descripti
 	}
 	def, err := policy.ParseDefinition(definition)
 	if err != nil {
+		return nil, err
+	}
+	if err := u.validatePolicyScanners(def); err != nil {
 		return nil, err
 	}
 	existing, err := u.deps.Stores.Policy.GetTemplateByID(ctx, id)
@@ -171,6 +183,9 @@ func (u *Usecases) SetProjectPolicyOverrides(ctx context.Context, projectSlug st
 	if err != nil {
 		return nil, err
 	}
+	if err := u.validatePolicyScanners(normalized); err != nil {
+		return nil, err
+	}
 	merged, err := projectSettingsWithPolicy(project.Settings, normalized)
 	if err != nil {
 		return nil, err
@@ -207,6 +222,7 @@ func (u *Usecases) effectivePolicy(ctx context.Context, project port.Project) (*
 		return &PolicyEffectiveResponse{
 			SeverityFloor: eff.SeverityFloor, SeveritySource: eff.SeveritySource,
 			WatcherGate: eff.WatcherGate, WatcherSource: eff.WatcherSource,
+			ManualCloseScanners: eff.ManualCloseScanners, ManualCloseSource: eff.ManualCloseSource,
 		}, nil
 	}
 	var name *string
@@ -230,7 +246,35 @@ func (u *Usecases) effectivePolicy(ctx context.Context, project port.Project) (*
 		TemplateName: eff.TemplateName, TemplateVersion: eff.TemplateVersion,
 		SeverityFloor: eff.SeverityFloor, SeveritySource: eff.SeveritySource,
 		WatcherGate: eff.WatcherGate, WatcherSource: eff.WatcherSource,
+		ManualCloseScanners: eff.ManualCloseScanners, ManualCloseSource: eff.ManualCloseSource,
 	}, nil
+}
+
+// closesByHand reports whether a project keeps this scanner's findings open
+// after a clean scan. When the policy cannot be read the answer is yes: a
+// finding left open can be closed later, and a wrongly closed one stops
+// blocking.
+func (u *Usecases) closesByHand(ctx context.Context, project port.Project, scannerName string) bool {
+	eff, err := u.effectivePolicy(ctx, project)
+	if err != nil {
+		slog.Warn("resolve policy for auto-close", "project", project.ID, "error", err)
+		return true
+	}
+	return slices.Contains(eff.ManualCloseScanners, scannerName)
+}
+
+// validatePolicyScanners refuses a policy that names a scanner this server does
+// not have. The scanner would silently stay automatic.
+func (u *Usecases) validatePolicyScanners(def map[string]string) error {
+	if u.deps.Registry == nil {
+		return nil
+	}
+	for _, name := range policy.ScannerList(def[policy.KeyManualCloseScanners]) {
+		if _, err := u.deps.Registry.Get(name); err != nil {
+			return fmt.Errorf("policy key %q names unknown scanner %q", policy.KeyManualCloseScanners, name)
+		}
+	}
+	return nil
 }
 
 // projectPolicyOverrides extracts the namespaced overrides from project

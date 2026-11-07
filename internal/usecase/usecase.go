@@ -61,6 +61,10 @@ const errLookupProjectFormat = "lookup project %q: %w"
 
 // IngestReportInput is a scanner report to ingest for a project.
 type IngestReportInput struct {
+	// closesByHand is set during ingest when the project keeps this scanner's
+	// findings open after a clean scan.
+	closesByHand bool
+
 	ProjectSlug string // slug of the target project
 	Scanner     string // registered scanner name, e.g. "trivy"
 	// ScannerVersion and ParserVersion are recorded on the report row for

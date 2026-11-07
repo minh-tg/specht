@@ -254,8 +254,9 @@ func convert(budget *parseutil.Budget, report osvReport) (*domain.NormalizedRepo
 			nr.ScanType = convertToScanType(result.Source.Type)
 		}
 		nr.Target = &domain.TargetInfo{
-			Kind:       targetKindForSource(result.Source.Type),
-			Identifier: result.Source.Path,
+			Kind:         targetKindForSource(result.Source.Type),
+			Identifier:   result.Source.Path,
+			FromFindings: true,
 		}
 		nr.ScanScope.Ext["osv_source_type"] = result.Source.Type
 		nr.ScanScope.Ext["osv_source_path"] = result.Source.Path
