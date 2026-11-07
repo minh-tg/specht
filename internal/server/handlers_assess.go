@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/minh-tg/specht/internal/auth"
-	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/usecase"
 )
 
@@ -236,12 +235,16 @@ func (h *Handler) GetSignoff(w http.ResponseWriter, r *http.Request) {
 			respondAccessDenied(w, r, "finding")
 		case errors.Is(err, usecase.ErrInvalidFindingID):
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
-		case errors.Is(err, usecase.ErrFindingNotFound), errors.Is(err, port.ErrNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "signoff not found")
+		case errors.Is(err, usecase.ErrFindingNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "finding not found")
 		default:
 			slog.Error("get signoff", "error", err)
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not get signoff")
 		}
+		return
+	}
+	if result == nil {
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	respondJSON(w, http.StatusOK, result)

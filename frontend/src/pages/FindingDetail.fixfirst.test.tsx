@@ -72,9 +72,7 @@ beforeEach(() => {
       return jsonResponse({ error: { code: "not_cve", message: "No CVE." } }, 404);
     }
     if (url.pathname.endsWith("/evidence")) return jsonResponse([]);
-    if (url.pathname.endsWith("/signoff")) {
-      return jsonResponse({ error: { code: "not_found", message: "none" } }, 404);
-    }
+    if (url.pathname.endsWith("/signoff")) return new Response(null, { status: 204 });
     if (url.pathname === "/api/v1/projects/p1") {
       return jsonResponse({
         id: "p1",
