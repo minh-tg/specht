@@ -12,7 +12,10 @@ import (
 )
 
 type dcReport struct {
-	ReportSchema string         `json:"reportSchema"`
+	ReportSchema string `json:"reportSchema"`
+	ProjectInfo  struct {
+		Name string `json:"name"`
+	} `json:"projectInfo"`
 	Dependencies []dcDependency `json:"dependencies"`
 }
 
@@ -225,11 +228,10 @@ func convert(budget *parseutil.Budget, report dcReport) (*domain.NormalizedRepor
 		Findings:           nil,
 	}
 
-	if len(report.Dependencies) > 0 {
-		nr.Target = &domain.TargetInfo{
-			Kind:       "filesystem",
-			Identifier: parseutil.CleanFilePath(report.Dependencies[0].FilePath),
-		}
+	// The run names what it scanned in projectInfo. The first dependency is not
+	// the target: it changes when that dependency goes, and a clean run has none.
+	if name := strings.TrimSpace(report.ProjectInfo.Name); name != "" {
+		nr.Target = &domain.TargetInfo{Kind: "filesystem", Identifier: name}
 	}
 
 	for _, dep := range report.Dependencies {

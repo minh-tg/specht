@@ -38,7 +38,7 @@ func TestParse_DependencyCheckReport(t *testing.T) {
 	report, err := s.Parse(context.Background(), data)
 	require.NoError(t, err)
 
-	require.NotNil(t, report.Target)
+	assert.Nil(t, report.Target, "without projectInfo the run names no target")
 	assert.Len(t, report.Findings, 2)
 
 	tests := []struct {
@@ -206,4 +206,14 @@ func TestParse_CVSSAllFromReport(t *testing.T) {
 	require.NotNil(t, jackson.CVSS, "the preferred vector is unchanged")
 	assert.Equal(t, "3.1", jackson.CVSS.Version)
 	assert.InDelta(t, 7.5, jackson.Score, 0)
+}
+
+// The target comes from what the run names, never from its results: a clean run
+// has no dependencies and must land in the same scan scope.
+func TestParse_TargetIsTheNamedProject(t *testing.T) {
+	const doc = `{"reportSchema":"1.1","projectInfo":{"name":"checkout"},"dependencies":[]}`
+	report, err := (&dependencycheck.Scanner{}).Parse(context.Background(), []byte(doc))
+	require.NoError(t, err)
+	require.NotNil(t, report.Target)
+	assert.Equal(t, "checkout", report.Target.Identifier)
 }

@@ -3082,6 +3082,10 @@ export interface components {
       watcher_gate: "require_triage" | "immediate" | "off";
       /** @enum {string} */
       watcher_source: "default" | "template" | "override";
+      /** @description Scanners whose clean scans leave findings open in this project. Every other scanner closes a finding when a full scan of the same scope no longer reports it. */
+      manual_close_scanners?: string[];
+      /** @enum {string} */
+      manual_close_source?: "default" | "template" | "override";
     };
     PRCheckPreview: {
       /** @enum {string} */

@@ -131,7 +131,7 @@ func noCommandPrefix(s string) string {
 }
 
 // readRawInput loads the scan result from the file flag or stdin.
-func readRawInput(file string, stdin io.Reader, stderr io.Writer) ([]byte, int) {
+func readRawInput(file, tool string, stdin io.Reader, stderr io.Writer) ([]byte, int) {
 	var rawInput []byte
 	var err error
 	name := "standard input"
@@ -155,6 +155,11 @@ func readRawInput(file string, stdin io.Reader, stderr io.Writer) ([]byte, int) 
 		return nil, 2
 	}
 	if len(bytes.TrimSpace(rawInput)) == 0 {
+		// A Nuclei run with no matches writes nothing. That is a clean scan,
+		// not a missing file, and it has to reach the server to close findings.
+		if tool == "nuclei" {
+			return []byte("[]"), 0
+		}
 		writeDiagnostic(stderr, "error: input is empty, provide a scan result file or pipe to stdin\n")
 		return nil, 2
 	}
@@ -706,7 +711,7 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 	if apiKey == "" && f.excludeTool == "" {
 		return failMissingAPIKey(stderr)
 	}
-	rawInput, code := readRawInput(f.file, stdin, stderr)
+	rawInput, code := readRawInput(f.file, f.tool, stdin, stderr)
 	if code != 0 {
 		return code
 	}

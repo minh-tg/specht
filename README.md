@@ -130,6 +130,15 @@ Choose the scanner that matches the tool that wrote the file, on the upload page
 scanner it looks like. The SBOM scanner records package identity but does not yet
 normalize dependency graphs, licenses, hashes or signatures.
 
+A full scan closes a finding once it no longer reports it, on every branch and scope that
+saw it. Trivy, Grype, Checkov and generic SARIF show what they looked at, so they prove it.
+OSV-Scanner, Semgrep JSON, Dependency-Check, Gitleaks, tfsec, Nuclei and SBOMs with a vulnerability
+section do not, so a finished run is taken at its word. Semgrep SARIF closes only findings of rules
+it lists. A run narrowed some other way can close a finding early, and the finding returns as a
+regression when a wider scan sees it. To avoid that, declare the narrower scan with
+`-scan-mode incremental` or `-scan-severities`, or keep the scanner manual on the project's Policy
+page.
+
 <details>
 <summary>The command that produces each file</summary>
 
