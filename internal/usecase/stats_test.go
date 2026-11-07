@@ -75,6 +75,10 @@ func (m *mockStatsStore) GetProjectPendingWaiverCount(context.Context, string) (
 	return m.pending, nil
 }
 
+func (m *mockStatsStore) CountFindingsOnlyOnChangeBranches(context.Context, string) (int32, error) {
+	return 0, nil
+}
+
 func (m *mockStatsStore) GetProjectReportCount(context.Context, string) (int32, error) { return 0, nil }
 
 func (m *mockStatsStore) GetProjectLatestReport(context.Context, string) (port.Report, error) {

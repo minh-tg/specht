@@ -16,6 +16,13 @@ The change view keeps introduced blockers separate from existing debt. Do not
 interpret a passing introduced-findings gate as proof that the project has no
 other findings.
 
+The project-wide gate answers for the default branch. A finding seen only on
+change branches stays out of it until the default branch reports it, so an open
+pull request or an abandoned branch does not turn `main` red. The findings list
+labels these findings and can filter to them. A project-wide gate run on another
+branch also counts that branch's own findings. A report without a branch counts,
+because nothing shows it is off the default branch.
+
 The introduced-findings gate compares the report with a baseline: the newest
 full report of the same scanner for `base_revision`, a commit or a branch name.
 Only a report on a trunk can be the baseline. Once the project names its

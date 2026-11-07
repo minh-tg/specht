@@ -541,19 +541,31 @@ func gatePoliciesForMode(mode string) []gate.GatePolicy {
 // The statistics take their blocking numbers from the same call, so the two
 // cannot disagree.
 func (u *Usecases) evaluateProjectGate(ctx context.Context, project port.Project, minSeverityRank int16) (gate.Decision, *PolicyEffectiveResponse, error) {
+	return u.evaluateBranchGate(ctx, project, minSeverityRank, "")
+}
+
+// evaluateBranchGate is evaluateProjectGate plus the findings seen on branch.
+func (u *Usecases) evaluateBranchGate(ctx context.Context, project port.Project, minSeverityRank int16, branch string) (gate.Decision, *PolicyEffectiveResponse, error) {
 	floor, policy, err := u.gateFloor(ctx, project, minSeverityRank)
 	if err != nil {
 		return gate.Decision{}, policy, fmt.Errorf("resolve policy: %w", err)
 	}
 	u.initGate()
-	decision, err := u.gate.EvaluateWithPolicies(ctx, project.ID, floor, gatePoliciesForMode(policy.WatcherGate))
+	decision, err := u.gate.EvaluateForBranch(ctx, project.ID, floor, gatePoliciesForMode(policy.WatcherGate), branch)
 	if err != nil {
 		return gate.Decision{}, policy, fmt.Errorf("gate eval: %w", err)
 	}
 	return decision, policy, nil
 }
 
+// GetGateStatus answers for the project's default branch.
 func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16) (*GateStatusOutput, error) {
+	return u.GetBranchGateStatus(ctx, projectSlug, minSeverityRank, "")
+}
+
+// GetBranchGateStatus answers for the default branch plus the findings seen on
+// one branch. An empty branch is the project's own verdict.
+func (u *Usecases) GetBranchGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, branch string) (*GateStatusOutput, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
@@ -562,7 +574,7 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 		return nil, err
 	}
 
-	decision, policy, err := u.evaluateProjectGate(ctx, project, minSeverityRank)
+	decision, policy, err := u.evaluateBranchGate(ctx, project, minSeverityRank, branch)
 	if err != nil {
 		return nil, err
 	}

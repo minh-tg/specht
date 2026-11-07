@@ -508,12 +508,13 @@ type apiError struct {
 }
 
 type findingResponse struct {
-	State           string `json:"state"`
-	ID              string `json:"id"`
-	CurrentSeverity string `json:"current_severity"`
-	CurrentTitle    string `json:"current_title"`
-	AnalysisState   string `json:"analysis_state"`
-	GateEffect      string `json:"gate_effect"`
+	State           string   `json:"state"`
+	ID              string   `json:"id"`
+	CurrentSeverity string   `json:"current_severity"`
+	CurrentTitle    string   `json:"current_title"`
+	AnalysisState   string   `json:"analysis_state"`
+	GateEffect      string   `json:"gate_effect"`
+	OnlyOnBranches  []string `json:"only_on_branches"`
 }
 
 // policyProvenance is the resolved-policy slice the gate response carries.

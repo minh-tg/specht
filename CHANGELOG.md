@@ -8,6 +8,15 @@ releases.
 
 ## [Unreleased]
 
+### Changed
+
+- A project's verdict answers for its default branch. A finding seen only on change branches stays
+  out of it until the default branch reports it, so an open pull request or an abandoned branch can
+  no longer turn `main` red. A pull request is still judged on what it introduces, and a full gate
+  run on a branch counts that branch's own findings too. `GET /projects/{slug}/gate` takes `branch`,
+  `GET /projects/{slug}/findings` takes `branch_scope` and returns `only_on_branches`, and project
+  stats return `only_on_change_branches_count`. Findings with no branch to go by still count.
+
 ### Added
 
 - Bulk triage can be undone. The toast after a bulk decision offers Undo, and

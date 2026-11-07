@@ -98,6 +98,9 @@ WHERE f.project_id = $1
   AND (sqlc.arg(search)::text = ''
     OR f.current_title ILIKE '%' || sqlc.arg(search)::text || '%'
     OR f.fingerprint ILIKE '%' || sqlc.arg(search)::text || '%')
+  AND (sqlc.arg(branch_scope)::text = ''
+    OR (sqlc.arg(branch_scope)::text = 'default' AND cardinality(finding_change_branches(f.id)) = 0)
+    OR (sqlc.arg(branch_scope)::text = 'change' AND cardinality(finding_change_branches(f.id)) > 0))
 ORDER BY
   CASE WHEN sqlc.arg(sort_key)::text = 'severity' AND sqlc.arg(sort_dir)::text = 'desc' THEN f.current_severity_rank END DESC,
   CASE WHEN sqlc.arg(sort_key)::text = 'severity' AND sqlc.arg(sort_dir)::text = 'asc' THEN f.current_severity_rank END ASC,
@@ -133,7 +136,26 @@ WHERE f.project_id = $1
     OR COALESCE(NULLIF(f.analysis_state, ''), 'unanalyzed') = ANY(sqlc.arg(analysis_states)::text[]))
   AND (sqlc.arg(search)::text = ''
     OR f.current_title ILIKE '%' || sqlc.arg(search)::text || '%'
-    OR f.fingerprint ILIKE '%' || sqlc.arg(search)::text || '%');
+    OR f.fingerprint ILIKE '%' || sqlc.arg(search)::text || '%')
+  AND (sqlc.arg(branch_scope)::text = ''
+    OR (sqlc.arg(branch_scope)::text = 'default' AND cardinality(finding_change_branches(f.id)) = 0)
+    OR (sqlc.arg(branch_scope)::text = 'change' AND cardinality(finding_change_branches(f.id)) > 0));
+
+-- name: ListFindingChangeBranches :many
+-- The change branches of each finding seen only there. A finding that counts
+-- toward the project verdict has no row.
+SELECT f.id, finding_change_branches(f.id)::text[] AS branches
+FROM findings f
+WHERE f.id = ANY(sqlc.arg(finding_ids)::uuid[])
+  AND cardinality(finding_change_branches(f.id)) > 0;
+
+-- name: CountFindingsOnlyOnChangeBranches :one
+-- Open findings of the project that are left out of its verdict because they
+-- were seen only on change branches.
+SELECT COUNT(*) FROM findings f
+WHERE f.project_id = $1
+  AND f.state IN ('open', 'reopened')
+  AND cardinality(finding_change_branches(f.id)) > 0;
 
 -- name: GetFindingByID :one
 SELECT * FROM findings WHERE id = $1;
@@ -261,7 +283,8 @@ SELECT
     COALESCE(obs.artifact_ids, '{}')::text[] AS observed_artifact_ids,
     ARRAY(SELECT DISTINCT d.dim_value FROM finding_dimensions d
           WHERE d.finding_id = f.id AND d.dim_key = 'alias'
-          ORDER BY d.dim_value)::text[] AS aliases
+          ORDER BY d.dim_value)::text[] AS aliases,
+    finding_change_branches(f.id)::text[] AS change_branches
 FROM open_findings f
 LEFT JOIN LATERAL (
     SELECT r.environment_id, r.target_id, r.artifact_id

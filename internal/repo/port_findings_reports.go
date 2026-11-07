@@ -1273,6 +1273,26 @@ func (r *pgFindingPort) FindScaFindingIDForPurlAndCve(ctx context.Context, proje
 	return toUUID(row), nil
 }
 
+func (r *pgFindingPort) ListChangeBranches(ctx context.Context, findingIDs []string) (map[string][]string, error) {
+	uuids := make([]pgtype.UUID, 0, len(findingIDs))
+	for _, id := range findingIDs {
+		fid, err := parseID(id)
+		if err != nil {
+			return nil, err
+		}
+		uuids = append(uuids, fid)
+	}
+	rows, err := r.inner.q.ListFindingChangeBranches(ctx, uuids)
+	if err != nil {
+		return nil, mappingErr(err)
+	}
+	out := make(map[string][]string, len(rows))
+	for _, row := range rows {
+		out[toUUID(row.ID)] = row.Branches
+	}
+	return out, nil
+}
+
 func (r *pgFindingPort) ListGateCandidates(ctx context.Context, projectID string, minSeverityRank int16) ([]port.GateCandidate, error) {
 	pid, err := parseID(projectID)
 	if err != nil {
@@ -1305,8 +1325,9 @@ func (r *pgFindingPort) ListGateCandidates(ctx context.Context, projectID string
 				ArtifactID:    optionalUUID(row.ArtifactID),
 				Observed:      zipObservedContexts(row.ObservedEnvironmentIds, row.ObservedTargetIds, row.ObservedArtifactIds),
 			},
-			Reachability: string(row.ReachabilityState),
-			Aliases:      row.Aliases,
+			Reachability:   string(row.ReachabilityState),
+			Aliases:        row.Aliases,
+			ChangeBranches: row.ChangeBranches,
 		}
 	}
 	return out, nil

@@ -406,9 +406,23 @@ func (c *Client) ListFindingEvents(findingID string, eventTypes []string, limit,
 // Gate.
 
 func (c *Client) GetGateStatus(projectSlug string, severity string) (*GateStatus, error) {
+	return c.GetBranchGateStatus(projectSlug, severity, "")
+}
+
+// GetBranchGateStatus evaluates the project's verdict plus the findings seen on
+// one branch. An empty branch is the project's own verdict, which answers for
+// its default branch.
+func (c *Client) GetBranchGateStatus(projectSlug, severity, branch string) (*GateStatus, error) {
 	path := apiProjectsPrefix + url.PathEscape(projectSlug) + "/gate"
+	q := url.Values{}
 	if severity != "" {
-		path += "?severity=" + url.QueryEscape(severity)
+		q.Set("severity", severity)
+	}
+	if branch != "" {
+		q.Set("branch", branch)
+	}
+	if len(q) > 0 {
+		path += "?" + q.Encode()
 	}
 	var resp GateStatus
 	if err := c.do(context.Background(), "GET", path, nil, &resp); err != nil {

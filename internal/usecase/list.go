@@ -87,6 +87,9 @@ type FindingResponse struct {
 	// Location points at the exact package, rule, resource, file, or URL
 	// when the latest observation supplies one.
 	Location *LocationResponse `json:"location,omitempty"`
+	// OnlyOnBranches names the change branches of a finding seen only there.
+	// Such a finding is left out of the project verdict. Absent means it counts.
+	OnlyOnBranches []string `json:"only_on_branches,omitempty"`
 	// Suggestion is the reviewable remediation proposal for this finding,
 	// built from persisted dimensions and source guidance.
 	Suggestion *SuggestionResponse `json:"suggestion,omitempty"`
@@ -618,6 +621,9 @@ type FindingFilter struct {
 	// Search is free text matched against the title and the fingerprint (which
 	// carries the CVE id and package for dependency findings).
 	Search string
+	// BranchScope is "default" for findings that count toward the project
+	// verdict, "change" for those seen only on change branches, empty for both.
+	BranchScope string
 	// Sort is severity (default), first_seen, last_seen or title. Dir is asc
 	// or desc; empty means desc, except for title where it means asc.
 	Sort string
@@ -649,6 +655,7 @@ func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, filter 
 		Targets:        filter.Targets,
 		AnalysisStates: filter.AnalysisStates,
 		Search:         query.search,
+		BranchScope:    filter.BranchScope,
 		SortKey:        query.sortKey,
 		SortDir:        query.sortDir,
 	}
@@ -672,7 +679,30 @@ func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, filter 
 	if err := u.attachLocations(ctx, resp); err != nil {
 		return nil, 0, err
 	}
+	if err := u.attachChangeBranches(ctx, resp); err != nil {
+		return nil, 0, err
+	}
 	return resp, total, nil
+}
+
+// attachChangeBranches names the change branches of each finding seen only
+// there, in one query for the page.
+func (u *Usecases) attachChangeBranches(ctx context.Context, findings []FindingResponse) error {
+	if len(findings) == 0 {
+		return nil
+	}
+	ids := make([]string, len(findings))
+	for i := range findings {
+		ids[i] = findings[i].ID
+	}
+	branches, err := u.deps.Stores.Findings.ListChangeBranches(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("list finding change branches: %w", err)
+	}
+	for i := range findings {
+		findings[i].OnlyOnBranches = branches[findings[i].ID]
+	}
+	return nil
 }
 
 // attachLocations fills each finding's location from its latest observation,
@@ -759,6 +789,11 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 		return nil, err
 	}
 	resp := toFinding(f)
+	branches, err := u.deps.Stores.Findings.ListChangeBranches(ctx, []string{id.String()})
+	if err != nil {
+		return nil, fmt.Errorf("get finding change branches: %w", err)
+	}
+	resp.OnlyOnBranches = branches[id.String()]
 	dc, err := u.deps.Stores.Findings.GetFindingDisplayContext(ctx, id.String())
 	if err != nil && !errors.Is(err, port.ErrNotFound) {
 		return nil, fmt.Errorf("get finding context: %w", err)
