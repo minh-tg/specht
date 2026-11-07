@@ -126,8 +126,8 @@ func assertCreatedFindingFields(t *testing.T, f FindingPayload, wantFingerprint 
 	if f.Title != "Log4Shell: remote code execution in log4j-core" {
 		t.Errorf("Title = %q", f.Title)
 	}
-	if !strings.Contains(f.Remediation, "Upgrade to v2.15.0") {
-		t.Errorf("remediation = %q, want Upgrade to v2.15.0", f.Remediation)
+	if !strings.Contains(f.Remediation, "Upgrade to 2.15.0") {
+		t.Errorf("remediation = %q, want Upgrade to 2.15.0", f.Remediation)
 	}
 	if !strings.Contains(f.Remediation, "https://nvd.nist.gov/vuln/detail/CVE-2021-44228") {
 		t.Errorf("remediation = %q, want reference URL", f.Remediation)
@@ -151,7 +151,7 @@ func assertCreatedFindingDims(t *testing.T, f FindingPayload) {
 		"source":            {"cve_watcher"},
 		"installed_version": {"2.14.1"},
 		"alias":             {"GHSA-jfh8-c2jp-5v3q", "OSV-2021-1627"}, // primary excluded, sorted
-		"fixed_version":     {"v2.15.0"},
+		"fixed_version":     {"2.15.0"},
 	}
 	for k, want := range wantDims {
 		if got := dims[k]; !reflect.DeepEqual(got, want) {
@@ -529,8 +529,8 @@ func TestDecideFinding_IgnoresAffectedEntryForOtherPackage(t *testing.T) {
 	if !dec.Created {
 		t.Fatalf("vulnerable @babel/traverse 7.23.0 skipped: %s", dec.SkipReason)
 	}
-	if got := dimsMap(dec.Finding)["fixed_version"]; !reflect.DeepEqual(got, []string{"v7.23.2"}) {
-		t.Errorf("fixed_version = %v, want [v7.23.2] from the @babel/traverse entry", got)
+	if got := dimsMap(dec.Finding)["fixed_version"]; !reflect.DeepEqual(got, []string{"7.23.2"}) {
+		t.Errorf("fixed_version = %v, want [7.23.2] from the @babel/traverse entry", got)
 	}
 
 	legacy := fixed
@@ -780,5 +780,14 @@ func TestAdvisorySeverity(t *testing.T) {
 					str, rank, score, tt.wantStr, tt.wantRank, tt.wantScore)
 			}
 		})
+	}
+}
+
+func TestDisplayVersionsKeepTheVOnlyForGo(t *testing.T) {
+	if got := displayVersions([]string{"v1.2.3"}, "Go"); !reflect.DeepEqual(got, []string{"v1.2.3"}) {
+		t.Errorf("Go = %v, want [v1.2.3]", got)
+	}
+	if got := displayVersions([]string{"v4.19.0"}, "npm"); !reflect.DeepEqual(got, []string{"4.19.0"}) {
+		t.Errorf("npm = %v, want [4.19.0]", got)
 	}
 }
