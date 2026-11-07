@@ -38,6 +38,12 @@ func ExaminedRunFile(run int, path string) string {
 	return "run:" + strconv.Itoa(run) + ":file:" + path
 }
 
+// ExaminedRunAllFiles says run number run of the report is taken to have scanned
+// every file, for a producer that never lists them.
+func ExaminedRunAllFiles(run int) string {
+	return "run:" + strconv.Itoa(run) + ":allfiles"
+}
+
 // NormalizeExaminedKeys sorts and de-duplicates keys and drops empty or
 // oversized ones. More than MaxExaminedKeys returns nil: a report whose proof
 // does not fit proves nothing.

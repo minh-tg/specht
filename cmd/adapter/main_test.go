@@ -63,14 +63,14 @@ func TestReadRawInput_StripsUTF8ByteOrderMark(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bom.json")
 	require.NoError(t, os.WriteFile(path, append([]byte{0xEF, 0xBB, 0xBF}, `{"Results":[]}`...), 0o600))
 	var stderr bytes.Buffer
-	raw, code := readRawInput(path, nil, &stderr)
+	raw, code := readRawInput(path, "", nil, &stderr)
 	require.Zero(t, code, stderr.String())
 	assert.Equal(t, `{"Results":[]}`, string(raw))
 }
 
 func TestReadRawInput_RefusesUTF16(t *testing.T) {
 	var stderr bytes.Buffer
-	_, code := readRawInput("", bytes.NewReader([]byte{0xFF, 0xFE, '{', 0, '}', 0}), &stderr)
+	_, code := readRawInput("", "", bytes.NewReader([]byte{0xFF, 0xFE, '{', 0, '}', 0}), &stderr)
 	assert.Equal(t, 2, code)
 	assert.Contains(t, stderr.String(), "standard input is UTF-16 text")
 }

@@ -36,6 +36,7 @@ type adapterFlags struct {
 	owner           string
 	environment     string
 	tool            string
+	artifact        string
 	excludeTool     string
 	file            string
 	introducedOnly  optionalBool
@@ -73,6 +74,7 @@ func parseFlags(args []string, stderr io.Writer, inGitHubActions bool) *adapterF
 	fs.StringVar(&f.owner, "owner", "", "Report owner, e.g. github://owner/repo (overrides stdin; alias SPECHT_OWNER)")
 	fs.StringVar(&f.environment, "environment", "", "Deployment environment (overrides stdin; alias SPECHT_ENVIRONMENT)")
 	fs.StringVar(&f.tool, "tool", "", "Scanner name (overrides scanner detected in stdin payload)")
+	fs.StringVar(&f.artifact, "artifact", os.Getenv("SPECHT_ARTIFACT"), "What this scan covers, when one pipeline scans several things with one scanner, e.g. services/api. A clean scan only closes findings of the same artifact (alias SPECHT_ARTIFACT)")
 	fs.StringVar(&f.excludeTool, "exclude-tool", "", "Skip if scanner matches this name")
 	fs.StringVar(&f.file, "file", "", "Path to scan result file (default: read from stdin)")
 	fs.Var(&f.introducedOnly, "introduced-only", "Gate only on findings this change introduced: true or false (default: true when a base ref is set or detected)")
@@ -131,7 +133,7 @@ func noCommandPrefix(s string) string {
 }
 
 // readRawInput loads the scan result from the file flag or stdin.
-func readRawInput(file string, stdin io.Reader, stderr io.Writer) ([]byte, int) {
+func readRawInput(file, tool string, stdin io.Reader, stderr io.Writer) ([]byte, int) {
 	var rawInput []byte
 	var err error
 	name := "standard input"
@@ -155,6 +157,11 @@ func readRawInput(file string, stdin io.Reader, stderr io.Writer) ([]byte, int) 
 		return nil, 2
 	}
 	if len(bytes.TrimSpace(rawInput)) == 0 {
+		// A Nuclei run with no matches writes nothing. That is a clean scan,
+		// not a missing file, and it has to reach the server to close findings.
+		if tool == "nuclei" {
+			return []byte("[]"), 0
+		}
 		writeDiagnostic(stderr, "error: input is empty, provide a scan result file or pipe to stdin\n")
 		return nil, 2
 	}
@@ -349,6 +356,9 @@ func applyGateFlags(payload *client.IngestPayload, f *adapterFlags) {
 	}
 	if f.branch != "" {
 		payload.Branch = f.branch
+	}
+	if f.artifact != "" {
+		payload.ArtifactName = f.artifact
 	}
 	if f.scanMode != "" {
 		payload.ScanMode = f.scanMode
@@ -706,7 +716,7 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 	if apiKey == "" && f.excludeTool == "" {
 		return failMissingAPIKey(stderr)
 	}
-	rawInput, code := readRawInput(f.file, stdin, stderr)
+	rawInput, code := readRawInput(f.file, f.tool, stdin, stderr)
 	if code != 0 {
 		return code
 	}
@@ -1099,6 +1109,9 @@ Flags:
   -owner string          Report owner, e.g. github://owner/repo (overrides payload; alias SPECHT_OWNER)
   -environment string    Deployment environment (overrides payload; alias SPECHT_ENVIRONMENT)
   -tool string           Scanner name (overrides payload)
+  -artifact string       What this scan covers, when one pipeline scans several things with
+                         one scanner. A clean scan only closes findings of the same artifact
+                         (alias SPECHT_ARTIFACT)
   -exclude-tool string   Skip if scanner name matches this value
   -severity string       Severity threshold, comma-separated (the project policy decides; a value here can only tighten it)
   -status string         Deprecated and ignored; the project policy decides

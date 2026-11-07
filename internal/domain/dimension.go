@@ -72,6 +72,11 @@ type PackageRef struct {
 type TargetInfo struct {
 	Kind       string
 	Identifier string
+	// FromFindings marks an identifier the parser read off the report's results
+	// rather than off what the run was pointed at. A run with nothing to report
+	// has no such identifier, so it must not decide the scan scope, or a clean
+	// scan lands in another scope and closes nothing.
+	FromFindings bool
 }
 
 // ArtifactInfo identifies a specific artifact of the target when the scanner
