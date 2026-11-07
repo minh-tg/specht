@@ -34,6 +34,11 @@ export function WhyItBlocks({ severity, gateResult, floor }: {
     text = `Severity ${word} is below the project floor${
       floorWord ? ` (${floorWord})` : ""
     }, so this finding does not block a change. It stays on the list until someone fixes or accepts it.`;
+  } else if (gateResult.reason === "needs_triage") {
+    text =
+      "The CVE watcher filed this between scans, and this project's policy keeps watcher findings out of the gate until someone triages them. Calling it a real issue makes it block.";
+  } else if (gateResult.reason === "watcher_off") {
+    text = "This project's policy keeps CVE watcher findings out of the gate.";
   } else {
     text = "This finding does not block the gate.";
   }

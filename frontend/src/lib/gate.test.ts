@@ -25,6 +25,40 @@ function finding(
 }
 
 describe("blocksGate", () => {
+  describe("a CVE watcher finding", () => {
+    const watcher = (analysis_state = "unanalyzed") => ({
+      ...finding(),
+      finding_kind: "cve_watcher",
+      analysis_state,
+    });
+    const policy = (watcher_gate: string) =>
+      gate({ blocked_by: [], policy: { severity_floor: "high", watcher_gate } as never });
+
+    it("says it waits for triage under require_triage", () => {
+      expect(blocksGate(watcher(), policy("require_triage")))
+        .toEqual({ blocks: false, reason: "needs_triage" });
+    });
+    it("gives no such reason once someone has triaged it", () => {
+      expect(blocksGate(watcher("in_triage"), policy("require_triage")))
+        .toEqual({ blocks: false });
+    });
+    it("says the policy keeps it out when the watcher gate is off", () => {
+      expect(blocksGate(watcher("exploitable"), policy("off")))
+        .toEqual({ blocks: false, reason: "watcher_off" });
+    });
+    it("trusts the gate when the gate says it blocks", () => {
+      expect(blocksGate(watcher(), gate({ blocked_by: ["f1"] }))).toEqual({ blocks: true });
+    });
+    it("leaves a scanner's finding alone", () => {
+      expect(
+        blocksGate(
+          { ...finding(), finding_kind: "sca", analysis_state: "unanalyzed" },
+          policy("require_triage"),
+        ),
+      ).toEqual({ blocks: false });
+    });
+  });
+
   it("returns null while the gate status is unknown", () => {
     expect(blocksGate(finding(), undefined)).toBeNull();
   });

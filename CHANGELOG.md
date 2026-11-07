@@ -406,6 +406,9 @@ releases.
 - Standalone text links on a touch screen are at least 24px tall, the WCAG 2.2 minimum: "Open the full
   finding", the back links, breadcrumbs and finding titles in the list. Some were 14px. A mouse sees
   no change.
+- A CVE watcher finding that does not block says why. The page read "This finding does not block the
+  gate" on a critical finding, when the reason was the project policy keeping watcher findings out
+  until someone triages them.
 - Signing in from a deep link, such as the change link in a CI log, returns to that page. Login
   sent everyone to the projects list because its already-signed-in check ran after the token was
   set and overrode the redirect.
