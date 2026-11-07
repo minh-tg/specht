@@ -22,7 +22,7 @@ func TestReportIntroducedGateCountsBlockersWithNoLine(t *testing.T) {
 
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stderr.String(), "NEW BLOCKING FINDINGS INTRODUCED IN THIS CHANGE (3):")
-	assert.Contains(t, stderr.String(), "• [ERROR] S3 bucket is public: main.tf:1")
+	assert.Contains(t, stderr.String(), "• S3 bucket is public: main.tf:1")
 	assert.Contains(t, stderr.String(), "• and 2 more with no line to point at")
 }
 

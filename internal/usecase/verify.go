@@ -103,7 +103,7 @@ func (u *Usecases) VerifyFix(ctx context.Context, findingID string) (*VerifyResp
 	if !report.ExaminedFinding {
 		return &VerifyResponse{
 			FindingID: fid.String(), Outcome: VerifyInconclusive, ReportID: &reportID,
-			Detail: "latest completed report does not cover this kind of finding and does not show it examined this one",
+			Detail: "The newest full scan of this branch does not cover this kind of finding, so a new scan has to settle it.",
 		}, nil
 	}
 

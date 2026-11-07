@@ -167,7 +167,7 @@ describe("TeamsDirectory", () => {
     renderTeamsDirectory();
 
     await waitFor(() => {
-      expect(screen.getByText("Company Teams")).toBeInTheDocument();
+      expect(screen.getByText("Teams")).toBeInTheDocument();
       expect(screen.getByText("Security Operations")).toBeInTheDocument();
       expect(screen.getByText("Backend Platform")).toBeInTheDocument();
     });
@@ -178,10 +178,10 @@ describe("TeamsDirectory", () => {
     renderTeamsDirectory();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "+ Create Team" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Create team" })).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "+ Create Team" }));
+    await user.click(screen.getByRole("button", { name: "Create team" }));
     expect(screen.getByRole("heading", { name: "Create Company Team" })).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("Team Name"), "DevOps Champions");
@@ -212,7 +212,7 @@ describe("TeamsDirectory", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.queryByRole("button", { name: "+ Create Team" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create team" })).not.toBeInTheDocument();
   });
 
   it("sends the email address and the selected role when adding a roster member", async () => {
@@ -382,7 +382,7 @@ describe("TeamsDirectory", () => {
     renderTeamsDirectory();
 
     expect(await screen.findByText("Could not load company teams.")).toBeInTheDocument();
-    expect(screen.queryByText("No company teams exist yet.")).not.toBeInTheDocument();
+    expect(screen.queryByText("No teams yet.")).not.toBeInTheDocument();
 
     teamsLoadFailing = false;
     await user.click(screen.getByRole("button", { name: "Retry" }));

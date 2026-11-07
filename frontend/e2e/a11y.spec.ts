@@ -256,7 +256,7 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
 
   // Dialogs are page content while open: audit each one with its focus trap active.
   await page.goto(`/${slug}/access`);
-  await expect(page.getByRole("heading", { name: /Direct Members/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Members/ })).toBeVisible();
   await audit(page, "project access");
   // The invite dialog, then the step that shows the link once.
   await page.getByRole("button", { name: "Invite people" }).click();
@@ -276,13 +276,13 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   ).toBeVisible();
   await audit(page, "project access with a disabled reason shown");
   await page.mouse.move(0, 0);
-  await page.getByRole("button", { name: "+ Add Member" }).click();
+  await page.getByRole("button", { name: "Add member" }).click();
   await expect(page.getByRole("dialog", { name: "Add Direct Member" })).toBeVisible();
   await audit(page, "add member dialog");
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "+ Link Team" }).click();
+  await page.getByRole("button", { name: "Link team" }).click();
   await expect(page.getByRole("dialog", { name: "Link Company Team" })).toBeVisible();
   await audit(page, "link team dialog");
   await page.keyboard.press("Escape");
@@ -346,7 +346,7 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
   await page.goto("/teams");
-  await page.getByRole("button", { name: "+ Create Team" }).click();
+  await page.getByRole("button", { name: "Create team" }).click();
   await expect(page.getByRole("dialog", { name: "Create Company Team" })).toBeVisible();
   await audit(page, "create team dialog");
   await page.keyboard.press("Escape");

@@ -608,7 +608,7 @@ describe("ChangeView", () => {
     renderPage();
 
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
-      "Nothing first seen in this commit blocks this change.",
+      "Nothing new in this commit blocks this change.",
     );
     expect(
       screen.getByText(
@@ -619,7 +619,7 @@ describe("ChangeView", () => {
     expect(screen.queryByText("What is in the way")).not.toBeInTheDocument();
     expect(
       await screen.findByText(
-        "1 older finding is open in Acme API. It is not counted for this change.",
+        "1 existing finding is open in Acme API. It is not counted for this change.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/other finding/)).not.toBeInTheDocument();

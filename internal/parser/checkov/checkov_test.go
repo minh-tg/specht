@@ -72,15 +72,15 @@ func TestParseFindingFields(t *testing.T) {
 	assert.Equal(t, "Ensure the key vault is recoverable", f.Title)
 	assert.Equal(t, "Ensure the key vault is recoverable", f.Description)
 	assert.Equal(t, domain.SeverityHigh, f.Severity)
-	assert.Equal(t, "/terraform/main.tf:1", f.Location)
+	assert.Equal(t, "terraform/main.tf:1", f.Location)
 	assert.Equal(t, "azurerm_key_vault.main", f.Resource)
-	assert.Equal(t, "iac:CKV_AZURE_41:azurerm_key_vault.main:/terraform/main.tf", f.Fingerprint)
+	assert.Equal(t, "iac:CKV_AZURE_41:azurerm_key_vault.main:terraform/main.tf", f.Fingerprint)
 
 	require.NotNil(t, f.Fix)
 	assert.Equal(t, "https://docs.bridgecrew.io/docs/ensure-the-key-vault-is-recoverable", f.Fix.URL)
 
 	require.NotNil(t, f.CodeLocation)
-	assert.Equal(t, "/terraform/main.tf", f.CodeLocation.File)
+	assert.Equal(t, "terraform/main.tf", f.CodeLocation.File)
 	assert.Equal(t, 1, f.CodeLocation.StartLine)
 	assert.Equal(t, 16, f.CodeLocation.EndLine)
 }
@@ -106,7 +106,7 @@ func TestParseSetsDisplay(t *testing.T) {
 	require.NoError(t, err)
 
 	f := report.Findings[0]
-	assert.Equal(t, "/terraform/main.tf", f.Extensions["file"])
+	assert.Equal(t, "terraform/main.tf", f.Extensions["file"])
 	assert.Equal(t, "azurerm_key_vault.main", f.Resource)
 	assert.Contains(t, f.Extensions, "guideline")
 }

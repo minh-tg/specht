@@ -252,7 +252,8 @@ func convert(budget *parseutil.Budget, report checkovReport) (*domain.Normalized
 
 // convertCheck maps one failed checkov check to a normalized IaC finding.
 func convertCheck(f checkovFinding, checkType string) domain.NormalizedFinding {
-	file := parseutil.CleanFilePath(f.FilePath)
+	// Checkov anchors file_path at the scanned directory: "/main.tf".
+	file := strings.TrimPrefix(parseutil.CleanFilePath(f.FilePath), "/")
 	if file == "" {
 		file = "unknown"
 	}

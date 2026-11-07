@@ -84,6 +84,9 @@ func TestE2E_GateModes(t *testing.T) {
 				"-branch", "main", "-commit", mainCommit, "-file", absFixture(t, "high.sarif.json"))
 			require.Equal(t, tc.mainExit, exit, stderr)
 			require.Contains(t, stderr, tc.wantMessage)
+			if tc.mode == "enforce" {
+				require.Contains(t, stderr, "• [HIGH]", "a failing project gate names what blocks it")
+			}
 
 			gs := request[struct {
 				ThresholdBreached bool `json:"threshold_breached"`

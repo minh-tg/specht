@@ -6,15 +6,15 @@ describe("EmptyState", () => {
   it("says what is empty, why, and offers the next action", () => {
     render(
       <EmptyState
-        title="No company teams exist yet."
+        title="No teams yet."
         description="Teams grant a role to many people at once."
-        action={<button type="button">Create First Team</button>}
+        action={<button type="button">Create a team</button>}
       />,
     );
 
-    expect(screen.getByText("No company teams exist yet.")).toBeInTheDocument();
+    expect(screen.getByText("No teams yet.")).toBeInTheDocument();
     expect(screen.getByText("Teams grant a role to many people at once.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Create First Team" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create a team" })).toBeInTheDocument();
   });
 
   it("renders just the title when there is nothing more to say", () => {

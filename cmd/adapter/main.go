@@ -651,7 +651,7 @@ func reportIntroducedGate(resp *client.IngestResponse, preview *client.PRCheckPr
 		writeDiagnostic(stderr, "✅ SPECHT SECURITY GATE: PASSED\n")
 		printContextBanner(stderr, payload)
 		if resp.PreExistingCount > 0 {
-			writeDiagnostic(stderr, "ℹ️  PRE-EXISTING DEBT IN BASELINE: %d findings ignored\n", resp.PreExistingCount)
+			writeDiagnostic(stderr, "ℹ️  %d finding(s) already on the base branch were not counted\n", resp.PreExistingCount)
 		}
 		return 0
 	}
@@ -667,7 +667,7 @@ func reportIntroducedGate(resp *client.IngestResponse, preview *client.PRCheckPr
 			if a.StartLine > 0 {
 				loc = fmt.Sprintf("%s:%d", a.File, a.StartLine)
 			}
-			writeDiagnostic(stderr, "  • [%s] %s: %s\n", strings.ToUpper(a.Level), a.Title, loc)
+			writeDiagnostic(stderr, "  • %s: %s\n", a.Title, loc)
 		}
 		if unlisted := total - len(preview.Annotations); unlisted > 0 {
 			writeDiagnostic(stderr, "  • and %d more with no line to point at, such as dependency findings: the change link lists them\n", unlisted)
@@ -678,7 +678,7 @@ func reportIntroducedGate(resp *client.IngestResponse, preview *client.PRCheckPr
 		writeDiagnostic(stderr, "\n🚨 NEW BLOCKING FINDINGS INTRODUCED IN THIS CHANGE: %d\n", resp.IntroducedCount)
 	}
 	if resp.PreExistingCount > 0 {
-		writeDiagnostic(stderr, "ℹ️  PRE-EXISTING DEBT IN BASELINE: %d findings ignored for this gate\n", resp.PreExistingCount)
+		writeDiagnostic(stderr, "ℹ️  %d finding(s) already on the base branch were not counted\n", resp.PreExistingCount)
 	}
 	return 1
 }
@@ -851,11 +851,34 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 	}
 	if projectGate.ThresholdBreached {
 		writeDiagnostic(stderr, "gate FAILED: %d blocking finding(s)\n", projectGate.BlockingCount)
+		printBlockers(cl, projectGate, stderr)
 		return 1
 	}
 	writeDiagnosticLine(stderr, "gate PASSED: no blocking findings")
 	warnUnrated(stderr, projectGate.UnratedCount)
 	return 0
+}
+
+// maxPrintedBlockers keeps a project with a long backlog from flooding the CI log.
+// The change link above lists them all.
+const maxPrintedBlockers = 5
+
+// printBlockers names what blocks a whole-project gate, so the log answers the
+// question without a click. A failure to read one only shortens the list.
+func printBlockers(cl *client.Client, gate *client.GateStatus, stderr io.Writer) {
+	shown := 0
+	for _, id := range gate.BlockedBy {
+		if shown == maxPrintedBlockers {
+			writeDiagnostic(stderr, "  • and %d more: the change link lists them\n", len(gate.BlockedBy)-shown)
+			return
+		}
+		finding, err := cl.GetFinding(id)
+		if err != nil {
+			continue
+		}
+		writeDiagnostic(stderr, "  • [%s] %s\n", strings.ToUpper(finding.CurrentSeverity), finding.CurrentTitle)
+		shown++
+	}
 }
 
 // warnUnrated says a passing verdict did not judge everything. A scanner that

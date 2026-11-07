@@ -81,7 +81,7 @@ func TestFailedGateBannerKeepsHostileTitleOnOneLine(t *testing.T) {
 	assert.Contains(t, out, "::error file=go.mod%0A%3A%3Anotice%3A%3Afile,line=3,title=libfoo 1.0%0A%3A%3Anotice%3A%3A")
 	assert.Empty(t, logLinesStartingWithCommand(out), "no scanner text may open a workflow-command line")
 	assert.NotContains(t, out, "\x1b", "escape sequences must not reach the log")
-	assert.Contains(t, out, "  • [ERROR] libfoo 1.0 ::notice::Specht gate PASSED (forged) ::add-mask::FAILED ::stop-commands::tok red: go.mod ::notice::file:3\n")
+	assert.Contains(t, out, "  • libfoo 1.0 ::notice::Specht gate PASSED (forged) ::add-mask::FAILED ::stop-commands::tok red: go.mod ::notice::file:3\n")
 }
 
 func TestBannerStripsBidiControlsFromBranch(t *testing.T) {

@@ -1098,7 +1098,7 @@ func TestRun_IntroducedOnly_Pass(t *testing.T) {
 	code := run(args, bytes.NewReader(nil), &stdout, &stderr, srv.Client())
 	assert.Equal(t, 0, code)
 	assert.Contains(t, stderr.String(), "✅ SPECHT SECURITY GATE: PASSED")
-	assert.Contains(t, stderr.String(), "PRE-EXISTING DEBT IN BASELINE: 10 findings ignored")
+	assert.Contains(t, stderr.String(), "10 finding(s) already on the base branch were not counted")
 }
 
 func TestRunWithContextCancelsAPIRequest(t *testing.T) {
@@ -1230,7 +1230,7 @@ func TestRun_IntroducedOnly_Fail_WithAnnotations_And_Summary(t *testing.T) {
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stderr.String(), "❌ SPECHT SECURITY GATE: FAILED")
 	assert.Contains(t, stderr.String(), "🚨 NEW BLOCKING FINDINGS INTRODUCED IN THIS CHANGE (1):")
-	assert.Contains(t, stderr.String(), "• [ERROR] CVE-2023-45853: go.mod:34")
+	assert.Contains(t, stderr.String(), "• CVE-2023-45853: go.mod:34")
 	assert.Contains(t, stderr.String(), "::error file=go.mod,line=34,endLine=34,title=CVE-2023-45853::Critical buffer overflow in zlib")
 
 	// Verify summary file content

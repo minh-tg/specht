@@ -115,11 +115,15 @@ function EnvironmentRow({ environment, onEdit }: {
         )}
       </div>
       <Meta>
-        <span>{environment.tier || EMPTY_VALUE}</span>
+        {environment.tier && environment.tier !== environment.name && (
+          <>
+            <span>{environment.tier}</span>
+            <span>{" · "}</span>
+          </>
+        )}
+        <span>{environment.internet_facing ? "Internet facing" : "Not internet facing"}</span>
         <span>{" · "}</span>
-        <span>{environment.internet_facing ? "Internet facing" : "Internal"}</span>
-        <span>{" · "}</span>
-        <span>{environment.data_sensitivity || EMPTY_VALUE}</span>
+        <span>Data: {environment.data_sensitivity || EMPTY_VALUE}</span>
       </Meta>
     </>
   );
@@ -130,7 +134,7 @@ function TargetRow({ target }: { readonly target: Target; }) {
     <>
       <p className="font-semibold">{target.name}</p>
       <Meta>{target.kind || EMPTY_VALUE}</Meta>
-      {target.locator && (
+      {target.locator && target.locator !== target.name && (
         <p className="text-muted-foreground mt-1 text-meta break-all">{target.locator}</p>
       )}
     </>

@@ -181,9 +181,8 @@ export function ProjectAccess() {
         <div className="border border-border bg-muted/50 text-muted-foreground rounded-lg p-3 text-body flex items-center gap-2">
           <LockIcon aria-hidden="true" className="size-4 shrink-0" />
           <div>
-            <strong>Read-Only Member View:</strong>{" "}
-            You are viewing project members and linked teams. Modifications require Project Manager
-            or Admin authority.
+            <strong>You can look but not change this.</strong>{" "}
+            Changing who has access takes a project manager or an admin.
           </div>
         </div>
       )}
@@ -192,18 +191,18 @@ export function ProjectAccess() {
         <div className="flex items-end justify-between gap-4">
           <div>
             <h2 id="members-heading" className="flex items-center gap-2 text-section font-semibold">
-              Direct Members
+              Members
               <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-meta font-normal tabular-nums">
                 {members?.length ?? 0}
               </span>
             </h2>
             <p className="text-muted-foreground mt-0.5 max-w-[60ch] text-body">
-              Individual contributors with explicit access grants on this project.
+              People added to this project directly.
             </p>
           </div>
           {canManageMembers && (
             <Button size="sm" onClick={() => setShowAddMember(true)}>
-              + Add Member
+              Add member
             </Button>
           )}
         </div>
@@ -297,18 +296,18 @@ export function ProjectAccess() {
         <div className="flex items-end justify-between gap-4">
           <div>
             <h2 id="teams-heading" className="flex items-center gap-2 text-section font-semibold">
-              Linked Teams
+              Teams
               <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-meta font-normal tabular-nums">
                 {teams?.length ?? 0}
               </span>
             </h2>
             <p className="text-muted-foreground mt-0.5 max-w-[60ch] text-body">
-              Company-wide teams linked to delegate blanket role access.
+              Teams with access to this project. Everyone on a team gets its role.
             </p>
           </div>
           {canManageMembers && (
             <Button size="sm" onClick={() => setShowLinkTeam(true)}>
-              + Link Team
+              Link team
             </Button>
           )}
         </div>
@@ -365,7 +364,7 @@ export function ProjectAccess() {
                 )
                 : (
                   <li className="text-muted-foreground border-border border-b py-5 text-body">
-                    No company teams linked to this project.
+                    No teams linked to this project.
                   </li>
                 )}
             </ul>

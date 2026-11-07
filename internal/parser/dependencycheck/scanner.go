@@ -169,7 +169,7 @@ func convertDCVulnerability(dep dcDependency, v dcVulnerability, purl string) do
 		[]domain.Dimension{{Key: domain.DimVulnerabilityID, Value: v.Name}},
 		dcComponentDims(purl, dep.FileName)...,
 	)
-	filePath := parseutil.RepoPath(dep.FilePath)
+	filePath := parseutil.RepoPath(lockfilePath(dep.FilePath))
 	location := filePath
 	if purl != "" {
 		if _, name, version := domain.SplitPURL(purl); name != "" {
@@ -198,7 +198,7 @@ func convertDCVulnerability(dep dcDependency, v dcVulnerability, purl string) do
 
 // appendDCPackages records the full package inventory of one dependency.
 func appendDCPackages(budget *parseutil.Budget, nr *domain.NormalizedReport, dep dcDependency) error {
-	filePath := parseutil.RepoPath(dep.FilePath)
+	filePath := parseutil.RepoPath(lockfilePath(dep.FilePath))
 	for _, p := range dep.Packages {
 		purl := domain.NormalizePURL(p.ID)
 		if purl == "" {
@@ -338,4 +338,11 @@ func unescapePURL(s string) string {
 		return decoded
 	}
 	return s
+}
+
+// lockfilePath drops the package a lockfile dependency appends to its path:
+// "/src/package-lock.json?lodash" is the lockfile.
+func lockfilePath(path string) string {
+	file, _, _ := strings.Cut(path, "?")
+	return file
 }

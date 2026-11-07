@@ -35,6 +35,11 @@ releases.
 
 ### Changed
 
+- Plainer words on the Access and Teams pages, and in the change view. An upload refused for the wrong
+  scanner offers the right one. The adapter names up to five blockers when a whole-project gate fails,
+  and calls findings on the base branch that instead of pre-existing debt. Locations no longer carry
+  `?lodash` from Dependency-Check or a leading `/` from Checkov. That changes the identity of Checkov
+  findings, so they are reported once more as new.
 - Findings read better on screen. A scanner message used as a title becomes a one-line name with the
   rest below it, a repeated prefix goes, and an advisory id gains its package. Long paths in the findings
   list keep the file name. Someone who cannot record a decision sees the fix first, evidence and sign-off

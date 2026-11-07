@@ -40,7 +40,7 @@ export function ExistingDebt({ slug, ids, passing = false, projectName }: Existi
         {passing
           ? (
             <>
-              {pluralize(ids.length, "older finding")} {ids.length === 1 ? "is" : "are"} open in
+              {pluralize(ids.length, "existing finding")} {ids.length === 1 ? "is" : "are"} open in
               {" "}
               {projectName ?? slug}. {ids.length === 1 ? "It is" : "They are"}{" "}
               not counted for this change.

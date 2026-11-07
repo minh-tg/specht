@@ -17,7 +17,7 @@ func TestPassedChecksBecomeExaminedFingerprints(t *testing.T) {
 	nr, err := NewScanner().Parse(context.Background(), []byte(doc))
 	require.NoError(t, err)
 	require.Len(t, nr.Findings, 1)
-	assert.Equal(t, []string{"fp:iac:CKV_AWS_18:aws_s3_bucket.a:/main.tf"}, nr.ExaminedKeys,
+	assert.Equal(t, []string{"fp:iac:CKV_AWS_18:aws_s3_bucket.a:main.tf"}, nr.ExaminedKeys,
 		"only the passed check with an id counts, a skipped one proves nothing")
 }
 
@@ -43,5 +43,5 @@ func TestMultiFrameworkReportMergesPassedChecks(t *testing.T) {
 	  {"check_type":"kubernetes","results":{"passed_checks":[{"check_id":"B","resource":"d","file_path":"/b.yaml"}]}}]`
 	nr, err := NewScanner().Parse(context.Background(), []byte(doc))
 	require.NoError(t, err)
-	assert.Equal(t, []string{"fp:iac:A:r:/a.tf", "fp:iac:B:d:/b.yaml"}, nr.ExaminedKeys)
+	assert.Equal(t, []string{"fp:iac:A:r:a.tf", "fp:iac:B:d:b.yaml"}, nr.ExaminedKeys)
 }

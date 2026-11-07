@@ -114,7 +114,7 @@ test("the project access page fits a 360px phone and passes axe", async ({ page,
   await seedProject(request, token, slug);
   await uiLogin(page);
   await page.goto(`/${slug}/access`);
-  await expect(page.getByRole("heading", { name: /Direct Members/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Members/ })).toBeVisible();
   await auditPhone(page, "project access");
   const configuration = page.getByRole("button", { name: /^Configuration/ });
   await configuration.click();

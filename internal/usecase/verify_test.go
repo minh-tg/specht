@@ -143,7 +143,7 @@ func TestVerifyFix_InconclusivePaths(t *testing.T) {
 		resp, err := uc.VerifyFix(findingScopeCtx(findingFixtureProjectID), f.ID)
 		require.NoError(t, err)
 		assert.Equal(t, VerifyInconclusive, resp.Outcome)
-		assert.Contains(t, resp.Detail, "does not show it examined this one")
+		assert.Contains(t, resp.Detail, "so a new scan has to settle it")
 	})
 	t.Run("complete scope that never covered the kind", func(t *testing.T) {
 		uc, fr, rr, f := verifyHarness(now)

@@ -72,7 +72,7 @@ function headline(
     case "passing":
       return projectWide
         ? "Project gate passed."
-        : "Nothing first seen in this commit blocks this change.";
+        : "Nothing new in this commit blocks this change.";
     case "unblocked":
       return "Unblocked. Nothing blocks this change now.";
     case "unconfirmed":
@@ -207,7 +207,7 @@ export function ChangeHero(
         {state === "blocked" && (
           <FactItem>
             <strong className="text-foreground font-semibold">{blockers}</strong> blocking
-            {existing > 0 && <>, {existing} existing</>}
+            {existing > 0 && <>, {existing} already on the default branch</>}
           </FactItem>
         )}
         {waived > 0 && <FactItem>{waived} waived</FactItem>}
