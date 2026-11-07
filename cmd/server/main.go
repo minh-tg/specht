@@ -161,7 +161,7 @@ func buildLifecycleStores(pool *pgxpool.Pool) (port.AnalysisExpiryStore, port.Wa
 // ingest request is cut off after two and a half minutes, so anything this old was stranded.
 const staleReportAge = 10 * time.Minute
 
-func startLifecycle(ctx context.Context, stores *port.Stores, analysisStore port.AnalysisExpiryStore, waiverStore port.WaiverExpiryStore, revocations lifecycle.AccessTokenPruner, cfg *config.Server) {
+func startLifecycle(ctx context.Context, stores *port.Stores, analysisStore port.AnalysisExpiryStore, waiverStore port.WaiverExpiryStore, revocations lifecycle.AccessTokenPruner, cfg *config.Server, dispatcher watcher.TrackerDispatcher) {
 	exitOnError("start waiver expiry daemon", lifecycle.RunWaiverExpiry(ctx, waiverStore, cfg.SweepInterval, slog.Default()))
 	exitOnError("start analysis expiry daemon", lifecycle.RunAnalysisExpiry(ctx, analysisStore, cfg.SweepInterval, slog.Default()))
 	exitOnError("start refresh token prune", lifecycle.RunRefreshTokenPrune(ctx, stores.RefreshTokens, cfg.SweepInterval, slog.Default()))
@@ -169,7 +169,7 @@ func startLifecycle(ctx context.Context, stores *port.Stores, analysisStore port
 	exitOnError("start stale report reaper", lifecycle.RunStaleReportReaper(ctx, stores.Reports, cfg.SweepInterval, staleReportAge, slog.Default()))
 	exitOnError("start raw retention sweeper", lifecycle.RunRawRetention(ctx, stores.Reports, cfg.SweepInterval, cfg.RawRetentionDays, slog.Default()))
 	if cfg.Watcher.Enable {
-		exitOnError("start watcher daemon", runWatcherDaemon(ctx, stores, cfg))
+		exitOnError("start watcher daemon", runWatcherDaemon(ctx, stores, cfg, dispatcher))
 	}
 }
 
@@ -303,7 +303,7 @@ func main() {
 	defer stop()
 
 	analysisExpiryStore, waiverExpiryStore := buildLifecycleStores(pool)
-	startLifecycle(ctx, stores, analysisExpiryStore, waiverExpiryStore, revoker, cfg)
+	startLifecycle(ctx, stores, analysisExpiryStore, waiverExpiryStore, revoker, cfg, dispatcher)
 	startCVEDetail(ctx, cveResolver, cveDetailStore, cfg)
 
 	go func() {
@@ -607,12 +607,20 @@ func watcherPollDeps(stores *port.Stores, cfg *config.Server, ids []string, name
 	}
 }
 
-func runWatcherDaemon(ctx context.Context, stores *port.Stores, cfg *config.Server) error {
+func runWatcherDaemon(ctx context.Context, stores *port.Stores, cfg *config.Server, dispatcher watcher.TrackerDispatcher) error {
 	ids, names, intervals, err := watchedProjects(ctx, stores, cfg.Watcher.PollInterval)
 	if err != nil {
 		return err
 	}
 	deps := watcherPollDeps(stores, cfg, ids, names, buildWatcherNotifier(), watcherCacheTTL(intervals, cfg.Watcher.PollInterval))
+	deps.Tracker = dispatcher
+	deps.ProjectSlug = func(ctx context.Context, projectID string) (string, error) {
+		p, err := stores.Projects.GetByID(ctx, projectID)
+		if err != nil {
+			return "", err
+		}
+		return p.Slug, nil
+	}
 	watcher.RunCveWatcher(ctx, watcher.RunCveWatcherConfig{
 		PollInterval:     cfg.Watcher.PollInterval,
 		ReloadProjects:   stores.Projects.List,
