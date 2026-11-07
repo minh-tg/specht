@@ -363,6 +363,7 @@ export function ChangeView() {
         <BlockerSection
           key={report.id}
           slug={slug}
+          reportId={report.id}
           ids={blockedBy}
           floor={gate.policy?.severity_floor}
           permissions={projectQuery.data?.permissions}

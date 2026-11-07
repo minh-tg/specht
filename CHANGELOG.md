@@ -413,6 +413,8 @@ releases.
   highest fixed version. Two lodash findings fixed in 4.17.21 and 4.18.0 read as separate work,
   with "None share a fix", though 4.18.0 clears both. A fixed version that cannot be ordered, such
   as a prerelease, stays on its own row.
+- The change view's "I've done this" list survives a reload. It lives in the tab and belongs to one
+  report, so a newer scan starts it empty.
 - A 30 day waiver reads "ends in 30 days" straight after it is requested. The count rounded down,
   so it read 29.
 - Access, API keys and Teams show dates as "7 Nov 2026", like the rest of the app. They used the

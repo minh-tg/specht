@@ -134,6 +134,7 @@ function pendingWaiver(findingId: string) {
 }
 
 beforeEach(() => {
+  sessionStorage.clear();
   projectStatus = 200;
   permissions = { request_waiver: true };
   reports = [report()];
@@ -573,6 +574,20 @@ describe("ChangeView", () => {
     expect(screen.getByText("BLOCKED")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("2 findings block");
     expect(screen.queryByText("Waiting for the next scan")).not.toBeInTheDocument();
+  });
+
+  it("keeps what the reader ticked when the page reloads", async () => {
+    const page = renderPage();
+    await loadedLedger();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("checkbox", { name: "I've done this: Finding f1" }));
+    page.unmount();
+
+    renderPage();
+    await loadedLedger();
+
+    expect(screen.getByText("1 of 2 handled")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "I've done this: Finding f1" })).toBeChecked();
   });
 
   it("keeps the margin checklist and the ledger in step", async () => {

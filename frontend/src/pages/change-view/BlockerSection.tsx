@@ -15,6 +15,7 @@ import {
 } from "@/pages/change-view/groupByFix";
 import { GroupWaiverControl } from "@/pages/change-view/GroupWaiverControl";
 import { FINDING_FETCH_WINDOW, useBlockerFindings } from "@/pages/change-view/useBlockerFindings";
+import { useHandledFindings } from "@/pages/change-view/useHandledFindings";
 import { WaiverRequestDialog } from "@/pages/change-view/WaiverRequestDialog";
 import { waiverPathId, waiverViewsByFinding } from "@/pages/change-view/waiverState";
 import type { WatchState } from "@/pages/change-view/WatchStrip";
@@ -33,6 +34,8 @@ const BATCH_NOTE_ID = "blocker-waiver-all";
 
 export interface BlockerSectionProps {
   readonly slug: string;
+  /** The report this list comes from, which keeps the reader's ticks apart from a newer scan's. */
+  readonly reportId: string;
   /** Finding ids that block this change, worst first. */
   readonly ids: readonly string[];
   /** The policy severity floor, in words. */
@@ -55,6 +58,7 @@ export interface BlockerSectionProps {
 export function BlockerSection(
   {
     slug,
+    reportId,
     ids,
     floor,
     permissions,
@@ -68,7 +72,7 @@ export function BlockerSection(
   const found = useBlockerFindings(ids);
   const waivers = useWaivers(slug);
   const { data: me } = useMe();
-  const [handled, setHandled] = useState<ReadonlySet<string>>(new Set());
+  const [handled, setHandled] = useHandledFindings(reportId);
   // Open entries by key: a finding id for a plain row, the group's key for a group. A group is also
   // open when a member was, so folding rows together does not close what the reader had open.
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(ids.slice(0, 1)));
