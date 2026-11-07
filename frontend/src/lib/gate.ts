@@ -15,7 +15,7 @@ import type { GateStatus } from "@/types/api";
  */
 export interface BlocksGateResult {
   blocks: boolean;
-  reason?: "ignored" | "below_floor" | "waived" | "needs_triage" | "watcher_off";
+  reason?: "ignored" | "below_floor" | "waived" | "needs_triage" | "watcher_off" | "change_branch";
 }
 
 /**
@@ -30,6 +30,7 @@ export function blocksGate(
     gate_effect: string;
     finding_kind?: string;
     analysis_state?: string;
+    only_on_branches?: readonly string[];
   },
   gate: GateStatus | undefined,
 ): BlocksGateResult | null {
@@ -45,6 +46,11 @@ export function blocksGate(
 
   if (finding.gate_effect === "ignore") {
     return { blocks: false, reason: "ignored" };
+  }
+
+  // Seen only on change branches: the project's verdict answers for its default branch.
+  if ((finding.only_on_branches?.length ?? 0) > 0) {
+    return { blocks: false, reason: "change_branch" };
   }
 
   const floor = gate.policy?.severity_floor;
@@ -65,12 +71,19 @@ export function blocksGate(
   return { blocks: false };
 }
 
+/** Names where a finding left out of the verdict was seen: "Only on feat/x", "+1 more". */
+export function onlyOnBranchesLabel(branches: readonly string[]): string {
+  const [first, ...rest] = branches;
+  return rest.length > 0 ? `Only on ${first} +${rest.length} more` : `Only on ${first}`;
+}
+
 /** Human answer for a blocksGate result; EMPTY_VALUE while the gate is unknown. */
 export function blocksGateLabel(result: BlocksGateResult | null): string {
   if (!result) return EMPTY_VALUE;
   if (result.blocks) return "Yes";
   if (result.reason === "ignored") return "No (ignored by triage)";
   if (result.reason === "below_floor") return "No (below the floor)";
+  if (result.reason === "change_branch") return "No (only on an unmerged branch)";
   if (result.reason === "waived") return "Waived";
   if (result.reason === "needs_triage") return "Not until triaged";
   if (result.reason === "watcher_off") return "No (watcher findings are off)";
@@ -87,6 +100,7 @@ export function blocksGateSentence(result: BlocksGateResult | null): string | nu
   if (result.blocks) return "Blocks gate";
   if (result.reason === "ignored") return "Does not block gate (ignored by triage)";
   if (result.reason === "below_floor") return "Does not block gate (below the floor)";
+  if (result.reason === "change_branch") return "Does not block gate (only on an unmerged branch)";
   if (result.reason === "waived") return "Waived: does not block gate";
   if (result.reason === "needs_triage") return "Does not block gate until someone triages it";
   if (result.reason === "watcher_off") return "Does not block gate (watcher findings are off)";

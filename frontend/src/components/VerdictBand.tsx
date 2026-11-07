@@ -53,6 +53,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
   const canManageCI = project?.permissions?.manage_ci === true;
   const blockers = blockerCount(gate);
   const waived = gate?.waived_count ?? 0;
+  const onlyOnChangeBranches = stats?.only_on_change_branches_count ?? 0;
   const policy = gate?.policy;
 
   // A failed request never delivers data, so `unknown` must not animate a
@@ -148,6 +149,14 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
         <p role="status" className="tabular-nums">{verdictSentence(verdict, blockers)}</p>
         {waived > 0 && (
           <span className="text-muted-foreground text-body tabular-nums">· {waived} waived</span>
+        )}
+        {onlyOnChangeBranches > 0 && (
+          <Link
+            to={`/${slug}/findings?branch_scope=change`}
+            className={`${INLINE_LINK} text-muted-foreground text-body tabular-nums`}
+          >
+            · {onlyOnChangeBranches} only on unmerged branches
+          </Link>
         )}
         {canManageCI && (
           <Link

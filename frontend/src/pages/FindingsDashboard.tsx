@@ -85,7 +85,8 @@ export function FindingsDashboard() {
   // The server orders the whole result, so the page shows the rows as they come.
   const sorted = findings ?? [];
   const hasFilters = Boolean(
-    filters.severity || filters.status || filters.kind || filters.analysisState || filters.q,
+    filters.severity || filters.status || filters.kind || filters.analysisState
+      || filters.branchScope || filters.q,
   );
   // Rows already on screen stay put while the next request is in flight, so the
   // toolbar the user is operating never unmounts under them.

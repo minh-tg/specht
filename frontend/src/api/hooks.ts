@@ -50,6 +50,7 @@ export interface FindingsQuery {
   kind?: string;
   /** Comma list of analysis states; `unanalyzed` matches findings nobody has looked at. */
   analysisState?: string;
+  branchScope?: string;
   /** Text matched against the title and the fingerprint. */
   q?: string;
   sort?: FindingSort;
@@ -354,6 +355,7 @@ export function findingsQueryOptions(projectSlug: string, filters: FindingsQuery
       if (filters.kind) params.set("kind", filters.kind);
       if (filters.analysisState) params.set("analysis_state", filters.analysisState);
       if (filters.q) params.set("q", filters.q);
+      if (filters.branchScope) params.set("branch_scope", filters.branchScope);
       if (filters.sort) params.set("sort", filters.sort);
       if (filters.dir) params.set("dir", filters.dir);
       if (filters.offset != null) params.set("offset", String(filters.offset));

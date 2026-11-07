@@ -5,7 +5,7 @@ import { SeverityBadge } from "@/components/ui/severity-badge";
 import { findingKindLabel } from "@/lib/enums";
 import { findingWorkflowState } from "@/lib/findingState";
 import { EMPTY_VALUE, formatAge, formatDate } from "@/lib/format";
-import { blocksGate } from "@/lib/gate";
+import { blocksGate, onlyOnBranchesLabel } from "@/lib/gate";
 import type { Finding, GateStatus } from "@/types/api";
 import { ChevronRightIcon } from "lucide-react";
 import { type MouseEvent, useEffect, useRef } from "react";
@@ -108,6 +108,11 @@ export function FindingsTable(
           </PrefetchLink>
           {blocksGate(f, gate)?.blocks && (
             <span className="text-destructive ml-2 text-meta font-medium">Blocks gate</span>
+          )}
+          {(f.only_on_branches?.length ?? 0) > 0 && (
+            <span className="text-muted-foreground ml-2 text-meta">
+              {onlyOnBranchesLabel(f.only_on_branches ?? [])}
+            </span>
           )}
           <p className="text-muted-foreground mt-0.5 hidden font-mono text-code md:block">
             {findingKindLabel(f.finding_kind) ?? EMPTY_VALUE}
