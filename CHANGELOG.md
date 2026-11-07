@@ -395,6 +395,9 @@ releases.
 - Signing in from a deep link, such as the change link in a CI log, returns to that page. Login
   sent everyone to the projects list because its already-signed-in check ran after the token was
   set and overrode the redirect.
+- The adapter's "new blocking findings" count covers every blocker. It counted only those with a
+  file and line, so a change blocked by two dependency findings and one Terraform finding printed
+  1. Blockers with no line are now counted and named as "and 2 more".
 - An ingest that runs past its two minute processing window now answers `503 ingest_timeout` with `Retry-After` instead of `422 ingest_failed`. CI clients read a 422 as a bad report and stopped; the report is still marked failed. `specht-adapter` reports the error and a hint to run the job again, and does not retry it itself, because each try would use another full window.
 - Creating a project and making its creator the first admin is one transaction that
   share-locks the creator's account first. A deactivation of that account at the same
