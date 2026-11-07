@@ -520,6 +520,8 @@ export interface ProjectStats {
   pending_waiver_count?: number;
   /** Open findings seen only on change branches, which the verdict leaves out. */
   only_on_change_branches_count?: number;
+  /** Approved waivers that end within seven days. */
+  expiring_waiver_count?: number;
   report_count: number;
   by_severity: SeverityCount[];
   by_analysis_state?: AnalysisStateCount[];

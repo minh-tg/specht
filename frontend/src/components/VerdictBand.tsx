@@ -57,6 +57,8 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
   const canManageCI = project?.permissions?.manage_ci === true;
   const blockers = blockerCount(gate);
   const waived = gate?.waived_count ?? 0;
+  const pendingWaivers = stats?.pending_waiver_count ?? 0;
+  const expiringWaivers = stats?.expiring_waiver_count ?? 0;
   const unrated = gate?.unrated_count ?? 0;
   const onlyOnChangeBranches = stats?.only_on_change_branches_count ?? 0;
   const policy = gate?.policy;
@@ -172,6 +174,18 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
           </Link>
         )}
       </div>
+
+      {(pendingWaivers > 0 || expiringWaivers > 0) && (
+        <p className="mt-1 text-body">
+          <Link to={`/${slug}/waivers`} className={INLINE_LINK}>
+            {[
+              pendingWaivers > 0
+              && `${pluralize(pendingWaivers, "waiver request")} waiting for a decision`,
+              expiringWaivers > 0 && `${pluralize(expiringWaivers, "waiver")} ending within a week`,
+            ].filter(Boolean).join(" · ")}
+          </Link>
+        </p>
+      )}
 
       {unrated > 0 && (
         <p className="text-sev-medium-fg mt-1 text-body">

@@ -98,7 +98,10 @@ export function WaiverRow({ slug, waiver, bucket, now, who, actions }: {
           )}
           {!requester && <span>created by a manager</span>}
           {waiver.expires_at && bucket !== "closed" && (
-            <span>· ends in {expiresIn(waiver.expires_at, now.getTime())}</span>
+            <span>
+              · ends in {expiresIn(waiver.expires_at, now.getTime())}, then{" "}
+              {count > 1 ? "they block" : "it blocks"} again
+            </span>
           )}
         </p>
         {waiver.reason && (
