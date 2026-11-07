@@ -37,6 +37,9 @@ export function WhyItBlocks({ severity, gateResult, floor, onlyOnBranches }: {
     text = `Seen only on ${
       branches || "a change branch"
     }. The project's verdict answers for its default branch, so this counts once the default branch reports it. A pull request is still judged on what it introduces.`;
+  } else if (gateResult.reason === "unrated") {
+    text =
+      "The scanner gave this finding no severity, so the severity floor cannot judge it and it does not block a change. Review it here, or set findings with no severity to block on the Policy page.";
   } else if (gateResult.reason === "below_floor") {
     text = `Severity ${word} is below the project floor${
       floorWord ? ` (${floorWord})` : ""
