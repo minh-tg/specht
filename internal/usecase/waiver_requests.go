@@ -255,7 +255,18 @@ func (u *Usecases) RequestWaiver(ctx context.Context, input RequestWaiverInput) 
 		return nil, err
 	}
 	resp := toWaiver(w)
+	u.sendWaiverNotice(WaiverNotice{
+		Event: WaiverEventRequested, ProjectSlug: project.Slug, ProjectName: project.Name,
+		Title: waiverNoticeTitle(w.Name), Detail: reason, Actor: u.waiverActorName(ctx, ident.UserID),
+	})
 	return &resp, nil
+}
+
+// waiverDecisionNotices names the decisions someone is waiting to hear about. A
+// withdrawal is the requester's own act.
+var waiverDecisionNotices = map[string]string{
+	WaiverStatusApproved: WaiverEventApproved,
+	WaiverStatusRejected: WaiverEventRejected,
 }
 
 // rejectDuplicateWaiverRequest refuses a request that names a finding another
@@ -394,5 +405,11 @@ func (u *Usecases) decideWaiver(ctx context.Context, projectSlug, waiverID, stat
 		return nil, err
 	}
 	resp := toWaiver(w)
+	if event, ok := waiverDecisionNotices[status]; ok {
+		u.sendWaiverNotice(WaiverNotice{
+			Event: event, ProjectSlug: project.Slug, ProjectName: project.Name,
+			Title: waiverNoticeTitle(w.Name), Detail: note, Actor: u.waiverActorName(ctx, ident.UserID),
+		})
+	}
 	return &resp, nil
 }

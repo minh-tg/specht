@@ -462,3 +462,62 @@ func TestListWaiversSkipsTheScopeReadsWhenNothingMatches(t *testing.T) {
 	assert.Empty(t, got, "the scope readers are not set on the mock, so any call would fail the test")
 	assert.NotNil(t, got)
 }
+
+// noticeRecorder collects notices, which are sent after the response.
+type noticeRecorder struct{ got chan WaiverNotice }
+
+func (n *noticeRecorder) NotifyWaiver(_ context.Context, notice WaiverNotice) { n.got <- notice }
+
+func (n *noticeRecorder) next(t *testing.T) WaiverNotice {
+	t.Helper()
+	select {
+	case notice := <-n.got:
+		return notice
+	case <-time.After(5 * time.Second):
+		require.Fail(t, "no notice arrived")
+		return WaiverNotice{}
+	}
+}
+
+func TestWaiverRequestAndDecisionsNotify(t *testing.T) {
+	wr := &mockWaiverRepo{
+		listFn: func(context.Context, string) ([]port.Waiver, error) { return nil, nil },
+		createWithDetailsFn: func(_ context.Context, in port.CreateWaiverInput) (port.Waiver, error) {
+			return port.Waiver{ID: requestWaiverID, ProjectID: in.ProjectID, Name: in.Name}, nil
+		},
+	}
+	uc := waiverRequestUsecase(t, auth.RoleMember, wr)
+	recorder := &noticeRecorder{got: make(chan WaiverNotice, 4)}
+	uc.deps.WaiverNotifier = recorder
+
+	input := validWaiverRequest()
+	_, err := uc.RequestWaiver(sessionCtx(requesterID, auth.RoleMember), input)
+	require.NoError(t, err)
+
+	notice := recorder.next(t)
+	assert.Equal(t, WaiverEventRequested, notice.Event)
+	assert.Equal(t, input.Reason, notice.Detail)
+	assert.NotEmpty(t, notice.Title)
+}
+
+func TestWaiverDecisionNotifiesButAWithdrawalDoesNot(t *testing.T) {
+	future := time.Now().Add(time.Hour)
+	var got port.WaiverDecision
+	wr := &mockWaiverRepo{
+		getByIDFn: func(context.Context, string, string) (port.Waiver, error) {
+			return pendingWaiver(requesterID, &future), nil
+		},
+		decideFn: decideRecorder(&got, WaiverStatusApproved),
+	}
+	uc := waiverRequestUsecase(t, auth.RoleManager, wr)
+	recorder := &noticeRecorder{got: make(chan WaiverNotice, 4)}
+	uc.deps.WaiverNotifier = recorder
+
+	_, err := uc.ApproveWaiver(sessionCtx(approverID, auth.RoleMember), "my-app", requestWaiverID, "ok")
+	require.NoError(t, err)
+	notice := recorder.next(t)
+	assert.Equal(t, WaiverEventApproved, notice.Event)
+	assert.Equal(t, "ok", notice.Detail)
+
+	assert.NotContains(t, waiverDecisionNotices, WaiverStatusWithdrawn)
+}

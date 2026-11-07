@@ -29,6 +29,7 @@ func (f *fakeAnalysisExpiryStore) ExpireExpired(ctx context.Context) ([]port.Fin
 // fakeWaiverExpiryStore is an in-memory port.WaiverExpiryStore.
 type fakeWaiverExpiryStore struct {
 	expired []port.Waiver
+	ending  []port.Waiver
 	err     error
 	calls   atomic.Int64
 }
@@ -39,6 +40,44 @@ func (f *fakeWaiverExpiryStore) ExpireExpired(ctx context.Context) ([]port.Waive
 		return nil, f.err
 	}
 	return f.expired, nil
+}
+
+func (f *fakeWaiverExpiryStore) ClaimExpiring(context.Context, time.Time) ([]port.Waiver, error) {
+	return f.ending, nil
+}
+
+// fakeAnnouncer records what a sweep announced.
+type fakeAnnouncer struct{ ending, ended []port.Waiver }
+
+func (a *fakeAnnouncer) WaiversEnding(_ context.Context, w []port.Waiver) {
+	a.ending = append(a.ending, w...)
+}
+
+func (a *fakeAnnouncer) WaiversEnded(_ context.Context, w []port.Waiver) {
+	a.ended = append(a.ended, w...)
+}
+
+func TestSweepAnnouncesWhatEndedAndWhatIsEnding(t *testing.T) {
+	store := &fakeWaiverExpiryStore{
+		expired: []port.Waiver{{ID: "gone"}},
+		ending:  []port.Waiver{{ID: "soon"}},
+	}
+	announcer := &fakeAnnouncer{}
+	sweepAndAnnounce(context.Background(), store, announcer, time.Hour, slog.Default())
+	if len(announcer.ended) != 1 || announcer.ended[0].ID != "gone" {
+		t.Fatalf("ended: %v", announcer.ended)
+	}
+	if len(announcer.ending) != 1 || announcer.ending[0].ID != "soon" {
+		t.Fatalf("ending: %v", announcer.ending)
+	}
+}
+
+func TestSweepWithoutAnAnnouncerStillExpires(t *testing.T) {
+	store := &fakeWaiverExpiryStore{expired: []port.Waiver{{ID: "gone"}}}
+	sweepAndAnnounce(context.Background(), store, nil, time.Hour, slog.Default())
+	if store.calls.Load() != 1 {
+		t.Fatalf("calls: %d", store.calls.Load())
+	}
 }
 
 func TestSweepExpiredFindings_StoreDriven(t *testing.T) {
@@ -98,7 +137,7 @@ func TestRunWaiverExpiry_CancellationStops(t *testing.T) {
 	store := &fakeWaiverExpiryStore{expired: []port.Waiver{{ID: "w1"}}}
 	ctx, cancel := context.WithCancel(context.Background())
 
-	RunWaiverExpiry(ctx, store, 10*time.Millisecond, slog.Default())
+	RunWaiverExpiry(ctx, store, nil, time.Hour, 10*time.Millisecond, slog.Default())
 	time.Sleep(50 * time.Millisecond)
 	cancel()
 	time.Sleep(20 * time.Millisecond)

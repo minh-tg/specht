@@ -5252,6 +5252,9 @@ components:
         total_findings:
           type: integer
           description: Open and reopened findings; fixed and archived findings are not counted.
+        expiring_waiver_count:
+          type: integer
+          description: Approved waivers that end within seven days, after which their findings block again.
         only_on_change_branches_count:
           type: integer
           description: Open findings seen only on change branches, which the verdict leaves out.

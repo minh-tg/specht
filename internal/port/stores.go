@@ -1573,6 +1573,8 @@ type StatsStore interface {
 	GetProjectAnalysisStateCounts(ctx context.Context, projectID string) ([]AnalysisStateStat, error)
 	GetProjectWaiverCount(ctx context.Context, projectID string) (int32, error)
 	GetProjectPendingWaiverCount(ctx context.Context, projectID string) (int32, error)
+	// CountExpiringWaivers counts approved waivers that end before the given time.
+	CountExpiringWaivers(ctx context.Context, projectID string, endingBefore time.Time) (int32, error)
 	// CountFindingsOnlyOnChangeBranches counts open findings left out of the
 	// project verdict because they were seen only on change branches.
 	CountFindingsOnlyOnChangeBranches(ctx context.Context, projectID string) (int32, error)
@@ -1791,6 +1793,9 @@ type WaiverExpiryStore interface {
 	// ExpireExpired runs one transaction that disables expired waivers and
 	// logs their auto_disabled events, returning the disabled waivers.
 	ExpireExpired(ctx context.Context) ([]Waiver, error)
+	// ClaimExpiring returns the approved waivers ending before the given time that
+	// nobody has announced, and marks them announced.
+	ClaimExpiring(ctx context.Context, endingBefore time.Time) ([]Waiver, error)
 }
 
 // Invite is a single-use link that brings a person into one project.

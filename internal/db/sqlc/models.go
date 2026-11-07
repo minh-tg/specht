@@ -521,6 +521,7 @@ type Waiver struct {
 	DecidedAt      pgtype.Timestamptz `json:"decided_at"`
 	DecisionNote   string             `json:"decision_note"`
 	DecisionReason pgtype.Text        `json:"decision_reason"`
+	ExpiryWarnedAt pgtype.Timestamptz `json:"expiry_warned_at"`
 }
 
 type WaiverCondition struct {

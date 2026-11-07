@@ -11,6 +11,74 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const claimExpiringWaivers = `-- name: ClaimExpiringWaivers :many
+UPDATE waivers SET expiry_warned_at = NOW()
+WHERE enabled = true
+  AND status = 'approved'
+  AND expires_at IS NOT NULL
+  AND expires_at > NOW()
+  AND expires_at <= $1::timestamptz
+  AND expiry_warned_at IS NULL
+RETURNING id, project_id, name, expires_at
+`
+
+type ClaimExpiringWaiversRow struct {
+	ID        pgtype.UUID        `json:"id"`
+	ProjectID pgtype.UUID        `json:"project_id"`
+	Name      string             `json:"name"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+}
+
+// Claims the approved waivers that end before the given time and have not been
+// announced yet, so each is announced once however many servers sweep.
+func (q *Queries) ClaimExpiringWaivers(ctx context.Context, endingBefore pgtype.Timestamptz) ([]ClaimExpiringWaiversRow, error) {
+	rows, err := q.db.Query(ctx, claimExpiringWaivers, endingBefore)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ClaimExpiringWaiversRow
+	for rows.Next() {
+		var i ClaimExpiringWaiversRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Name,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countExpiringWaivers = `-- name: CountExpiringWaivers :one
+SELECT COUNT(*)::int FROM waivers
+WHERE project_id = $1
+  AND enabled = true
+  AND status = 'approved'
+  AND expires_at IS NOT NULL
+  AND expires_at > NOW()
+  AND expires_at <= $2::timestamptz
+`
+
+type CountExpiringWaiversParams struct {
+	ProjectID    pgtype.UUID        `json:"project_id"`
+	EndingBefore pgtype.Timestamptz `json:"ending_before"`
+}
+
+// Approved waivers of a project that end before the given time.
+func (q *Queries) CountExpiringWaivers(ctx context.Context, arg CountExpiringWaiversParams) (int32, error) {
+	row := q.db.QueryRow(ctx, countExpiringWaivers, arg.ProjectID, arg.EndingBefore)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const expireWaivers = `-- name: ExpireWaivers :many
 UPDATE waivers SET
     enabled = false,

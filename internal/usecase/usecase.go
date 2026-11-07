@@ -185,7 +185,9 @@ type Deps struct {
 	// time.Now; tests inject a fake clock.
 	Now     func() time.Time
 	Tracker TrackerDispatcher
-	Intel   IntelStore
+	// WaiverNotifier tells people about waiver changes. Nil sends nothing.
+	WaiverNotifier WaiverNotifier
+	Intel          IntelStore
 	// SSOAllowUnverifiedEmail lets a first-time SSO login link or provision by
 	// an email the provider did not mark verified. It exists for providers that
 	// never send email_verified (for example a single-tenant directory whose

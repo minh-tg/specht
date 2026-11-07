@@ -134,6 +134,14 @@ func (r *pgStatsPort) CountOpenUnratedFindings(ctx context.Context, projectID st
 	return r.inner.CountOpenUnratedFindings(ctx, pid)
 }
 
+func (r *pgStatsPort) CountExpiringWaivers(ctx context.Context, projectID string, endingBefore time.Time) (int32, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return 0, err
+	}
+	return r.inner.CountExpiringWaivers(ctx, pid, endingBefore)
+}
+
 func (r *pgStatsPort) GetProjectReportCount(ctx context.Context, projectID string) (int32, error) {
 	pid, err := parseID(projectID)
 	if err != nil {

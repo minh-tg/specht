@@ -198,7 +198,7 @@ func TestRunWaiverExpiry_TickerDisablesExpired(t *testing.T) {
 	ctx2, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	RunWaiverExpiry(ctx2, repo.NewWaiverExpiryStore(pool), 100*time.Millisecond, slog.Default())
+	RunWaiverExpiry(ctx2, repo.NewWaiverExpiryStore(pool), nil, time.Hour, 100*time.Millisecond, slog.Default())
 
 	// Wait for at least 2 ticks
 	time.Sleep(500 * time.Millisecond)
@@ -242,7 +242,7 @@ func TestRunWaiverExpiry_NonExpiredUntouched(t *testing.T) {
 	ctx2, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	RunWaiverExpiry(ctx2, repo.NewWaiverExpiryStore(pool), 100*time.Millisecond, slog.Default())
+	RunWaiverExpiry(ctx2, repo.NewWaiverExpiryStore(pool), nil, time.Hour, 100*time.Millisecond, slog.Default())
 
 	time.Sleep(500 * time.Millisecond)
 
