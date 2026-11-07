@@ -342,8 +342,31 @@ test("logout and session expiry both return to sign in", async ({ page }) => {
   // String form: the e2e tsconfig has no DOM lib, and this is exactly what
   // an expired session looks like — the key disappears from tab storage.
   await page.evaluate("sessionStorage.removeItem('specht.session')");
+  await page.context().clearCookies();
   await page.reload();
   await expect(page).toHaveURL(/\/login/);
+});
+
+test("a link opened in a new tab stays signed in, and signing out ends both", async ({ page, context }) => {
+  await uiLogin(page);
+  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+
+  // What a click on the link in a blocked pull request does: a new tab, with no
+  // session of its own.
+  const tab = await context.newPage();
+  await tab.goto("/projects/new");
+  await expect(tab.getByRole("heading", { name: "New project" })).toBeVisible();
+  await expect(tab).not.toHaveURL(/\/login/);
+
+  await page.getByRole("button", { name: /^Account menu/ }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/login/);
+  await expect(tab).toHaveURL(/\/login/);
+
+  // The cookie ended too, so a fresh tab has nothing to resume.
+  const after = await context.newPage();
+  await after.goto("/projects/new");
+  await expect(after).toHaveURL(/\/login/);
 });
 
 test("a session token in the URL fragment never signs the visitor in", async ({ page, request }) => {

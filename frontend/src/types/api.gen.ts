@@ -228,6 +228,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/auth/resume": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Start a session for a new tab from this browser's sign-in
+     * @description A tab keeps its session in its own storage, so a link opened in a new tab starts
+     *     with none. Signing in also sets an HttpOnly, SameSite=Strict session cookie scoped
+     *     to this path, and this call turns it into a session for the new tab, in the same
+     *     sign-in chain: signing out ends both. It needs the `X-Specht-Resume` header, which a
+     *     cross-site page cannot send. 204 means there is nothing to resume.
+     */
+    post: operations["resumeSession"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/auth/logout": {
     parameters: {
       query?: never;
@@ -4333,6 +4357,44 @@ export interface operations {
        *     The client should sign the user out and say the session ended.
        */
       401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  resumeSession: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-Specht-Resume": string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description A new session for this tab. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AuthResponse"];
+        };
+      };
+      /** @description Nothing to resume. The client shows the sign-in page. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The header was missing. */
+      403: {
         headers: {
           [name: string]: unknown;
         };

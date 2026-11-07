@@ -200,6 +200,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		}
 		r.Use(NewRateLimiter(rps, burst).MiddlewareByIP())
 		r.Post("/api/v1/auth/refresh", h.Refresh)
+		r.Post(resumeCookiePath, h.ResumeSession)
 		r.With(h.audited(audit.EventSSOExchange)).Post("/api/v1/auth/sso/exchange", h.SSOExchange)
 		r.Post("/api/v1/auth/logout", h.Logout)
 

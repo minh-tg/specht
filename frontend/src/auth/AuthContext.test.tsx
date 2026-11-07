@@ -352,7 +352,10 @@ describe("AuthProvider SSO fragment", () => {
     expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
     // The pending attempt is still consumed on mount, and no request is made.
     await waitFor(() => expect(hasPendingSsoAttempt()).toBe(false));
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("/sso/exchange"),
+      expect.anything(),
+    );
   });
 
   it("exchanges sso_code and installs session and refresh tokens", async () => {
@@ -394,8 +397,8 @@ describe("AuthProvider SSO fragment", () => {
   });
 
   it("does not redeem an sso_code when no login was started here, even if the server would accept it", async () => {
-    const fetchSpy = fetchMock(() =>
-      response(200, {
+    const fetchSpy = fetchMock((url) =>
+      url.includes("/auth/resume") ? response(204, null) : response(200, {
         token: "attacker-jwt",
         refresh_token: "attacker-refresh",
         user_id: "attacker",
@@ -409,14 +412,19 @@ describe("AuthProvider SSO fragment", () => {
     await waitFor(() => expect(window.location.hash).toBe(""));
     // Let a wrongly started exchange resolve before asserting it never ran.
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("/sso/exchange"),
+      expect.anything(),
+    );
     expect(screen.getByTestId("token")).toHaveTextContent("none");
     expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 
   it("does not redeem an sso_code once the attempt marker has expired", async () => {
-    const fetchSpy = fetchMock(() =>
-      response(200, { token: "t", refresh_token: "r", user_id: "u", email: "u@example.com" })
+    const fetchSpy = fetchMock((url) =>
+      url.includes("/auth/resume")
+        ? response(204, null)
+        : response(200, { token: "t", refresh_token: "r", user_id: "u", email: "u@example.com" })
     );
     markSsoAttempt(Date.now() - 11 * 60 * 1000);
     window.history.replaceState(null, "", "/#sso_code=late-code");
@@ -425,7 +433,10 @@ describe("AuthProvider SSO fragment", () => {
 
     await waitFor(() => expect(window.location.hash).toBe(""));
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("/sso/exchange"),
+      expect.anything(),
+    );
     expect(screen.getByTestId("token")).toHaveTextContent("none");
   });
 
@@ -463,5 +474,65 @@ describe("AuthProvider SSO fragment", () => {
     });
     expect(screen.getByTestId("token")).toHaveTextContent("none");
     expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+});
+
+describe("AuthProvider resume", () => {
+  it("continues this browser's sign-in in a new tab", async () => {
+    const fetchSpy = fetchMock((url) => {
+      if (url.includes("/auth/resume")) {
+        return response(200, {
+          token: "tab-token",
+          refresh_token: "tab-refresh",
+          user_id: "u1",
+          email: "dev@example.com",
+        });
+      }
+      return response(404, {});
+    });
+    renderAuth();
+    await waitFor(() => expect(screen.getByTestId("token")).toHaveTextContent("tab-token"));
+    expect(screen.getByTestId("email")).toHaveTextContent("dev@example.com");
+    expect(sessionStorage.getItem(STORAGE_KEY)).not.toBeNull();
+    const [, init] = fetchSpy.mock.calls.find(([u]) => String(u).includes("/auth/resume"))!;
+    expect((init as RequestInit).headers).toMatchObject({ "X-Specht-Resume": "1" });
+  });
+
+  it("stays signed out when there is nothing to resume", async () => {
+    const fetchSpy = fetchMock(() => response(204, null));
+    renderAuth();
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId("token")).toHaveTextContent("none"));
+  });
+
+  it("stays signed out when the server cannot be reached", async () => {
+    const fetchSpy = fetchMock(() => Promise.reject(new Error("offline")));
+    renderAuth();
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId("token")).toHaveTextContent("none"));
+  });
+
+  it("does not ask when this tab already has a session", async () => {
+    persist({ accessToken: "t", refreshToken: "r", user: { userId: "u", email: "a@b.c" } });
+    const fetchSpy = fetchMock(() => response(404, {}));
+    renderAuth();
+    await waitFor(() => expect(screen.getByTestId("token")).toHaveTextContent("t"));
+    expect(fetchSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("/auth/resume"),
+      expect.anything(),
+    );
+  });
+
+  it("does not sign back in after signing out, even if the sign-out request failed", async () => {
+    localStorage.setItem("specht:signed-out", "1");
+    const fetchSpy = fetchMock(() => response(200, { token: "ghost" }));
+    renderAuth();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.getByTestId("token")).toHaveTextContent("none");
+    expect(fetchSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("/auth/resume"),
+      expect.anything(),
+    );
+    localStorage.removeItem("specht:signed-out");
   });
 });

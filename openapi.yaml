@@ -411,6 +411,37 @@ paths:
                 reused:
                   value: { error: { code: refresh_reused, message: refresh token was already used } }
 
+  /api/v1/auth/resume:
+    post:
+      tags: [Authentication]
+      operationId: resumeSession
+      summary: Start a session for a new tab from this browser's sign-in
+      description: |
+        A tab keeps its session in its own storage, so a link opened in a new tab starts
+        with none. Signing in also sets an HttpOnly, SameSite=Strict session cookie scoped
+        to this path, and this call turns it into a session for the new tab, in the same
+        sign-in chain: signing out ends both. It needs the `X-Specht-Resume` header, which a
+        cross-site page cannot send. 204 means there is nothing to resume.
+      x-required-scope: none
+      security: []
+      parameters:
+        - name: X-Specht-Resume
+          in: header
+          required: true
+          schema: { type: string, example: "1" }
+      responses:
+        "200":
+          description: A new session for this tab.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "204":
+          description: Nothing to resume. The client shows the sign-in page.
+        "403":
+          description: The header was missing.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
   /api/v1/auth/logout:
     post:
       tags: [Authentication]
