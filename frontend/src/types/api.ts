@@ -285,6 +285,9 @@ export interface PolicyEffective {
   /** Scanners whose clean scans leave findings open in this project. */
   manual_close_scanners?: string[];
   manual_close_source?: "default" | "template" | "override";
+  /** Whether findings with no severity block the gate. */
+  unrated_gate?: "ignore" | "block";
+  unrated_source?: "default" | "template" | "override";
 }
 
 /** A shared baseline a project can link. Its definition holds the same keys an override can set. */
@@ -305,6 +308,8 @@ export interface GateStatus {
   /** IDs of the blocking findings an active waiver silences. */
   waived_finding_ids?: string[];
   policy?: PolicyEffective;
+  /** Open findings with no severity that the gate left out. */
+  unrated_count?: number;
 }
 
 export interface ReachabilityAssessment {

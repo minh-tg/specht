@@ -1,4 +1,4 @@
-import { severityRank } from "@/lib/enums";
+import { normalizeSeverity, severityRank } from "@/lib/enums";
 import { EMPTY_VALUE } from "@/lib/format";
 import type { GateStatus } from "@/types/api";
 
@@ -15,7 +15,14 @@ import type { GateStatus } from "@/types/api";
  */
 export interface BlocksGateResult {
   blocks: boolean;
-  reason?: "ignored" | "below_floor" | "waived" | "needs_triage" | "watcher_off" | "change_branch";
+  reason?:
+    | "ignored"
+    | "below_floor"
+    | "waived"
+    | "needs_triage"
+    | "watcher_off"
+    | "change_branch"
+    | "unrated";
 }
 
 /**
@@ -53,6 +60,12 @@ export function blocksGate(
     return { blocks: false, reason: "change_branch" };
   }
 
+  // No floor can judge a finding with no severity. The policy decides, and when it blocks them
+  // the gate has already said so above.
+  if (normalizeSeverity(finding.current_severity) === "unknown") {
+    return { blocks: false, reason: "unrated" };
+  }
+
   const floor = gate.policy?.severity_floor;
   if (floor && severityRank(finding.current_severity) < severityRank(floor)) {
     return { blocks: false, reason: "below_floor" };
@@ -84,6 +97,7 @@ export function blocksGateLabel(result: BlocksGateResult | null): string {
   if (result.reason === "ignored") return "No (ignored by triage)";
   if (result.reason === "below_floor") return "No (below the floor)";
   if (result.reason === "change_branch") return "No (only on an unmerged branch)";
+  if (result.reason === "unrated") return "No (no severity to judge)";
   if (result.reason === "waived") return "Waived";
   if (result.reason === "needs_triage") return "Not until triaged";
   if (result.reason === "watcher_off") return "No (watcher findings are off)";
@@ -101,6 +115,7 @@ export function blocksGateSentence(result: BlocksGateResult | null): string | nu
   if (result.reason === "ignored") return "Does not block gate (ignored by triage)";
   if (result.reason === "below_floor") return "Does not block gate (below the floor)";
   if (result.reason === "change_branch") return "Does not block gate (only on an unmerged branch)";
+  if (result.reason === "unrated") return "Does not block gate (no severity to judge)";
   if (result.reason === "waived") return "Waived: does not block gate";
   if (result.reason === "needs_triage") return "Does not block gate until someone triages it";
   if (result.reason === "watcher_off") return "Does not block gate (watcher findings are off)";
