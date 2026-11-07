@@ -106,6 +106,9 @@ type trivyMisconfig struct {
 	Title    string      `json:"Title"`
 	Message  string      `json:"Message"`
 	Layer    *trivyLayer `json:"Layer"`
+	// Resolution is the check's own fix text and PrimaryURL its documentation.
+	Resolution string `json:"Resolution"`
+	PrimaryURL string `json:"PrimaryURL"`
 	// CauseMetadata names the resource a check failed on (for Terraform the
 	// address, such as aws_s3_bucket.logs) and its line range.
 	CauseMetadata trivyCause `json:"CauseMetadata"`
@@ -657,6 +660,7 @@ func addMisconfigs(budget *parseutil.Budget, nr *domain.NormalizedReport, result
 			Resource:     resource,
 			CodeLocation: codeLocation(cleanTarget, start, end),
 			Dimensions:   dims,
+			Fix:          misconfigFix(m),
 			Extensions: map[string]any{
 				"message":      m.Message,
 				"severity_raw": m.Severity,
@@ -664,6 +668,15 @@ func addMisconfigs(budget *parseutil.Budget, nr *domain.NormalizedReport, result
 		}))
 	}
 	return nil
+}
+
+// misconfigFix is the fix guidance Trivy gives for a failed check, or nil when
+// it gives none.
+func misconfigFix(m trivyMisconfig) *domain.FixInfo {
+	if m.Resolution == "" && m.PrimaryURL == "" {
+		return nil
+	}
+	return &domain.FixInfo{Summary: m.Resolution, URL: m.PrimaryURL}
 }
 
 // fingerprintVersion is the version of this scanner's identity formula.

@@ -60,6 +60,27 @@ func TestEveryFailedResourceIsItsOwnMisconfiguration(t *testing.T) {
 	assert.Equal(t, 3, bucketA.CodeLocation.EndLine)
 }
 
+func TestAMisconfigurationCarriesTheFixTrivyGives(t *testing.T) {
+	nr := parseFile(t, "testdata/two-resources-misconfig.json")
+
+	var bucketA *domain.NormalizedFinding
+	for i := range nr.Findings {
+		if nr.Findings[i].Fingerprint == "iac:AWS-0086:aws_s3_bucket.a:main.tf" {
+			bucketA = &nr.Findings[i]
+		}
+	}
+	require.NotNil(t, bucketA)
+	require.NotNil(t, bucketA.Fix)
+	assert.Equal(t, "Enable blocking any PUT calls with a public ACL specified", bucketA.Fix.Summary)
+	assert.Contains(t, bucketA.Fix.URL, "https://")
+}
+
+func TestAMisconfigurationWithNoFixTextHasNoFix(t *testing.T) {
+	nr := parseDoc(t, misconfigDoc("main.tf", "aws_s3_bucket.a", 1))
+	require.Len(t, nr.Findings, 1)
+	assert.Nil(t, nr.Findings[0].Fix)
+}
+
 func misconfigDoc(target, resource string, line int) string {
 	return `{"SchemaVersion":2,"ArtifactName":".","ArtifactType":"filesystem","Results":[{"Target":"` + target +
 		`","Class":"config","Type":"terraform","Misconfigurations":[{"ID":"AWS-0086","Severity":"HIGH","CauseMetadata":{"Resource":"` +
