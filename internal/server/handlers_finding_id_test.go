@@ -8,7 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/minh-tg/specht/internal/port"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/minh-tg/specht/internal/usecase"
 )
 
@@ -40,8 +41,8 @@ func TestFindingIDReads_MalformedIDIs400(t *testing.T) {
 	}
 }
 
-// GetSignoff answers 404 only when the finding or its signoff is missing. A
-// store failure used to be reported as "signoff not found" too.
+// GetSignoff answers 404 only when the finding is missing. A store failure used
+// to be reported as "signoff not found" too.
 func TestGetSignoff_OnlyMissingIs404(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -49,7 +50,6 @@ func TestGetSignoff_OnlyMissingIs404(t *testing.T) {
 		status int
 		code   string
 	}{
-		{"no signoff", fmt.Errorf("get signoff: %w", port.ErrNotFound), http.StatusNotFound, "not_found"},
 		{"no finding", usecase.ErrFindingNotFound, http.StatusNotFound, "not_found"},
 		{"store failure", errors.New("connection reset"), http.StatusInternalServerError, "internal_error"},
 	} {
@@ -63,4 +63,18 @@ func TestGetSignoff_OnlyMissingIs404(t *testing.T) {
 			requireAPIError(t, w, tc.status, tc.code)
 		})
 	}
+}
+
+// A finding nobody has signed off yet is a normal state, so it is not an error.
+func TestGetSignoff_NoDecisionYetIs204(t *testing.T) {
+	h := &Handler{usecase: &mockUsecases{
+		getSignoffFn: func(context.Context, string) (*usecase.SignoffResponse, error) { return nil, nil },
+	}}
+	req := addChiURLParam(authRequest("GET", "/api/v1/findings/f1/signoff", ""), "findingID", "f1")
+	w := httptest.NewRecorder()
+
+	h.GetSignoff(w, req)
+
+	assert.Equal(t, http.StatusNoContent, w.Code)
+	assert.Empty(t, w.Body.Bytes())
 }

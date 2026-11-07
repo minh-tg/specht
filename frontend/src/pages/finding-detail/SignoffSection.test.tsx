@@ -18,7 +18,7 @@ const SIGNOFF = {
 
 interface MockOptions {
   role?: "manager" | "member";
-  /** The sign-off the GET returns, or null for a 404. */
+  /** The sign-off the GET returns, or null for a 204. */
   signoff?: typeof SIGNOFF | null;
 }
 
@@ -51,7 +51,7 @@ function mockApi({ role = "manager", signoff = null }: MockOptions = {}) {
       });
     }
     if (u.endsWith("/api/v1/findings/f1/signoff") && method === "GET") {
-      if (current === null) return jsonResponse({ code: "not_found", message: "no signoff" }, 404);
+      if (current === null) return new Response(null, { status: 204 });
       return jsonResponse(current);
     }
     if (u.endsWith("/api/v1/findings/f1/signoff") && method === "POST") {
@@ -85,7 +85,7 @@ describe("SignoffSection", () => {
     vi.restoreAllMocks();
   });
 
-  it("treats a 404 from the read as no sign-off yet, not as an error", async () => {
+  it("treats a 204 from the read as no sign-off yet, not as an error", async () => {
     mockApi({ signoff: null });
     renderSignoffSection();
 

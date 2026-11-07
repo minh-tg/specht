@@ -2002,6 +2002,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Signoff" }
+        "204":
+          description: Nobody has signed this finding off yet.
         "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }

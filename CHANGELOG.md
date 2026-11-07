@@ -404,6 +404,9 @@ releases.
 - `GET /api/v1/projects/{slug}/findings` returns each finding's `location`, as the single finding
   response does. The findings list showed "None" in its Where column on every row because the list
   response left the field out.
+- `GET /api/v1/findings/{id}/signoff` answers 204 when nobody has signed the finding off yet, and
+  keeps 404 for a finding that does not exist. The old 404 logged a failed request in the browser
+  console on every finding page.
 - An ingest that runs past its two minute processing window now answers `503 ingest_timeout` with `Retry-After` instead of `422 ingest_failed`. CI clients read a 422 as a bad report and stopped; the report is still marked failed. `specht-adapter` reports the error and a hint to run the job again, and does not retry it itself, because each try would use another full window.
 - Creating a project and making its creator the first admin is one transaction that
   share-locks the creator's account first. A deactivation of that account at the same

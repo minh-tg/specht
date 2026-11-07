@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -41,6 +42,8 @@ func (u *Usecases) UpsertSignoff(ctx context.Context, findingID, userID, status,
 	return signoffToResponse(s), nil
 }
 
+// GetSignoff returns the finding's reviewer decision, or nil when nobody has
+// decided yet. A finding that does not exist is ErrFindingNotFound.
 func (u *Usecases) GetSignoff(ctx context.Context, findingID string) (*SignoffResponse, error) {
 	fid, err := uuid.Parse(findingID)
 	if err != nil {
@@ -51,6 +54,9 @@ func (u *Usecases) GetSignoff(ctx context.Context, findingID string) (*SignoffRe
 	}
 
 	s, err := u.deps.Stores.Signoffs.GetByFinding(ctx, fid.String())
+	if errors.Is(err, port.ErrNotFound) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("get signoff: %w", err)
 	}

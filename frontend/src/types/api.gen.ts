@@ -5823,6 +5823,13 @@ export interface operations {
           "application/json": components["schemas"]["Signoff"];
         };
       };
+      /** @description Nobody has signed this finding off yet. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
       400: components["responses"]["BadRequest"];
       403: components["responses"]["Forbidden"];
       404: components["responses"]["NotFound"];

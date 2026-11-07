@@ -223,7 +223,7 @@ func TestE2E_AssessmentFlows(t *testing.T) {
 
 	t.Run("signoff records reviewer decisions", func(t *testing.T) {
 		status, raw := doJSON(t, http.MethodGet, "/api/v1/findings/"+high.ID+"/signoff", adminToken, nil)
-		require.Equal(t, http.StatusNotFound, status,
+		require.Equal(t, http.StatusNoContent, status,
 			"no signoff exists before the first review")
 
 		status, raw = doJSON(t, http.MethodPost, "/api/v1/findings/"+high.ID+"/signoff", viewerToken,
