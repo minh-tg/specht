@@ -413,6 +413,8 @@ releases.
   highest fixed version. Two lodash findings fixed in 4.17.21 and 4.18.0 read as separate work,
   with "None share a fix", though 4.18.0 clears both. A fixed version that cannot be ordered, such
   as a prerelease, stays on its own row.
+- First-run setup marks every missing field when submitted empty. It flagged only the password,
+  with a message about requirements the empty form does not show yet.
 - An ingest that runs past its two minute processing window now answers `503 ingest_timeout` with `Retry-After` instead of `422 ingest_failed`. CI clients read a 422 as a bad report and stopped; the report is still marked failed. `specht-adapter` reports the error and a hint to run the job again, and does not retry it itself, because each try would use another full window.
 - Creating a project and making its creator the first admin is one transaction that
   share-locks the creator's account first. A deactivation of that account at the same

@@ -116,6 +116,32 @@ describe("Setup", () => {
     );
   });
 
+  it("flags every missing field on an empty submit and sends nothing", async () => {
+    renderSetup();
+    const user = userEvent.setup();
+    await screen.findByLabelText("Setup token");
+    await user.click(screen.getByRole("button", { name: "Create administrator" }));
+
+    expect(await screen.findByText("Paste the setup token from the server's log."))
+      .toBeInTheDocument();
+    expect(screen.getByText("Enter the administrator's email.")).toBeInTheDocument();
+    expect(screen.getByText("Choose a password.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Setup token")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Email")).toHaveAttribute("aria-invalid", "true");
+    expect(setupCalls()).toHaveLength(0);
+  });
+
+  it("clears a field's error once the person edits it", async () => {
+    renderSetup();
+    const user = userEvent.setup();
+    await screen.findByLabelText("Setup token");
+    await user.click(screen.getByRole("button", { name: "Create administrator" }));
+    await user.type(screen.getByLabelText("Email"), "a");
+
+    expect(screen.queryByText("Enter the administrator's email.")).not.toBeInTheDocument();
+    expect(screen.getByText("Paste the setup token from the server's log.")).toBeInTheDocument();
+  });
+
   it("does not send a password that breaks the rules", async () => {
     renderSetup();
     const user = userEvent.setup();

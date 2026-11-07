@@ -30,6 +30,7 @@ export function Setup() {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [tokenError, setTokenError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -54,13 +55,20 @@ export function Setup() {
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
-    setTokenError(null);
-    setPasswordError(null);
+    const missingToken = token.trim() === "";
+    const missingEmail = email.trim() === "";
+    const badPassword = !isPasswordValid(password);
+    setTokenError(missingToken ? "Paste the setup token from the server's log." : null);
+    setEmailError(missingEmail ? "Enter the administrator's email." : null);
+    setPasswordError(
+      !badPassword
+        ? null
+        : password === ""
+        ? "Choose a password."
+        : "Choose a password that meets the requirements.",
+    );
     setFormError(null);
-    if (!isPasswordValid(password)) {
-      setPasswordError("Choose a password that meets the requirements.");
-      return;
-    }
+    if (missingToken || missingEmail || badPassword) return;
     setSubmitting(true);
     try {
       const session = await setup.mutateAsync({
@@ -122,7 +130,10 @@ export function Setup() {
           <FormField
             label="Setup token"
             value={token}
-            onChange={(e) => setToken(e.target.value)}
+            onChange={(e) => {
+              setToken(e.target.value);
+              setTokenError(null);
+            }}
             autoComplete="off"
             spellCheck={false}
             required
@@ -147,9 +158,13 @@ export function Setup() {
             label="Email"
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              setEmailError(null);
+            }}
             autoComplete="username"
             required
+            error={emailError}
           />
           <FormField
             label={
