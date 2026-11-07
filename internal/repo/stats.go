@@ -14,6 +14,7 @@ type StatsRepo interface {
 	GetProjectWaiverCount(ctx context.Context, projectID pgtype.UUID) (int32, error)
 	GetProjectPendingWaiverCount(ctx context.Context, projectID pgtype.UUID) (int32, error)
 	CountFindingsOnlyOnChangeBranches(ctx context.Context, projectID pgtype.UUID) (int32, error)
+	CountOpenUnratedFindings(ctx context.Context, projectID pgtype.UUID) (int32, error)
 	GetProjectReportCount(ctx context.Context, projectID pgtype.UUID) (int32, error)
 	GetProjectLatestReport(ctx context.Context, projectID pgtype.UUID) (sqlc.GetProjectLatestReportRow, error)
 	GetProjectLatestCompletedReport(ctx context.Context, projectID pgtype.UUID) (sqlc.GetProjectLatestCompletedReportRow, error)
@@ -43,6 +44,11 @@ func (r *pgStatsRepo) GetProjectPendingWaiverCount(ctx context.Context, projectI
 
 func (r *pgStatsRepo) CountFindingsOnlyOnChangeBranches(ctx context.Context, projectID pgtype.UUID) (int32, error) {
 	n, err := r.q.CountFindingsOnlyOnChangeBranches(ctx, projectID)
+	return int32(n), err
+}
+
+func (r *pgStatsRepo) CountOpenUnratedFindings(ctx context.Context, projectID pgtype.UUID) (int32, error) {
+	n, err := r.q.CountOpenUnratedFindings(ctx, projectID)
 	return int32(n), err
 }
 

@@ -42,6 +42,10 @@ type PolicyEffectiveResponse struct {
 	// open in this project. It is an empty list, never null.
 	ManualCloseScanners []string `json:"manual_close_scanners"`
 	ManualCloseSource   string   `json:"manual_close_source"`
+	// UnratedGate is block when findings without a severity block, ignore when
+	// the gate leaves them out.
+	UnratedGate   string `json:"unrated_gate"`
+	UnratedSource string `json:"unrated_source"`
 }
 
 // CreatePolicyTemplate validates and stores a reusable baseline. Names are
@@ -223,6 +227,7 @@ func (u *Usecases) effectivePolicy(ctx context.Context, project port.Project) (*
 			SeverityFloor: eff.SeverityFloor, SeveritySource: eff.SeveritySource,
 			WatcherGate: eff.WatcherGate, WatcherSource: eff.WatcherSource,
 			ManualCloseScanners: eff.ManualCloseScanners, ManualCloseSource: eff.ManualCloseSource,
+			UnratedGate: eff.UnratedGate, UnratedSource: eff.UnratedSource,
 		}, nil
 	}
 	var name *string
@@ -247,6 +252,7 @@ func (u *Usecases) effectivePolicy(ctx context.Context, project port.Project) (*
 		SeverityFloor: eff.SeverityFloor, SeveritySource: eff.SeveritySource,
 		WatcherGate: eff.WatcherGate, WatcherSource: eff.WatcherSource,
 		ManualCloseScanners: eff.ManualCloseScanners, ManualCloseSource: eff.ManualCloseSource,
+		UnratedGate: eff.UnratedGate, UnratedSource: eff.UnratedSource,
 	}, nil
 }
 
@@ -375,5 +381,5 @@ func (u *Usecases) ingestGateSettings(ctx context.Context, project port.Project,
 		return tightenSeverityFloor(policy.SeverityRank(policy.DefaultSeverityFloor), asked),
 			gatePoliciesForMode(policy.DefaultWatcherGate)
 	}
-	return floor, gatePoliciesForMode(effective.WatcherGate)
+	return floor, gatePoliciesFor(effective)
 }

@@ -1570,6 +1570,9 @@ type StatsStore interface {
 	// CountFindingsOnlyOnChangeBranches counts open findings left out of the
 	// project verdict because they were seen only on change branches.
 	CountFindingsOnlyOnChangeBranches(ctx context.Context, projectID string) (int32, error)
+	// CountOpenUnratedFindings counts open findings with no severity that count
+	// toward the project verdict.
+	CountOpenUnratedFindings(ctx context.Context, projectID string) (int32, error)
 	GetProjectReportCount(ctx context.Context, projectID string) (int32, error)
 	GetProjectLatestReport(ctx context.Context, projectID string) (Report, error)
 	// GetProjectLatestCompletedReport returns the most recently completed

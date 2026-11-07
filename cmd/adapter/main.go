@@ -839,7 +839,16 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 		return 1
 	}
 	writeDiagnosticLine(stderr, "gate PASSED: no blocking findings")
+	warnUnrated(stderr, projectGate.UnratedCount)
 	return 0
+}
+
+// warnUnrated says a passing verdict did not judge everything. A scanner that
+// rates nothing, such as Checkov's open-source output, passes every gate.
+func warnUnrated(stderr io.Writer, count int) {
+	if count > 0 {
+		writeDiagnostic(stderr, "⚠️  %d finding(s) have no severity, so the gate did not judge them. Review them, or set them to block in the project's policy.\n", count)
+	}
 }
 
 // applyProjectVerdict uses the same decision for publication and process exit.

@@ -157,6 +157,18 @@ WHERE f.project_id = $1
   AND f.state IN ('open', 'reopened')
   AND cardinality(finding_change_branches(f.id)) > 0;
 
+-- name: CountOpenUnratedFindings :one
+-- Open findings of the project with no severity that the verdict would otherwise
+-- consider: no floor can judge them, so the gate leaves them out unless the policy
+-- says to block them. Findings seen only on change branches and findings triage
+-- already set aside are not part of that question.
+SELECT COUNT(*) FROM findings f
+WHERE f.project_id = $1
+  AND f.state IN ('open', 'reopened')
+  AND f.current_severity_rank = 0
+  AND f.gate_effect <> 'ignore'
+  AND cardinality(finding_change_branches(f.id)) = 0;
+
 -- name: GetFindingByID :one
 SELECT * FROM findings WHERE id = $1;
 

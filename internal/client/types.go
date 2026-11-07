@@ -69,6 +69,9 @@ type GateStatus struct {
 	WaivedCount           int               `json:"waived_count,omitempty"`
 	// WaivedFindingIDs lists the blocking findings an active waiver covers.
 	WaivedFindingIDs []string `json:"waived_finding_ids"`
+	// UnratedCount is how many open findings have no severity, so the gate left
+	// them out.
+	UnratedCount int `json:"unrated_count"`
 }
 
 // PRCheckAnnotation is one planned pull-request annotation.

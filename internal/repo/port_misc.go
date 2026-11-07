@@ -126,6 +126,14 @@ func (r *pgStatsPort) CountFindingsOnlyOnChangeBranches(ctx context.Context, pro
 	return r.inner.CountFindingsOnlyOnChangeBranches(ctx, pid)
 }
 
+func (r *pgStatsPort) CountOpenUnratedFindings(ctx context.Context, projectID string) (int32, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return 0, err
+	}
+	return r.inner.CountOpenUnratedFindings(ctx, pid)
+}
+
 func (r *pgStatsPort) GetProjectReportCount(ctx context.Context, projectID string) (int32, error) {
 	pid, err := parseID(projectID)
 	if err != nil {

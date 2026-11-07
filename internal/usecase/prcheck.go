@@ -149,12 +149,12 @@ func (u *Usecases) PreviewPRCheck(ctx context.Context, input PRCheckPreviewInput
 	}
 
 	u.initGate()
-	scope, err := u.resolvePreviewScope(ctx, project, input, floor, gatePoliciesForMode(effective.WatcherGate))
+	scope, err := u.resolvePreviewScope(ctx, project, input, floor, gatePoliciesFor(effective))
 	if err != nil {
 		return nil, err
 	}
 
-	findings, err := u.blockedProviderFindings(ctx, scope, floor)
+	findings, err := u.blockedProviderFindings(ctx, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -235,16 +235,13 @@ func (u *Usecases) resolveReportScope(
 	return scope, nil
 }
 
-// blockedProviderFindings maps the gate-blocked introduced findings (at or
-// above the floor) into provider findings with display context attached.
-func (u *Usecases) blockedProviderFindings(ctx context.Context, scope previewScope, floor int16) ([]provider.Finding, error) {
+// blockedProviderFindings maps the gate-blocked introduced findings into
+// provider findings with display context attached.
+func (u *Usecases) blockedProviderFindings(ctx context.Context, scope previewScope) ([]provider.Finding, error) {
 	blocked := blockedSet(scope.decision.BlockedBy)
 	var blockedIntroduced []port.Finding
 	var blockedIDs []string
 	for _, f := range scope.introduced {
-		if f.CurrentSeverityRank < floor {
-			continue
-		}
 		if _, ok := blocked[f.ID]; !ok {
 			continue
 		}
