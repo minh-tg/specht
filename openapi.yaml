@@ -1442,6 +1442,12 @@ paths:
             false_positive, not_affected, accepted_risk, wont_fix). A finding nobody has
             looked at counts as `unanalyzed`.
           schema: { type: string, example: "unanalyzed,in_triage" }
+        - name: branch_scope
+          in: query
+          description: >-
+            `default` keeps findings that count toward the project verdict. `change` keeps
+            those seen only on change branches, which the verdict leaves out. Absent keeps both.
+          schema: { type: string, enum: [default, change] }
         - name: q
           in: query
           description: Text to find in the title or the fingerprint, which carries the CVE id and package for dependency findings. Case-insensitive, matched literally, at most 100 characters.
@@ -2051,7 +2057,9 @@ paths:
       summary: Evaluate the deployment gate
       description: |
         With no `severity` parameter the project's effective policy supplies the
-        floor. With `introduced_only` the verdict covers only the findings
+        floor. The verdict answers for the project's default branch: a finding seen
+        only on change branches is left out until the default branch sees it. With
+        `introduced_only` the verdict covers only the findings
         `report_id` introduced, so pre-existing debt on the long-lived branch
         never fails a pull request. A `report_id` that is missing and one that
         belongs to another project both answer 403 `project_access_denied`, so
@@ -2072,6 +2080,12 @@ paths:
           in: query
           description: Scope the verdict to what one report introduced.
           schema: { type: boolean }
+        - name: branch
+          in: query
+          description: >-
+            Adds the findings seen on this branch to the project verdict, for a full gate run
+            on a change branch. Without it the verdict answers for the default branch.
+          schema: { type: string, example: feat/cart-discounts }
         - name: report_id
           in: query
           description: Required when `introduced_only` is set.
@@ -4362,6 +4376,12 @@ components:
           description: "Set on GET /findings/{id} when raw_data_expired is true and a retention window is set: the date the window ended for that report. Absent otherwise."
         remediation: { $ref: "#/components/schemas/Remediation" }
         location: { $ref: "#/components/schemas/Location" }
+        only_on_branches:
+          type: array
+          items: { type: string }
+          description: >-
+            The change branches of a finding seen only there. The project verdict leaves it out
+            until the default branch sees it. Absent means it counts toward the verdict.
         suggestion: { $ref: "#/components/schemas/Suggestion" }
         intel:
           $ref: "#/components/schemas/Intel"
@@ -5166,6 +5186,9 @@ components:
         total_findings:
           type: integer
           description: Open and reopened findings; fixed and archived findings are not counted.
+        only_on_change_branches_count:
+          type: integer
+          description: Open findings seen only on change branches, which the verdict leaves out.
         blocking_count:
           type: integer
           description: >-

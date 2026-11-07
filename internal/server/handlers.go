@@ -205,6 +205,7 @@ type (
 
 	GateUsecases interface {
 		GetGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16) (*usecase.GateStatusOutput, error)
+		GetBranchGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, branch string) (*usecase.GateStatusOutput, error)
 		GetIntroducedGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, reportID string) (*usecase.GateStatusOutput, error)
 		PreviewPRCheck(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error)
 	}
@@ -832,6 +833,7 @@ func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 		filter.AnalysisStates = strings.Split(s, ",")
 	}
 	filter.Search = r.URL.Query().Get("q")
+	filter.BranchScope = r.URL.Query().Get("branch_scope")
 	filter.Sort = r.URL.Query().Get("sort")
 	filter.Dir = r.URL.Query().Get("dir")
 

@@ -352,6 +352,10 @@ func (m *mockUsecases) GetGateStatus(ctx context.Context, slug string, minRank i
 	return m.getGateStatusFn(ctx, slug, minRank)
 }
 
+func (m *mockUsecases) GetBranchGateStatus(ctx context.Context, slug string, minRank int16, branch string) (*usecase.GateStatusOutput, error) {
+	return m.GetGateStatus(ctx, slug, minRank)
+}
+
 func (m *mockUsecases) GetIntroducedGateStatus(ctx context.Context, slug string, minRank int16, reportID string) (*usecase.GateStatusOutput, error) {
 	if m.getIntroducedGateFn == nil {
 		return nil, fmt.Errorf("unexpected call to GetIntroducedGateStatus")

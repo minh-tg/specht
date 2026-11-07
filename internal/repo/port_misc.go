@@ -118,6 +118,14 @@ func (r *pgStatsPort) GetProjectPendingWaiverCount(ctx context.Context, projectI
 	return r.inner.GetProjectPendingWaiverCount(ctx, pid)
 }
 
+func (r *pgStatsPort) CountFindingsOnlyOnChangeBranches(ctx context.Context, projectID string) (int32, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return 0, err
+	}
+	return r.inner.CountFindingsOnlyOnChangeBranches(ctx, pid)
+}
+
 func (r *pgStatsPort) GetProjectReportCount(ctx context.Context, projectID string) (int32, error) {
 	pid, err := parseID(projectID)
 	if err != nil {

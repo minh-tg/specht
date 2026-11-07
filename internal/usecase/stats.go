@@ -32,12 +32,15 @@ type ProjectStats struct {
 	WaiverCount   int32 `json:"waiver_count"`
 	// PendingWaiverCount is the number of waiver requests waiting for a
 	// decision. They do not count in the gate until approved.
-	PendingWaiverCount    int32                `json:"pending_waiver_count"`
-	ReportCount           int32                `json:"report_count"`
-	BySeverity            []SeverityCount      `json:"by_severity"`
-	ByAnalysisState       []AnalysisStateCount `json:"by_analysis_state"`
-	LatestReport          *ReportResponse      `json:"latest_report,omitempty"`
-	LatestCompletedReport *ReportResponse      `json:"latest_completed_report,omitempty"`
+	PendingWaiverCount int32 `json:"pending_waiver_count"`
+	// OnlyOnChangeBranchesCount is the number of open findings left out of the
+	// verdict because they were seen only on change branches.
+	OnlyOnChangeBranchesCount int32                `json:"only_on_change_branches_count"`
+	ReportCount               int32                `json:"report_count"`
+	BySeverity                []SeverityCount      `json:"by_severity"`
+	ByAnalysisState           []AnalysisStateCount `json:"by_analysis_state"`
+	LatestReport              *ReportResponse      `json:"latest_report,omitempty"`
+	LatestCompletedReport     *ReportResponse      `json:"latest_completed_report,omitempty"`
 }
 
 func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*ProjectStats, error) {
@@ -67,6 +70,11 @@ func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*Pr
 	pendingWaiverCount, err := u.deps.Stores.Stats.GetProjectPendingWaiverCount(ctx, project.ID)
 	if err != nil {
 		return nil, fmt.Errorf("get pending waiver count: %w", err)
+	}
+
+	onlyOnChangeBranches, err := u.deps.Stores.Stats.CountFindingsOnlyOnChangeBranches(ctx, project.ID)
+	if err != nil {
+		return nil, fmt.Errorf("count findings on change branches: %w", err)
 	}
 
 	reportCount, err := u.deps.Stores.Stats.GetProjectReportCount(ctx, project.ID)
@@ -125,15 +133,16 @@ func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*Pr
 	}
 
 	return &ProjectStats{
-		TotalFindings:         totalFindings,
-		BlockingCount:         totalBlocking,
-		WaiverCount:           waiverCount,
-		PendingWaiverCount:    pendingWaiverCount,
-		ReportCount:           reportCount,
-		BySeverity:            sevCounts,
-		ByAnalysisState:       stateCounts,
-		LatestReport:          latest,
-		LatestCompletedReport: latestCompleted,
+		TotalFindings:             totalFindings,
+		BlockingCount:             totalBlocking,
+		WaiverCount:               waiverCount,
+		PendingWaiverCount:        pendingWaiverCount,
+		OnlyOnChangeBranchesCount: onlyOnChangeBranches,
+		ReportCount:               reportCount,
+		BySeverity:                sevCounts,
+		ByAnalysisState:           stateCounts,
+		LatestReport:              latest,
+		LatestCompletedReport:     latestCompleted,
 	}, nil
 }
 
