@@ -4,6 +4,8 @@ package e2e
 
 import (
 	"net/http"
+	"os"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,7 +18,10 @@ func TestE2E_UnratedFindingsAreNeverSilent(t *testing.T) {
 	slug := newProject(t, "unrated")
 	key := mintKey(t, slug)
 	env := []string{"API_URL=" + baseURL, "API_KEY=" + key}
-	file := absFixture(t, "checkov-terraform.json")
+	raw, err := os.ReadFile(absFixture(t, "checkov-terraform.json"))
+	require.NoError(t, err)
+	// Checkov's open-source output carries no rating; the fixture's come from the paid one.
+	file := writeScanFile(t, regexp.MustCompile(`"severity":\s*"[A-Za-z]+"`).ReplaceAll(raw, []byte(`"severity": null`)))
 	send := func(commit string) (string, int) {
 		_, stderr, exit := runBin(t, adapterBin, env, "-project", slug, "-tool", "checkov",
 			"-branch", "main", "-commit", commit, "-file", file)
