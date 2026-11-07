@@ -2609,6 +2609,10 @@ export interface components {
       /** @description Every entry the scanner reported, before fingerprint deduplication. */
       total_findings: number;
       threshold_breached: boolean;
+      /** @description The project's gate mode keeps this breach from failing CI. */
+      report_only?: boolean;
+      /** @description This report scans a change, not the default branch. */
+      change_report?: boolean;
       /**
        * @description The mode actually used.
        * @enum {string}
@@ -3052,6 +3056,10 @@ export interface components {
       comment?: string;
     };
     GateStatus: {
+      /** @description The project's gate mode keeps a breach of this gate from failing CI. */
+      report_only?: boolean;
+      /** @description Open findings with no severity, which the gate left out. Zero when policy makes them block. */
+      unrated_count?: number;
       /** @description The pipeline verdict. True means at least one finding blocks. */
       threshold_breached: boolean;
       /** Format: int64 */
@@ -3086,6 +3094,13 @@ export interface components {
       manual_close_scanners?: string[];
       /** @enum {string} */
       manual_close_source?: "default" | "template" | "override";
+      /**
+       * @description Whether a breached gate fails CI. `enforce` fails every breach. `changes_only` fails a change that introduces a blocker and leaves a project-wide gate reporting, so existing debt does not fail the default branch. `report_only` fails nothing. The verdict is evaluated and reported the same way in every mode.
+       * @enum {string}
+       */
+      gate_mode?: "enforce" | "changes_only" | "report_only";
+      /** @enum {string} */
+      gate_mode_source?: "default" | "template" | "override";
       /**
        * @description `block` makes findings without a severity block the gate. `ignore` leaves them out, because no severity floor can judge them, and the gate reports how many.
        * @enum {string}

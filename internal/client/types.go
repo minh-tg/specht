@@ -49,13 +49,17 @@ type IngestResponse struct {
 	ReportID          string `json:"report_id"`
 	TotalFindings     int    `json:"total_findings"`
 	ThresholdBreached bool   `json:"threshold_breached"`
-	ScanMode          string `json:"scan_mode"`
-	FallbackReason    string `json:"fallback_reason,omitempty"`
-	IntroducedCount   int    `json:"introduced_count"`
-	PreExistingCount  int    `json:"pre_existing_count"`
+	// ReportOnly means the project's gate mode keeps this breach from failing CI.
+	ReportOnly       bool   `json:"report_only"`
+	ScanMode         string `json:"scan_mode"`
+	FallbackReason   string `json:"fallback_reason,omitempty"`
+	IntroducedCount  int    `json:"introduced_count"`
+	PreExistingCount int    `json:"pre_existing_count"`
 	// Replayed is true when the same bytes were already ingested for this commit and
 	// the stored report was returned.
 	Replayed bool `json:"replayed"`
+	// ChangeReport means this report scans a change, not the default branch.
+	ChangeReport bool `json:"change_report"`
 }
 
 // GateStatus is a project's current deployment-gate evaluation.
@@ -69,6 +73,10 @@ type GateStatus struct {
 	WaivedCount           int               `json:"waived_count,omitempty"`
 	// WaivedFindingIDs lists the blocking findings an active waiver covers.
 	WaivedFindingIDs []string `json:"waived_finding_ids"`
+	// ReportOnly means the project's gate mode keeps this breach from failing CI.
+	ReportOnly bool `json:"report_only"`
+	// Policy is the effective policy behind this verdict.
+	Policy *PolicyEffective `json:"policy,omitempty"`
 	// UnratedCount is how many open findings have no severity, so the gate left
 	// them out.
 	UnratedCount int `json:"unrated_count"`
@@ -161,6 +169,8 @@ type PolicyEffective struct {
 	SeveritySource  string  `json:"severity_source"`
 	WatcherGate     string  `json:"watcher_gate"`
 	WatcherSource   string  `json:"watcher_source"`
+	// GateMode says whether a breach fails CI: enforce, changes_only or report_only.
+	GateMode string `json:"gate_mode"`
 	// ManualCloseScanners lists the scanners whose clean scans leave findings open.
 	ManualCloseScanners []string `json:"manual_close_scanners"`
 	ManualCloseSource   string   `json:"manual_close_source"`

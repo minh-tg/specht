@@ -361,6 +361,9 @@ func handleGateCheck(api API, input gateCheckInput) (*mcp.CallToolResult, any, e
 		return textToolResult("gate PASSED: no blocking findings")
 	}
 	text := fmt.Sprintf("gate FAILED: %d blocking finding(s)", status.BlockingCount)
+	if status.ReportOnly {
+		text = fmt.Sprintf("gate WOULD FAIL (report only): %d blocking finding(s)", status.BlockingCount)
+	}
 	for _, id := range status.BlockedBy {
 		reachability := status.BlockedByReachability[id]
 		if reachability == "" {

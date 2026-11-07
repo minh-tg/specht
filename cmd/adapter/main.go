@@ -641,6 +641,12 @@ func introducedBlockers(preview *client.PRCheckPreview) int {
 // reportIntroducedGate prints the change-scoped verdict and returns its
 // exit code (0 pass, 1 breached).
 func reportIntroducedGate(resp *client.IngestResponse, preview *client.PRCheckPreview, payload client.IngestPayload, stderr io.Writer) int {
+	if resp.ThresholdBreached && resp.ReportOnly {
+		writeDiagnostic(stderr, "⚠️  SPECHT SECURITY GATE: WOULD FAIL (the project's gate mode only reports)\n")
+		printContextBanner(stderr, payload)
+		writeDiagnostic(stderr, "\n%d finding(s) this change introduced would block it.\n", resp.IntroducedCount)
+		return 0
+	}
 	if !resp.ThresholdBreached {
 		writeDiagnostic(stderr, "✅ SPECHT SECURITY GATE: PASSED\n")
 		printContextBanner(stderr, payload)
@@ -793,6 +799,11 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 			writeDiagnostic(stderr, "error: gate check failed: %v\n", err)
 			return 2
 		}
+		projectGate, err = changesOnlyVerdict(cl, projectGate, payload.Project, f.severity, resp)
+		if err != nil {
+			writeDiagnostic(stderr, "error: gate check failed: %v\n", err)
+			return 2
+		}
 	}
 
 	// Fetch introduced annotations for the exact report. In project mode they
@@ -834,6 +845,10 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 	} else {
 		writeDiagnostic(stderr, "report %s ingested, %d finding(s)\n", resp.ReportID, resp.TotalFindings)
 	}
+	if projectGate.ThresholdBreached && projectGate.ReportOnly {
+		writeDiagnostic(stderr, "gate WOULD FAIL: %d blocking finding(s). The project's gate mode only reports, so this run passes.\n", projectGate.BlockingCount)
+		return 0
+	}
 	if projectGate.ThresholdBreached {
 		writeDiagnostic(stderr, "gate FAILED: %d blocking finding(s)\n", projectGate.BlockingCount)
 		return 1
@@ -851,12 +866,37 @@ func warnUnrated(stderr io.Writer, count int) {
 	}
 }
 
+// changesOnlyVerdict keeps the promise of changes_only on a run that is not gated
+// on introduced findings, such as a push to a feature branch. Existing findings
+// only report, but what this report introduced still fails the run, so a pipeline
+// that never names a pull request still stops a new blocker. A scan of the default
+// branch is not a change: its first scan would otherwise fail on the whole backlog.
+func changesOnlyVerdict(cl *client.Client, project *client.GateStatus, slug, severity string, resp *client.IngestResponse) (*client.GateStatus, error) {
+	if !project.ThresholdBreached || !project.ReportOnly || !resp.ChangeReport || resp.ReportID == "" {
+		return project, nil
+	}
+	if project.Policy == nil || project.Policy.GateMode != "changes_only" {
+		return project, nil
+	}
+	introduced, err := cl.GetIntroducedGateStatus(slug, severity, resp.ReportID)
+	if err != nil {
+		return nil, err
+	}
+	if introduced.ThresholdBreached && !introduced.ReportOnly {
+		return introduced, nil
+	}
+	return project, nil
+}
+
 // applyProjectVerdict uses the same decision for publication and process exit.
 // Inline annotations remain a subset: the exact report's introduced findings.
 func applyProjectVerdict(preview *client.PRCheckPreview, decision *client.GateStatus) {
 	preview.Conclusion = "success"
 	preview.Title = "Specht: project gate passed"
-	if decision.ThresholdBreached {
+	if decision.ThresholdBreached && decision.ReportOnly {
+		preview.Conclusion = "neutral"
+		preview.Title = fmt.Sprintf("Specht: %d finding(s) would block (report only)", decision.BlockingCount)
+	} else if decision.ThresholdBreached {
 		preview.Conclusion = "failure"
 		preview.Title = fmt.Sprintf("Specht: %d blocking finding(s) in project", decision.BlockingCount)
 	} else {

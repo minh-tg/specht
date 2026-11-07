@@ -292,6 +292,8 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		ReportID:          result.ReportID,
 		TotalFindings:     result.TotalFindings,
 		ThresholdBreached: result.ThresholdBreached,
+		ReportOnly:        result.ReportOnly,
+		ChangeReport:      result.ChangeReport,
 		ScanMode:          result.ScanMode,
 		FallbackReason:    result.FallbackReason,
 		IntroducedCount:   result.IntroducedCount,

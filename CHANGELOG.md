@@ -35,6 +35,11 @@ releases.
 
 ### Added
 
+- A project can roll the gate out gradually with the `gate_mode` policy key. `enforce` is the default
+  and fails every breached gate. `changes_only` fails a pull request that introduces a blocker and
+  lets existing debt report without failing the default branch. `report_only` fails nothing. The verdict
+  is evaluated the same in every mode. Gate and ingest responses carry `report_only`, the adapter exits
+  0 and says the gate would fail, a GitHub check concludes neutral, and the UI stamp reads WOULD BLOCK.
 - Bulk triage can be undone. The toast after a bulk decision offers Undo, and
   `POST /api/v1/findings/bulk-analysis/undo` restores each finding's own earlier analysis. A finding
   someone has decided on since keeps that decision, and the result says which. Bulk decisions made

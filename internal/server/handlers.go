@@ -390,6 +390,10 @@ type ingestResponse struct {
 	ReportID          string `json:"report_id"`
 	TotalFindings     int    `json:"total_findings"`
 	ThresholdBreached bool   `json:"threshold_breached"`
+	// ReportOnly means the project's gate mode keeps this breach from failing CI.
+	ReportOnly bool `json:"report_only"`
+	// ChangeReport means this report scans a change, not the default branch.
+	ChangeReport bool `json:"change_report"`
 	// ScanMode is the effective mode (full, or incremental when the
 	// scanner supports it and a baseline resolved); FallbackReason
 	// explains a downgrade to full; Introduced/PreExistingCount split

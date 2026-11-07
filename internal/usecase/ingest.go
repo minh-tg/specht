@@ -318,10 +318,25 @@ func (u *Usecases) ingestParsedReport(ctx context.Context, project port.Project,
 		return replay, nil
 	}
 
+	// Only a run that would report instead of fail needs to know: the adapter uses
+	// this to keep changes_only stopping what a push build of a branch introduces.
+	reportOnly := u.ingestReportOnly(ctx, project, input)
+	changeReport := false
+	if reportOnly {
+		changeReport, err = u.reportIsChange(ctx, project, input, baselineID)
+		if err != nil {
+			// A wrong false here reports where it should fail, so say so in the log. The
+			// verdict itself stands.
+			slog.Warn("classify report as a change", "report_id", report.ID, "error", err)
+		}
+	}
+
 	return &IngestReportOutput{
 		ReportID:          report.ID,
 		TotalFindings:     outcome.total,
 		ThresholdBreached: thresholdBreached,
+		ReportOnly:        reportOnly,
+		ChangeReport:      changeReport,
 		ScanMode:          effectiveMode,
 		FallbackReason:    fallbackReason,
 		IntroducedCount:   outcome.introduced,
@@ -419,6 +434,7 @@ func (u *Usecases) replayReport(ctx context.Context, project port.Project, input
 		ReportID:          reportID,
 		TotalFindings:     reportTotalFindings(report),
 		ThresholdBreached: breached,
+		ReportOnly:        u.ingestReportOnly(ctx, project, input),
 		ScanMode:          report.ScanMode,
 		IntroducedCount:   introduced,
 		PreExistingCount:  preExisting,
@@ -1153,17 +1169,21 @@ func (st *ingestFindingsState) withoutBaselineEvidence() []string {
 // revision other than the branch. A trunk that only gets push builds never
 // names a base, so its first-scan backlog never counts as introduced.
 func (u *Usecases) isChangeReport(ctx context.Context, st *ingestFindingsState) (bool, error) {
-	namesOtherBase := st.input.BaseRevision != "" && !sameRevision(st.input.BaseRevision, st.input.Branch)
-	if hasDefaultBranch(st.project) {
-		return !isDefaultBranch(st.project, st.input.Branch) || namesOtherBase, nil
+	return u.reportIsChange(ctx, st.project, st.input, st.baselineID)
+}
+
+func (u *Usecases) reportIsChange(ctx context.Context, project port.Project, input IngestReportInput, baselineID string) (bool, error) {
+	namesOtherBase := input.BaseRevision != "" && !sameRevision(input.BaseRevision, input.Branch)
+	if hasDefaultBranch(project) {
+		return !isDefaultBranch(project, input.Branch) || namesOtherBase, nil
 	}
-	if st.input.Branch == "" {
+	if input.Branch == "" {
 		return false, nil
 	}
-	if st.baselineID != "" || namesOtherBase {
+	if baselineID != "" || namesOtherBase {
 		return true, nil
 	}
-	return u.deps.Stores.Reports.BranchHasChangeReport(ctx, st.project.ID, st.input.Branch)
+	return u.deps.Stores.Reports.BranchHasChangeReport(ctx, project.ID, input.Branch)
 }
 
 // prefetchTrunkPresence decides, for a change report, what the known findings
@@ -1798,6 +1818,17 @@ func (u *Usecases) evaluateIngestGate(ctx context.Context, project port.Project,
 		return false, err
 	}
 	return decision.Status == gate.StatusFail, nil
+}
+
+// ingestReportOnly says whether a breach of the gate this ingest asked for stays
+// out of CI's way. When the policy cannot be read it does not: the gate enforces.
+func (u *Usecases) ingestReportOnly(ctx context.Context, project port.Project, input IngestReportInput) bool {
+	eff, err := u.effectivePolicy(ctx, project)
+	if err != nil {
+		slog.Warn("resolve gate mode", "project", project.ID, "error", err)
+		return false
+	}
+	return policy.ReportOnly(eff.GateMode, input.GateIntroducedOnly)
 }
 
 // replayRaceWinner answers a lost duplicate-completion race: a twin ingest of

@@ -4255,6 +4255,12 @@ components:
         report_id: { type: string, format: uuid }
         total_findings: { type: integer, description: "Every entry the scanner reported, before fingerprint deduplication." }
         threshold_breached: { type: boolean }
+        report_only:
+          type: boolean
+          description: The project's gate mode keeps this breach from failing CI.
+        change_report:
+          type: boolean
+          description: This report scans a change, not the default branch.
         scan_mode: { type: string, enum: [full, incremental], description: The mode actually used. }
         fallback_reason:
           type: string
@@ -4730,6 +4736,12 @@ components:
       type: object
       required: [threshold_breached, blocking_count]
       properties:
+        report_only:
+          type: boolean
+          description: The project's gate mode keeps a breach of this gate from failing CI.
+        unrated_count:
+          type: integer
+          description: Open findings with no severity, which the gate left out. Zero when policy makes them block.
         threshold_breached:
           type: boolean
           description: The pipeline verdict. True means at least one finding blocks.
@@ -4769,6 +4781,15 @@ components:
             Scanners whose clean scans leave findings open in this project. Every other scanner
             closes a finding when a full scan of the same scope no longer reports it.
         manual_close_source: { type: string, enum: [default, template, override] }
+        gate_mode:
+          type: string
+          enum: [enforce, changes_only, report_only]
+          description: >-
+            Whether a breached gate fails CI. `enforce` fails every breach. `changes_only` fails a
+            change that introduces a blocker and leaves a project-wide gate reporting, so existing
+            debt does not fail the default branch. `report_only` fails nothing. The verdict is
+            evaluated and reported the same way in every mode.
+        gate_mode_source: { type: string, enum: [default, template, override] }
         unrated_gate:
           type: string
           enum: [ignore, block]
