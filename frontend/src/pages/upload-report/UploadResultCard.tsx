@@ -18,7 +18,13 @@ export function UploadResultCard({ result, slug, onReset }: UploadResultCardProp
         <span className="text-body font-medium tabular-nums">
           {pluralize(result.total_findings, "finding")} found
         </span>
-        <VerdictBadge verdict={result.threshold_breached ? "blocked" : "passing"} />
+        <VerdictBadge
+          verdict={!result.threshold_breached
+            ? "passing"
+            : result.report_only
+            ? "would_block"
+            : "blocked"}
+        />
       </div>
       <p className="text-muted-foreground mt-2 text-body">
         {result.threshold_breached ? "The gate would block this project." : "The gate passes."}

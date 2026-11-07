@@ -93,6 +93,8 @@ type CheckInput struct {
 	Branch     string
 	Repository string
 	Breached   bool
+	// ReportOnly means the project's gate mode keeps a breach from failing the check.
+	ReportOnly bool
 	Findings   []Finding
 }
 

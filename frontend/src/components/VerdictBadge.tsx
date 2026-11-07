@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
  */
 const VERDICT_VARIANTS: Record<Verdict, string> = {
   blocked: "bg-verdict-block text-verdict-block-fg",
+  would_block: "bg-sev-medium-bg text-sev-medium-fg shadow-[inset_0_0_0_2px_var(--sev-medium)]",
   passing: "bg-verdict-pass text-verdict-pass-fg",
   unknown: "text-foreground shadow-[inset_0_0_0_2px_var(--foreground)]",
   no_scans: "text-muted-foreground border-input border-2 border-dashed",
@@ -20,6 +21,7 @@ const VERDICT_VARIANTS: Record<Verdict, string> = {
 
 const VERDICT_LABELS: Record<Verdict, string> = {
   blocked: "BLOCKED",
+  would_block: "WOULD BLOCK",
   passing: "PASSING",
   no_scans: "NO SCANS",
   unknown: "UNKNOWN",

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	libpolicy "github.com/minh-tg/specht/internal/policy"
+
 	"github.com/google/uuid"
 	"github.com/minh-tg/specht/internal/finding"
 	"github.com/minh-tg/specht/internal/gate"
@@ -119,6 +121,9 @@ type GateStatusOutput struct {
 	// Policy is the project's effective policy with provenance: which
 	// baseline and overrides produced this verdict.
 	Policy *PolicyEffectiveResponse `json:"policy,omitempty"`
+	// ReportOnly means a breach of this gate does not fail CI: the project's gate
+	// mode leaves it reporting. ThresholdBreached still says what the verdict is.
+	ReportOnly bool `json:"report_only"`
 	// UnratedCount is how many open findings have no severity, so the gate left
 	// them out. It is zero when the policy makes them block.
 	UnratedCount int32 `json:"unrated_count"`
@@ -613,6 +618,7 @@ func (u *Usecases) GetBranchGateStatus(ctx context.Context, projectSlug string, 
 		WaivedCount:           decision.WaivedCount,
 		WaivedFindingIDs:      decision.WaivedFindingIDs,
 		Policy:                policy,
+		ReportOnly:            libpolicy.ReportOnly(policy.GateMode, false),
 		UnratedCount:          unrated,
 	}, nil
 }
@@ -669,6 +675,7 @@ func (u *Usecases) GetIntroducedGateStatus(ctx context.Context, projectSlug stri
 		WaivedCount:           decision.WaivedCount,
 		WaivedFindingIDs:      decision.WaivedFindingIDs,
 		Policy:                policy,
+		ReportOnly:            libpolicy.ReportOnly(policy.GateMode, true),
 	}, nil
 }
 

@@ -181,6 +181,9 @@ func newReportsUploadCmd(d Deps, s *settings) *cobra.Command {
 				gate := "passed"
 				if resp.ThresholdBreached {
 					gate = "blocked"
+					if resp.ReportOnly {
+						gate = "would block (report only)"
+					}
 				}
 				note := ""
 				if resp.Replayed {

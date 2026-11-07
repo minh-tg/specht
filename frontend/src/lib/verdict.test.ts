@@ -153,3 +153,21 @@ describe("triageBuckets", () => {
     expect(result).toEqual({ needsTriage: 0, exploitable: 1, dismissed: 0 });
   });
 });
+
+describe("a report-only gate", () => {
+  const stats = { report_count: 1 } as ProjectStats;
+
+  it("reads would_block when the gate is breached", () => {
+    expect(projectVerdict({
+      stats,
+      gate: { threshold_breached: true, blocking_count: 1, report_only: true },
+    })).toBe("would_block");
+  });
+
+  it("reads passing when nothing is breached", () => {
+    expect(projectVerdict({
+      stats,
+      gate: { threshold_breached: false, blocking_count: 0, report_only: true },
+    })).toBe("passing");
+  });
+});

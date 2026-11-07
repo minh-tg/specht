@@ -67,6 +67,10 @@ func (p *GitHubProvider) PlanCheck(input CheckInput) (CheckPlan, error) {
 	}
 
 	switch {
+	case input.Breached && input.ReportOnly:
+		// The project's gate mode only reports: the findings still show, and the
+		// check does not fail the pull request.
+		plan.Conclusion = ConclusionNeutral
 	case input.Breached && len(plan.Annotations) > 0:
 		plan.Conclusion = ConclusionFailure
 	case input.Breached:

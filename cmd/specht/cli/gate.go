@@ -53,7 +53,7 @@ func newGateCheckCmd(d Deps, s *settings) *cobra.Command {
 			if _, err := fmt.Fprintln(d.Out, out); err != nil {
 				return err
 			}
-			if gs.ThresholdBreached {
+			if gs.ThresholdBreached && !gs.ReportOnly {
 				return ErrThresholdBreached
 			}
 			return nil
@@ -101,7 +101,11 @@ func formatGateStatus(gs *client.GateStatus, format string) (string, error) {
 func formatGateHuman(gs *client.GateStatus) string {
 	var b strings.Builder
 	if gs.ThresholdBreached {
-		fmt.Fprintf(&b, "gate FAILED: %d blocking finding(s)\n", gs.BlockingCount)
+		if gs.ReportOnly {
+			fmt.Fprintf(&b, "gate WOULD FAIL (report only): %d blocking finding(s)\n", gs.BlockingCount)
+		} else {
+			fmt.Fprintf(&b, "gate FAILED: %d blocking finding(s)\n", gs.BlockingCount)
+		}
 		for _, id := range gs.BlockedBy {
 			reach := "unknown"
 			if r, ok := gs.BlockedByReachability[id]; ok && r != "" {

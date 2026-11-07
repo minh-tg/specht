@@ -42,6 +42,10 @@ type PolicyEffectiveResponse struct {
 	// open in this project. It is an empty list, never null.
 	ManualCloseScanners []string `json:"manual_close_scanners"`
 	ManualCloseSource   string   `json:"manual_close_source"`
+	// GateMode is enforce, changes_only or report_only: whether a breached gate
+	// fails CI.
+	GateMode       string `json:"gate_mode"`
+	GateModeSource string `json:"gate_mode_source"`
 	// UnratedGate is block when findings without a severity block, ignore when
 	// the gate leaves them out.
 	UnratedGate   string `json:"unrated_gate"`
@@ -228,6 +232,7 @@ func (u *Usecases) effectivePolicy(ctx context.Context, project port.Project) (*
 			WatcherGate: eff.WatcherGate, WatcherSource: eff.WatcherSource,
 			ManualCloseScanners: eff.ManualCloseScanners, ManualCloseSource: eff.ManualCloseSource,
 			UnratedGate: eff.UnratedGate, UnratedSource: eff.UnratedSource,
+			GateMode: eff.GateMode, GateModeSource: eff.GateModeSource,
 		}, nil
 	}
 	var name *string
@@ -253,6 +258,7 @@ func (u *Usecases) effectivePolicy(ctx context.Context, project port.Project) (*
 		WatcherGate: eff.WatcherGate, WatcherSource: eff.WatcherSource,
 		ManualCloseScanners: eff.ManualCloseScanners, ManualCloseSource: eff.ManualCloseSource,
 		UnratedGate: eff.UnratedGate, UnratedSource: eff.UnratedSource,
+		GateMode: eff.GateMode, GateModeSource: eff.GateModeSource,
 	}, nil
 }
 

@@ -4,7 +4,8 @@ export type PolicyKey =
   | "severity_floor"
   | "watcher_gate"
   | "manual_close_scanners"
-  | "unrated_gate";
+  | "unrated_gate"
+  | "gate_mode";
 export type PolicySource = PolicyEffective["severity_source"];
 
 export interface PolicyOption {
@@ -24,6 +25,24 @@ export const WATCHER_GATE_OPTIONS: readonly PolicyOption[] = [
   { value: "immediate", label: "Immediately" },
   { value: "off", label: "Never" },
 ];
+
+export const GATE_MODE_OPTIONS: readonly PolicyOption[] = [
+  { value: "enforce", label: "Block" },
+  { value: "changes_only", label: "Block new findings only" },
+  { value: "report_only", label: "Report only" },
+];
+
+const GATE_MODE_HELP: Record<string, string> = {
+  enforce: "A blocking finding fails CI, on pull requests and on the default branch.",
+  changes_only:
+    "A pull request that introduces a blocking finding fails CI. Existing findings are reported and do not fail the default branch.",
+  report_only:
+    "CI never fails because of findings. Every verdict still shows here, and in the check on the pull request.",
+};
+
+export function gateModeHelp(value: string): string {
+  return GATE_MODE_HELP[value] ?? "";
+}
 
 export const UNRATED_GATE_OPTIONS: readonly PolicyOption[] = [
   { value: "ignore", label: "Do not block" },
@@ -59,6 +78,9 @@ export function overridesOf(policy: PolicyEffective): Record<string, string> {
   const out: Record<string, string> = {};
   if (policy.severity_source === "override") out["severity_floor"] = policy.severity_floor;
   if (policy.watcher_source === "override") out["watcher_gate"] = policy.watcher_gate;
+  if (policy.gate_mode_source === "override" && policy.gate_mode) {
+    out["gate_mode"] = policy.gate_mode;
+  }
   if (policy.unrated_source === "override" && policy.unrated_gate) {
     out["unrated_gate"] = policy.unrated_gate;
   }

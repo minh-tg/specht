@@ -20,9 +20,10 @@ const SKELETON_ROW_COUNT = 3;
 
 const VERDICT_PRIORITY: Record<Verdict, number> = {
   blocked: 0,
-  no_scans: 1,
-  passing: 2,
-  unknown: 3,
+  would_block: 1,
+  no_scans: 2,
+  passing: 3,
+  unknown: 4,
 };
 
 /**
@@ -219,7 +220,9 @@ function ProjectTableRow({ row }: { readonly row: ProjectRowData; }) {
   const verdict = projectVerdict({ gate, stats });
 
   const degraded = failed ? null : degradedMessage(stats);
-  const blocking = !failed && verdict === "blocked" ? String(blockerCount(gate)) : EMPTY_VALUE;
+  const blocking = !failed && (verdict === "blocked" || verdict === "would_block")
+    ? String(blockerCount(gate))
+    : EMPTY_VALUE;
   const findings = !failed && stats ? stats.total_findings : EMPTY_VALUE;
 
   let lastScan: ReactNode = EMPTY_VALUE;

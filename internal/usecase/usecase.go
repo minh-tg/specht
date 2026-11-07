@@ -116,6 +116,10 @@ type IngestReportOutput struct {
 	ReportID          string
 	TotalFindings     int
 	ThresholdBreached bool
+	// ReportOnly means the project's gate mode keeps this breach from failing CI.
+	ReportOnly bool
+	// ChangeReport means this report scans a change, not the default branch.
+	ChangeReport bool
 	// ScanMode is the effective mode: full, or incremental when the
 	// scanner supports it and a full baseline resolved. Anything else
 	// falls back to full with FallbackReason set.
