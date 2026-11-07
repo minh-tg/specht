@@ -40,7 +40,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { APIError, apiFetch, apiFetchWithTotal } from "./client";
-import { restoreMemberPlan, revokeUndoPlan, triageUndoPlan } from "./undoPlans";
+import { bulkTriageUndoPlan, restoreMemberPlan, revokeUndoPlan, triageUndoPlan } from "./undoPlans";
 import { waiverSwitchError } from "./waiverSwitch";
 
 /** What the findings list asks the server for. Empty values are left out of the request. */
@@ -583,12 +583,21 @@ export function useTriageFinding() {
 
 export function useBulkTriage() {
   const queryClient = useQueryClient();
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.findings() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.finding() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.findingEvents() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.gate() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.projectStats() });
+  };
   return useMutation({
     meta: {
       success: (data: { results: TriageResponse[]; }) =>
         `Triage saved for ${data.results.length} ${
           data.results.length === 1 ? "finding" : "findings"
         }`,
+      undo: (data: { results: TriageResponse[]; }) =>
+        bulkTriageUndoPlan({ results: data.results, refresh }),
     },
     mutationFn: ({ findingIds, analysisState, reason, analysisExpiresAt }: {
       findingIds: readonly string[];
@@ -605,13 +614,7 @@ export function useBulkTriage() {
           ...(analysisExpiresAt ? { analysis_expires_at: analysisExpiresAt } : {}),
         }),
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.findings() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.finding() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.findingEvents() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.gate() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.projectStats() });
-    },
+    onSuccess: refresh,
   });
 }
 

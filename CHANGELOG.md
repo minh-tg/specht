@@ -10,6 +10,10 @@ releases.
 
 ### Added
 
+- Bulk triage can be undone. The toast after a bulk decision offers Undo, and
+  `POST /api/v1/findings/bulk-analysis/undo` restores each finding's own earlier analysis. A finding
+  someone has decided on since keeps that decision, and the result says which. Bulk decisions made
+  before this release recorded no earlier analysis and cannot be undone.
 - The API keys page marks a key as "Creator is not a project member" when its creator has
   left the project or is a global admin who never joined it, and shows a Revoke button on
   that row. The key still works until it is revoked.
