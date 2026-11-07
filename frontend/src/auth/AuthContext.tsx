@@ -14,6 +14,48 @@ import type { LoginResponse } from "@/types/api";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AuthContext, type AuthState } from "./context";
 
+const AUTH_CHANNEL = "specht-auth";
+const SIGNED_OUT = "signed-out";
+const SIGNED_OUT_KEY = "specht:signed-out";
+
+/**
+ * Remembers that this browser signed out, until the next sign-in. The sign-out request can fail, and
+ * the cookie that resumes a session stays live if it did, so without this a reload would sign the
+ * person back in without asking.
+ */
+function markSignedOut(signedOut: boolean): void {
+  try {
+    if (signedOut) localStorage.setItem(SIGNED_OUT_KEY, "1");
+    else localStorage.removeItem(SIGNED_OUT_KEY);
+  } catch {}
+}
+
+function signedOutHere(): boolean {
+  try {
+    return localStorage.getItem(SIGNED_OUT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Asks the server for a session for this tab from the browser's sign-in, for a link opened in a new
+ * tab. Returns null when there is none, which is the normal state of a signed-out browser, or when
+ * the server cannot be reached: the sign-in page is the answer to both.
+ */
+async function resumeSession(): Promise<LoginResponse | null> {
+  if (signedOutHere()) return null;
+  try {
+    const response = await fetch("/api/v1/auth/resume", {
+      method: "POST",
+      headers: { "X-Specht-Resume": "1" },
+    });
+    return response.status === 200 ? await response.json() as LoginResponse : null;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { readonly children: ReactNode; }) {
   // Restore a persisted session before the first render: a mount effect
   // would race child effects (route guards, data fetches) that already saw
@@ -34,7 +76,9 @@ export function AuthProvider({ children }: { readonly children: ReactNode; }) {
     return { token: null, refreshToken: null, userId: null, email: null };
   });
   const [loading, setLoading] = useState(() => {
-    return hasPendingSsoAttempt() && Boolean(ssoCodeFromHash(window.location.hash));
+    if (hasPendingSsoAttempt() && ssoCodeFromHash(window.location.hash)) return true;
+    // No session in this tab: this browser may still have one to continue.
+    return !getStoredSession();
   });
   const [ssoBrowserMismatch, setSsoBrowserMismatch] = useState(false);
 
@@ -61,6 +105,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode; }) {
         skipAuthRedirect: true,
       })
         .then((res) => {
+          markSignedOut(false);
           setAuthToken(res.token);
           setStoredSession(res.token, res.refresh_token, {
             userId: res.user_id,
@@ -83,6 +128,39 @@ export function AuthProvider({ children }: { readonly children: ReactNode; }) {
         .finally(() => {
           setLoading(false);
         });
+    } else if (!getStoredSession()) {
+      void resumeSession().then((res) => {
+        // A sign-out in another tab can land while the answer is on its way.
+        if (res && !signedOutHere()) {
+          setAuthToken(res.token);
+          setStoredSession(res.token, res.refresh_token, {
+            userId: res.user_id,
+            email: res.email,
+          });
+          setState({
+            token: res.token,
+            refreshToken: res.refresh_token,
+            userId: res.user_id,
+            email: res.email,
+          });
+        }
+        setLoading(false);
+      });
+    }
+
+    // Signing out ends this sign-in in every tab of the browser, so say so at once
+    // instead of leaving the others to find out from a failed refresh.
+    const channel = typeof BroadcastChannel === "undefined"
+      ? null
+      : new BroadcastChannel(AUTH_CHANNEL);
+    if (channel) {
+      channel.onmessage = (event: MessageEvent<unknown>) => {
+        if (event.data !== SIGNED_OUT) return;
+        markSignedOut(true);
+        setAuthToken(null);
+        clearStoredSession();
+        setState({ token: null, refreshToken: null, userId: null, email: null });
+      };
     }
 
     setUnauthorizedHandler(() => {
@@ -94,6 +172,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode; }) {
       setState({ token: null, refreshToken: null, userId: null, email: null });
     });
     return () => {
+      channel?.close();
       setUnauthorizedHandler(null);
       setRefreshFailedHandler(null);
     };
@@ -107,6 +186,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode; }) {
         body: JSON.stringify({ email, password }),
         skipAuthRedirect: true,
       });
+      markSignedOut(false);
       setAuthToken(res.token);
       setStoredSession(res.token, res.refresh_token, { userId: res.user_id, email: res.email });
       setState({
@@ -121,6 +201,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode; }) {
   }, []);
 
   const adopt = useCallback((res: LoginResponse) => {
+    markSignedOut(false);
     setAuthToken(res.token);
     setStoredSession(res.token, res.refresh_token, { userId: res.user_id, email: res.email });
     setState({
@@ -139,6 +220,12 @@ export function AuthProvider({ children }: { readonly children: ReactNode; }) {
     setAuthToken(null);
     clearStoredSession();
     setState({ token: null, refreshToken: null, userId: null, email: null });
+    markSignedOut(true);
+    if (typeof BroadcastChannel !== "undefined") {
+      const channel = new BroadcastChannel(AUTH_CHANNEL);
+      channel.postMessage(SIGNED_OUT);
+      channel.close();
+    }
   }, []);
 
   const value = useMemo(
