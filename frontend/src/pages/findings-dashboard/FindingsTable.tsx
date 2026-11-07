@@ -102,7 +102,7 @@ export function FindingsTable(
             to={detailPath(f.id)}
             state={detailState}
             warm={(queryClient) => prefetchFinding(queryClient, f.id)}
-            className="font-medium underline-offset-2 hover:underline"
+            className="font-medium underline-offset-2 hover:underline pointer-coarse:inline-block pointer-coarse:min-h-6"
           >
             {f.current_title}
           </PrefetchLink>

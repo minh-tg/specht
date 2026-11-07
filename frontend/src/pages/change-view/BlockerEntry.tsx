@@ -1,6 +1,6 @@
 import type { ActorContext } from "@/api/users";
 import { DisabledReason } from "@/components/DisabledReason";
-import { INLINE_LINK } from "@/components/inlineLink";
+import { INLINE_LINK, TOUCH_TARGET } from "@/components/inlineLink";
 import { LedgerEntry, type LedgerTone } from "@/components/Ledger";
 import { Button } from "@/components/ui/button";
 import { SeverityBadge } from "@/components/ui/severity-badge";
@@ -223,7 +223,7 @@ function LoadedEntry(
           </label>
         </div>
         <p className="text-meta">
-          <Link to={target} state={targetState} className={INLINE_LINK}>
+          <Link to={target} state={targetState} className={`${INLINE_LINK} ${TOUCH_TARGET}`}>
             Open the full finding
           </Link>
         </p>

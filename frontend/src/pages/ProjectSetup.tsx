@@ -3,7 +3,7 @@ import { APIError } from "@/api/client";
 import { queryKeys, useCreateApiKey, useProject, useProjectStats, useVersion } from "@/api/hooks";
 import { CopyButton } from "@/components/CopyButton";
 import { ErrorState } from "@/components/ErrorState";
-import { INLINE_LINK } from "@/components/inlineLink";
+import { INLINE_LINK, TOUCH_TARGET } from "@/components/inlineLink";
 import { SelectField } from "@/components/SelectField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -139,7 +139,9 @@ export function ProjectSetup() {
           detail="There is no project with this address, or you don't have access to it."
           onRetry={() => void refetchProject()}
         />
-        <Link to="/" className={`${INLINE_LINK} inline-block text-body`}>Back to projects</Link>
+        <Link to="/" className={`${INLINE_LINK} ${TOUCH_TARGET} inline-block text-body`}>
+          Back to projects
+        </Link>
       </div>
     );
   }
@@ -151,7 +153,7 @@ export function ProjectSetup() {
         <p className="text-muted-foreground text-body">
           Only project managers and administrators can set up CI for this project.
         </p>
-        <Link to="/" className={`${INLINE_LINK} mt-2 inline-block text-body`}>
+        <Link to="/" className={`${INLINE_LINK} ${TOUCH_TARGET} mt-2 inline-block text-body`}>
           Back to projects
         </Link>
       </div>

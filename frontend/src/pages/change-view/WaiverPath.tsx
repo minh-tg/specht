@@ -1,5 +1,5 @@
 import { type ActorContext, actorLabel } from "@/api/users";
-import { INLINE_LINK } from "@/components/inlineLink";
+import { INLINE_LINK, TOUCH_TARGET } from "@/components/inlineLink";
 import { RelativeTime } from "@/components/RelativeTime";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/format";
@@ -65,7 +65,7 @@ export function WaiverPath(
         <>
           {asked} {next} Until then this finding still blocks this change.
           {ends && ` If nobody decides by ${ends}, the request expires.`}{" "}
-          <Link to={waiversPage} className={INLINE_LINK}>
+          <Link to={waiversPage} className={`${INLINE_LINK} ${TOUCH_TARGET}`}>
             {canApprove && !mine ? "Decide it on the Waivers page" : "See it on the Waivers page"}
           </Link>
         </>
