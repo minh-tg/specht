@@ -63,6 +63,22 @@ func TestE2E_FindingsFiltersAndPagination(t *testing.T) {
 	ingestRaw(t, slug, "trivy", "trivy-alpine-full.json", nil)
 	require.Len(t, listFindingsPage(t, slug, ""), 10)
 
+	t.Run("every listed finding says where it is", func(t *testing.T) {
+		type located struct {
+			FindingKind string `json:"finding_kind"`
+			Location    *struct {
+				Summary string `json:"summary"`
+				File    string `json:"file"`
+			} `json:"location"`
+		}
+		listed := request[[]located](t, http.MethodGet, "/api/v1/projects/"+slug+"/findings", adminToken, nil, http.StatusOK)
+		require.Len(t, listed, 10)
+		for _, f := range listed {
+			require.NotNil(t, f.Location, "%s finding has no location", f.FindingKind)
+			require.NotEmpty(t, f.Location.Summary, "%s finding has no location summary", f.FindingKind)
+		}
+	})
+
 	t.Run("kind selects by scanner family", func(t *testing.T) {
 		sast := listFindingsPage(t, slug, "kind=sast")
 		require.Len(t, sast, 2)

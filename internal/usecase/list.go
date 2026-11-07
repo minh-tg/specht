@@ -669,7 +669,36 @@ func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, filter 
 	for i, f := range findings {
 		resp[i] = toFinding(f)
 	}
+	if err := u.attachLocations(ctx, resp); err != nil {
+		return nil, 0, err
+	}
 	return resp, total, nil
+}
+
+// attachLocations fills each finding's location from its latest observation,
+// in one query for the page.
+func (u *Usecases) attachLocations(ctx context.Context, findings []FindingResponse) error {
+	if len(findings) == 0 {
+		return nil
+	}
+	ids := make([]string, len(findings))
+	for i := range findings {
+		ids[i] = findings[i].ID
+	}
+	contexts, err := u.deps.Stores.Findings.ListFindingDisplayContextsByIDs(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("list finding locations: %w", err)
+	}
+	byID := make(map[string]port.FindingDisplayContext, len(contexts))
+	for _, dc := range contexts {
+		byID[dc.FindingID] = dc
+	}
+	for i := range findings {
+		if dc, ok := byID[findings[i].ID]; ok {
+			findings[i].Location = locationFromDisplay(dc.LocationSummary, dc.Metadata)
+		}
+	}
+	return nil
 }
 
 func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingResponse, error) {
