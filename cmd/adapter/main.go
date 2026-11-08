@@ -801,6 +801,9 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 		duplicate = true
 	}
 	printChangeLink(stdout, gateChangeURL(apiURL, payload, resp.ReportID, f.severity))
+	for _, warning := range resp.Warnings {
+		writeDiagnostic(stderr, "⚠️  warning: %s\n", warning)
+	}
 	if resp.FallbackReason != "" {
 		writeDiagnostic(stderr, "⚠️  BASELINE WARNING: %s\n", resp.FallbackReason)
 		if strings.EqualFold(f.baselinePolicy, "fail") {

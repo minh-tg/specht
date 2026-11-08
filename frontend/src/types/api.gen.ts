@@ -2711,6 +2711,8 @@ export interface components {
       pre_existing_count: number;
       /** @description True when identical bytes for the same commit returned an existing report instead of ingesting again. */
       replayed: boolean;
+      /** @description Problems with how the report was sent that the uploader should fix. A full report closes no findings, and says so here, when another completed full report of the same scan scope (scanner, target, artifact name, branch, environment) carries the same commit and scan filter with different content, as two CI jobs of one scanner without an artifact name do. Give each job its own `artifact_name`. */
+      warnings: string[];
     };
     ReportDeletionPreview: {
       /** @description Findings that cite this report. */

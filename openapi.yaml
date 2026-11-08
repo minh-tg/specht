@@ -4380,7 +4380,7 @@ components:
 
     IngestResponse:
       type: object
-      required: [report_id, total_findings, threshold_breached, scan_mode, introduced_count, pre_existing_count, replayed]
+      required: [report_id, total_findings, threshold_breached, scan_mode, introduced_count, pre_existing_count, replayed, warnings]
       properties:
         report_id: { type: string, format: uuid }
         total_findings: { type: integer, description: "Every entry the scanner reported, before fingerprint deduplication." }
@@ -4401,6 +4401,15 @@ components:
         replayed:
           type: boolean
           description: True when identical bytes for the same commit returned an existing report instead of ingesting again.
+        warnings:
+          type: array
+          items: { type: string }
+          description: >-
+            Problems with how the report was sent that the uploader should fix. A full report
+            closes no findings, and says so here, when another completed full report of the same
+            scan scope (scanner, target, artifact name, branch, environment) carries the same
+            commit and scan filter with different content, as two CI jobs of one scanner without
+            an artifact name do. Give each job its own `artifact_name`.
 
     ReportDeletionPreview:
       type: object

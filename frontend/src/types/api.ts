@@ -559,6 +559,8 @@ export interface IngestResponse {
   introduced_count: number;
   pre_existing_count: number;
   replayed: boolean;
+  /** Problems with how the report was sent that the uploader should fix. */
+  warnings: string[];
 }
 
 export type AgingBucketName = "new" | "aging" | "stale" | "debt";

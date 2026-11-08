@@ -1096,6 +1096,30 @@ func TestIngestReport_Replay(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, "rep-existing", resp.ReportID)
 	assert.True(t, resp.Replayed)
+	var raw map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &raw))
+	assert.JSONEq(t, `[]`, string(raw["warnings"]), "a nil list goes out as an empty array")
+}
+
+func TestIngestReport_Warnings(t *testing.T) {
+	mock := &mockUsecases{
+		ingestReportFn: func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error) {
+			return &usecase.IngestReportOutput{ReportID: "rep-1", Warnings: []string{"give each job its own artifact"}}, nil
+		},
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"project":"my-app","scanner":"trivy","raw_data":{"image":"myapp:latest"},"commit_sha":"abc"}`)
+	req := httptest.NewRequest("POST", "/api/v1/reports", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	var resp struct {
+		Warnings []string `json:"warnings"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, []string{"give each job its own artifact"}, resp.Warnings)
 }
 
 func TestIngestReport_Duplicate(t *testing.T) {

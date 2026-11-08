@@ -138,6 +138,10 @@ type IngestReportOutput struct {
 	// same project, bytes, and commit, and the stored report was returned
 	// with a freshly evaluated verdict instead of ingesting again.
 	Replayed bool
+	// Warnings are problems with how the report was sent that the uploader
+	// should fix, such as two CI jobs that share a scan scope. Never nil on
+	// a fresh ingest.
+	Warnings []string
 }
 
 // ScannerRegistry is the scanner capability consumed by the application.

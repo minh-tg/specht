@@ -275,3 +275,37 @@ func TestE2E_ArtifactSeparatesJobsOfOneScanner(t *testing.T) {
 	scan(clean, "services/a", "1111111111111111111111111111111111111113")
 	require.Zero(t, openFindingCount(t, slug), "the same job's clean scan closes them")
 }
+
+// TestE2E_SiblingJobsWithoutArtifactCloseNothing pins the guard for a matrix
+// pipeline that gives its jobs no artifact name: both jobs share a scope, so a
+// clean scan of one at the same commit must not close the other's findings,
+// and the adapter says to set -artifact. A later commit with one job closes as
+// usual.
+func TestE2E_SiblingJobsWithoutArtifactCloseNothing(t *testing.T) {
+	dirty, err := filepath.Abs("../internal/parser/osvscanner/testdata/go-scan.json")
+	require.NoError(t, err)
+	clean := writeScanFile(t, []byte(`{"results":[]}`))
+	slug := newProject(t, "clean-siblings")
+	key := mintKey(t, slug)
+	scan := func(file, commit string) string {
+		t.Helper()
+		_, stderr, exit := runBin(t, adapterBin, []string{"API_URL=" + baseURL, "API_KEY=" + key},
+			"-project", slug, "-tool", "osv-scanner", "-branch", "main", "-commit", commit, "-file", file)
+		require.Less(t, exit, 2, stderr)
+		return stderr
+	}
+	const commit = "1111111111111111111111111111111111111111"
+	stderr := scan(dirty, commit)
+	require.NotContains(t, stderr, "closed no findings")
+	before := openFindingCount(t, slug)
+	require.Positive(t, before)
+
+	stderr = scan(clean, commit)
+	require.Equal(t, before, openFindingCount(t, slug), "the other job's clean scan closes nothing")
+	require.Contains(t, stderr, "closed no findings")
+	require.Contains(t, stderr, "give each its own artifact (-artifact")
+
+	stderr = scan(clean, "1111111111111111111111111111111111111112")
+	require.NotContains(t, stderr, "closed no findings")
+	require.Zero(t, openFindingCount(t, slug), "a clean scan of the next commit closes them")
+}

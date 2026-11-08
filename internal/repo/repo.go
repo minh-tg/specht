@@ -125,6 +125,7 @@ type ReportRepo interface {
 	GetLatestFullByBranchInScope(ctx context.Context, projectID pgtype.UUID, toolName string, branch pgtype.Text, scopeHash string) (sqlc.GetLatestCompletedFullReportByBranchInScopeRow, error)
 	PreviousCompletedInScope(ctx context.Context, projectID, reportID pgtype.UUID) (pgtype.UUID, error)
 	BranchHasChangeReport(ctx context.Context, projectID pgtype.UUID, branch string) (bool, error)
+	HasSiblingAtCommit(ctx context.Context, projectID, reportID pgtype.UUID) (bool, error)
 	LatestCompletedInFindingScope(ctx context.Context, projectID, findingID pgtype.UUID) (sqlc.LatestCompletedFullReportInFindingScopeRow, error)
 	CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error)
 	FailStaleReports(ctx context.Context, olderThan time.Duration, reason string) (int64, error)

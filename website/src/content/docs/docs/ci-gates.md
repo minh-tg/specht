@@ -117,6 +117,15 @@ The adapter exits with:
 Do not convert a runtime error into a passing security check. An incomplete
 report is not a completed gate decision.
 
+A matrix that runs one scanner in several jobs, such as one job per lockfile or
+URL, must give each job its own `-artifact` (the `artifact` input on the GitHub
+Action). Without it the jobs share a scan scope, and a clean scan in one job
+would close the findings of the others. When a full report finds another report
+of its scope at the same commit with the same declared scan filter and different
+content, it closes nothing and
+the adapter prints a warning that says to set `-artifact`. A rerun whose output
+changes between runs looks the same, so it closes nothing until the next commit.
+
 ## Declare a filtered scan
 
 Trivy with `--severity HIGH,CRITICAL` or `--ignore-unfixed`, and Grype with

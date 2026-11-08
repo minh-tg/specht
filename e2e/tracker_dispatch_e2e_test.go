@@ -95,8 +95,11 @@ func TestE2E_TrackerDispatchLifecycle(t *testing.T) {
 
 	// 2. Verified fixed: an equivalent complete scan that omits both
 	// findings closes them via auto-fix and announces each closure.
+	// Each rescan is of a later commit: a second report of the same commit
+	// with other content looks like a sibling job and closes nothing.
 	w1 := fakes.trackerSink.count()
-	second := ingestRaw(t, slug, "trivy", "trivy-empty-scan.json", scope)
+	second := ingestRaw(t, slug, "trivy", "trivy-empty-scan.json",
+		map[string]any{"branch": "main", "commit_sha": "1111111111111111111111111111111111111112"})
 	require.Zero(t, second.TotalFindings)
 	for _, f := range listScanFindings(t, slug) {
 		require.Equal(t, "fixed", f.State)
@@ -113,7 +116,8 @@ func TestE2E_TrackerDispatchLifecycle(t *testing.T) {
 	// reopens) and dispatches regression for them; the six additional CVEs
 	// arrive as fresh created events.
 	w2 := fakes.trackerSink.count()
-	third := ingestRaw(t, slug, "trivy", "trivy-alpine-full.json", scope)
+	third := ingestRaw(t, slug, "trivy", "trivy-alpine-full.json",
+		map[string]any{"branch": "main", "commit_sha": "1111111111111111111111111111111111111113"})
 	require.GreaterOrEqual(t, third.TotalFindings, 8)
 
 	regressed := waitForTrackerDeliveries(t, w2, "regression", 2)

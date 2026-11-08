@@ -415,6 +415,9 @@ type ingestResponse struct {
 	// for the same project, bytes, and commit; the response then carries that
 	// report's id and a freshly evaluated verdict, at HTTP 200.
 	Replayed bool `json:"replayed"`
+	// Warnings are problems with how the report was sent that the uploader
+	// should fix. Always an array.
+	Warnings []string `json:"warnings"`
 }
 
 type apiError struct {

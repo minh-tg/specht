@@ -732,6 +732,45 @@ func (q *Queries) HasCompletedReportForCommit(ctx context.Context, arg HasComple
 	return exists, err
 }
 
+const hasSiblingReportAtCommit = `-- name: HasSiblingReportAtCommit :one
+SELECT EXISTS (
+    SELECT 1
+    FROM reports sibling
+    JOIN reports current ON current.id = $1
+    WHERE sibling.project_id = $2
+      AND current.project_id = $2
+      AND current.commit_sha <> ''
+      AND sibling.commit_sha = current.commit_sha
+      AND sibling.scan_scope_hash = current.scan_scope_hash
+      AND sibling.raw_report_hash IS DISTINCT FROM current.raw_report_hash
+      AND sibling.filter_fixable_only = current.filter_fixable_only
+      AND COALESCE(sibling.filter_severities, '{}') @> COALESCE(current.filter_severities, '{}')
+      AND COALESCE(sibling.filter_severities, '{}') <@ COALESCE(current.filter_severities, '{}')
+      AND sibling.id <> current.id
+      AND sibling.status = 'completed'
+      AND sibling.scan_mode = 'full'
+)
+`
+
+type HasSiblingReportAtCommitParams struct {
+	ReportID  pgtype.UUID `json:"report_id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+}
+
+// Whether another completed full report of the given report's scan scope
+// carries the same commit and declared scan filter with different content. Two
+// CI jobs of one scanner that share a scope, such as one job per lockfile
+// without an artifact name, look like this, and each would close the other's
+// findings by absence. A report with another filter differs by what it kept,
+// not by what it scanned, so it is no sibling. A report without a commit has
+// no siblings.
+func (q *Queries) HasSiblingReportAtCommit(ctx context.Context, arg HasSiblingReportAtCommitParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasSiblingReportAtCommit, arg.ReportID, arg.ProjectID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const latestCompletedFullReportInFindingScope = `-- name: LatestCompletedFullReportInFindingScope :one
 WITH latest_observation AS (
     SELECT r.scan_scope_hash

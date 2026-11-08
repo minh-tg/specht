@@ -312,9 +312,14 @@ func (u *Usecases) ingestParsedReport(ctx context.Context, project port.Project,
 
 	// Scan-equivalence auto-fix: runs after every finding is persisted and
 	// before the threshold check so the response reflects the post-fix state.
-	if err := u.autoFixAbsentFindings(ctx, project, input, report, nr, scopeHash); err != nil {
+	warnings := []string{}
+	warning, err := u.autoFixAbsentFindings(ctx, project, input, report, nr, scopeHash)
+	if err != nil {
 		u.markReportFailed(ctx, input, report, reportFailureAutoFix, err)
 		return nil, err
+	}
+	if warning != "" {
+		warnings = append(warnings, warning)
 	}
 
 	thresholdBreached, replay, err := u.checkGateAfterIngest(ctx, project, input, report, outcome.total, scopeHash, rawHash)
@@ -348,6 +353,7 @@ func (u *Usecases) ingestParsedReport(ctx context.Context, project port.Project,
 		FallbackReason:    fallbackReason,
 		IntroducedCount:   outcome.introduced,
 		PreExistingCount:  outcome.preExisting,
+		Warnings:          warnings,
 	}, nil
 }
 
@@ -358,20 +364,26 @@ func (u *Usecases) ingestParsedReport(ctx context.Context, project port.Project,
 // state_changed event naming the source report. Incremental scans prove
 // nothing by absence, and parsers that cannot vouch for completeness
 // default to unknown, neither of which ever reaches the store.
-func (u *Usecases) autoFixAbsentFindings(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, nr *domain.NormalizedReport, scopeHash string) error {
+//
+// A report with a sibling at its commit (see siblingJobWarning) closes
+// nothing and returns a warning for the uploader instead.
+func (u *Usecases) autoFixAbsentFindings(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, nr *domain.NormalizedReport, scopeHash string) (string, error) {
 	if input.ScanMode != ScanModeFull || nr.Completeness == domain.CompletenessPartial || input.closesByHand {
-		return nil
+		return "", nil
 	}
 	kindsVouched := nr.Completeness == domain.CompletenessComplete && len(nr.CoveredFindingKinds) > 0
 	if !kindsVouched && len(domain.NormalizeExaminedKeys(nr.ExaminedKeys)) == 0 {
 		// The report does not vouch for any finding kind and names no
 		// finding it checked. An empty Trivy report, an SBOM inventory or a
 		// partial scan must not close rows it never examined.
-		return nil
+		return "", nil
+	}
+	if warning, err := u.siblingJobWarning(ctx, project, input, report); warning != "" || err != nil {
+		return warning, err
 	}
 	fixed, err := u.deps.Stores.Findings.MarkAbsentFindingsFixed(ctx, project.ID, scopeHash, report.ID)
 	if err != nil {
-		return fmt.Errorf("auto-fix absent findings: %w", err)
+		return "", fmt.Errorf("auto-fix absent findings: %w", err)
 	}
 	if len(fixed) > 0 {
 		ids := make([]string, 0, len(fixed))
@@ -404,7 +416,41 @@ func (u *Usecases) autoFixAbsentFindings(ctx context.Context, project port.Proje
 			})
 		}
 	}
-	return nil
+	return "", nil
+}
+
+// siblingJobWarning returns a warning when another completed full report of
+// this report's scan scope carries the same commit and declared scan filter
+// with different content. That is what two CI jobs of one scanner look like
+// when they scan different things, such as one lockfile each, without an
+// artifact name: they share a scope, and each would close the other's findings
+// as absent. Such a report closes nothing. A rerun of one job whose output differs between runs looks
+// the same and also closes nothing until the next commit. A report without a
+// commit is never held back.
+func (u *Usecases) siblingJobWarning(ctx context.Context, project port.Project, input IngestReportInput, report port.Report) (string, error) {
+	if input.CommitSha == "" {
+		return "", nil
+	}
+	sibling, err := u.deps.Stores.Reports.HasSiblingAtCommit(ctx, project.ID, report.ID)
+	if err != nil {
+		return "", fmt.Errorf("check sibling reports: %w", err)
+	}
+	if !sibling {
+		return "", nil
+	}
+	slog.Info("auto-fix skipped: another report of the scope has this commit", "report_id", report.ID, "scanner", input.Scanner)
+	return fmt.Sprintf("another %s report of commit %s has the same scope and different content, so this report closed no findings. "+
+		"When several jobs run %s on one commit, give each its own artifact (-artifact, or the artifact input of the GitHub Action) "+
+		"so a clean scan in one job cannot close another job's findings. If this was a rerun of the same commit, "+
+		"the next commit's scan closes them.", input.Scanner, shortCommit(input.CommitSha), input.Scanner), nil
+}
+
+// shortCommit shortens a commit SHA for a message.
+func shortCommit(sha string) string {
+	if len(sha) > 12 {
+		return sha[:12]
+	}
+	return sha
 }
 
 // findReplayReport returns the id of a completed report whose (redacted)

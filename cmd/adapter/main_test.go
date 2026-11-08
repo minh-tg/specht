@@ -1964,6 +1964,30 @@ func TestRun_ScannerStepIgnoresOtherScannersBlockers(t *testing.T) {
 	assert.Contains(t, stderr.String(), "project gate: 4 blocking across all scanners")
 }
 
+func TestRun_PrintsIngestWarnings(t *testing.T) {
+	clearCIEnvironment(t)
+	t.Setenv("API_KEY", "test-key")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/reports":
+			writeTestJSONResponse(t, w, client.IngestResponse{ReportID: "rep-1", Warnings: []string{"give each job its own artifact"}})
+		case "/api/v1/projects/my-app/gate":
+			writeTestJSONResponse(t, w, client.GateStatus{WaivedFindingIDs: []string{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("API_URL", srv.URL)
+
+	var stdout, stderr bytes.Buffer
+	args := []string{"-file=../../internal/parser/semgrep/testdata/semgrep-native.json", "-project=my-app", "-tool=semgrep"}
+	code := run(args, bytes.NewReader(nil), &stdout, &stderr, srv.Client())
+	assert.Equal(t, 0, code, stderr.String())
+	assert.Contains(t, stderr.String(), "warning: give each job its own artifact")
+}
+
 func TestRun_ScannerStepFailsOnItsOwnBlockers(t *testing.T) {
 	clearCIEnvironment(t)
 	t.Setenv("API_KEY", "test-key")

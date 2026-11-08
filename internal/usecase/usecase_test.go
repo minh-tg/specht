@@ -459,6 +459,7 @@ type mockReportRepo struct {
 	settleFailedFn             func(context.Context, string, string) error
 	previousInScopeFn          func(context.Context, string, string) (string, error)
 	branchHasChangeFn          func(context.Context, string, string) (bool, error)
+	hasSiblingAtCommitFn       func(context.Context, string, string) (bool, error)
 	byCommitInScopeFn          func(context.Context, string, string, string, string) (port.CompletedReport, error)
 	byBranchInScopeFn          func(context.Context, string, string, string, string) (port.CompletedReport, error)
 }
@@ -482,6 +483,13 @@ func (m *mockReportRepo) PreviousCompletedInScope(ctx context.Context, projectID
 		return "", port.ErrNotFound
 	}
 	return m.previousInScopeFn(ctx, projectID, reportID)
+}
+
+func (m *mockReportRepo) HasSiblingAtCommit(ctx context.Context, projectID, reportID string) (bool, error) {
+	if m.hasSiblingAtCommitFn == nil {
+		return false, nil
+	}
+	return m.hasSiblingAtCommitFn(ctx, projectID, reportID)
 }
 
 func (m *mockReportRepo) BranchHasChangeReport(ctx context.Context, projectID, branch string) (bool, error) {
