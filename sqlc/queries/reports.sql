@@ -138,7 +138,9 @@ LIMIT 1;
 -- CI jobs of one scanner that share a scope, such as one job per lockfile
 -- without an artifact name, look like this, and each would close the other's
 -- findings by absence. A report with another filter differs by what it kept,
--- not by what it scanned, so it is no sibling. A report without a commit has
+-- not by what it scanned, so it is no sibling. A partial report, such as a
+-- Nuclei run that stopped early, closes nothing itself and is no sibling, so the
+-- finished run of the same commit still closes. A report without a commit has
 -- no siblings.
 SELECT EXISTS (
     SELECT 1
@@ -156,6 +158,7 @@ SELECT EXISTS (
       AND sibling.id <> current.id
       AND sibling.status = 'completed'
       AND sibling.scan_mode = 'full'
+      AND sibling.scan_completeness <> 'partial'
 );
 
 -- name: BranchHasChangeReport :one

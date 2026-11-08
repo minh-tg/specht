@@ -425,8 +425,9 @@ func (u *Usecases) autoFixAbsentFindings(ctx context.Context, project port.Proje
 // when they scan different things, such as one lockfile each, without an
 // artifact name: they share a scope, and each would close the other's findings
 // as absent. Such a report closes nothing. A rerun of one job whose output differs between runs looks
-// the same and also closes nothing until the next commit. A report without a
-// commit is never held back.
+// the same and also closes nothing until the next commit. A partial report is
+// no sibling: it closed nothing, and the finished run of its commit replaces
+// it. A report without a commit is never held back.
 func (u *Usecases) siblingJobWarning(ctx context.Context, project port.Project, input IngestReportInput, report port.Report) (string, error) {
 	if input.CommitSha == "" {
 		return "", nil
