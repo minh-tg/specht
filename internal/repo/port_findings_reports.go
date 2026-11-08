@@ -55,6 +55,7 @@ func (r *pgReportPort) Create(ctx context.Context, input port.CreateReportInput)
 		ExaminedKeys:        input.ExaminedKeys,
 		FilterSeverities:    input.FilterSeverities,
 		FilterFixableOnly:   input.FilterFixableOnly,
+		ProducerName:        textPtrFromString(input.ProducerName),
 	})
 	if err != nil {
 		// The duplicate-report unique violation (23505 on the raw-content
@@ -1771,6 +1772,7 @@ func reportRowToPort(re sqlc.Report) port.Report {
 
 		FilterSeverities:  re.FilterSeverities,
 		FilterFixableOnly: re.FilterFixableOnly,
+		ProducerName:      stringFromTextPtr(re.ProducerName),
 	}
 }
 

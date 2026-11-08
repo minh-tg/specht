@@ -13,7 +13,8 @@ INSERT INTO reports (
     raw_data,
     base_revision, changed_files, scan_mode,
     covered_finding_kinds, examined_keys,
-    filter_severities, filter_fixable_only
+    filter_severities, filter_fixable_only,
+    producer_name
 ) VALUES (
     $1, $2, $3, $4,
     $5, $6, $7,
@@ -25,7 +26,8 @@ INSERT INTO reports (
     $21,
     $22, $23, $24,
     sqlc.narg(covered_finding_kinds)::text[], sqlc.narg(examined_keys)::text[],
-    sqlc.narg(filter_severities)::text[], sqlc.arg(filter_fixable_only)::boolean
+    sqlc.narg(filter_severities)::text[], sqlc.arg(filter_fixable_only)::boolean,
+    sqlc.narg(producer_name)::text
 ) RETURNING *;
 
 -- name: GetReportByID :one

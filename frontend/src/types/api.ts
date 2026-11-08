@@ -485,6 +485,8 @@ export interface Report {
   id: string;
   project_id: string;
   tool_name: string;
+  /** The tools the file says wrote it, such as a SARIF file's driver names. Display only. */
+  producer?: string;
   tool_version?: string | null;
   scan_type: string;
   scan_target?: string | null;

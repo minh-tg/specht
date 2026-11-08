@@ -160,7 +160,7 @@ const getProjectLatestCompletedReport = `-- name: GetProjectLatestCompletedRepor
 SELECT
     id, project_id, tool_name, tool_version, scan_type,
     scan_target, status, total_findings, branch, commit_sha,
-    scan_completeness, created_at, completed_at,
+    scan_completeness, created_at, completed_at, producer_name,
     CAST((raw_data = 'null'::jsonb) IS TRUE AS boolean) AS raw_data_expired
 FROM reports
 WHERE project_id = $1 AND status = 'completed'
@@ -182,6 +182,7 @@ type GetProjectLatestCompletedReportRow struct {
 	ScanCompleteness string             `json:"scan_completeness"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	CompletedAt      pgtype.Timestamptz `json:"completed_at"`
+	ProducerName     pgtype.Text        `json:"producer_name"`
 	RawDataExpired   bool               `json:"raw_data_expired"`
 }
 
@@ -203,6 +204,7 @@ func (q *Queries) GetProjectLatestCompletedReport(ctx context.Context, projectID
 		&i.ScanCompleteness,
 		&i.CreatedAt,
 		&i.CompletedAt,
+		&i.ProducerName,
 		&i.RawDataExpired,
 	)
 	return i, err
@@ -212,7 +214,7 @@ const getProjectLatestReport = `-- name: GetProjectLatestReport :one
 SELECT
     id, project_id, tool_name, tool_version, scan_type,
     scan_target, status, total_findings, branch, commit_sha,
-    scan_completeness, created_at, completed_at,
+    scan_completeness, created_at, completed_at, producer_name,
     CAST((raw_data = 'null'::jsonb) IS TRUE AS boolean) AS raw_data_expired
 FROM reports
 WHERE project_id = $1
@@ -234,6 +236,7 @@ type GetProjectLatestReportRow struct {
 	ScanCompleteness string             `json:"scan_completeness"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	CompletedAt      pgtype.Timestamptz `json:"completed_at"`
+	ProducerName     pgtype.Text        `json:"producer_name"`
 	RawDataExpired   bool               `json:"raw_data_expired"`
 }
 
@@ -254,6 +257,7 @@ func (q *Queries) GetProjectLatestReport(ctx context.Context, projectID pgtype.U
 		&i.ScanCompleteness,
 		&i.CreatedAt,
 		&i.CompletedAt,
+		&i.ProducerName,
 		&i.RawDataExpired,
 	)
 	return i, err

@@ -590,3 +590,29 @@ func TestE2E_ArtifactTypeFollowsTheScanAndIsValidated(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, status, string(body))
 	require.Contains(t, string(body), "artifact_type")
 }
+
+// TestE2E_GenericSARIFReportNamesItsTool keeps the tool names a SARIF file
+// gives on the report, while the report stays under the sarif scanner.
+func TestE2E_GenericSARIFReportNamesItsTool(t *testing.T) {
+	slug := newProject(t, "sarif-producer")
+	body := ingestBodyWith(t, slug, "high.sarif.json", map[string]any{"scanner": "sarif"})
+	raw := readFixture(t, "..", "internal", "parser", "sarif", "testdata", "multi-tool.sarif.json")
+	body["raw_data"] = json.RawMessage(raw)
+	res := request[ingestResponse](t, http.MethodPost, "/api/v1/reports", adminToken, body, http.StatusCreated)
+
+	var report struct {
+		ToolName string  `json:"tool_name"`
+		Producer *string `json:"producer"`
+	}
+	status, got := doJSON(t, http.MethodGet, "/api/v1/reports/"+res.ReportID, adminToken, nil)
+	require.Equal(t, http.StatusOK, status, "%s", got)
+	require.NoError(t, json.Unmarshal(got, &report))
+	require.Equal(t, "sarif", report.ToolName)
+	require.NotNil(t, report.Producer)
+	require.Equal(t, "Semgrep, CodeQL", *report.Producer)
+
+	trivy := ingestRaw(t, slug, "trivy", "trivy-alpine-scan.json", map[string]any{"branch": "main"})
+	status, got = doJSON(t, http.MethodGet, "/api/v1/reports/"+trivy.ReportID, adminToken, nil)
+	require.Equal(t, http.StatusOK, status, "%s", got)
+	require.NotContains(t, string(got), `"producer"`, "a report whose format names no tool has no producer")
+}

@@ -50,6 +50,7 @@ type CreateReportParams struct {
 	// declared. Nil severities store NULL: no severity filter.
 	FilterSeverities  []string
 	FilterFixableOnly bool
+	ProducerName      pgtype.Text
 }
 
 func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc.Report, error) {
@@ -83,6 +84,7 @@ func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc
 		ExaminedKeys:        arg.ExaminedKeys,
 		FilterSeverities:    arg.FilterSeverities,
 		FilterFixableOnly:   arg.FilterFixableOnly,
+		ProducerName:        arg.ProducerName,
 	})
 }
 

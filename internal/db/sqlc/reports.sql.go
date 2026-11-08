@@ -219,7 +219,8 @@ INSERT INTO reports (
     raw_data,
     base_revision, changed_files, scan_mode,
     covered_finding_kinds, examined_keys,
-    filter_severities, filter_fixable_only
+    filter_severities, filter_fixable_only,
+    producer_name
 ) VALUES (
     $1, $2, $3, $4,
     $5, $6, $7,
@@ -231,8 +232,9 @@ INSERT INTO reports (
     $21,
     $22, $23, $24,
     $25::text[], $26::text[],
-    $27::text[], $28::boolean
-) RETURNING id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds, examined_keys, filter_severities, filter_fixable_only
+    $27::text[], $28::boolean,
+    $29::text
+) RETURNING id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds, examined_keys, filter_severities, filter_fixable_only, producer_name
 `
 
 type CreateReportParams struct {
@@ -264,6 +266,7 @@ type CreateReportParams struct {
 	ExaminedKeys        []string           `json:"examined_keys"`
 	FilterSeverities    []string           `json:"filter_severities"`
 	FilterFixableOnly   bool               `json:"filter_fixable_only"`
+	ProducerName        pgtype.Text        `json:"producer_name"`
 }
 
 func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Report, error) {
@@ -296,6 +299,7 @@ func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Rep
 		arg.ExaminedKeys,
 		arg.FilterSeverities,
 		arg.FilterFixableOnly,
+		arg.ProducerName,
 	)
 	var i Report
 	err := row.Scan(
@@ -330,6 +334,7 @@ func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Rep
 		&i.ExaminedKeys,
 		&i.FilterSeverities,
 		&i.FilterFixableOnly,
+		&i.ProducerName,
 	)
 	return i, err
 }
@@ -668,7 +673,7 @@ func (q *Queries) GetLatestCompletedFullReportByBranchInScope(ctx context.Contex
 }
 
 const getReportByID = `-- name: GetReportByID :one
-SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds, examined_keys, filter_severities, filter_fixable_only FROM reports WHERE id = $1
+SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds, examined_keys, filter_severities, filter_fixable_only, producer_name FROM reports WHERE id = $1
 `
 
 func (q *Queries) GetReportByID(ctx context.Context, id pgtype.UUID) (Report, error) {
@@ -706,6 +711,7 @@ func (q *Queries) GetReportByID(ctx context.Context, id pgtype.UUID) (Report, er
 		&i.ExaminedKeys,
 		&i.FilterSeverities,
 		&i.FilterFixableOnly,
+		&i.ProducerName,
 	)
 	return i, err
 }
@@ -928,7 +934,7 @@ func (q *Queries) ListFindingsTouchedByReport(ctx context.Context, arg ListFindi
 }
 
 const listReportsByProject = `-- name: ListReportsByProject :many
-SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds, examined_keys, filter_severities, filter_fixable_only FROM reports
+SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds, examined_keys, filter_severities, filter_fixable_only, producer_name FROM reports
 WHERE project_id = $1
   AND ($4::text = '' OR branch = $4::text)
   AND ($5::text = '' OR
@@ -999,6 +1005,7 @@ func (q *Queries) ListReportsByProject(ctx context.Context, arg ListReportsByPro
 			&i.ExaminedKeys,
 			&i.FilterSeverities,
 			&i.FilterFixableOnly,
+			&i.ProducerName,
 		); err != nil {
 			return nil, err
 		}
@@ -1256,7 +1263,7 @@ UPDATE reports SET
     completed_at = CASE WHEN $2 = 'completed' OR $2 = 'failed' THEN NOW() ELSE completed_at END,
     error_message = $4
 WHERE id = $1 AND project_id = $5 AND status = 'processing'
-RETURNING id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds, examined_keys, filter_severities, filter_fixable_only
+RETURNING id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode, covered_finding_kinds, examined_keys, filter_severities, filter_fixable_only, producer_name
 `
 
 type UpdateReportStatusParams struct {
@@ -1308,6 +1315,7 @@ func (q *Queries) UpdateReportStatus(ctx context.Context, arg UpdateReportStatus
 		&i.ExaminedKeys,
 		&i.FilterSeverities,
 		&i.FilterFixableOnly,
+		&i.ProducerName,
 	)
 	return i, err
 }

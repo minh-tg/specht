@@ -237,6 +237,7 @@ func statsReportToPort(row sqlc.GetProjectLatestReportRow) port.Report {
 		CreatedAt:        row.CreatedAt.Time,
 		CompletedAt:      timePtrFromTimestamptz(row.CompletedAt),
 		RawDataExpired:   row.RawDataExpired,
+		ProducerName:     stringFromTextPtr(row.ProducerName),
 	}
 }
 

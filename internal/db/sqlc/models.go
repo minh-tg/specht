@@ -412,6 +412,7 @@ type Report struct {
 	ExaminedKeys        []string           `json:"examined_keys"`
 	FilterSeverities    []string           `json:"filter_severities"`
 	FilterFixableOnly   bool               `json:"filter_fixable_only"`
+	ProducerName        pgtype.Text        `json:"producer_name"`
 }
 
 type ReportIntroducedFinding struct {

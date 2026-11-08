@@ -3,6 +3,7 @@ import { RelativeTime } from "@/components/RelativeTime";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { formatClockTime, pluralize } from "@/lib/format";
+import { reportToolLabel } from "@/lib/reportTool";
 import { useDelayedFlag } from "@/lib/useDelayedFlag";
 import { floorSourceLabel, shortCommit } from "@/pages/change-view/resolve";
 import type { PolicyEffective, Report } from "@/types/api";
@@ -272,7 +273,7 @@ export function ChangeHero(
             <span>
               Report received <RelativeTime iso={report.created_at} frozen />
             </span>
-            {report.tool_name ? ` from a ${report.tool_name} report` : ""}
+            {report.tool_name ? ` from a ${reportToolLabel(report)} report` : ""}
           </FactItem>
         )}
       </p>

@@ -1374,6 +1374,8 @@ type Report struct {
 	// declared for this report. Both zero means an unfiltered scan.
 	FilterSeverities  []string
 	FilterFixableOnly bool
+	// ProducerName names the tools the file says wrote it, for display.
+	ProducerName *string
 }
 
 // CreateReportInput carries report create fields.
@@ -1407,6 +1409,8 @@ type CreateReportInput struct {
 	FilterSeverities  []string
 	FilterFixableOnly bool
 	Status            string
+	// ProducerName names the tools the file says wrote it. Nil stores NULL.
+	ProducerName *string
 }
 
 // ReportStore persists scan reports.
