@@ -1,4 +1,5 @@
 import { RelativeTime } from "@/components/RelativeTime";
+import { reportToolLabel } from "@/lib/reportTool";
 import { isReportInProgress } from "@/lib/verdict";
 import type { Report } from "@/types/api";
 
@@ -30,7 +31,7 @@ export function ReportFreshness({ latest, latestCompleted }: {
       {completed
         ? (
           <p>
-            Latest completed report · {completed.tool_name} ·{" "}
+            Latest completed report · {reportToolLabel(completed)} ·{" "}
             {completed.completed_at ? "completed" : "received"}{" "}
             <RelativeTime iso={completed.completed_at ?? completed.created_at} />
             {!completed.completed_at && " (completion time unavailable)"}
@@ -39,7 +40,7 @@ export function ReportFreshness({ latest, latestCompleted }: {
         : <p>No completed report available.</p>}
       {latest && latest.id !== completed?.id && (
         <p>
-          Latest attempt · {attemptStatus} · {latest.tool_name} · received{" "}
+          Latest attempt · {attemptStatus} · {reportToolLabel(latest)} · received{" "}
           <RelativeTime iso={latest.created_at} />
         </p>
       )}

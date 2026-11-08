@@ -45,6 +45,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/minh-tg/specht/internal/domain"
 	"github.com/minh-tg/specht/internal/parser/parseutil"
@@ -279,6 +280,7 @@ func convert(budget *parseutil.Budget, log sarifLog) (*domain.NormalizedReport, 
 	}
 	skipped := 0
 	var proofs []parseutil.RuleRun
+	nr.Producer = producerNames(log.Runs)
 	for _, run := range log.Runs {
 		tool := run.Tool.Driver.Name
 		if tool == "" {
@@ -591,6 +593,27 @@ func addPropertyCWEs(rule sarifRule, add func(string)) {
 }
 
 // extensionNS namespaces producer-specific extensions by tool name.
+// producerNames lists the distinct tool names of the runs, in file order, for
+// display. It stops at 255 bytes, the most a report keeps.
+func producerNames(runs []sarifRun) string {
+	seen := map[string]bool{}
+	var names []string
+	for _, run := range runs {
+		name := strings.TrimSpace(run.Tool.Driver.Name)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	joined := strings.Join(names, ", ")
+	for len(joined) > 255 {
+		_, size := utf8.DecodeLastRuneInString(joined)
+		joined = joined[:len(joined)-size]
+	}
+	return joined
+}
+
 func extensionNS(tool string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(tool) {

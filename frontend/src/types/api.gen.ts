@@ -2686,6 +2686,11 @@ export interface components {
       project_id: string;
       /** @example trivy */
       tool_name: string;
+      /**
+       * @description The tools the uploaded file says wrote it, such as the SARIF runs' driver names, comma-separated. Display only; `tool_name` is the scanner Specht parsed it with. Absent when the file names none.
+       * @example Gosec
+       */
+      producer?: string;
       tool_version?: string | null;
       /** @example image */
       scan_type: string;

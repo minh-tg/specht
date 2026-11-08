@@ -179,6 +179,30 @@ describe("ReportHistory", () => {
     expect(screen.queryByText(/status 2/)).not.toBeInTheDocument();
   });
 
+  it("names the tool behind a generic SARIF report", async () => {
+    mockReports([
+      {
+        id: "r1",
+        project_id: "p1",
+        tool_name: "sarif",
+        producer: "Gosec",
+        tool_version: null,
+        scan_type: "filesystem",
+        scan_target: null,
+        status: "completed",
+        total_findings: 2,
+        branch: null,
+        commit_sha: null,
+        created_at: "2025-01-01T00:00:00Z",
+        completed_at: null,
+      },
+    ]);
+    renderWithProviders(<ReportHistory />);
+
+    expect(await screen.findByText("Gosec (SARIF)")).toBeInTheDocument();
+    expect(screen.queryByText("sarif")).not.toBeInTheDocument();
+  });
+
   it("labels a report the server is still processing", async () => {
     // The server stores the unfinished state as `processing`; the API document
     // calls it `pending`. Both read as Processing and neither is echoed raw.

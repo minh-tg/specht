@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -158,4 +159,24 @@ func TestSeverity_CapturedCodeQL(t *testing.T) {
 	// Both rules default to level "error"; the score splits them.
 	assert.Equal(t, domain.SeverityHigh, got["go/clear-text-logging"], "security-severity 7.5")
 	assert.Equal(t, domain.SeverityMedium, got["go/log-injection"], "security-severity 6.1")
+}
+
+// TestProducerNames keeps the tool names a SARIF file gives, for display.
+func TestProducerNames(t *testing.T) {
+	data, err := os.ReadFile("testdata/multi-tool.sarif.json")
+	require.NoError(t, err)
+	rep, err := NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+	assert.Equal(t, "Semgrep, CodeQL", rep.Producer)
+
+	run := func(name string) sarifRun {
+		var r sarifRun
+		r.Tool.Driver.Name = name
+		return r
+	}
+	assert.Equal(t, "Gosec, Hadolint", producerNames([]sarifRun{run("Gosec"), run(" "), run("Gosec"), run(" Hadolint ")}))
+	assert.Empty(t, producerNames(nil))
+	long := producerNames([]sarifRun{run(strings.Repeat("é", 200))})
+	assert.LessOrEqual(t, len(long), 255)
+	assert.True(t, utf8.ValidString(long), "the cut must not split a character")
 }

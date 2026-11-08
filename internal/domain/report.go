@@ -31,6 +31,10 @@ type NormalizedReport struct {
 	// Ingest hashes the full typed scope so identical content scanned at a
 	// different revision or artifact never collides.
 	ScanScope *ScanScope
+	// Producer names the tools the file says wrote it, such as the SARIF
+	// runs' driver names, for display. Empty when the format names none.
+	// It never enters the scope or identity.
+	Producer string
 }
 
 // ScanScope is the typed scope of a scan: what was scanned (target,

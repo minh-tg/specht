@@ -4369,6 +4369,14 @@ components:
         id: { type: string, format: uuid }
         project_id: { type: string, format: uuid }
         tool_name: { type: string, example: trivy }
+        producer:
+          type: string
+          maxLength: 255
+          example: Gosec
+          description: >-
+            The tools the uploaded file says wrote it, such as the SARIF runs'
+            driver names, comma-separated. Display only; `tool_name` is the
+            scanner Specht parsed it with. Absent when the file names none.
         tool_version: { type: [string, "null"] }
         scan_type: { type: string, example: image }
         scan_target: { type: [string, "null"] }

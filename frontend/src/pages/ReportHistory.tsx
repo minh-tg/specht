@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime, pluralize } from "@/lib/format";
+import { reportToolLabel } from "@/lib/reportTool";
 import { cn } from "@/lib/utils";
 import { isReportInProgress } from "@/lib/verdict";
 import type { Report, ReportStatus } from "@/types/api";
@@ -134,7 +135,7 @@ export function ReportHistory({ uploadAction }: { readonly uploadAction?: ReactN
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="bg-muted text-muted-foreground inline-flex items-center rounded-md px-2 py-0.5 text-meta font-medium">
-                  {r.tool_name}
+                  {reportToolLabel(r)}
                 </span>
                 {r.scan_target && (
                   <p className="text-muted-foreground text-meta">{r.scan_target}</p>
@@ -183,7 +184,9 @@ export function ReportHistory({ uploadAction }: { readonly uploadAction?: ReactN
               {isAdmin && !isReportInProgress(r.status) && (
                 <button
                   type="button"
-                  aria-label={`Delete ${r.tool_name} report from ${formatDateTime(r.created_at)}`}
+                  aria-label={`Delete ${reportToolLabel(r)} report from ${
+                    formatDateTime(r.created_at)
+                  }`}
                   onClick={() => {
                     deleteMutation.reset();
                     setPendingDelete(r);

@@ -193,9 +193,12 @@ func suggestionFromEvidence(f port.Finding, dims []port.FindingDimension, tool s
 
 // ReportResponse is the API representation of an ingested report.
 type ReportResponse struct {
-	ID            string  `json:"id"`
-	ProjectID     string  `json:"project_id"`
-	ToolName      string  `json:"tool_name"`
+	ID        string `json:"id"`
+	ProjectID string `json:"project_id"`
+	ToolName  string `json:"tool_name"`
+	// Producer names the tools the file says wrote it, such as "Gosec" for
+	// a generic SARIF upload. Display only; ToolName stays the scanner.
+	Producer      *string `json:"producer,omitempty"`
 	ToolVersion   *string `json:"tool_version"`
 	ScanType      string  `json:"scan_type"`
 	ScanTarget    *string `json:"scan_target"`
@@ -327,6 +330,7 @@ func toReport(r port.Report, retentionDays int) ReportResponse {
 		ID:               uuidStr(r.ID),
 		ProjectID:        uuidStr(r.ProjectID),
 		ToolName:         r.ToolName,
+		Producer:         strOpt(r.ProducerName),
 		ToolVersion:      strOpt(r.ToolVersion),
 		ScanType:         r.ScanType,
 		ScanTarget:       strOpt(r.ScanTarget),
