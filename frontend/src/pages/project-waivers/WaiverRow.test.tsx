@@ -94,6 +94,31 @@ describe("WaiverRow second approver", () => {
     expect(screen.getByRole("button", { name: /^Approve/ })).toBeEnabled();
   });
 
+  it("lets a project's only manager approve their own request, and says a note is needed", () => {
+    renderRow(own, "pending", { ...actions, canDecide: true, canSelfApprove: true });
+    const approve = screen.getByRole("button", { name: /^Approve/ });
+    expect(approve).toBeEnabled();
+    expect(approve).not.toHaveAttribute("title");
+    expect(
+      screen.getByText("No other manager can decide this, so you can approve it with a note."),
+    ).toBeInTheDocument();
+  });
+
+  it("does not show the only-manager line on someone else's request or to a global admin", () => {
+    renderRow(waiver({ status: "pending", requested_by: "u-tomas" }), "pending", {
+      ...actions,
+      canDecide: true,
+      canSelfApprove: true,
+    });
+    renderRow(own, "pending", {
+      ...actions,
+      canDecide: true,
+      canSelfApprove: true,
+      isGlobalAdmin: true,
+    });
+    expect(screen.queryByText(/No other manager can decide this/)).not.toBeInTheDocument();
+  });
+
   it("marks a waiver someone approved for themselves", () => {
     renderRow(
       waiver({

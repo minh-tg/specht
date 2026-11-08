@@ -16,6 +16,11 @@ export interface WaiverPathProps {
   readonly who: ActorContext;
   /** The viewer may approve and reject requests (`permissions.approve_waivers`). */
   readonly canApprove: boolean;
+  /**
+   * The viewer may approve their own requests (`permissions.self_approve_waivers`): a global admin,
+   * or a manager nobody else on the project can overrule, who has to give a note.
+   */
+  readonly canSelfApprove?: boolean;
   readonly onWithdraw: (waiver: Waiver) => void;
 }
 
@@ -31,12 +36,14 @@ function personLabel(waiver: Waiver, kind: "requested" | "decided", who: ActorCo
  * changes through its toast and the watching strip.
  */
 export function WaiverPath(
-  { slug, findingId, title, view, who, canApprove, onWithdraw }: WaiverPathProps,
+  { slug, findingId, title, view, who, canApprove, canSelfApprove = false, onWithdraw }:
+    WaiverPathProps,
 ) {
   const { waiver } = view;
   const requester = personLabel(waiver, "requested", who);
   const decider = personLabel(waiver, "decided", who);
   const mine = !!waiver.requested_by && waiver.requested_by === who.me?.id;
+  const decideOwn = mine && canApprove && canSelfApprove;
   const ends = waiver.expires_at ? formatDate(waiver.expires_at) : null;
   const waiversPage = `/${slug}/waivers`;
 
@@ -47,7 +54,9 @@ export function WaiverPath(
 
   switch (view.kind) {
     case "pending": {
-      headline = "Waiver requested. Waiting for a manager.";
+      headline = decideOwn
+        ? "Waiver requested. Waiting for your decision."
+        : "Waiver requested. Waiting for a manager.";
       const asked = (
         <>
           {mine ? "You asked " : `${requester ?? "A manager"} asked `}
@@ -55,7 +64,11 @@ export function WaiverPath(
         </>
       );
       const next = mine
-        ? canApprove
+        ? decideOwn
+          ? who.me?.role === "admin"
+            ? "As a global admin you can approve your own request."
+            : "No other manager can decide this, so you can approve it with a note."
+          : canApprove
           ? "You cannot approve your own request, so another manager has to decide it."
           : "A project manager decides."
         : canApprove
@@ -66,7 +79,9 @@ export function WaiverPath(
           {asked} {next} Until then this finding still blocks this change.
           {ends && ` If nobody decides by ${ends}, the request expires.`}{" "}
           <Link to={waiversPage} className={`${INLINE_LINK} ${TOUCH_TARGET}`}>
-            {canApprove && !mine ? "Decide it on the Waivers page" : "See it on the Waivers page"}
+            {canApprove && (!mine || decideOwn)
+              ? "Decide it on the Waivers page"
+              : "See it on the Waivers page"}
           </Link>
         </>
       );
