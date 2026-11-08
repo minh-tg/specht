@@ -17,7 +17,7 @@ export function MetadataGrid({ finding }: { readonly finding: Finding; }) {
     { label: "Status", value: technicalStateLabel(finding.state) ?? undefined },
     { label: "Triage", value: analysisStateLabel(finding.analysis_state) ?? "Not triaged" },
     ...(typeof finding.current_score === "number"
-      ? [{ label: "Highest score", value: finding.current_score.toFixed(1), code: true }]
+      ? [{ label: "Scanner's score", value: finding.current_score.toFixed(1), code: true }]
       : []),
     ...(typeof intel?.epss === "number"
       ? [{ label: "EPSS", value: formatPercent(intel.epss), code: true }]
