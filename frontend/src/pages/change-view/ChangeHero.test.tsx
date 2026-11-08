@@ -1,3 +1,4 @@
+import { formatClockTime } from "@/lib/format";
 import type { PolicyEffective, Report } from "@/types/api";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -153,5 +154,75 @@ describe("ChangeHero unblocked and unconfirmed copy", () => {
       ),
     ).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(/did not examine|recorded as passing/);
+  });
+});
+
+describe("ChangeHero project gate beside an older report", () => {
+  const at = "2026-11-07T14:05:00Z";
+
+  it("says the project gate is as of now, with the time, and not the state at the commit", () => {
+    render(
+      <ChangeHero
+        commit="abcdef1234"
+        report={report}
+        state="blocked"
+        blockers={2}
+        existing={0}
+        waived={0}
+        policy={policy}
+        projectWide
+        gateAsOf={at}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      `2 findings block this project as of now, ${formatClockTime(at)}.`,
+    );
+    expect(screen.getByText(formatClockTime(at))).toHaveAttribute("datetime", at);
+    expect(
+      screen.getByText(
+        "A newer report exists on main, so this is the project gate now, not the state at abcdef1.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("names a passing project gate as of now too", () => {
+    render(
+      <ChangeHero
+        commit="abcdef1234"
+        report={report}
+        state="passing"
+        blockers={0}
+        existing={0}
+        waived={0}
+        policy={policy}
+        projectWide
+        gateAsOf={at}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      `Project gate passed as of now, ${formatClockTime(at)}.`,
+    );
+  });
+
+  it("leaves a change-scoped verdict alone, since it is not the project gate", () => {
+    render(
+      <ChangeHero
+        commit="abcdef1234"
+        report={report}
+        state="blocked"
+        blockers={1}
+        existing={0}
+        waived={0}
+        policy={policy}
+        gateAsOf={at}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "1 finding blocks this change.",
+    );
+    expect(document.body).not.toHaveTextContent(/as of now|A newer report/);
   });
 });

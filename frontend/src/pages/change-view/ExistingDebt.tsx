@@ -1,6 +1,7 @@
 import { INLINE_LINK } from "@/components/inlineLink";
 import { pluralize } from "@/lib/format";
 import { BlockerRow } from "@/pages/change-view/BlockerRow";
+import { AsOfNow } from "@/pages/change-view/ChangeHero";
 import { type SyntheticEvent, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -16,6 +17,11 @@ export interface ExistingDebtProps {
    */
   passing?: boolean;
   projectName?: string;
+  /**
+   * When the project gate behind this list was evaluated, set only when the report is not the
+   * newest on its branch, so the list does not read as the debt at this commit.
+   */
+  asOf?: string;
 }
 
 /**
@@ -24,7 +30,9 @@ export interface ExistingDebtProps {
  * are mounted only while it is open, so their finding requests fire on demand
  * rather than on every visit to the page.
  */
-export function ExistingDebt({ slug, ids, passing = false, projectName }: ExistingDebtProps) {
+export function ExistingDebt(
+  { slug, ids, passing = false, projectName, asOf }: ExistingDebtProps,
+) {
   const [open, setOpen] = useState(false);
 
   if (ids.length === 0) return null;
@@ -42,14 +50,24 @@ export function ExistingDebt({ slug, ids, passing = false, projectName }: Existi
             <>
               {pluralize(ids.length, "existing finding")} {ids.length === 1 ? "is" : "are"} open in
               {" "}
-              {projectName ?? slug}. {ids.length === 1 ? "It is" : "They are"}{" "}
-              not counted for this change.
+              {projectName ?? slug}
+              {asOf && (
+                <>
+                  {" "}
+                  <AsOfNow iso={asOf} />
+                </>
+              )}. {ids.length === 1 ? "It is" : "They are"} not counted for this change.
             </>
           )
           : (
             <>
               {pluralize(ids.length, "other finding")} {ids.length === 1 ? "blocks" : "block"}{" "}
-              this project (not introduced by this change)
+              this project{asOf && (
+                <>
+                  {" "}
+                  <AsOfNow iso={asOf} />
+                </>
+              )} (not introduced by this change)
             </>
           )}
       </summary>
