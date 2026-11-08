@@ -287,7 +287,7 @@ test("API keys create with one-time reveal and revoke", async ({ page, request }
   await page.getByRole("button", { name: "Create" }).click();
 
   await expect(page.getByText("This key will not be shown again")).toBeVisible();
-  await expect(page.locator("code").filter({ hasText: /^vuln_/ })).toBeVisible();
+  await expect(page.locator("code").filter({ hasText: /^vuln_[0-9a-f]{8}/ })).toBeVisible();
 
   await page.getByRole("button", { name: "Dismiss" }).click();
   await page.getByRole("button", { name: "Revoke" }).click();
@@ -410,7 +410,7 @@ test("an admin creates a project and follows the guided CI setup", async ({ page
 
   // The key is shown once; the pipeline snippets only reference the secret.
   await page.getByRole("button", { name: "Create a key for this pipeline" }).click();
-  await expect(page.locator("code").filter({ hasText: /^vuln_/ })).toBeVisible();
+  await expect(page.locator("code").filter({ hasText: /^vuln_[0-9a-f]{8}/ })).toBeVisible();
   await expect(page.getByText("Copy it now. It will not be shown again.")).toBeVisible();
 
   const githubSnippet = page.locator("pre").first();
