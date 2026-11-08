@@ -860,6 +860,33 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
               example: { error: { code: slug_taken, message: project slug already exists } }
 
+  /api/v1/project-summaries:
+    get:
+      tags: [Projects]
+      operationId: listProjectSummaries
+      summary: Read the gate and roll-up of every visible project
+      description: |
+        One row per project that listProjects returns to the same caller, in the
+        same order. Each row holds the answers of GET /api/v1/projects/{slug}/gate
+        (no query parameters) and GET /api/v1/projects/{slug}/stats for that
+        project, so a project list needs one request instead of two per project.
+        One project that fails to evaluate fails the whole request.
+      x-required-scope: read
+      security:
+        - sessionAuth: []
+        - apiKeyAuth: []
+      responses:
+        "200":
+          description: The summaries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ProjectSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/v1/projects/{slug}:
     get:
       tags: [Projects]
@@ -5315,6 +5342,14 @@ components:
         digest: { type: string }
         locator: { type: string }
         created_at: { type: string, format: date-time }
+
+    ProjectSummary:
+      type: object
+      required: [slug, gate, stats]
+      properties:
+        slug: { type: string }
+        gate: { $ref: "#/components/schemas/GateStatus" }
+        stats: { $ref: "#/components/schemas/ProjectStats" }
 
     ProjectStats:
       type: object
