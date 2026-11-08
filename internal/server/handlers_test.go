@@ -52,6 +52,7 @@ type mockUsecases struct {
 	addProjectMemberByEmail func(ctx context.Context, projectSlug, email, role string) (*usecase.ProjectMemberResponse, error)
 	isProjectMemberFn       func(ctx context.Context, projectID, userID string) (bool, error)
 	listProjectsFn          func(ctx context.Context) ([]usecase.ProjectResponse, error)
+	listProjectSummariesFn  func(ctx context.Context) ([]usecase.ProjectSummary, error)
 	getProjectFn            func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
 	updateProjectFn         func(ctx context.Context, slug string, name, description, defaultBranch *string) (*usecase.ProjectResponse, error)
 	deleteProjectFn         func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
@@ -71,6 +72,7 @@ type mockUsecases struct {
 	bulkTriageFn            func(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
 	getGateStatusFn         func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error)
 	getIntroducedGateFn     func(ctx context.Context, slug string, minRank int16, reportID string) (*usecase.GateStatusOutput, error)
+	getScannerGateFn        func(ctx context.Context, slug string, minRank int16, branch, scanner string) (*usecase.GateStatusOutput, error)
 	previewPRCheckFn        func(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error)
 	previewPatchFn          func(ctx context.Context, findingID string) (*patch.Outcome, error)
 	previewNotifyFn         func(ctx context.Context, findingID, channel, target string, alreadyLinked bool) (*notify.Outcome, error)
@@ -198,6 +200,13 @@ func (m *mockUsecases) ListProjects(ctx context.Context) ([]usecase.ProjectRespo
 		return nil, fmt.Errorf("unexpected call to ListProjects")
 	}
 	return m.listProjectsFn(ctx)
+}
+
+func (m *mockUsecases) ListProjectSummaries(ctx context.Context) ([]usecase.ProjectSummary, error) {
+	if m.listProjectSummariesFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListProjectSummaries")
+	}
+	return m.listProjectSummariesFn(ctx)
 }
 
 func (m *mockUsecases) GetProject(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
@@ -364,7 +373,10 @@ func (m *mockUsecases) ResumeSession(context.Context, string) (*usecase.AuthResp
 	return nil, usecase.ErrNoResume
 }
 
-func (m *mockUsecases) GetBranchGateStatus(ctx context.Context, slug string, minRank int16, branch string) (*usecase.GateStatusOutput, error) {
+func (m *mockUsecases) GetScannerGateStatus(ctx context.Context, slug string, minRank int16, branch, scanner string) (*usecase.GateStatusOutput, error) {
+	if m.getScannerGateFn != nil {
+		return m.getScannerGateFn(ctx, slug, minRank, branch, scanner)
+	}
 	return m.GetGateStatus(ctx, slug, minRank)
 }
 
@@ -1084,6 +1096,30 @@ func TestIngestReport_Replay(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, "rep-existing", resp.ReportID)
 	assert.True(t, resp.Replayed)
+	var raw map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &raw))
+	assert.JSONEq(t, `[]`, string(raw["warnings"]), "a nil list goes out as an empty array")
+}
+
+func TestIngestReport_Warnings(t *testing.T) {
+	mock := &mockUsecases{
+		ingestReportFn: func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error) {
+			return &usecase.IngestReportOutput{ReportID: "rep-1", Warnings: []string{"give each job its own artifact"}}, nil
+		},
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"project":"my-app","scanner":"trivy","raw_data":{"image":"myapp:latest"},"commit_sha":"abc"}`)
+	req := httptest.NewRequest("POST", "/api/v1/reports", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	var resp struct {
+		Warnings []string `json:"warnings"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, []string{"give each job its own artifact"}, resp.Warnings)
 }
 
 func TestIngestReport_Duplicate(t *testing.T) {
@@ -2427,6 +2463,24 @@ func TestGateStatus_WaivedFindingIDsSerialized(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	require.Contains(t, body, "waived_finding_ids", "the field must be present even when empty")
 	assert.JSONEq(t, `[]`, string(body["waived_finding_ids"]))
+}
+
+func TestGateStatus_PassesBranchAndScanner(t *testing.T) {
+	var gotBranch, gotScanner string
+	mock := &mockUsecases{
+		getScannerGateFn: func(_ context.Context, _ string, _ int16, branch, scanner string) (*usecase.GateStatusOutput, error) {
+			gotBranch, gotScanner = branch, scanner
+			return &usecase.GateStatusOutput{WaivedFindingIDs: []string{}}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/gate?branch=main&scanner=semgrep", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "main", gotBranch)
+	assert.Equal(t, "semgrep", gotScanner)
 }
 
 func TestGateStatus_IntroducedOnly(t *testing.T) {

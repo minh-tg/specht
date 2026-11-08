@@ -514,6 +514,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/project-summaries": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read the gate and roll-up of every visible project
+     * @description One row per project that listProjects returns to the same caller, in the
+     *     same order. Each row holds the answers of GET /api/v1/projects/{slug}/gate
+     *     (no query parameters) and GET /api/v1/projects/{slug}/stats for that
+     *     project, so a project list needs one request instead of two per project.
+     *     One project that fails to evaluate fails the whole request.
+     */
+    get: operations["listProjectSummaries"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/projects/{slug}": {
     parameters: {
       query?: never;
@@ -1456,7 +1480,11 @@ export interface paths {
      * Approve a waiver request
      * @description Moves a pending request to approved, after which it counts in the gate.
      *     Needs the project manager or admin role. The requester cannot approve
-     *     their own request, except a global admin, whose approval is marked
+     *     their own request while someone else can decide it (403
+     *     `self_approval`). A global admin may approve their own. So may a
+     *     manager when nobody else on the project holds the manager or admin
+     *     role, directly or through a team, or is a global admin; that manager
+     *     has to send a note (400 otherwise). Either approval is marked
      *     `self_approved` in the audit event. An expired request cannot be
      *     approved.
      */
@@ -2507,6 +2535,12 @@ export interface components {
       manage_waivers: boolean;
       /** @description Approve or reject waiver requests. */
       approve_waivers: boolean;
+      /**
+       * @description Approve the caller's own waiver requests. True for a global admin,
+       *     and for a manager when nobody else can decide the project's
+       *     requests; that manager has to give a note.
+       */
+      self_approve_waivers: boolean;
       /** @description Add and remove members */
       manage_members: boolean;
       /** @description Create */
@@ -2604,6 +2638,11 @@ export interface components {
        */
       scan_mode: "full" | "incremental";
       scan_filter?: components["schemas"]["ScanFilter"];
+      /**
+       * @description The caller cannot vouch that the scan finished, such as a scanner that wrote no output at all. The report adds and updates findings but closes none, and its scan_completeness is `partial`.
+       * @default false
+       */
+      partial_scan: boolean;
       /** @description Comma-separated override for the post-ingest threshold check. */
       gate_severity?: string;
       /** @description Scope the post-ingest threshold check to what this report introduced. */
@@ -2672,6 +2711,8 @@ export interface components {
       pre_existing_count: number;
       /** @description True when identical bytes for the same commit returned an existing report instead of ingesting again. */
       replayed: boolean;
+      /** @description Problems with how the report was sent that the uploader should fix. A full report closes no findings, and says so here, when another completed full report of the same scan scope (scanner, target, artifact name, branch, environment) carries the same commit and scan filter with different content, as two CI jobs of one scanner without an artifact name do. Give each job its own `artifact_name`. */
+      warnings: string[];
     };
     ReportDeletionPreview: {
       /** @description Findings that cite this report. */
@@ -3572,6 +3613,11 @@ export interface components {
       locator?: string;
       /** Format: date-time */
       created_at: string;
+    };
+    ProjectSummary: {
+      slug: string;
+      gate: components["schemas"]["GateStatus"];
+      stats: components["schemas"]["ProjectStats"];
     };
     ProjectStats: {
       /** @description Open and reopened findings; fixed and archived findings are not counted. */
@@ -4838,6 +4884,29 @@ export interface operations {
           "application/json": components["schemas"]["Error"];
         };
       };
+    };
+  };
+  listProjectSummaries: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The summaries. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectSummary"][];
+        };
+      };
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["Forbidden"];
+      500: components["responses"]["InternalError"];
     };
   };
   getProject: {
@@ -6123,6 +6192,8 @@ export interface operations {
         introduced_only?: boolean;
         /** @description Adds the findings seen on this branch to the project verdict, for a full gate run on a change branch. Without it the verdict answers for the default branch. */
         branch?: string;
+        /** @description Counts only the findings a report of this scanner observed, the verdict of that scanner's CI step. The name must match the scanner name of its reports exactly. Without it every scanner counts. `unrated_count` stays the project's count. Ignored with `introduced_only`, which is scoped to one report already. */
+        scanner?: string;
         /** @description Required when `introduced_only` is set. */
         report_id?: string;
       };
@@ -6547,6 +6618,7 @@ export interface operations {
           "application/json": components["schemas"]["Waiver"];
         };
       };
+      400: components["responses"]["BadRequest"];
       403: components["responses"]["Forbidden"];
       404: components["responses"]["NotFound"];
       409: components["responses"]["Conflict"];

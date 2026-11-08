@@ -41,6 +41,8 @@ export interface BlockerEntryProps {
   readonly request: WaiverAction;
   /** The viewer may approve and reject requests. */
   readonly canApprove: boolean;
+  /** The viewer may approve their own requests. */
+  readonly canSelfApprove?: boolean;
   readonly who: ActorContext;
   readonly onRequestWaiver: () => void;
   readonly onWithdrawWaiver: (waiver: Waiver) => void;
@@ -88,6 +90,7 @@ function LoadedEntry(
     waiver,
     request,
     canApprove,
+    canSelfApprove,
     who,
     onRequestWaiver,
     onWithdrawWaiver,
@@ -186,6 +189,7 @@ function LoadedEntry(
             view={waiver}
             who={who}
             canApprove={canApprove}
+            canSelfApprove={canSelfApprove}
             onWithdraw={onWithdrawWaiver}
           />
         )}

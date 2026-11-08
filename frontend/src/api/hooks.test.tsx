@@ -429,6 +429,22 @@ describe("useProject", () => {
   });
 });
 
+describe("useGateStatus", () => {
+  it("turns null id lists into empty ones", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({
+      threshold_breached: false,
+      blocking_count: 0,
+      blocked_by: null,
+      waived_finding_ids: null,
+    }));
+
+    const { result } = renderHook(() => useGateStatus("payments"), { wrapper });
+
+    await waitFor(() => expect(result.current.data?.blocked_by).toEqual([]));
+    expect(result.current.data?.waived_finding_ids).toEqual([]);
+  });
+});
+
 describe("useProjectStats", () => {
   it("reads the project roll-up", async () => {
     const stats = {
@@ -446,8 +462,24 @@ describe("useProjectStats", () => {
 
     const { result } = renderHook(() => useProjectStats("payments"), { wrapper });
 
-    await waitFor(() => expect(result.current.data).toEqual(stats));
+    await waitFor(() => expect(result.current.data).toEqual({ ...stats, by_analysis_state: [] }));
     expect(requested[0]).toBe("/api/v1/projects/payments/stats");
+  });
+
+  it("turns null lists into empty ones", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({
+      total_findings: 0,
+      blocking_count: 0,
+      waiver_count: 0,
+      report_count: 0,
+      by_severity: null,
+      by_analysis_state: null,
+    }));
+
+    const { result } = renderHook(() => useProjectStats("payments"), { wrapper });
+
+    await waitFor(() => expect(result.current.data?.by_severity).toEqual([]));
+    expect(result.current.data?.by_analysis_state).toEqual([]);
   });
 });
 
@@ -571,6 +603,26 @@ describe("useChangeGate", () => {
 
     await waitFor(() => expect(result.current.data?.threshold_breached).toBe(true));
     expect(urls[0]).toBe("/api/v1/projects/p%2F1/gate?introduced_only=true&report_id=r+1%2F2");
+  });
+
+  it("asks for the project gate of the report's branch, and only in project scope", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      urls.push(String(input));
+      return Promise.resolve(jsonResponse({ threshold_breached: false, blocking_count: 0 }));
+    });
+
+    const project = renderHook(() => useChangeGate("p1", "r1", true, "high", "feat/a b"), {
+      wrapper,
+    });
+    const introduced = renderHook(() => useChangeGate("p1", "r1", false, undefined, "feat/a"), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(project.result.current.isSuccess).toBe(true));
+    await waitFor(() => expect(introduced.result.current.isSuccess).toBe(true));
+    expect(urls).toContain("/api/v1/projects/p1/gate?branch=feat%2Fa+b&severity=high");
+    expect(urls).toContain("/api/v1/projects/p1/gate?introduced_only=true&report_id=r1");
   });
 
   it("stays disabled without a report", async () => {

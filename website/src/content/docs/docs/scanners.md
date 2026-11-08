@@ -19,7 +19,7 @@ it resembles.
 | Grype                  | Native JSON                                        |
 | Gitleaks               | JSON, including redacted reports                   |
 | tfsec                  | JSON                                               |
-| Nuclei                 | JSON Lines (`.jsonl` or `.ndjson`)                 |
+| Nuclei                 | JSON export (`-je`) or JSON Lines (`.jsonl`)       |
 | SARIF tools            | SARIF 2.1.0, including CodeQL, Gosec and Hadolint  |
 | SBOM                   | CycloneDX 1.x JSON or SPDX 2.x JSON                |
 
@@ -46,10 +46,16 @@ upload form accepts files up to 10 MiB; the HTTP API accepts request bodies up t
 
 ## Scope and repeat scans
 
-Send replacement reports with the same scanner, target, branch and other scan
-metadata. Findings are matched across scans, and evidence from different scopes
-can remain active independently. A clean scan of one target does not establish
-that every other target is clean.
+A report's scope is five things: the scanner, the target, the artifact name
+(`-artifact`), the branch and the environment (`-environment`). Send repeat
+scans with the same five. Findings are matched across scans, and evidence from
+different scopes stays active independently: a clean scan of one target, or of
+the staging environment, says nothing about another.
+
+A clean scan closes only findings its own scope saw. If you rename the target,
+artifact or environment, the old scope's findings stay open until a scan of the
+old scope comes back clean or someone closes them, so keep these values stable
+in CI.
 
 A manual upload through the web form does not add CI branch or revision
 metadata. Use the adapter or API for [change-linked gates](../ci-gates/).
@@ -62,6 +68,10 @@ metadata. Use the adapter or API for [change-linked gates](../ci-gates/).
   not normalize dependency graphs, licenses, hashes or signatures.
 - Select the SBOM reader for Grype's CycloneDX output. Native Grype JSON uses the
   Grype reader.
+- Send Nuclei's JSON export (`nuclei -u https://example.com -je nuclei.json`).
+  Nuclei writes it when the run ends, as `[]` when nothing matched, and that
+  clean run closes findings. An empty JSON Lines file closes nothing, because a
+  run that stopped early leaves one too.
 - A report can finish processing without proving complete coverage of a target.
   Only comparable, complete scan evidence can retire older scope evidence.
 

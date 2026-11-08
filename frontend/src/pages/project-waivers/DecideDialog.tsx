@@ -19,19 +19,23 @@ const MAX_NOTE = 1000;
 
 /**
  * The step before a decision. Approving takes an optional note; rejecting needs one, because the
- * person who asked is waiting to hear why.
+ * person who asked is waiting to hear why. A manager approving their own request, which the server
+ * allows only when nobody else can decide it, needs one too, so the record says why.
  */
-export function DecideDialog({ slug, waiver, decision, onClose }: {
+export function DecideDialog({ slug, waiver, decision, ownRequest = false, onClose }: {
   readonly slug: string;
   readonly waiver: Waiver | null;
   readonly decision: Decision;
+  /** The viewer asked for this waiver and is not a global admin. */
+  readonly ownRequest?: boolean;
   readonly onClose: () => void;
 }) {
   const mutation = useDecideWaiver(slug);
   const [note, setNote] = useState("");
   const approving = decision === "approve";
+  const noteRequired = !approving || ownRequest;
   const trimmed = note.trim();
-  const canSubmit = approving || trimmed.length > 0;
+  const canSubmit = !noteRequired || trimmed.length > 0;
 
   function close() {
     mutation.reset();
@@ -61,21 +65,25 @@ export function DecideDialog({ slug, waiver, decision, onClose }: {
                 }.`
                 : `${waiverTitle(waiver)} keeps blocking.`
               : ""}
+            {approving && ownRequest
+              && " You asked for this and no other manager can decide it, so say why you approve it."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={(e) => void submit(e)} className="grid gap-4">
           <div className="grid gap-1.5">
             <label htmlFor="decision-note" className="text-body font-medium">
-              Note {approving
-                ? <span className="text-muted-foreground font-normal">(optional)</span>
-                : <span className="text-muted-foreground font-normal">(required)</span>}
+              Note {noteRequired
+                ? <span className="text-muted-foreground font-normal">(required)</span>
+                : <span className="text-muted-foreground font-normal">(optional)</span>}
             </label>
             <Textarea
               id="decision-note"
               value={note}
               maxLength={MAX_NOTE}
-              required={!approving}
-              placeholder="Visible to the person who asked."
+              required={noteRequired}
+              placeholder={approving && ownRequest
+                ? "Why you approve your own request. It stays on the waiver's record."
+                : "Visible to the person who asked."}
               onChange={(e) => setNote(e.target.value)}
             />
           </div>

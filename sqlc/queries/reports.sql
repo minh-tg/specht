@@ -134,6 +134,35 @@ WHERE prior.project_id = sqlc.arg(project_id)
 ORDER BY prior.created_at DESC, prior.id DESC
 LIMIT 1;
 
+-- name: HasSiblingReportAtCommit :one
+-- Whether another completed full report of the given report's scan scope
+-- carries the same commit and declared scan filter with different content. Two
+-- CI jobs of one scanner that share a scope, such as one job per lockfile
+-- without an artifact name, look like this, and each would close the other's
+-- findings by absence. A report with another filter differs by what it kept,
+-- not by what it scanned, so it is no sibling. A partial report, such as a
+-- Nuclei run that stopped early, closes nothing itself and is no sibling, so the
+-- finished run of the same commit still closes. A report without a commit has
+-- no siblings.
+SELECT EXISTS (
+    SELECT 1
+    FROM reports sibling
+    JOIN reports current ON current.id = sqlc.arg(report_id)
+    WHERE sibling.project_id = sqlc.arg(project_id)
+      AND current.project_id = sqlc.arg(project_id)
+      AND current.commit_sha <> ''
+      AND sibling.commit_sha = current.commit_sha
+      AND sibling.scan_scope_hash = current.scan_scope_hash
+      AND sibling.raw_report_hash IS DISTINCT FROM current.raw_report_hash
+      AND sibling.filter_fixable_only = current.filter_fixable_only
+      AND COALESCE(sibling.filter_severities, '{}') @> COALESCE(current.filter_severities, '{}')
+      AND COALESCE(sibling.filter_severities, '{}') <@ COALESCE(current.filter_severities, '{}')
+      AND sibling.id <> current.id
+      AND sibling.status = 'completed'
+      AND sibling.scan_mode = 'full'
+      AND sibling.scan_completeness <> 'partial'
+);
+
 -- name: BranchHasChangeReport :one
 -- Whether any report on the branch was sent with a base revision other than
 -- the branch itself, which marks the branch as a change branch (a pull or

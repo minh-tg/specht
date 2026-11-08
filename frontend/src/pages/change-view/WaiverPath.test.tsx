@@ -32,9 +32,21 @@ function waiver(extra: Partial<Waiver> = {}): Waiver {
 
 function renderPath(
   w: Waiver,
-  options: { viewer?: string; canApprove?: boolean; onWithdraw?: () => void; } = {},
+  options: {
+    viewer?: string;
+    viewerRole?: "admin" | "member";
+    canApprove?: boolean;
+    canSelfApprove?: boolean;
+    onWithdraw?: () => void;
+  } = {},
 ) {
-  const { viewer = "u-ada", canApprove = false, onWithdraw = vi.fn() } = options;
+  const {
+    viewer = "u-ada",
+    viewerRole = "member",
+    canApprove = false,
+    canSelfApprove = false,
+    onWithdraw = vi.fn(),
+  } = options;
   render(
     <MemoryRouter>
       <WaiverPath
@@ -42,8 +54,9 @@ function renderPath(
         findingId="f1"
         title="SQL injection"
         view={waiverView(w, NOW)}
-        who={{ me: { id: viewer } as never }}
+        who={{ me: { id: viewer, role: viewerRole } as never }}
         canApprove={canApprove}
+        canSelfApprove={canSelfApprove}
         onWithdraw={onWithdraw}
       />
     </MemoryRouter>,
@@ -92,6 +105,33 @@ describe("WaiverPath pending", () => {
     expect(within(group).getByRole("button", { name: /Withdraw request/ })).toBeInTheDocument();
     expect(within(group).getByRole("link", { name: "See it on the Waivers page" }))
       .toBeInTheDocument();
+  });
+
+  it("tells a project's only manager they can approve their own request with a note", () => {
+    const group = renderPath(waiver(), {
+      viewer: "u-tomas",
+      canApprove: true,
+      canSelfApprove: true,
+    });
+    expect(within(group).getByText("Waiver requested. Waiting for your decision."))
+      .toBeInTheDocument();
+    expect(group).toHaveTextContent(
+      "No other manager can decide this, so you can approve it with a note.",
+    );
+    expect(group).not.toHaveTextContent("another manager has to decide");
+    expect(within(group).getByRole("link", { name: "Decide it on the Waivers page" }))
+      .toBeInTheDocument();
+  });
+
+  it("tells a global admin they can approve their own request", () => {
+    const group = renderPath(waiver(), {
+      viewer: "u-tomas",
+      viewerRole: "admin",
+      canApprove: true,
+      canSelfApprove: true,
+    });
+    expect(group).toHaveTextContent("As a global admin you can approve your own request.");
+    expect(group).not.toHaveTextContent("No other manager");
   });
 });
 

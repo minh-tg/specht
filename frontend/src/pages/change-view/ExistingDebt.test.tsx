@@ -1,3 +1,4 @@
+import { formatClockTime } from "@/lib/format";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
@@ -39,7 +40,10 @@ beforeEach(() => {
   });
 });
 
-function renderDebt(ids: string[], props: { passing?: boolean; projectName?: string; } = {}) {
+function renderDebt(
+  ids: string[],
+  props: { passing?: boolean; projectName?: string; asOf?: string; } = {},
+) {
   const qc = createTestQueryClient();
   return render(
     <QueryClientProvider client={qc}>
@@ -85,6 +89,27 @@ describe("ExistingDebt", () => {
       screen.getByText("1 existing finding is open in acme. It is not counted for this change."),
     )
       .toBeInTheDocument();
+  });
+
+  it("says the debt is as of now, with the time, beside an older report", () => {
+    const at = "2026-11-07T14:05:00Z";
+    const { container, unmount } = renderDebt(["pre1", "pre2"], { asOf: at });
+
+    expect(container.querySelector("summary")).toHaveTextContent(
+      `2 other findings block this project as of now, ${
+        formatClockTime(at)
+      } (not introduced by this change)`,
+      { normalizeWhitespace: true },
+    );
+    expect(screen.getByText(formatClockTime(at))).toHaveAttribute("datetime", at);
+    unmount();
+
+    const passing = renderDebt(["pre1"], { passing: true, projectName: "Acme API", asOf: at });
+    expect(passing.container.querySelector("summary")).toHaveTextContent(
+      `1 existing finding is open in Acme API as of now, ${
+        formatClockTime(at)
+      }. It is not counted for this change.`,
+    );
   });
 
   it("does not fetch findings until the section is opened", async () => {

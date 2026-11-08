@@ -271,6 +271,11 @@ type ProjectStore interface {
 	// CountAdmins returns the number of admins who can sign in. A deactivated
 	// account keeps its row but does not count.
 	CountAdmins(ctx context.Context, projectID string) (int, error)
+	// CountOtherWaiverDeciders returns how many people besides userID can
+	// decide the project's waiver requests: active accounts that reach the
+	// project directly or through a team with manager or admin rights there, or
+	// that reach it at all while holding the global admin role.
+	CountOtherWaiverDeciders(ctx context.Context, projectID, userID string) (int, error)
 	// ListSoleAdminProjects returns the slugs of the projects where the user
 	// is the only admin who can sign in.
 	ListSoleAdminProjects(ctx context.Context, userID string) ([]string, error)
@@ -1234,6 +1239,8 @@ type GateCandidate struct {
 	// ChangeBranches names the branches the finding was seen on when it was
 	// seen only on change branches. Empty means it counts toward the verdict.
 	ChangeBranches []string
+	// Scanners names every scanner whose reports observed the finding.
+	Scanners []string
 }
 
 // FindingAssignee is the person a finding is assigned to.
@@ -1440,6 +1447,11 @@ type ReportStore interface {
 	// BranchHasChangeReport reports whether any report on the branch was
 	// sent with a base revision other than the branch itself.
 	BranchHasChangeReport(ctx context.Context, projectID, branch string) (bool, error)
+	// HasSiblingAtCommit reports whether another completed full report of
+	// reportID's scan scope carries the same commit and declared scan filter
+	// with different content, as two CI jobs of one scanner without an
+	// artifact name do. A report without a commit has none.
+	HasSiblingAtCommit(ctx context.Context, projectID, reportID string) (bool, error)
 	// LatestCompletedInFindingScope returns the newest completed full report
 	// that shares the scan scope of the report that most recently observed
 	// findingID, or ErrNotFound when no such report exists. Completeness is

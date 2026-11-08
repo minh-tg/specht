@@ -19,6 +19,10 @@ type ProjectPermissions struct {
 	ManageWaivers bool `json:"manage_waivers"`
 	// ApproveWaivers covers approving and rejecting waiver requests.
 	ApproveWaivers bool `json:"approve_waivers"`
+	// SelfApproveWaivers is true when the caller may approve their own
+	// requests: a global admin, or a manager nobody else on the project can
+	// overrule. The manager has to give a note; a global admin does not.
+	SelfApproveWaivers bool `json:"self_approve_waivers"`
 	// ManageMembers covers adding and removing members, within the caller's
 	// own role.
 	ManageMembers bool `json:"manage_members"`
@@ -73,5 +77,16 @@ func (u *Usecases) callerPermissions(ctx context.Context, projectID string) (str
 		role = normalizeMemberRole(role)
 	}
 	perms := permissionsForRole(role)
+	if perms.ApproveWaivers {
+		if ident.Role == auth.RoleAdmin {
+			perms.SelfApproveWaivers = true
+		} else {
+			alone, err := u.soleWaiverDecider(ctx, projectID, ident.UserID)
+			if err != nil {
+				return "", nil, err
+			}
+			perms.SelfApproveWaivers = alone
+		}
+	}
 	return role, &perms, nil
 }

@@ -79,7 +79,8 @@ func TestE2E_CleanScanClosesFindings(t *testing.T) {
 		{"sbom", parsers + "sbom/testdata/grype-cyclonedx.json", func(t *testing.T, dirty string) []byte {
 			return withoutResults(t, dirty, func(doc map[string]any) { doc["vulnerabilities"] = []any{} })
 		}},
-		{"nuclei", parsers + "nuclei/testdata/nuclei.jsonl", func(*testing.T, string) []byte { return nil }},
+		// Nuclei's JSON export (-je) writes [] when a finished run matched nothing.
+		{"nuclei", parsers + "nuclei/testdata/nuclei.jsonl", func(*testing.T, string) []byte { return []byte("[]") }},
 	}
 	for i, tc := range cases {
 		t.Run(tc.tool+"/"+strconv.Itoa(i), func(t *testing.T) {
@@ -167,6 +168,56 @@ func TestE2E_CleanScanLeavesFindingsOpen(t *testing.T) {
 	})
 }
 
+// TestE2E_EmptyNucleiOutputClosesNothing is the Nuclei run that stopped early:
+// JSON Lines output leaves an empty file then, as a run with no match does.
+// The empty file closes nothing, and a finished JSON export of the same commit
+// still closes, so the partial report does not stand in for it.
+func TestE2E_EmptyNucleiOutputClosesNothing(t *testing.T) {
+	dirty, err := filepath.Abs("../internal/parser/nuclei/testdata/nuclei.jsonl")
+	require.NoError(t, err)
+	slug := newProject(t, "nuclei-empty")
+	key := mintKey(t, slug)
+	env := []string{"API_URL=" + baseURL, "API_KEY=" + key}
+	send := func(file, commit string) (string, int) {
+		_, stderr, exit := runBin(t, adapterBin, env, "-project", slug, "-tool", "nuclei",
+			"-branch", "main", "-commit", commit, "-file", file)
+		return stderr, exit
+	}
+
+	stderr, exit := send(dirty, "1111111111111111111111111111111111111111")
+	require.Less(t, exit, 2, stderr)
+	before := openFindingCount(t, slug)
+	require.Positive(t, before, stderr)
+
+	stderr, exit = send(writeScanFile(t, nil), "1111111111111111111111111111111111111112")
+	require.Less(t, exit, 2, stderr)
+	require.Contains(t, stderr, "closes no findings")
+	require.Equal(t, before, openFindingCount(t, slug), "an empty file must not close findings")
+
+	var reports []struct {
+		CommitSha        string `json:"commit_sha"`
+		ScanCompleteness string `json:"scan_completeness"`
+	}
+	status, raw := doJSON(t, http.MethodGet, "/api/v1/projects/"+slug+"/reports", adminToken, nil)
+	require.Equal(t, http.StatusOK, status, "%s", raw)
+	var page struct {
+		Items json.RawMessage `json:"items"`
+	}
+	if json.Unmarshal(raw, &page) == nil && len(page.Items) > 0 {
+		raw = page.Items
+	}
+	require.NoError(t, json.Unmarshal(raw, &reports), "%s", raw)
+	completeness := map[string]string{}
+	for _, r := range reports {
+		completeness[r.CommitSha] = r.ScanCompleteness
+	}
+	require.Equal(t, "partial", completeness["1111111111111111111111111111111111111112"], "%s", raw)
+
+	stderr, exit = send(writeScanFile(t, []byte("[]")), "1111111111111111111111111111111111111112")
+	require.Equal(t, 0, exit, stderr)
+	require.Zero(t, openFindingCount(t, slug), "a finished JSON export of the same commit must close them")
+}
+
 // TestE2E_FixedOnBranchLeavesNoBlockerOnMain is the pull request that fails, is
 // fixed, and must leave nothing behind, for a scanner that cannot show its
 // coverage.
@@ -223,4 +274,38 @@ func TestE2E_ArtifactSeparatesJobsOfOneScanner(t *testing.T) {
 
 	scan(clean, "services/a", "1111111111111111111111111111111111111113")
 	require.Zero(t, openFindingCount(t, slug), "the same job's clean scan closes them")
+}
+
+// TestE2E_SiblingJobsWithoutArtifactCloseNothing pins the guard for a matrix
+// pipeline that gives its jobs no artifact name: both jobs share a scope, so a
+// clean scan of one at the same commit must not close the other's findings,
+// and the adapter says to set -artifact. A later commit with one job closes as
+// usual.
+func TestE2E_SiblingJobsWithoutArtifactCloseNothing(t *testing.T) {
+	dirty, err := filepath.Abs("../internal/parser/osvscanner/testdata/go-scan.json")
+	require.NoError(t, err)
+	clean := writeScanFile(t, []byte(`{"results":[]}`))
+	slug := newProject(t, "clean-siblings")
+	key := mintKey(t, slug)
+	scan := func(file, commit string) string {
+		t.Helper()
+		_, stderr, exit := runBin(t, adapterBin, []string{"API_URL=" + baseURL, "API_KEY=" + key},
+			"-project", slug, "-tool", "osv-scanner", "-branch", "main", "-commit", commit, "-file", file)
+		require.Less(t, exit, 2, stderr)
+		return stderr
+	}
+	const commit = "1111111111111111111111111111111111111111"
+	stderr := scan(dirty, commit)
+	require.NotContains(t, stderr, "closed no findings")
+	before := openFindingCount(t, slug)
+	require.Positive(t, before)
+
+	stderr = scan(clean, commit)
+	require.Equal(t, before, openFindingCount(t, slug), "the other job's clean scan closes nothing")
+	require.Contains(t, stderr, "closed no findings")
+	require.Contains(t, stderr, "give each its own artifact (-artifact")
+
+	stderr = scan(clean, "1111111111111111111111111111111111111112")
+	require.NotContains(t, stderr, "closed no findings")
+	require.Zero(t, openFindingCount(t, slug), "a clean scan of the next commit closes them")
 }

@@ -178,6 +178,7 @@ type (
 		RemoveProjectMember(ctx context.Context, projectSlug, userID string) error
 		IsProjectMember(ctx context.Context, projectID, userID string) (bool, error)
 		ListProjects(ctx context.Context) ([]usecase.ProjectResponse, error)
+		ListProjectSummaries(ctx context.Context) ([]usecase.ProjectSummary, error)
 		GetProject(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
 		UpdateProject(ctx context.Context, slug string, name, description, defaultBranch *string) (*usecase.ProjectResponse, error)
 		DeleteProject(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
@@ -210,7 +211,7 @@ type (
 	GateUsecases interface {
 		GetGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16) (*usecase.GateStatusOutput, error)
 		AssignFinding(ctx context.Context, findingID, assigneeID string) (*usecase.AssigneeResponse, error)
-		GetBranchGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, branch string) (*usecase.GateStatusOutput, error)
+		GetScannerGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, branch, scanner string) (*usecase.GateStatusOutput, error)
 		GetIntroducedGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, reportID string) (*usecase.GateStatusOutput, error)
 		PreviewPRCheck(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error)
 	}
@@ -371,6 +372,9 @@ type ingestRequest struct {
 	// ScanFilter declares what the scanner left out on purpose. A filtered
 	// report closes only the findings it can vouch for (report_examined_finding).
 	ScanFilter *scanFilterRequest `json:"scan_filter,omitempty"`
+	// PartialScan says the caller cannot vouch that the scan finished, so
+	// the report closes nothing by absence.
+	PartialScan bool `json:"partial_scan,omitempty"`
 }
 
 type scanFilterRequest struct {
@@ -411,6 +415,9 @@ type ingestResponse struct {
 	// for the same project, bytes, and commit; the response then carries that
 	// report's id and a freshly evaluated verdict, at HTTP 200.
 	Replayed bool `json:"replayed"`
+	// Warnings are problems with how the report was sent that the uploader
+	// should fix. Always an array.
+	Warnings []string `json:"warnings"`
 }
 
 type apiError struct {

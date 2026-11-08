@@ -58,6 +58,11 @@ export interface ProjectPermissions {
   request_waiver: boolean;
   manage_waivers: boolean;
   approve_waivers: boolean;
+  /**
+   * Approve the caller's own requests: a global admin, or a manager nobody else on the project can
+   * overrule. That manager has to give a note.
+   */
+  self_approve_waivers: boolean;
   manage_members: boolean;
   manage_ci: boolean;
   triage: boolean;
@@ -534,6 +539,13 @@ export interface ProjectStats {
   latest_completed_report?: Report;
 }
 
+/** One project's gate and stats, as the per-project gate and stats endpoints answer them. */
+export interface ProjectSummary {
+  slug: string;
+  gate: GateStatus;
+  stats: ProjectStats;
+}
+
 export interface IngestResponse {
   report_id: string;
   total_findings: number;
@@ -549,6 +561,8 @@ export interface IngestResponse {
   introduced_count: number;
   pre_existing_count: number;
   replayed: boolean;
+  /** Problems with how the report was sent that the uploader should fix. */
+  warnings: string[];
 }
 
 export type AgingBucketName = "new" | "aging" | "stale" | "debt";

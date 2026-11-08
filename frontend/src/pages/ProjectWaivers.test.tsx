@@ -36,7 +36,11 @@ function waiver(extra: Partial<Waiver>): Waiver {
 }
 
 let waivers: Waiver[];
-let permissions: { approve_waivers: boolean; manage_waivers: boolean; };
+let permissions: {
+  approve_waivers: boolean;
+  manage_waivers: boolean;
+  self_approve_waivers?: boolean;
+};
 let calls: { url: string; method: string; body?: unknown; }[];
 let listFails: boolean;
 let eventsMode: "ok" | "empty" | "fail" | "slow";
@@ -268,6 +272,47 @@ describe("ProjectWaivers", () => {
     expect(calls.find((c) => c.url.endsWith("/waivers/w1/reject"))!.body).toEqual({
       note: "Encrypt it.",
     });
+  });
+
+  it("needs a note when a project's only manager approves their own request", async () => {
+    permissions = { approve_waivers: true, manage_waivers: true, self_approve_waivers: true };
+    waivers = [waiver({ id: "w1", requested_by: "u-ada" })];
+    const user = userEvent.setup();
+    renderPage("u-ada");
+    expect(
+      await screen.findByText(
+        "No other manager can decide this, so you can approve it with a note.",
+      ),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Approve openssh-server: security issue" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Approve this waiver?" });
+    expect(dialog).toHaveTextContent("no other manager can decide it");
+    expect(within(dialog).getByText("(required)")).toBeInTheDocument();
+    const submit = within(dialog).getByRole("button", { name: "Approve" });
+    expect(submit).toBeDisabled();
+    await user.type(within(dialog).getByLabelText(/Note/), "   ");
+    expect(submit).toBeDisabled();
+    await user.type(within(dialog).getByLabelText(/Note/), "Only manager; fix lands next sprint.");
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith("/waivers/w1/approve"))).toBe(true)
+    );
+    expect(calls.find((c) => c.url.endsWith("/waivers/w1/approve"))!.body).toEqual({
+      note: "Only manager; fix lands next sprint.",
+    });
+  });
+
+  it("keeps Approve off on a manager's own request while another manager can decide", async () => {
+    permissions = { approve_waivers: true, manage_waivers: true, self_approve_waivers: false };
+    waivers = [waiver({ id: "w1", requested_by: "u-ada" })];
+    renderPage("u-ada");
+    expect(
+      await screen.findByRole("button", { name: "Approve openssh-server: security issue" }),
+    ).toBeDisabled();
+    expect(screen.queryByText(/No other manager can decide this/)).not.toBeInTheDocument();
   });
 
   it("shows a developer their own request with Withdraw and no decision buttons", async () => {

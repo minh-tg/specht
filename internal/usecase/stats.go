@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/minh-tg/specht/internal/aging"
+	"github.com/minh-tg/specht/internal/gate"
 	"github.com/minh-tg/specht/internal/port"
 )
 
@@ -55,6 +56,21 @@ func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*Pr
 		return nil, err
 	}
 
+	// Blocking comes from the gate itself: the policy floor, source policy,
+	// reachability exemptions and waivers all decide what blocks, and only the
+	// gate applies them.
+	decision, _, err := u.evaluateProjectGate(ctx, project, 0)
+	if err != nil {
+		return nil, err
+	}
+	return u.projectStatsFrom(ctx, project, decision)
+}
+
+// projectStatsFrom counts a project's findings, waivers and reports and takes
+// the blocking numbers from decision, which must be the project-wide gate
+// decision. The project summary passes the decision it already made for the
+// gate column, so each row evaluates the gate once.
+func (u *Usecases) projectStatsFrom(ctx context.Context, project port.Project, decision gate.Decision) (*ProjectStats, error) {
 	rows, err := u.deps.Stores.Stats.GetProjectStats(ctx, project.ID)
 	if err != nil {
 		return nil, fmt.Errorf("get stats: %w", err)
@@ -108,14 +124,6 @@ func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*Pr
 	if err == nil && completedRow.ID != "" {
 		r := toReport(completedRow, u.deps.RawRetentionDays)
 		latestCompleted = &r
-	}
-
-	// Blocking comes from the gate itself: the policy floor, source policy,
-	// reachability exemptions and waivers all decide what blocks, and only the
-	// gate applies them.
-	decision, _, err := u.evaluateProjectGate(ctx, project, 0)
-	if err != nil {
-		return nil, err
 	}
 
 	var totalFindings int32

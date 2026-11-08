@@ -203,6 +203,22 @@ func (r *pgReportPort) PreviousCompletedInScope(ctx context.Context, projectID, 
 	return toUUID(id), nil
 }
 
+func (r *pgReportPort) HasSiblingAtCommit(ctx context.Context, projectID, reportID string) (bool, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return false, err
+	}
+	rid, err := parseID(reportID)
+	if err != nil {
+		return false, err
+	}
+	found, err := r.inner.HasSiblingAtCommit(ctx, pid, rid)
+	if err != nil {
+		return false, mappingErr(err)
+	}
+	return found, nil
+}
+
 func (r *pgReportPort) BranchHasChangeReport(ctx context.Context, projectID, branch string) (bool, error) {
 	pid, err := parseID(projectID)
 	if err != nil {
@@ -1359,6 +1375,7 @@ func (r *pgFindingPort) ListGateCandidates(ctx context.Context, projectID string
 			Reachability:   string(row.ReachabilityState),
 			Aliases:        row.Aliases,
 			ChangeBranches: row.ChangeBranches,
+			Scanners:       row.Scanners,
 		}
 	}
 	return out, nil

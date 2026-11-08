@@ -309,6 +309,7 @@ export function BlockerSection(
                   waiver={views.get(id)}
                   request={request}
                   canApprove={permissions?.approve_waivers === true}
+                  canSelfApprove={permissions?.self_approve_waivers === true}
                   who={who}
                   onRequestWaiver={() =>
                     setDialog({

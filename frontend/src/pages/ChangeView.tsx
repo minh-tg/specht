@@ -113,12 +113,14 @@ export function ChangeView() {
   const report = resolveReport(reportsQuery.data, commit, reportParam);
   const degraded = report !== null
     && (isReportInProgress(report.status) || report.status === "failed");
-  // A scan without a verdict must not be scoped through the gate.
+  // A scan without a verdict must not be scoped through the gate. The project gate is the one of
+  // the report's branch, the same one the CI run checked.
   const changeGateQuery = useChangeGate(
     slug,
     degraded ? undefined : report?.id,
     projectWide,
     severity,
+    report?.branch,
   );
   const projectGateQuery = useGateStatus(slug, severity);
 
@@ -340,12 +342,18 @@ export function ChangeView() {
     : passing && cleared?.kind === "unchecked"
     ? <UncheckedNotice onRetry={() => void earlierGateQuery.refetch()} />
     : undefined;
+  // The project gate is always evaluated now. Beside a report that is no longer the newest on its
+  // branch, the page says so with the time, so nobody reads it as the state at this commit.
+  const older = signal.superseded;
   const debt = (
     <ExistingDebt
       slug={slug}
       ids={existing}
       passing={passing && !projectWide}
       projectName={projectQuery.data?.name}
+      asOf={older && projectGateQuery.dataUpdatedAt
+        ? new Date(projectGateQuery.dataUpdatedAt).toISOString()
+        : undefined}
     />
   );
 
@@ -364,6 +372,9 @@ export function ChangeView() {
         projectWide={projectWide}
         reportOnly={gate.report_only === true}
         notice={notice}
+        gateAsOf={older && changeGateQuery.dataUpdatedAt
+          ? new Date(changeGateQuery.dataUpdatedAt).toISOString()
+          : undefined}
       />
       {gate.threshold_breached && (
         <BlockerSection

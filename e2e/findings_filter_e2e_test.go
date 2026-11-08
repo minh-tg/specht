@@ -156,7 +156,10 @@ func TestE2E_FindingsFiltersAndPagination(t *testing.T) {
 		ingestRaw(t, fixedSlug, "trivy", "trivy-alpine-scan.json", scope)
 		require.Len(t, listFindingsPage(t, fixedSlug, "status=open"), 2)
 
-		ingestRaw(t, fixedSlug, "trivy", "trivy-empty-scan.json", scope)
+		// A later commit: a second report of the same commit with other
+		// content looks like a sibling job and closes nothing.
+		ingestRaw(t, fixedSlug, "trivy", "trivy-empty-scan.json",
+			map[string]any{"branch": "main", "commit_sha": "1111111111111111111111111111111111111112"})
 
 		require.Empty(t, listFindingsPage(t, fixedSlug, "status=open"))
 		require.Len(t, listFindingsPage(t, fixedSlug, "status=fixed"), 2)

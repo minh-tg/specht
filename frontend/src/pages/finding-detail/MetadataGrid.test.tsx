@@ -45,3 +45,11 @@ describe("MetadataGrid EPSS", () => {
     expect(epss(0.85)).toBe("85.0%");
   });
 });
+
+describe("MetadataGrid score", () => {
+  it("says the score is the one the scanner reported", () => {
+    render(<MetadataGrid finding={finding(undefined)} />);
+    expect(screen.getByText("Scanner's score").nextElementSibling?.textContent).toBe("10.0");
+    expect(screen.queryByText("Highest score")).not.toBeInTheDocument();
+  });
+});

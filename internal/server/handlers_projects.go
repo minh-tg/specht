@@ -89,6 +89,22 @@ func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, projects)
 }
 
+// ListProjectSummaries answers the project list in one request: the gate and
+// statistics of every project the caller can see.
+func (h *Handler) ListProjectSummaries(w http.ResponseWriter, r *http.Request) {
+	summaries, err := h.usecase.ListProjectSummaries(r.Context())
+	if err != nil {
+		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+			respondError(w, http.StatusForbidden, "project_access_denied", projectsMsgAccessDenied)
+			return
+		}
+		slog.Error("list project summaries", "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "failed to summarize projects")
+		return
+	}
+	respondJSON(w, http.StatusOK, summaries)
+}
+
 func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {

@@ -220,7 +220,25 @@ describe("ApiKeys", () => {
 
     const postCall = fetchCalls.find((c) => c.method === "POST");
     expect(postCall).toBeDefined();
-    expect(JSON.parse(postCall!.body!)).toEqual({ project: "test-project", name: "My Key" });
+    const body = JSON.parse(postCall!.body!) as {
+      project: string;
+      name: string;
+      expires_at?: string;
+    };
+    expect(body).toMatchObject({ project: "test-project", name: "My Key" });
+    // A new key ends after a year unless the person picks otherwise, as on the setup page.
+    const days = (Date.parse(body.expires_at ?? "") - Date.now()) / 86_400_000;
+    expect(days).toBeGreaterThan(360);
+    expect(days).toBeLessThan(370);
+  });
+
+  it("opens the only project a person manages without asking them to pick it", async () => {
+    role = "member";
+    renderApiKeys();
+    expect(await screen.findByText("My Key")).toBeInTheDocument();
+    expect(screen.getByText(/starts with/)).toHaveTextContent(
+      "A key works for one project and starts with vuln_.",
+    );
   });
 
   it("shows the last four characters and when each key ends", async () => {

@@ -389,7 +389,10 @@ func TestE2E_AutoFixOnEquivalentRescan(t *testing.T) {
 			require.Equal(t, "open", f.State)
 		}
 
-		second := ingestRaw(t, slug, "trivy", "trivy-empty-scan.json", scope)
+		// The rescan is of a later commit: a second report of the same commit
+		// with other content looks like a sibling job and closes nothing.
+		rescan := map[string]any{"branch": "main", "commit_sha": "1111111111111111111111111111111111111112"}
+		second := ingestRaw(t, slug, "trivy", "trivy-empty-scan.json", rescan)
 		require.Zero(t, second.TotalFindings, "the follow-up scan observes nothing")
 
 		after := listScanFindings(t, slug)

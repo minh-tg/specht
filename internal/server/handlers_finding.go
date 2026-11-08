@@ -242,6 +242,7 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		ArtifactVersion:    req.ArtifactVersion,
 		ArtifactType:       req.ArtifactType,
 		ScanFilter:         req.domainFilter(),
+		PartialScan:        req.PartialScan,
 	})
 	if err != nil {
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {
@@ -288,6 +289,10 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 	if result.Replayed {
 		status = http.StatusOK
 	}
+	warnings := result.Warnings
+	if warnings == nil {
+		warnings = []string{}
+	}
 	respondJSON(w, status, ingestResponse{
 		ReportID:          result.ReportID,
 		TotalFindings:     result.TotalFindings,
@@ -299,6 +304,7 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		IntroducedCount:   result.IntroducedCount,
 		PreExistingCount:  result.PreExistingCount,
 		Replayed:          result.Replayed,
+		Warnings:          warnings,
 	})
 }
 

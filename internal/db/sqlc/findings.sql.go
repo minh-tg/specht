@@ -1778,7 +1778,10 @@ SELECT
     ARRAY(SELECT DISTINCT d.dim_value FROM finding_dimensions d
           WHERE d.finding_id = f.id AND d.dim_key = 'alias'
           ORDER BY d.dim_value)::text[] AS aliases,
-    finding_change_branches(f.id)::text[] AS change_branches
+    finding_change_branches(f.id)::text[] AS change_branches,
+    ARRAY(SELECT DISTINCT so.tool_name FROM finding_occurrences so
+          WHERE so.finding_id = f.id
+          ORDER BY so.tool_name)::text[] AS scanners
 FROM open_findings f
 LEFT JOIN LATERAL (
     SELECT r.environment_id, r.target_id, r.artifact_id
@@ -1840,6 +1843,7 @@ type ListGateCandidatesRow struct {
 	ObservedArtifactIds    []string          `json:"observed_artifact_ids"`
 	Aliases                []string          `json:"aliases"`
 	ChangeBranches         []string          `json:"change_branches"`
+	Scanners               []string          `json:"scanners"`
 }
 
 // Batch gate-candidate loader: one round trip returns every finding that may
@@ -1851,7 +1855,8 @@ type ListGateCandidatesRow struct {
 // aligned: entry i is the (environment, target, artifact) of one distinct
 // context whose reports observed the finding, ” for a column the report left
 // empty. A context-scoped waiver is checked against every one of them, not
-// only the newest scan.
+// only the newest scan. scanners names every scanner whose reports observed the
+// finding, so a gate run of one scanner can count only its own findings.
 func (q *Queries) ListGateCandidates(ctx context.Context, arg ListGateCandidatesParams) ([]ListGateCandidatesRow, error) {
 	rows, err := q.db.Query(ctx, listGateCandidates, arg.ProjectID, arg.CurrentSeverityRank)
 	if err != nil {
@@ -1880,6 +1885,7 @@ func (q *Queries) ListGateCandidates(ctx context.Context, arg ListGateCandidates
 			&i.ObservedArtifactIds,
 			&i.Aliases,
 			&i.ChangeBranches,
+			&i.Scanners,
 		); err != nil {
 			return nil, err
 		}

@@ -860,6 +860,33 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
               example: { error: { code: slug_taken, message: project slug already exists } }
 
+  /api/v1/project-summaries:
+    get:
+      tags: [Projects]
+      operationId: listProjectSummaries
+      summary: Read the gate and roll-up of every visible project
+      description: |
+        One row per project that listProjects returns to the same caller, in the
+        same order. Each row holds the answers of GET /api/v1/projects/{slug}/gate
+        (no query parameters) and GET /api/v1/projects/{slug}/stats for that
+        project, so a project list needs one request instead of two per project.
+        One project that fails to evaluate fails the whole request.
+      x-required-scope: read
+      security:
+        - sessionAuth: []
+        - apiKeyAuth: []
+      responses:
+        "200":
+          description: The summaries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ProjectSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/v1/projects/{slug}:
     get:
       tags: [Projects]
@@ -2163,6 +2190,14 @@ paths:
             Adds the findings seen on this branch to the project verdict, for a full gate run
             on a change branch. Without it the verdict answers for the default branch.
           schema: { type: string, example: feat/cart-discounts }
+        - name: scanner
+          in: query
+          description: >-
+            Counts only the findings a report of this scanner observed, the verdict of that
+            scanner's CI step. The name must match the scanner name of its reports exactly.
+            Without it every scanner counts. `unrated_count` stays the project's count.
+            Ignored with `introduced_only`, which is scoped to one report already.
+          schema: { type: string, example: semgrep }
         - name: report_id
           in: query
           description: Required when `introduced_only` is set.
@@ -2526,7 +2561,11 @@ paths:
       description: |
         Moves a pending request to approved, after which it counts in the gate.
         Needs the project manager or admin role. The requester cannot approve
-        their own request, except a global admin, whose approval is marked
+        their own request while someone else can decide it (403
+        `self_approval`). A global admin may approve their own. So may a
+        manager when nobody else on the project holds the manager or admin
+        role, directly or through a team, or is a global admin; that manager
+        has to send a note (400 otherwise). Either approval is marked
         `self_approved` in the audit event. An expired request cannot be
         approved.
       x-auth: session
@@ -2546,6 +2585,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Waiver" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
@@ -4171,11 +4211,17 @@ components:
       description: |
         What the caller may do on the project, for showing and hiding controls.
         The server checks the role again on every request.
-      required: [request_waiver, manage_waivers, approve_waivers, manage_members, manage_ci, triage, upload_reports]
+      required: [request_waiver, manage_waivers, approve_waivers, self_approve_waivers, manage_members, manage_ci, triage, upload_reports]
       properties:
         request_waiver: { type: boolean, description: Ask for a waiver. Every project member. }
         manage_waivers: { type: boolean, description: Create, edit, delete and toggle waivers. }
         approve_waivers: { type: boolean, description: Approve or reject waiver requests. }
+        self_approve_waivers:
+          type: boolean
+          description: |
+            Approve the caller's own waiver requests. True for a global admin,
+            and for a manager when nobody else can decide the project's
+            requests; that manager has to give a note.
         manage_members: { type: boolean, description: Add and remove members, up to the caller's own role. }
         manage_ci: { type: boolean, description: Create, list and revoke the project's API keys. }
         triage: { type: boolean, description: Change analysis state and reachability. }
@@ -4288,6 +4334,13 @@ components:
           items: { type: string, maxLength: 1024 }
         scan_mode: { type: string, enum: [full, incremental], default: full }
         scan_filter: { $ref: "#/components/schemas/ScanFilter" }
+        partial_scan:
+          type: boolean
+          default: false
+          description: >-
+            The caller cannot vouch that the scan finished, such as a scanner
+            that wrote no output at all. The report adds and updates findings
+            but closes none, and its scan_completeness is `partial`.
         gate_severity: { type: string, description: Comma-separated override for the post-ingest threshold check. }
         gate_introduced_only:
           type: boolean
@@ -4327,7 +4380,7 @@ components:
 
     IngestResponse:
       type: object
-      required: [report_id, total_findings, threshold_breached, scan_mode, introduced_count, pre_existing_count, replayed]
+      required: [report_id, total_findings, threshold_breached, scan_mode, introduced_count, pre_existing_count, replayed, warnings]
       properties:
         report_id: { type: string, format: uuid }
         total_findings: { type: integer, description: "Every entry the scanner reported, before fingerprint deduplication." }
@@ -4348,6 +4401,15 @@ components:
         replayed:
           type: boolean
           description: True when identical bytes for the same commit returned an existing report instead of ingesting again.
+        warnings:
+          type: array
+          items: { type: string }
+          description: >-
+            Problems with how the report was sent that the uploader should fix. A full report
+            closes no findings, and says so here, when another completed full report of the same
+            scan scope (scanner, target, artifact name, branch, environment) carries the same
+            commit and scan filter with different content, as two CI jobs of one scanner without
+            an artifact name do. Give each job its own `artifact_name`.
 
     ReportDeletionPreview:
       type: object
@@ -5305,6 +5367,14 @@ components:
         digest: { type: string }
         locator: { type: string }
         created_at: { type: string, format: date-time }
+
+    ProjectSummary:
+      type: object
+      required: [slug, gate, stats]
+      properties:
+        slug: { type: string }
+        gate: { $ref: "#/components/schemas/GateStatus" }
+        stats: { $ref: "#/components/schemas/ProjectStats" }
 
     ProjectStats:
       type: object

@@ -250,6 +250,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.With(sessionAdmin).Post("/api/v1/users/{id}/deactivate", h.DeactivateUser)
 		r.With(sessionAdmin).Post("/api/v1/users/{id}/reactivate", h.ReactivateUser)
 		r.With(readScope).Get("/api/v1/projects", h.ListProjects)
+		// Its own path, not /projects/summary: chi matches a static segment
+		// before {slug}, so that path would hide a project slugged "summary".
+		r.With(readScope).Get("/api/v1/project-summaries", h.ListProjectSummaries)
 		r.With(sessionAdmin).Post("/api/v1/projects", h.CreateProject)
 		r.With(readScope).Get(routeProjectsSlug, h.GetProject)
 		r.With(adminScope).Put(routeProjectsSlug, h.UpdateProject)

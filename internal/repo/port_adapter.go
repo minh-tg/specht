@@ -473,6 +473,22 @@ func (r *pgProjectPort) CountAdmins(ctx context.Context, projectID string) (int,
 	return int(count), nil
 }
 
+func (r *pgProjectPort) CountOtherWaiverDeciders(ctx context.Context, projectID, userID string) (int, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return 0, err
+	}
+	uid, err := parseID(userID)
+	if err != nil {
+		return 0, err
+	}
+	count, err := r.q.CountOtherWaiverDeciders(ctx, sqlc.CountOtherWaiverDecidersParams{ProjectID: pid, UserID: uid})
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
+}
+
 func (r *pgProjectPort) ListSoleAdminProjects(ctx context.Context, userID string) ([]string, error) {
 	uid, err := parseID(userID)
 	if err != nil {

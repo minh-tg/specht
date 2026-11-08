@@ -109,6 +109,10 @@ type IngestReportInput struct {
 	// (a severity floor, only fixable findings). The report stores it and
 	// closes only findings inside it. The zero value means an unfiltered scan.
 	ScanFilter domain.ScanFilter
+	// PartialScan says the caller cannot vouch that the scan finished, such
+	// as a Nuclei run that wrote nothing. The report closes no finding by
+	// absence and is stored as partial.
+	PartialScan bool
 }
 
 // IngestReportOutput reports what a completed ingest produced.
@@ -134,6 +138,10 @@ type IngestReportOutput struct {
 	// same project, bytes, and commit, and the stored report was returned
 	// with a freshly evaluated verdict instead of ingesting again.
 	Replayed bool
+	// Warnings are problems with how the report was sent that the uploader
+	// should fix, such as two CI jobs that share a scan scope. Never nil on
+	// a fresh ingest.
+	Warnings []string
 }
 
 // ScannerRegistry is the scanner capability consumed by the application.
@@ -295,6 +303,7 @@ func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID st
 			IntroducedCommitSha:  derefOrEmpty(c.IntroducedCommitSha),
 			Aliases:              c.Aliases,
 			ChangeBranches:       c.ChangeBranches,
+			Scanners:             c.Scanners,
 		}
 	}
 	return result, nil

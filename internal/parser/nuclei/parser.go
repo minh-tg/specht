@@ -38,11 +38,19 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 		DisplayName: "Nuclei",
 		Formats: []scanner.Format{
 			{
+				Name:       "JSON export",
+				Extensions: []string{".json"},
+				Command:    `nuclei -u https://example.com -je nuclei.json`,
+				TestedWith: "Nuclei 3.11.1",
+				Note: `One finding per template and URL. The JSON export is written when the run ends, ` +
+					"as `[]` when nothing matched, so a clean run closes findings and a run that stopped early leaves no file.",
+			},
+			{
 				Name:       "JSON Lines",
 				Extensions: []string{".jsonl", ".ndjson"},
 				Command:    `nuclei -u https://example.com -jsonl -o nuclei.jsonl`,
 				TestedWith: "Nuclei 3.11.1",
-				Note:       `One finding per template and URL.`,
+				Note:       `An empty JSON Lines file closes no findings, since a run that stopped early leaves one too.`,
 			},
 		},
 		Version:               "3",
@@ -160,9 +168,9 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	if err != nil {
 		return nil, err
 	}
-	// A scan with no matches writes nothing, so empty input is a clean report.
-	// It only arrives here when the caller named this scanner: detection does
-	// not recognize an empty file.
+	// JSON Lines output is empty both when nothing matched and when the run
+	// stopped early, so empty input parses as no findings and the adapter
+	// sends it as a partial scan. Detection does not recognize an empty file.
 	trimmed := bytes.TrimSpace(data)
 	var lines [][]byte
 	if len(trimmed) > 0 {

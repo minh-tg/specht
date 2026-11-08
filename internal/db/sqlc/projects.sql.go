@@ -32,6 +32,41 @@ func (q *Queries) CountOtherProjectAdmins(ctx context.Context, arg CountOtherPro
 	return count, err
 }
 
+const countOtherWaiverDeciders = `-- name: CountOtherWaiverDeciders :one
+SELECT COUNT(DISTINCT u.id) FROM users u
+WHERE u.disabled_at IS NULL AND u.email <> 'system@specht.local' AND u.id <> $1
+  AND (
+    EXISTS (
+        SELECT 1 FROM project_members pm
+        WHERE pm.project_id = $2 AND pm.user_id = u.id
+          AND (pm.role IN ('admin', 'manager') OR u.role = 'admin')
+    )
+    OR EXISTS (
+        SELECT 1 FROM project_teams pt
+        JOIN team_members tm ON tm.team_id = pt.team_id
+        WHERE pt.project_id = $2 AND tm.user_id = u.id
+          AND (pt.role IN ('admin', 'manager') OR u.role = 'admin')
+    )
+  )
+`
+
+type CountOtherWaiverDecidersParams struct {
+	UserID    pgtype.UUID `json:"user_id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+}
+
+// People besides one user who can decide the project's waiver requests: active
+// accounts that reach the project directly or through a team and hold manager or
+// admin rights there or the global admin role. A global admin who is not on the
+// project is left out, or no project's own manager could ever approve their own
+// request. The seeded system account never signs in, so it does not count.
+func (q *Queries) CountOtherWaiverDeciders(ctx context.Context, arg CountOtherWaiverDecidersParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countOtherWaiverDeciders, arg.UserID, arg.ProjectID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countProjectAdmins = `-- name: CountProjectAdmins :one
 SELECT COUNT(*) FROM project_members pm
 JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL AND u.email <> 'system@specht.local'

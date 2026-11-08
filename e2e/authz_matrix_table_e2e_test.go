@@ -414,6 +414,12 @@ func authzRows() []authzRow {
 			Want: allowOnly(append([]authzCaller{callerKeyRead}, sessions...)...), Tenants: onlyX,
 		},
 		{
+			// The same filter as the project list, with each project's gate
+			// and statistics.
+			Method: "GET", Pattern: "/api/v1/project-summaries", Path: api("/project-summaries"),
+			Want: allowOnly(append([]authzCaller{callerKeyRead}, sessions...)...), Tenants: onlyX,
+		},
+		{
 			Method: "POST", Pattern: "/api/v1/projects", Path: api("/projects"),
 			Body: func(f *authzFixtures, _ *authzAttempt) any {
 				slug := f.unique("proj")

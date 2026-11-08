@@ -1,5 +1,5 @@
 import { useMe, useProjects } from "@/api/hooks";
-import { projectGateQuery, projectStatsQuery } from "@/api/pageRequests";
+import { cachedProjectGate, cachedProjectStats, useProjectSummaries } from "@/api/pageRequests";
 import { prefetchProject } from "@/api/prefetch";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
@@ -27,9 +27,9 @@ const VERDICT_PRIORITY: Record<Verdict, number> = {
 };
 
 /**
- * A project plus the two per-project queries the row needs. `settled` gates
- * sorting so rows never reorder while their data is still in flight, and
- * `failed` lets a broken row degrade to dashes instead of half-truths.
+ * A project plus its cached gate and stats. `settled` gates sorting so rows
+ * never reorder while their data is still in flight, and `failed` lets a row
+ * without data degrade to dashes instead of half-truths.
  */
 interface ProjectRowData {
   project: Project;
@@ -45,12 +45,16 @@ export function ProjectList() {
   const isAdmin = me?.role === "admin";
   const projectList = projects ?? [];
 
+  // One request answers every row. It fills the per-project cache entries, and the rows read
+  // those entries without fetching them.
+  const summaries = useProjectSummaries();
+
   const gateQueries = useQueries({
-    queries: projectList.map((project) => projectGateQuery(project.slug)),
+    queries: projectList.map((project) => cachedProjectGate(project.slug)),
   });
 
   const statsQueries = useQueries({
-    queries: projectList.map((project) => projectStatsQuery(project.slug)),
+    queries: projectList.map((project) => cachedProjectStats(project.slug)),
   });
 
   if (isLoading) {
@@ -85,15 +89,18 @@ export function ProjectList() {
     );
   }
 
+  // A row has settled once the summaries request has answered. A row it left without data (the
+  // request failed, or the project is newer than the answer) degrades to dashes.
+  const summariesSettled = !summaries.isPending;
   const rows: ProjectRowData[] = projectList.map((project, index) => {
-    const gate = gateQueries[index];
-    const stats = statsQueries[index];
+    const gate = gateQueries[index]?.data;
+    const stats = statsQueries[index]?.data;
     return {
       project,
-      gate: gate?.data,
-      stats: stats?.data,
-      settled: gate !== undefined && stats !== undefined && !gate.isPending && !stats.isPending,
-      failed: gate?.isError === true || stats?.isError === true,
+      gate,
+      stats,
+      settled: summariesSettled,
+      failed: summariesSettled && (gate === undefined || stats === undefined),
     };
   });
 

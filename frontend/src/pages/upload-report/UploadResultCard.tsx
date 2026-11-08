@@ -34,6 +34,11 @@ export function UploadResultCard({ result, slug, onReset }: UploadResultCardProp
           This exact report was already ingested for this commit; showing its result.
         </p>
       )}
+      {(result.warnings ?? []).map((warning) => (
+        <p key={warning} className="mt-2 text-body">
+          {warning}
+        </p>
+      ))}
       <div className="mt-3 flex items-center gap-4 text-body">
         <Link to={`/${slug}/findings`} className={INLINE_LINK}>
           View findings
