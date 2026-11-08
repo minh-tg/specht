@@ -315,6 +315,66 @@ func TestRun_LineDelimitedJSON_IngestSuccess(t *testing.T) {
 	assert.Contains(t, stderr.String(), "gate PASSED")
 }
 
+// TestRun_EmptyNucleiOutputIsPartial pins how the adapter tells an empty
+// Nuclei file, which a stopped run also leaves, from a finished JSON export.
+func TestRun_EmptyNucleiOutputIsPartial(t *testing.T) {
+	tests := map[string]struct {
+		input       string
+		wantPartial bool
+	}{
+		"empty file":                {"", true},
+		"only whitespace":           {"  \n\t\n", true},
+		"JSON export with no match": {"[]", false},
+		"one match": {
+			"{\"template-id\": \"t1\", \"host\": \"localhost\"}\n", false,
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			clearCIEnvironment(t)
+			t.Setenv("API_KEY", "test-key")
+			var captured client.IngestPayload
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/v1/reports":
+					require.NoError(t, json.NewDecoder(r.Body).Decode(&captured))
+					writeTestJSONResponse(t, w, client.IngestResponse{ReportID: "rep-1"})
+				case "/api/v1/projects/my-app/gate":
+					writeTestJSONResponse(t, w, client.GateStatus{})
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer srv.Close()
+			t.Setenv("API_URL", srv.URL)
+
+			var stdout, stderr bytes.Buffer
+			code := run([]string{"-project=my-app", "-tool=nuclei"}, strings.NewReader(tc.input), &stdout, &stderr, srv.Client())
+
+			require.Equal(t, 0, code, stderr.String())
+			assert.Equal(t, tc.wantPartial, captured.PartialScan)
+			require.True(t, json.Valid(captured.RawData), string(captured.RawData))
+			if tc.wantPartial {
+				assert.JSONEq(t, "[]", string(captured.RawData))
+				assert.Contains(t, stderr.String(), "closes no findings")
+				assert.Contains(t, stderr.String(), "-je")
+			} else {
+				assert.NotContains(t, stderr.String(), "closes no findings")
+			}
+		})
+	}
+}
+
+func TestRun_EmptyInputStillFailsForOtherScanners(t *testing.T) {
+	clearCIEnvironment(t)
+	t.Setenv("API_KEY", "test-key")
+	t.Setenv("API_URL", "http://127.0.0.1:1")
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-project=my-app", "-tool=trivy"}, strings.NewReader(""), &stdout, &stderr, http.DefaultClient)
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr.String(), "input is empty")
+}
+
 func TestIngestReport_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "POST", r.Method)

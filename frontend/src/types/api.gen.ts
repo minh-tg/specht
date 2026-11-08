@@ -2604,6 +2604,11 @@ export interface components {
        */
       scan_mode: "full" | "incremental";
       scan_filter?: components["schemas"]["ScanFilter"];
+      /**
+       * @description The caller cannot vouch that the scan finished, such as a scanner that wrote no output at all. The report adds and updates findings but closes none, and its scan_completeness is `partial`.
+       * @default false
+       */
+      partial_scan: boolean;
       /** @description Comma-separated override for the post-ingest threshold check. */
       gate_severity?: string;
       /** @description Scope the post-ingest threshold check to what this report introduced. */

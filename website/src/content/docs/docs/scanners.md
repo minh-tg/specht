@@ -19,7 +19,7 @@ it resembles.
 | Grype                  | Native JSON                                        |
 | Gitleaks               | JSON, including redacted reports                   |
 | tfsec                  | JSON                                               |
-| Nuclei                 | JSON Lines (`.jsonl` or `.ndjson`)                 |
+| Nuclei                 | JSON export (`-je`) or JSON Lines (`.jsonl`)       |
 | SARIF tools            | SARIF 2.1.0, including CodeQL, Gosec and Hadolint  |
 | SBOM                   | CycloneDX 1.x JSON or SPDX 2.x JSON                |
 
@@ -68,6 +68,10 @@ metadata. Use the adapter or API for [change-linked gates](../ci-gates/).
   not normalize dependency graphs, licenses, hashes or signatures.
 - Select the SBOM reader for Grype's CycloneDX output. Native Grype JSON uses the
   Grype reader.
+- Send Nuclei's JSON export (`nuclei -u https://example.com -je nuclei.json`).
+  Nuclei writes it when the run ends, as `[]` when nothing matched, and that
+  clean run closes findings. An empty JSON Lines file closes nothing, because a
+  run that stopped early leaves one too.
 - A report can finish processing without proving complete coverage of a target.
   Only comparable, complete scan evidence can retire older scope evidence.
 

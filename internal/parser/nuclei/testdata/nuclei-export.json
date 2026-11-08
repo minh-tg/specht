@@ -1,0 +1,48 @@
+[
+  {
+    "template-url": "https://cloud.projectdiscovery.io/public/git-config",
+    "template-id": "git-config",
+    "template-path": "/templates/git-config.yaml",
+    "info": {
+      "name": "Git Configuration - Detect",
+      "author": [
+        "pdteam",
+        "pikpikcu",
+        "mah3sec_",
+        "m4lwhere"
+      ],
+      "tags": [
+        "config",
+        "git",
+        "exposure",
+        "vuln"
+      ],
+      "description": "Git configuration was detected via the pattern /.git/config and log file on passed URLs.",
+      "severity": "medium",
+      "metadata": {
+        "max-request": 1
+      },
+      "classification": {
+        "cve-id": null,
+        "cwe-id": [
+          "cwe-200"
+        ],
+        "cvss-metrics": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+        "cvss-score": 5.3
+      }
+    },
+    "type": "http",
+    "host": "127.0.0.1",
+    "port": "18766",
+    "scheme": "http",
+    "url": "http://127.0.0.1:18766/",
+    "path": "/",
+    "matched-at": "http://127.0.0.1:18766/.git/config",
+    "request": "GET /.git/config HTTP/1.1\r\nHost: 127.0.0.1:18766\r\nUser-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) AppleWebKit/603.3.8 (KHTML, like Gecko) Version/10.1.2 Safari/603.3.8\r\nAccept: */*\r\nAccept-Language: en\r\nAccept-Encoding: gzip\r\n\r\n",
+    "response": "HTTP/1.0 200 OK\r\nConnection: close\r\nContent-Length: 36\r\nContent-Type: application/octet-stream\r\nDate: Sun, 08 Nov 2026 00:40:50 GMT\r\nLast-Modified: Sun, 08 Nov 2026 00:40:50 GMT\r\nServer: SimpleHTTP/0.6 Python/3.14.7\r\n\r\n[core]\n\trepositoryformatversion = 0\n",
+    "ip": "127.0.0.1",
+    "timestamp": "2026-11-07T00:00:00Z",
+    "curl-command": "curl -X 'GET' -d '' -H 'Accept: */*' -H 'Accept-Language: en' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) AppleWebKit/603.3.8 (KHTML, like Gecko) Version/10.1.2 Safari/603.3.8' 'http://127.0.0.1:18766/.git/config'",
+    "matcher-status": true
+  }
+]

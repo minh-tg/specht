@@ -109,6 +109,10 @@ type IngestReportInput struct {
 	// (a severity floor, only fixable findings). The report stores it and
 	// closes only findings inside it. The zero value means an unfiltered scan.
 	ScanFilter domain.ScanFilter
+	// PartialScan says the caller cannot vouch that the scan finished, such
+	// as a Nuclei run that wrote nothing. The report closes no finding by
+	// absence and is stored as partial.
+	PartialScan bool
 }
 
 // IngestReportOutput reports what a completed ingest produced.

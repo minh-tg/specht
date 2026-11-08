@@ -21,6 +21,23 @@ func TestDescriptor_DAST(t *testing.T) {
 	assert.Contains(t, d.ScanTypes, domain.ScanTypeDAST)
 }
 
+// TestParse_JSONExport reads the file Nuclei 3.11.1 writes with -je: one JSON
+// array, written only when the run ends.
+func TestParse_JSONExport(t *testing.T) {
+	data, err := os.ReadFile("testdata/nuclei-export.json")
+	require.NoError(t, err)
+	s := NewScanner()
+	assert.True(t, s.DetectFormat(data))
+	report, err := s.Parse(context.Background(), data)
+	require.NoError(t, err)
+	require.Len(t, report.Findings, 1)
+	assert.Contains(t, report.Findings[0].Title, "Git Configuration")
+	assert.Equal(t, domain.SeverityMedium, report.Findings[0].Severity)
+	raw, err := s.RedactRaw(data)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), "repositoryformatversion", "the response body must be redacted")
+}
+
 func TestDetectFormat_JSONL(t *testing.T) {
 	data, err := os.ReadFile("testdata/nuclei.jsonl")
 	require.NoError(t, err)
@@ -209,8 +226,9 @@ func redact(t *testing.T, data []byte) []byte {
 	return out
 }
 
-// A scan with no matches writes nothing. Named as this scanner, that is a clean
-// report, and detection still does not claim an empty file.
+// Empty input parses as a report with no findings, and detection does not
+// claim an empty file. Whether it closes anything is the caller's claim: the
+// adapter sends an empty file as a partial scan.
 func TestParse_EmptyInputIsACleanReport(t *testing.T) {
 	s := &Scanner{}
 	for _, input := range []string{"", "  \n", "[]"} {

@@ -132,7 +132,17 @@ func noCommandPrefix(s string) string {
 	return sanitize.NoWorkflowCommand(s)
 }
 
-// readRawInput loads the scan result from the file flag or stdin.
+// emptyNucleiOutput marks an empty Nuclei file as a partial scan. The file
+// cannot show that the run finished, so its findings stay open until a run
+// that can: Nuclei's JSON export writes [] at the end of a clean run.
+func emptyNucleiOutput(payload *client.IngestPayload, stderr io.Writer) {
+	payload.PartialScan = true
+	writeDiagnostic(stderr, "note: the Nuclei output is empty, which a run that found nothing and a run that stopped early both leave. "+
+		"The report closes no findings. Export with -je nuclei.json: a finished run writes [] when nothing matched, and that closes them.\n")
+}
+
+// readRawInput loads the scan result from the file flag or stdin. Empty
+// Nuclei output comes back as nil with code 0.
 func readRawInput(file, tool string, stdin io.Reader, stderr io.Writer) ([]byte, int) {
 	var rawInput []byte
 	var err error
@@ -157,10 +167,12 @@ func readRawInput(file, tool string, stdin io.Reader, stderr io.Writer) ([]byte,
 		return nil, 2
 	}
 	if len(bytes.TrimSpace(rawInput)) == 0 {
-		// A Nuclei run with no matches writes nothing. That is a clean scan,
-		// not a missing file, and it has to reach the server to close findings.
+		// Nuclei writing JSON Lines leaves an empty file both when nothing
+		// matched and when the run died. The caller sends it as a partial
+		// scan (see emptyNucleiOutput); a JSON export (-je) writes [] only
+		// when the run finishes, and that closes findings.
 		if tool == "nuclei" {
-			return []byte("[]"), 0
+			return nil, 0
 		}
 		writeDiagnostic(stderr, "error: input is empty, provide a scan result file or pipe to stdin\n")
 		return nil, 2
@@ -726,12 +738,19 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 	if code != 0 {
 		return code
 	}
+	emptyOutput := len(rawInput) == 0
+	if emptyOutput {
+		rawInput = []byte("[]")
+	}
 	payload, code := buildPayload(rawInput, f, stderr)
 	if code == -1 {
 		return 0 // skipped by -exclude-tool
 	}
 	if code != 0 {
 		return code
+	}
+	if emptyOutput {
+		emptyNucleiOutput(&payload, stderr)
 	}
 	if apiKey == "" {
 		return failMissingAPIKey(stderr)
