@@ -595,7 +595,12 @@ func (u *Usecases) GetBranchGateStatus(ctx context.Context, projectSlug string, 
 	if err != nil {
 		return nil, err
 	}
+	return u.gateStatusFrom(ctx, project, decision, policy)
+}
 
+// gateStatusFrom turns a gate decision into the gate endpoint's answer. The
+// project summary builds its rows with it too, so the two match.
+func (u *Usecases) gateStatusFrom(ctx context.Context, project port.Project, decision gate.Decision, policy *PolicyEffectiveResponse) (*GateStatusOutput, error) {
 	reachability := make(map[string]string, len(decision.BlockedByReachability))
 	for id, state := range decision.BlockedByReachability {
 		reachability[id] = string(state)
@@ -604,6 +609,7 @@ func (u *Usecases) GetBranchGateStatus(ctx context.Context, projectSlug string, 
 	var unrated int32
 	// A nil stats store is a unit-test double that predates the count.
 	if policy.UnratedGate != "block" && u.deps.Stores.Stats != nil {
+		var err error
 		unrated, err = u.deps.Stores.Stats.CountOpenUnratedFindings(ctx, project.ID)
 		if err != nil {
 			return nil, fmt.Errorf("count unrated findings: %w", err)

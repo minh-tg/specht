@@ -514,6 +514,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/project-summaries": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read the gate and roll-up of every visible project
+     * @description One row per project that listProjects returns to the same caller, in the
+     *     same order. Each row holds the answers of GET /api/v1/projects/{slug}/gate
+     *     (no query parameters) and GET /api/v1/projects/{slug}/stats for that
+     *     project, so a project list needs one request instead of two per project.
+     *     One project that fails to evaluate fails the whole request.
+     */
+    get: operations["listProjectSummaries"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/projects/{slug}": {
     parameters: {
       query?: never;
@@ -3583,6 +3607,11 @@ export interface components {
       /** Format: date-time */
       created_at: string;
     };
+    ProjectSummary: {
+      slug: string;
+      gate: components["schemas"]["GateStatus"];
+      stats: components["schemas"]["ProjectStats"];
+    };
     ProjectStats: {
       /** @description Open and reopened findings; fixed and archived findings are not counted. */
       total_findings: number;
@@ -4848,6 +4877,29 @@ export interface operations {
           "application/json": components["schemas"]["Error"];
         };
       };
+    };
+  };
+  listProjectSummaries: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The summaries. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectSummary"][];
+        };
+      };
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["Forbidden"];
+      500: components["responses"]["InternalError"];
     };
   };
   getProject: {

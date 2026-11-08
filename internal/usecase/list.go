@@ -529,6 +529,17 @@ func (u *Usecases) DeleteProject(ctx context.Context, slug string) (*ProjectResp
 // Global admins see everything; project-scoped API keys see only their own
 // project; other session users see only projects they belong to.
 func (u *Usecases) ListProjects(ctx context.Context) ([]ProjectResponse, error) {
+	projects, err := u.visibleProjects(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return toProjects(projects), nil
+}
+
+// visibleProjects is the access filter behind ListProjects. It returns the
+// stored projects, so a caller can evaluate each one without looking it up
+// again by slug.
+func (u *Usecases) visibleProjects(ctx context.Context) ([]port.Project, error) {
 	ident := auth.ContextIdentity(ctx)
 	if ident == nil {
 		return nil, ErrProjectAccessDenied
@@ -540,18 +551,18 @@ func (u *Usecases) ListProjects(ctx context.Context) ([]ProjectResponse, error) 
 		p, err := u.deps.Stores.Projects.GetByID(ctx, ident.ProjectID)
 		if err != nil {
 			if errors.Is(err, port.ErrNotFound) {
-				return []ProjectResponse{}, nil
+				return nil, nil
 			}
 			return nil, fmt.Errorf("get api key project: %w", err)
 		}
-		return []ProjectResponse{toProject(p)}, nil
+		return []port.Project{p}, nil
 	}
 	if ident.Role == auth.RoleAdmin {
 		projects, err := u.deps.Stores.Projects.List(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("list projects: %w", err)
 		}
-		return toProjects(projects), nil
+		return projects, nil
 	}
 
 	// Non-admin session users see only accessible projects (direct or team).
@@ -560,14 +571,14 @@ func (u *Usecases) ListProjects(ctx context.Context) ([]ProjectResponse, error) 
 		return nil, fmt.Errorf("list member projects: %w", err)
 	}
 	if len(ids) == 0 {
-		return []ProjectResponse{}, nil
+		return nil, nil
 	}
 
 	projects, err := u.deps.Stores.Projects.ListByIDs(ctx, ids)
 	if err != nil {
 		return nil, fmt.Errorf("list projects by ids: %w", err)
 	}
-	return toProjects(projects), nil
+	return projects, nil
 }
 
 func toProjects(projects []port.Project) []ProjectResponse {
