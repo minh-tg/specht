@@ -369,6 +369,19 @@ describe("ChangeView", () => {
       .toBeInTheDocument();
   });
 
+  it("asks for the project gate of the report's branch, as the CI run judged it", async () => {
+    reports = [report({ branch: "feat/login" })];
+    projectGate = gate({ blocked_by: ["f1"] });
+    renderPage(`/acme/changes/${FULL_SHA}?report=r1&scope=project`);
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
+      "1 finding blocks this project.",
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/v1/projects/acme/gate?branch=feat%2Flogin",
+      expect.anything(),
+    );
+  });
+
   it("loads an exact report even when it is outside the report list", async () => {
     reports = [];
     exactReports = { old: report({ id: "old" }) };

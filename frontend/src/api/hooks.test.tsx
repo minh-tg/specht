@@ -573,6 +573,26 @@ describe("useChangeGate", () => {
     expect(urls[0]).toBe("/api/v1/projects/p%2F1/gate?introduced_only=true&report_id=r+1%2F2");
   });
 
+  it("asks for the project gate of the report's branch, and only in project scope", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      urls.push(String(input));
+      return Promise.resolve(jsonResponse({ threshold_breached: false, blocking_count: 0 }));
+    });
+
+    const project = renderHook(() => useChangeGate("p1", "r1", true, "high", "feat/a b"), {
+      wrapper,
+    });
+    const introduced = renderHook(() => useChangeGate("p1", "r1", false, undefined, "feat/a"), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(project.result.current.isSuccess).toBe(true));
+    await waitFor(() => expect(introduced.result.current.isSuccess).toBe(true));
+    expect(urls).toContain("/api/v1/projects/p1/gate?branch=feat%2Fa+b&severity=high");
+    expect(urls).toContain("/api/v1/projects/p1/gate?introduced_only=true&report_id=r1");
+  });
+
   it("stays disabled without a report", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}));
     globalThis.fetch = fetchMock;
