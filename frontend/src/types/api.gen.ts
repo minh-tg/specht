@@ -2711,6 +2711,8 @@ export interface components {
       pre_existing_count: number;
       /** @description True when identical bytes for the same commit returned an existing report instead of ingesting again. */
       replayed: boolean;
+      /** @description Problems with how the report was sent that the uploader should fix. A full report closes no findings, and says so here, when another completed full report of the same scan scope (scanner, target, artifact name, branch, environment) carries the same commit and scan filter with different content, as two CI jobs of one scanner without an artifact name do. Give each job its own `artifact_name`. */
+      warnings: string[];
     };
     ReportDeletionPreview: {
       /** @description Findings that cite this report. */
@@ -6185,6 +6187,8 @@ export interface operations {
         introduced_only?: boolean;
         /** @description Adds the findings seen on this branch to the project verdict, for a full gate run on a change branch. Without it the verdict answers for the default branch. */
         branch?: string;
+        /** @description Counts only the findings a report of this scanner observed, the verdict of that scanner's CI step. The name must match the scanner name of its reports exactly. Without it every scanner counts. `unrated_count` stays the project's count. Ignored with `introduced_only`, which is scoped to one report already. */
+        scanner?: string;
         /** @description Required when `introduced_only` is set. */
         report_id?: string;
       };

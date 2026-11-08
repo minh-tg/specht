@@ -296,7 +296,7 @@ func (h *Handler) GetGateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.usecase.GetBranchGateStatus(r.Context(), slug, minRank, r.URL.Query().Get("branch"))
+	result, err := h.usecase.GetScannerGateStatus(r.Context(), slug, minRank, r.URL.Query().Get("branch"), r.URL.Query().Get("scanner"))
 	if err != nil {
 		slog.Error("get gate status", "project", slug, "error", err)
 		respondError(w, http.StatusInternalServerError, "gate_failed", "could not evaluate gate status")

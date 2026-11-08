@@ -16,6 +16,15 @@ releases.
   run on a branch counts that branch's own findings too. `GET /projects/{slug}/gate` takes `branch`,
   `GET /projects/{slug}/findings` takes `branch_scope` and returns `only_on_branches`, and project
   stats return `only_on_change_branches_count`. Findings with no branch to go by still count.
+- The adapter's exit code on a project-wide gate counts only the findings its own scanner (`-tool`)
+  reported, so a Semgrep step no longer fails on Trivy findings that the Trivy step can close. The log
+  still prints the project total across all scanners, and the published commit check keeps the
+  project verdict across all scanners. `GET /projects/{slug}/gate` takes `scanner`; without it the
+  verdict and the UI count every scanner, as before.
+- Two CI jobs of one scanner without `-artifact` no longer close each other's findings. A full report
+  that finds another report of its scan scope at the same commit with different content closes
+  nothing, and the ingest response carries a `warnings` entry, printed by the adapter and shown on
+  the upload page, that says to give each job its own `-artifact`.
 
 - A full scan closes a finding it no longer reports, for every scanner. OSV-Scanner, Semgrep,
   Dependency-Check, Gitleaks, tfsec, Nuclei and SBOMs with a vulnerability section left findings open

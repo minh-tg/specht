@@ -179,6 +179,13 @@ func (r *pgReportRepo) BranchHasChangeReport(ctx context.Context, projectID pgty
 	})
 }
 
+func (r *pgReportRepo) HasSiblingAtCommit(ctx context.Context, projectID, reportID pgtype.UUID) (bool, error) {
+	return r.q.HasSiblingReportAtCommit(ctx, sqlc.HasSiblingReportAtCommitParams{
+		ProjectID: projectID,
+		ReportID:  reportID,
+	})
+}
+
 func (r *pgReportRepo) LatestCompletedInFindingScope(ctx context.Context, projectID, findingID pgtype.UUID) (sqlc.LatestCompletedFullReportInFindingScopeRow, error) {
 	return r.q.LatestCompletedFullReportInFindingScope(ctx, sqlc.LatestCompletedFullReportInFindingScopeParams{
 		ProjectID: projectID,

@@ -127,6 +127,64 @@ func TestIngestReport_AutoFixClosesAbsentFindings(t *testing.T) {
 	assert.Equal(t, "trivy", changes["scanner"])
 }
 
+// TestIngestReport_SiblingJobClosesNothing pins the matrix guard: when another
+// report of the scope carries the same commit with other content, the report
+// closes nothing and the response says why.
+func TestIngestReport_SiblingJobClosesNothing(t *testing.T) {
+	uc, fr, rr := autofixHarness(t, domain.CompletenessComplete)
+	var siblingReport string
+	rr.hasSiblingAtCommitFn = func(ctx context.Context, projectID, reportID string) (bool, error) {
+		siblingReport = reportID
+		return true, nil
+	}
+	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
+		t.Error("a report with a sibling at its commit must not close findings")
+		return nil, nil
+	}
+
+	out, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app",
+		Scanner:     "trivy",
+		CommitSha:   "abcdef0123456789abcdef0123456789abcdef01",
+		RawData:     json.RawMessage(`{"test": true}`),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, out.ReportID, siblingReport)
+	require.Len(t, out.Warnings, 1)
+	assert.Contains(t, out.Warnings[0], "abcdef012345")
+	assert.Contains(t, out.Warnings[0], "-artifact")
+}
+
+// TestIngestReport_NoSiblingClosesAndWarnsNothing keeps the guard out of the
+// normal path, and a report without a commit never asks for siblings.
+func TestIngestReport_NoSiblingClosesAndWarnsNothing(t *testing.T) {
+	for _, commit := range []string{"abcdef0123456789abcdef0123456789abcdef01", ""} {
+		uc, fr, rr := autofixHarness(t, domain.CompletenessComplete)
+		asked := false
+		rr.hasSiblingAtCommitFn = func(ctx context.Context, projectID, reportID string) (bool, error) {
+			asked = true
+			return false, nil
+		}
+		closed := false
+		fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
+			closed = true
+			return nil, nil
+		}
+
+		out, err := uc.IngestReport(context.Background(), IngestReportInput{
+			ProjectSlug: "my-app",
+			Scanner:     "trivy",
+			CommitSha:   commit,
+			RawData:     json.RawMessage(`{"test": true}`),
+		})
+		require.NoError(t, err)
+		assert.True(t, closed)
+		assert.Equal(t, commit != "", asked)
+		assert.NotNil(t, out.Warnings, "the list reaches the API, so it is never nil")
+		assert.Empty(t, out.Warnings)
+	}
+}
+
 // TestIngestReport_AutoFixSkipsUnknownCompleteness pins the parser-vouch
 // gate: a report normalized to completeness "unknown" never reaches the
 // writer, so an unseen fingerprint stays open.
@@ -157,7 +215,7 @@ func TestAutoFixAbsentFindings_SkipsIncrementalScans(t *testing.T) {
 	}
 
 	uc := New(Deps{Stores: &port.Stores{Findings: fr}})
-	err := uc.autoFixAbsentFindings(context.Background(), makeProject(true),
+	_, err := uc.autoFixAbsentFindings(context.Background(), makeProject(true),
 		IngestReportInput{ProjectSlug: "my-app", Scanner: "trivy", ScanMode: ScanModeIncremental},
 		port.Report{ID: "rep-1"},
 		&domain.NormalizedReport{Completeness: domain.CompletenessComplete, CoveredFindingKinds: []string{"sca"}},
@@ -211,7 +269,7 @@ func TestAutoFixAbsentFindings_ExaminedKeysGate(t *testing.T) {
 				return nil, nil
 			}
 			uc := New(Deps{Stores: &port.Stores{Findings: fr}})
-			err := uc.autoFixAbsentFindings(context.Background(), makeProject(true),
+			_, err := uc.autoFixAbsentFindings(context.Background(), makeProject(true),
 				IngestReportInput{ProjectSlug: "my-app", Scanner: "sarif", ScanMode: ScanModeFull},
 				port.Report{ID: "rep-1"},
 				&domain.NormalizedReport{Completeness: tc.completeness, ExaminedKeys: tc.keys}, "scope-hash")

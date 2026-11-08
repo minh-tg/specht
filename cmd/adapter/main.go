@@ -801,6 +801,9 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 		duplicate = true
 	}
 	printChangeLink(stdout, gateChangeURL(apiURL, payload, resp.ReportID, f.severity))
+	for _, warning := range resp.Warnings {
+		writeDiagnostic(stderr, "⚠️  warning: %s\n", warning)
+	}
 	if resp.FallbackReason != "" {
 		writeDiagnostic(stderr, "⚠️  BASELINE WARNING: %s\n", resp.FallbackReason)
 		if strings.EqualFold(f.baselinePolicy, "fail") {
@@ -809,16 +812,11 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 		}
 	}
 
-	// Resolve the project-wide decision before publishing any check. A preview
-	// of introduced findings alone cannot decide a whole-project gate.
-	var projectGate *client.GateStatus
+	// Resolve the gate decision before publishing any check. A preview of
+	// introduced findings alone cannot decide a whole-project gate.
+	var stepGate, projectGate, checkGate *client.GateStatus
 	if !payload.GateIntroducedOnly {
-		projectGate, err = cl.GetBranchGateStatus(payload.Project, f.severity, payload.Branch)
-		if err != nil {
-			writeDiagnostic(stderr, "error: gate check failed: %v\n", err)
-			return 2
-		}
-		projectGate, err = changesOnlyVerdict(cl, projectGate, payload.Project, f.severity, resp)
+		stepGate, projectGate, checkGate, err = resolveStepGate(cl, payload, f.severity, resp)
 		if err != nil {
 			writeDiagnostic(stderr, "error: gate check failed: %v\n", err)
 			return 2
@@ -834,7 +832,7 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 			writeDiagnostic(stderr, "⚠️  could not fetch PR check preview: %v\n", err)
 		}
 	}
-	if duplicate && projectGate == nil && preview == nil {
+	if duplicate && stepGate == nil && preview == nil {
 		// Only the preview can tell this run's verdict, and a stored report
 		// with an unknown verdict must not pass.
 		writeDiagnosticLine(stderr, "error: the report was already uploaded, but its stored verdict could not be read")
@@ -842,8 +840,8 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 	}
 	if preview != nil {
 		preview.ReportID = resp.ReportID
-		if projectGate != nil {
-			applyProjectVerdict(preview, projectGate)
+		if stepGate != nil {
+			applyProjectVerdict(preview, checkGate, stepGate, payload.Scanner)
 		} else {
 			resp.ThresholdBreached = preview.Conclusion == "failure"
 			if duplicate {
@@ -864,18 +862,54 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 	} else {
 		writeDiagnostic(stderr, "report %s ingested, %d finding(s)\n", resp.ReportID, resp.TotalFindings)
 	}
-	if projectGate.ThresholdBreached && projectGate.ReportOnly {
-		writeDiagnostic(stderr, "gate WOULD FAIL: %d blocking finding(s). The project's gate mode only reports, so this run passes.\n", projectGate.BlockingCount)
-		return 0
+	return reportStepGate(cl, stepGate, projectGate, payload.Scanner, stderr)
+}
+
+// resolveStepGate reads the verdict of this scanner's step and the project's
+// verdict across every scanner. The step's exit code follows only its own
+// scanner: a Semgrep step must not fail on Trivy findings that the Trivy step
+// reports, and may close, on its own. The published check keeps the project's
+// verdict (check): every step publishes the same check, so the last step to
+// finish must leave the whole project's state on the commit, not its own.
+func resolveStepGate(cl *client.Client, payload client.IngestPayload, severity string, resp *client.IngestResponse) (step, project, check *client.GateStatus, err error) {
+	project, err = cl.GetBranchGateStatus(payload.Project, severity, payload.Branch)
+	if err != nil {
+		return nil, nil, nil, err
 	}
-	if projectGate.ThresholdBreached {
-		writeDiagnostic(stderr, "gate FAILED: %d blocking finding(s)\n", projectGate.BlockingCount)
-		printBlockers(cl, projectGate, stderr)
-		return 1
+	check, err = changesOnlyVerdict(cl, project, payload.Project, severity, resp)
+	if err != nil {
+		return nil, nil, nil, err
 	}
-	writeDiagnosticLine(stderr, "gate PASSED: no blocking findings")
-	warnUnrated(stderr, projectGate.UnratedCount)
-	return 0
+	step, err = cl.GetScannerGateStatus(payload.Project, severity, payload.Branch, payload.Scanner)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	step, err = changesOnlyVerdict(cl, step, payload.Project, severity, resp)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return step, project, check, nil
+}
+
+// reportStepGate prints the step's verdict and the project total and returns
+// the exit code, which follows the step's verdict alone.
+func reportStepGate(cl *client.Client, step, project *client.GateStatus, scanner string, stderr io.Writer) int {
+	code := 0
+	switch {
+	case step.ThresholdBreached && step.ReportOnly:
+		writeDiagnostic(stderr, "gate WOULD FAIL: %d blocking finding(s) from %s. The project's gate mode only reports, so this run passes.\n", step.BlockingCount, scanner)
+	case step.ThresholdBreached:
+		writeDiagnostic(stderr, "gate FAILED: %d blocking finding(s) from %s\n", step.BlockingCount, scanner)
+		printBlockers(cl, step, stderr)
+		code = 1
+	default:
+		writeDiagnostic(stderr, "gate PASSED: no blocking findings from %s\n", scanner)
+	}
+	writeDiagnostic(stderr, "project gate: %d blocking across all scanners\n", project.BlockingCount)
+	if !step.ThresholdBreached {
+		warnUnrated(stderr, project.UnratedCount)
+	}
+	return code
 }
 
 // maxPrintedBlockers keeps a project with a long backlog from flooding the CI log.
@@ -930,24 +964,27 @@ func changesOnlyVerdict(cl *client.Client, project *client.GateStatus, slug, sev
 	return project, nil
 }
 
-// applyProjectVerdict uses the same decision for publication and process exit.
-// Inline annotations remain a subset: the exact report's introduced findings.
-func applyProjectVerdict(preview *client.PRCheckPreview, decision *client.GateStatus) {
+// applyProjectVerdict publishes the project's verdict across every scanner.
+// Every step writes the same check, so the last one to finish leaves the whole
+// project's state on the commit; a step's exit code follows its own scanner
+// only, and the summary names that count too. Inline annotations remain a
+// subset: the exact report's introduced findings.
+func applyProjectVerdict(preview *client.PRCheckPreview, decision, step *client.GateStatus, scanner string) {
 	preview.Conclusion = "success"
-	preview.Title = "Specht: project gate passed"
+	preview.Title = "Specht: gate passed"
 	if decision.ThresholdBreached && decision.ReportOnly {
 		preview.Conclusion = "neutral"
 		preview.Title = fmt.Sprintf("Specht: %d finding(s) would block (report only)", decision.BlockingCount)
 	} else if decision.ThresholdBreached {
 		preview.Conclusion = "failure"
-		preview.Title = fmt.Sprintf("Specht: %d blocking finding(s) in project", decision.BlockingCount)
+		preview.Title = fmt.Sprintf("Specht: %d blocking finding(s)", decision.BlockingCount)
 	} else {
 		preview.Annotations = nil
 		preview.SummaryCounts = map[string]int{}
 	}
 	preview.WaivedCount = decision.WaivedCount
-	preview.Summary = fmt.Sprintf("Project-wide gate: %s. %d blocking finding(s), including pre-existing debt. Inline annotations cover only findings introduced by this report.\n\n%s",
-		preview.Conclusion, decision.BlockingCount, preview.Summary)
+	preview.Summary = fmt.Sprintf("Project gate: %s. %d blocking finding(s) across all scanners, including pre-existing debt; %d of them from %s, the scanner of this step. Inline annotations cover only findings introduced by this report.\n\n%s",
+		preview.Conclusion, decision.BlockingCount, step.BlockingCount, scanner, preview.Summary)
 }
 
 // resolveAPIURL returns the Specht base URL. A CI run must configure it: the

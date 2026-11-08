@@ -413,6 +413,14 @@ func (c *Client) GetGateStatus(projectSlug string, severity string) (*GateStatus
 // one branch. An empty branch is the project's own verdict, which answers for
 // its default branch.
 func (c *Client) GetBranchGateStatus(projectSlug, severity, branch string) (*GateStatus, error) {
+	return c.GetScannerGateStatus(projectSlug, severity, branch, "")
+}
+
+// GetScannerGateStatus is GetBranchGateStatus limited to the findings one
+// scanner reported, the verdict of that scanner's CI step. An empty scanner
+// counts every scanner. A server that predates the parameter ignores it and
+// answers for every scanner.
+func (c *Client) GetScannerGateStatus(projectSlug, severity, branch, scanner string) (*GateStatus, error) {
 	path := apiProjectsPrefix + url.PathEscape(projectSlug) + "/gate"
 	q := url.Values{}
 	if severity != "" {
@@ -420,6 +428,9 @@ func (c *Client) GetBranchGateStatus(projectSlug, severity, branch string) (*Gat
 	}
 	if branch != "" {
 		q.Set("branch", branch)
+	}
+	if scanner != "" {
+		q.Set("scanner", scanner)
 	}
 	if len(q) > 0 {
 		path += "?" + q.Encode()

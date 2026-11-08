@@ -19,6 +19,7 @@ const base: IngestResponse = {
   total_findings: 3,
   threshold_breached: false,
   replayed: false,
+  warnings: [],
 };
 
 describe("UploadResultCard", () => {
@@ -26,6 +27,18 @@ describe("UploadResultCard", () => {
     renderCard(base);
 
     expect(screen.queryByText(REPLAY_NOTE)).toBeNull();
+    expect(screen.getByText(/3 findings? found/)).toBeInTheDocument();
+  });
+
+  it("shows each warning the server returned", () => {
+    renderCard({ ...base, warnings: ["give each job its own artifact"] });
+
+    expect(screen.getByText("give each job its own artifact")).toBeInTheDocument();
+  });
+
+  it("renders when the warnings list is null", () => {
+    renderCard({ ...base, warnings: null as unknown as string[] });
+
     expect(screen.getByText(/3 findings? found/)).toBeInTheDocument();
   });
 

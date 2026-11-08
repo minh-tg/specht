@@ -63,6 +63,9 @@ type IngestResponse struct {
 	Replayed bool `json:"replayed"`
 	// ChangeReport means this report scans a change, not the default branch.
 	ChangeReport bool `json:"change_report"`
+	// Warnings are problems with how the report was sent that the uploader
+	// should fix.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // GateStatus is a project's current deployment-gate evaluation.

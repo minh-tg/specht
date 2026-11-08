@@ -2190,6 +2190,14 @@ paths:
             Adds the findings seen on this branch to the project verdict, for a full gate run
             on a change branch. Without it the verdict answers for the default branch.
           schema: { type: string, example: feat/cart-discounts }
+        - name: scanner
+          in: query
+          description: >-
+            Counts only the findings a report of this scanner observed, the verdict of that
+            scanner's CI step. The name must match the scanner name of its reports exactly.
+            Without it every scanner counts. `unrated_count` stays the project's count.
+            Ignored with `introduced_only`, which is scoped to one report already.
+          schema: { type: string, example: semgrep }
         - name: report_id
           in: query
           description: Required when `introduced_only` is set.
@@ -4372,7 +4380,7 @@ components:
 
     IngestResponse:
       type: object
-      required: [report_id, total_findings, threshold_breached, scan_mode, introduced_count, pre_existing_count, replayed]
+      required: [report_id, total_findings, threshold_breached, scan_mode, introduced_count, pre_existing_count, replayed, warnings]
       properties:
         report_id: { type: string, format: uuid }
         total_findings: { type: integer, description: "Every entry the scanner reported, before fingerprint deduplication." }
@@ -4393,6 +4401,15 @@ components:
         replayed:
           type: boolean
           description: True when identical bytes for the same commit returned an existing report instead of ingesting again.
+        warnings:
+          type: array
+          items: { type: string }
+          description: >-
+            Problems with how the report was sent that the uploader should fix. A full report
+            closes no findings, and says so here, when another completed full report of the same
+            scan scope (scanner, target, artifact name, branch, environment) carries the same
+            commit and scan filter with different content, as two CI jobs of one scanner without
+            an artifact name do. Give each job its own `artifact_name`.
 
     ReportDeletionPreview:
       type: object
