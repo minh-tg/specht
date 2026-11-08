@@ -429,6 +429,22 @@ describe("useProject", () => {
   });
 });
 
+describe("useGateStatus", () => {
+  it("turns null id lists into empty ones", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({
+      threshold_breached: false,
+      blocking_count: 0,
+      blocked_by: null,
+      waived_finding_ids: null,
+    }));
+
+    const { result } = renderHook(() => useGateStatus("payments"), { wrapper });
+
+    await waitFor(() => expect(result.current.data?.blocked_by).toEqual([]));
+    expect(result.current.data?.waived_finding_ids).toEqual([]);
+  });
+});
+
 describe("useProjectStats", () => {
   it("reads the project roll-up", async () => {
     const stats = {
@@ -446,8 +462,24 @@ describe("useProjectStats", () => {
 
     const { result } = renderHook(() => useProjectStats("payments"), { wrapper });
 
-    await waitFor(() => expect(result.current.data).toEqual(stats));
+    await waitFor(() => expect(result.current.data).toEqual({ ...stats, by_analysis_state: [] }));
     expect(requested[0]).toBe("/api/v1/projects/payments/stats");
+  });
+
+  it("turns null lists into empty ones", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({
+      total_findings: 0,
+      blocking_count: 0,
+      waiver_count: 0,
+      report_count: 0,
+      by_severity: null,
+      by_analysis_state: null,
+    }));
+
+    const { result } = renderHook(() => useProjectStats("payments"), { wrapper });
+
+    await waitFor(() => expect(result.current.data?.by_severity).toEqual([]));
+    expect(result.current.data?.by_analysis_state).toEqual([]);
   });
 });
 
