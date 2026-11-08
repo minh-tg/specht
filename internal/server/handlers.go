@@ -371,6 +371,9 @@ type ingestRequest struct {
 	// ScanFilter declares what the scanner left out on purpose. A filtered
 	// report closes only the findings it can vouch for (report_examined_finding).
 	ScanFilter *scanFilterRequest `json:"scan_filter,omitempty"`
+	// PartialScan says the caller cannot vouch that the scan finished, so
+	// the report closes nothing by absence.
+	PartialScan bool `json:"partial_scan,omitempty"`
 }
 
 type scanFilterRequest struct {

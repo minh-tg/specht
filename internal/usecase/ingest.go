@@ -233,6 +233,13 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	// ingests normally: scanner output is often byte-identical when nothing
 	// changed.
 	rawHash := reportHash(sc, originalData, nr, redactionFailed, input.ScanFilter)
+	if input.PartialScan {
+		// A partial upload must not stand in for a later complete one with
+		// the same bytes, or a finished clean run would be answered with
+		// the earlier report and close nothing.
+		rawHash = partialReportHash(rawHash)
+		nr.Completeness = domain.CompletenessPartial
+	}
 
 	input.closesByHand = u.closesByHand(ctx, project, input.Scanner)
 	if !input.closesByHand {
@@ -1888,6 +1895,13 @@ func gateSeverityRank(severities []string) int16 {
 		return rank
 	}
 	return 3
+}
+
+// partialReportHash keeps a partial report's hash apart from a complete
+// report with the same bytes.
+func partialReportHash(rawHash string) string {
+	sum := sha256.Sum256([]byte("partial-scan\x00" + rawHash))
+	return hex.EncodeToString(sum[:])
 }
 
 // reportHash identifies the content of a report for the replay and duplicate checks.

@@ -36,6 +36,9 @@ type IngestPayload struct {
 	// --severity or --ignore-unfixed. A severity-filtered scan closes no
 	// finding it omits; a fixable-only scan closes only findings with a fix.
 	ScanFilter *ScanFilter `json:"scan_filter,omitempty"`
+	// PartialScan says the caller cannot vouch that the scan finished. The
+	// server stores the report as partial and closes nothing by absence.
+	PartialScan bool `json:"partial_scan,omitempty"`
 }
 
 // ScanFilter is the scan_filter object of an ingest request.

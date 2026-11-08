@@ -167,7 +167,8 @@ A full scan closes a finding once it no longer reports it, on every branch and s
 saw it. Trivy, Grype, Checkov and generic SARIF show what they looked at, so they prove it.
 OSV-Scanner, Semgrep JSON, Dependency-Check, Gitleaks, tfsec, Nuclei and SBOMs with a vulnerability
 section do not, so a finished run is taken at its word. Semgrep SARIF closes only findings of rules
-it lists. A run narrowed some other way can close a finding early, and the finding returns as a
+it lists. Nuclei closes findings only from its JSON export (`-je`), which it writes when the run
+ends; an empty JSON Lines file closes nothing, because a run that stopped early leaves one too. A run narrowed some other way can close a finding early, and the finding returns as a
 regression when a wider scan sees it. To avoid that, declare the narrower scan with
 `-scan-mode incremental` or `-scan-severities`, or keep the scanner manual on the project's Policy
 page. If a pipeline scans several things with one scanner, such as one job per lockfile or per URL,
@@ -192,7 +193,7 @@ The table is generated from the parsers, so it lists exactly what they read.
 | **SARIF (any tool)** | SARIF 2.1.0 (`.sarif`, `.json`) | `gosec -fmt sarif -out gosec.sarif ./...` | CodeQL 2.27.0, Gosec 2.29.0, Hadolint 2.14.0, Trivy 0.74.0 |
 | **Gitleaks** | JSON (`.json`)<br>SARIF (`.sarif`, `.json`) | `gitleaks detect --report-format json --report-path gitleaks.json`<br>`gitleaks detect --report-format sarif --report-path gitleaks.sarif` | Gitleaks 8.30.1 |
 | **tfsec** | JSON (`.json`) | `tfsec . --format json --out tfsec.json` | tfsec 1.28.14 |
-| **Nuclei** | JSON Lines (`.jsonl`, `.ndjson`) | `nuclei -u https://example.com -jsonl -o nuclei.jsonl` | Nuclei 3.11.1 |
+| **Nuclei** | JSON export (`.json`)<br>JSON Lines (`.jsonl`, `.ndjson`) | `nuclei -u https://example.com -je nuclei.json`<br>`nuclei -u https://example.com -jsonl -o nuclei.jsonl` | Nuclei 3.11.1 |
 
 - **Trivy**: `trivy image` and `trivy config` write the same format.
 - **Semgrep**: Both formats give the same findings.
@@ -202,7 +203,8 @@ The table is generated from the parsers, so it lists exactly what they read.
 - **SARIF (any tool)**: For tools without a scanner of their own here, such as Gosec, Hadolint (`--format sarif`) and CodeQL. Trivy, Grype and Semgrep also write it, but use their own scanner when there is one.
 - **Gitleaks**: Reports written with `--redact` are accepted.
 - **Gitleaks**: Read as secrets, with the same identity as the JSON report. Upload it as Gitleaks, not as generic SARIF.
-- **Nuclei**: One finding per template and URL.
+- **Nuclei**: One finding per template and URL. The JSON export is written when the run ends, as `[]` when nothing matched, so a clean run closes findings and a run that stopped early leaves no file.
+- **Nuclei**: An empty JSON Lines file closes no findings, since a run that stopped early leaves one too.
 <!-- scanners:end -->
 
 </details>

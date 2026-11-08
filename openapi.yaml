@@ -4288,6 +4288,13 @@ components:
           items: { type: string, maxLength: 1024 }
         scan_mode: { type: string, enum: [full, incremental], default: full }
         scan_filter: { $ref: "#/components/schemas/ScanFilter" }
+        partial_scan:
+          type: boolean
+          default: false
+          description: >-
+            The caller cannot vouch that the scan finished, such as a scanner
+            that wrote no output at all. The report adds and updates findings
+            but closes none, and its scan_completeness is `partial`.
         gate_severity: { type: string, description: Comma-separated override for the post-ingest threshold check. }
         gate_introduced_only:
           type: boolean
