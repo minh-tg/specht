@@ -121,7 +121,13 @@ describe("TriageSection RBAC permissions", () => {
     await chooseOption(user, screen.getByLabelText("Triage action"), "Accepted risk");
     await user.type(screen.getByLabelText("Reason"), "Temporary exception");
     const expiry = screen.getByLabelText("Expiry date");
-    expect(expiry).toHaveAttribute("min", new Date().toISOString().slice(0, 10));
+    // The form offers dates by the local calendar; the UTC date is a day off in the evening or the
+    // early morning, depending on the zone.
+    const now = new Date();
+    const today = [now.getFullYear(), now.getMonth() + 1, now.getDate()]
+      .map((n) => String(n).padStart(2, "0"))
+      .join("-");
+    expect(expiry).toHaveAttribute("min", today);
     fireEvent.change(expiry, { target: { value: "2000-01-01" } });
     expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
     expect(calls.some((c) => c.method === "PATCH")).toBe(false);
