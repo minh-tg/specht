@@ -2,7 +2,7 @@ import { InfoTip } from "@/components/InfoTip";
 import { RelativeTime } from "@/components/RelativeTime";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VerdictBadge } from "@/components/VerdictBadge";
-import { pluralize } from "@/lib/format";
+import { formatClockTime, pluralize } from "@/lib/format";
 import { useDelayedFlag } from "@/lib/useDelayedFlag";
 import { floorSourceLabel, shortCommit } from "@/pages/change-view/resolve";
 import type { PolicyEffective, Report } from "@/types/api";
@@ -43,6 +43,21 @@ export interface ChangeHeroProps {
   readonly watch?: ReactNode;
   /** Between the verdict and the facts: why the verdict may not be current. */
   readonly notice?: ReactNode;
+  /**
+   * When the project gate on screen was evaluated, set only when this report is not the newest on
+   * its branch. The project gate is always today's, so for an older report the header says so
+   * instead of reading as the state at this commit.
+   */
+  readonly gateAsOf?: string;
+}
+
+/** "as of now, 14:05": when a project gate shown beside an older report was evaluated. */
+export function AsOfNow({ iso }: { readonly iso: string; }) {
+  return (
+    <>
+      as of now, <time dateTime={iso}>{formatClockTime(iso)}</time>
+    </>
+  );
 }
 
 /** "high" as "High", for a sentence that names the severity floor. */
@@ -85,6 +100,36 @@ function headline(
       return `The scan of ${shortCommit(commit)} is still being processed.`;
     case "failed":
       return "This scan did not complete.";
+  }
+}
+
+/**
+ * The headline of a project gate shown beside a report that is no longer the newest on its branch.
+ * Null for the states that do not name the project gate.
+ */
+function asOfHeadline(
+  state: ChangeState,
+  blockers: number,
+  reportOnly: boolean,
+  iso: string,
+): ReactNode {
+  switch (state) {
+    case "blocked":
+      return (
+        <>
+          {pluralize(blockers, "finding")}{" "}
+          {reportOnly ? "would block" : blockers === 1 ? "blocks" : "block"} this project{" "}
+          <AsOfNow iso={iso} />.
+        </>
+      );
+    case "passing":
+      return (
+        <>
+          Project gate passed <AsOfNow iso={iso} />.
+        </>
+      );
+    default:
+      return null;
   }
 }
 
@@ -162,10 +207,14 @@ export function ChangeHero(
     reportOnly = false,
     watch,
     notice,
+    gateAsOf,
   }: ChangeHeroProps,
 ) {
   const stamp = stampFor(state, reportOnly);
   const branch = report?.branch;
+  const asOf = projectWide && gateAsOf
+    ? asOfHeadline(state, blockers, reportOnly, gateAsOf)
+    : null;
   return (
     <section aria-label="Change verdict" aria-live="polite">
       <p className="font-label text-muted-foreground mb-3.5 flex flex-wrap items-center gap-x-2.5 text-label">
@@ -184,11 +233,18 @@ export function ChangeHero(
         <VerdictBadge verdict={stamp.verdict} scanning={stamp.scanning} size="lg" />
         <div className="grid min-w-0 gap-1.5">
           <h1 className="text-title font-bold text-balance">
-            {headline(state, blockers, projectWide, commit, earlierOpen, reportOnly)}
+            {asOf ?? headline(state, blockers, projectWide, commit, earlierOpen, reportOnly)}
           </h1>
           <p className="max-w-[58ch] text-section font-normal leading-snug">
             {subline(state, report, projectWide, commit, policy, waived, reportOnly)}
           </p>
+          {asOf && (
+            <p className="text-muted-foreground max-w-[58ch] text-meta [overflow-wrap:anywhere]">
+              A newer report exists on{" "}
+              {branch ?? "this branch"}, so this is the project gate now, not the state at{" "}
+              {shortCommit(commit)}.
+            </p>
+          )}
           {watch}
         </div>
       </div>

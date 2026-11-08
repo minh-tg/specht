@@ -382,6 +382,58 @@ describe("ChangeView", () => {
     );
   });
 
+  it("says the project gate is as of now beside a report that is not the newest on its branch", async () => {
+    projectGate = gate({ blocked_by: ["f1"] });
+    signalReports = [
+      report({ id: "r2", commit_sha: NEWER_SHA, created_at: "2025-01-02T00:00:00Z" }),
+    ];
+    renderPage(`/acme/changes/${FULL_SHA}?report=r1&scope=project`);
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+        /^1 finding blocks this project as of now, \S.*\.$/,
+      )
+    );
+    expect(
+      screen.getByText(
+        "A newer report exists on main, so this is the project gate now, not the state at abcdef1.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps today's wording for the newest report on its branch", async () => {
+    projectGate = gate({ blocked_by: ["f1"] });
+    signalReports = [report()];
+    renderPage(`/acme/changes/${FULL_SHA}?report=r1&scope=project`);
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
+      "1 finding blocks this project.",
+    );
+    await waitFor(() => expect(signalCalls()).toBe(1));
+    // Let the answer that names the newest report settle before checking the wording.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "1 finding blocks this project.",
+    );
+    expect(document.body).not.toHaveTextContent(/as of now|A newer report exists/);
+  });
+
+  it("says the existing debt is as of now beside an older report", async () => {
+    changeGate = gate({ threshold_breached: false, blocked_by: [] });
+    projectGate = gate({ blocked_by: ["f9"] });
+    signalReports = [
+      report({ id: "r2", commit_sha: NEWER_SHA, created_at: "2025-01-02T00:00:00Z" }),
+    ];
+    const { container } = renderPage(`/acme/changes/${FULL_SHA}?report=r1`);
+    await waitFor(() =>
+      expect(container.querySelector("summary")).toHaveTextContent(
+        /^1 existing finding is open in Acme API as of now, \S.*\. It is not counted for this change\.$/,
+      )
+    );
+    // The change-scoped verdict is not the project gate, so its heading keeps its wording.
+    expect(screen.getByRole("heading", { level: 1 })).not.toHaveTextContent(/as of now/);
+  });
+
   it("loads an exact report even when it is outside the report list", async () => {
     reports = [];
     exactReports = { old: report({ id: "old" }) };
