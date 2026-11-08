@@ -457,6 +457,12 @@ releases.
 
 ### Fixed
 
+- A project's only manager can approve their own waiver request with a note. Before, nobody could
+  approve it unless a global admin stepped in. The approval is marked self-approved, as a global
+  admin's is. Anyone else on the project with manager or admin rights, directly or through a team, or a
+  global admin who is a member, keeps the two-person rule. The project read carries
+  `permissions.self_approve_waivers`, and the Waivers page and the change view say when no other
+  manager can decide.
 - The admin page no longer calls a working watcher stale when every project polls less often than
   twice `WATCHER_POLL_INTERVAL`. The window now covers the longest interval of a project with the
   watcher on.

@@ -105,6 +105,28 @@ SELECT COUNT(*) FROM project_members pm
 JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL AND u.email <> 'system@specht.local'
 WHERE pm.project_id = $1 AND pm.role = 'admin' AND pm.user_id <> $2;
 
+-- name: CountOtherWaiverDeciders :one
+-- People besides one user who can decide the project's waiver requests: active
+-- accounts that reach the project directly or through a team and hold manager or
+-- admin rights there or the global admin role. A global admin who is not on the
+-- project is left out, or no project's own manager could ever approve their own
+-- request. The seeded system account never signs in, so it does not count.
+SELECT COUNT(DISTINCT u.id) FROM users u
+WHERE u.disabled_at IS NULL AND u.email <> 'system@specht.local' AND u.id <> sqlc.arg(user_id)
+  AND (
+    EXISTS (
+        SELECT 1 FROM project_members pm
+        WHERE pm.project_id = sqlc.arg(project_id) AND pm.user_id = u.id
+          AND (pm.role IN ('admin', 'manager') OR u.role = 'admin')
+    )
+    OR EXISTS (
+        SELECT 1 FROM project_teams pt
+        JOIN team_members tm ON tm.team_id = pt.team_id
+        WHERE pt.project_id = sqlc.arg(project_id) AND tm.user_id = u.id
+          AND (pt.role IN ('admin', 'manager') OR u.role = 'admin')
+    )
+  );
+
 -- name: ListProjectsSoleAdminedBy :many
 -- Slugs of the projects where one active user is the only active admin.
 SELECT p.slug FROM projects p

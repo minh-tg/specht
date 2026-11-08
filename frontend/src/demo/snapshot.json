@@ -133,6 +133,7 @@
           "request_waiver": false,
           "manage_waivers": false,
           "approve_waivers": false,
+          "self_approve_waivers": false,
           "manage_members": false,
           "manage_ci": false,
           "triage": false,

@@ -43,6 +43,7 @@ type mockProjectRepo struct {
 	isMemberEffectiveFn   func(context.Context, string, string) (bool, error)
 	listAccessibleIDsFn   func(context.Context, string) ([]string, error)
 	effectiveRoleFn       func(context.Context, string, string) (string, error)
+	otherDecidersFn       func(context.Context, string, string) (int, error)
 }
 
 func (m *mockProjectRepo) GetByID(ctx context.Context, id string) (port.Project, error) {
@@ -170,6 +171,15 @@ func (m *mockProjectRepo) ListSoleAdminProjects(ctx context.Context, userID stri
 		return m.soleAdminProjectsFn(ctx, userID)
 	}
 	return nil, nil
+}
+
+// CountOtherWaiverDeciders defaults to one other decider, so a test that does not
+// care meets the usual two-person rule.
+func (m *mockProjectRepo) CountOtherWaiverDeciders(ctx context.Context, projectID, userID string) (int, error) {
+	if m.otherDecidersFn != nil {
+		return m.otherDecidersFn(ctx, projectID, userID)
+	}
+	return 1, nil
 }
 
 func (m *mockProjectRepo) ListMembers(ctx context.Context, projectID string) ([]port.ProjectMember, error) {

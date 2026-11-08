@@ -315,8 +315,9 @@ func waiverRequestName(title string, targets int) string {
 }
 
 // ApproveWaiver approves a pending request. The requester cannot approve
-// their own request, except a global admin, who would otherwise lock out a
-// one-person project; that approval is marked in the event.
+// their own request while someone else can decide it. A global admin may, and
+// so may a manager nobody else on the project can overrule, with a note that
+// says why; either approval is marked in the event.
 func (u *Usecases) ApproveWaiver(ctx context.Context, projectSlug, waiverID, note string) (*WaiverResponse, error) {
 	return u.decideWaiver(ctx, projectSlug, waiverID, WaiverStatusApproved, strings.TrimSpace(note))
 }
@@ -334,6 +335,44 @@ func (u *Usecases) RejectWaiver(ctx context.Context, projectSlug, waiverID, note
 // WithdrawWaiver lets the requester take back a pending request.
 func (u *Usecases) WithdrawWaiver(ctx context.Context, projectSlug, waiverID string) (*WaiverResponse, error) {
 	return u.decideWaiver(ctx, projectSlug, waiverID, WaiverStatusWithdrawn, "")
+}
+
+// ErrWaiverSelfApprovalNote is returned when a manager nobody else can
+// overrule approves their own request without saying why. It matches
+// ErrInvalidWaiverRequest, so handlers answer 400 with its message.
+var ErrWaiverSelfApprovalNote error = &waiverRequestError{
+	message: "a note is required when you approve your own request",
+}
+
+// checkSelfApproval decides whether the requester may approve their own
+// request. A global admin may. A project manager may only when nobody else can
+// decide it, and then only with a note, so the record says why one person
+// signed off alone.
+func (u *Usecases) checkSelfApproval(ctx context.Context, projectID string, ident *auth.Identity, note string) error {
+	if ident.Role == auth.RoleAdmin {
+		return nil
+	}
+	alone, err := u.soleWaiverDecider(ctx, projectID, ident.UserID)
+	if err != nil {
+		return err
+	}
+	if !alone {
+		return ErrWaiverSelfApproval
+	}
+	if note == "" {
+		return ErrWaiverSelfApprovalNote
+	}
+	return nil
+}
+
+// soleWaiverDecider reports whether nobody besides userID can decide the
+// project's waiver requests.
+func (u *Usecases) soleWaiverDecider(ctx context.Context, projectID, userID string) (bool, error) {
+	others, err := u.deps.Stores.Projects.CountOtherWaiverDeciders(ctx, projectID, userID)
+	if err != nil {
+		return false, fmt.Errorf("count other waiver deciders: %w", err)
+	}
+	return others == 0, nil
 }
 
 var waiverDecisionEvents = map[string]string{
@@ -374,8 +413,8 @@ func (u *Usecases) decideWaiver(ctx context.Context, projectSlug, waiverID, stat
 			return nil, ErrProjectAccessDenied
 		}
 		if status == WaiverStatusApproved && isRequester {
-			if ident.Role != auth.RoleAdmin {
-				return nil, ErrWaiverSelfApproval
+			if err := u.checkSelfApproval(ctx, project.ID, ident, note); err != nil {
+				return nil, err
 			}
 			selfApproved = true
 		}
