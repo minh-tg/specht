@@ -60,12 +60,15 @@ export function ApiKeys() {
 }
 
 function ApiKeysManager({ projects }: { projects: Project[]; }) {
-  const [selectedProject, setSelectedProject] = useState("");
+  // A person who manages one project has nothing to choose, so start there.
+  const [selectedProject, setSelectedProject] = useState(
+    projects.length === 1 ? projects[0].slug : "",
+  );
   const keysQuery = useApiKeys(selectedProject);
   const keys = keysQuery.data ?? [];
 
   const [newKeyName, setNewKeyName] = useState("");
-  const [expiry, setExpiry] = useState<ExpiryOption>("none");
+  const [expiry, setExpiry] = useState<ExpiryOption>("1y");
   const createKey = useCreateApiKey();
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -209,7 +212,11 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-6 text-title font-bold">API keys</h1>
+      <h1 className="mb-2 text-title font-bold">API keys</h1>
+      <p className="text-muted-foreground mb-6 text-body">
+        A key works for one project and starts with <code>vuln_</code>. CI sends it as{" "}
+        <code>API_KEY</code>.
+      </p>
 
       <div className="mb-6">
         <label htmlFor="apikeys-project" className="text-body font-medium">Project</label>
