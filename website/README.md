@@ -7,7 +7,8 @@ describes the current evaluator build.
 
 ## Develop
 
-Use Node 22.23.4 or newer and pnpm 11.
+Use Node 26 and pnpm 11, the versions CI builds with. The website build also installs the
+frontend, which needs Node 26.
 
 ```bash
 pnpm --dir frontend install --frozen-lockfile
