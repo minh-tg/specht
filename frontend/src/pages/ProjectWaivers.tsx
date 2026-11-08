@@ -163,6 +163,7 @@ export function ProjectWaivers() {
                   who={{ me }}
                   actions={{
                     canDecide: !!permissions?.approve_waivers,
+                    canSelfApprove: !!permissions?.self_approve_waivers,
                     canRevoke: !!permissions?.manage_waivers,
                     canManage: !!permissions?.manage_waivers,
                     currentUserId: userId,
@@ -200,6 +201,8 @@ export function ProjectWaivers() {
         slug={currentSlug}
         waiver={deciding?.waiver ?? null}
         decision={deciding?.decision ?? "approve"}
+        ownRequest={!!deciding && !!userId && deciding.waiver.requested_by === userId
+          && me?.role !== "admin"}
         onClose={() => setDeciding(null)}
       />
 

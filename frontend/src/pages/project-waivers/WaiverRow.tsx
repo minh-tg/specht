@@ -19,6 +19,11 @@ function FirstSeverity({ findingId }: { readonly findingId: string; }) {
 
 export interface WaiverRowActions {
   readonly canDecide: boolean;
+  /**
+   * The viewer may approve their own requests (`permissions.self_approve_waivers`): a global admin,
+   * or a manager nobody else on the project can overrule, who has to give a note.
+   */
+  readonly canSelfApprove?: boolean;
   readonly canRevoke: boolean;
   readonly canManage: boolean;
   /** The signed-in person, so they can take back their own request. */
@@ -67,9 +72,12 @@ export function WaiverRow({ slug, waiver, bucket, now, who, actions }: {
     ? actorLabel({ user_id: waiver.requested_by, user_name: waiver.requested_by_name }, who)
     : null;
   const mine = !!waiver.requested_by && waiver.requested_by === actions.currentUserId;
-  // A request needs a second person. Only a global admin may approve their own, or a one-person
-  // project could never approve anything.
-  const ownRequest = mine && !actions.isGlobalAdmin;
+  // A request needs a second person. A global admin may approve their own, and so may a manager
+  // nobody else on the project can overrule, with a note; otherwise a one-person project could never
+  // approve anything.
+  const ownRequest = mine && !actions.isGlobalAdmin && !actions.canSelfApprove;
+  const approveAlone = bucket === "pending" && mine && actions.canDecide && !actions.isGlobalAdmin
+    && !!actions.canSelfApprove;
   const decision = bucket === "pending" ? null : decisionLine(waiver, who, closed);
   const [historyOpen, setHistoryOpen] = useState(false);
   const historyId = `waiver-history-${waiver.id}`;
@@ -116,6 +124,11 @@ export function WaiverRow({ slug, waiver, bucket, now, who, actions }: {
           </blockquote>
         )}
         {decision && <p className="text-muted-foreground mt-2 text-meta">{decision}</p>}
+        {approveAlone && (
+          <p className="text-muted-foreground mt-2 text-meta">
+            No other manager can decide this, so you can approve it with a note.
+          </p>
+        )}
         <button
           type="button"
           aria-expanded={historyOpen}
