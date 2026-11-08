@@ -87,6 +87,38 @@ func TestGetProjectReportsRoleAndPermissions(t *testing.T) {
 	}
 }
 
+// self_approve_waivers follows the rule ApproveWaiver applies to the requester:
+// a global admin always, a manager only when nobody else can decide, and a
+// member never, without asking the store.
+func TestGetProjectReportsSelfApproval(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		ctx    context.Context
+		stored string
+		others int
+		want   bool
+	}{
+		{"only manager", sessionCtx("u1", auth.RoleMember), auth.RoleManager, 0, true},
+		{"one of two managers", sessionCtx("u1", auth.RoleMember), auth.RoleManager, 1, false},
+		{"member", sessionCtx("u1", auth.RoleMember), auth.RoleMember, 0, false},
+		{"global admin beside other managers", sessionCtx("u1", auth.RoleAdmin), "", 3, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			uc := permissionsUsecase(tc.stored, true)
+			counted := false
+			uc.deps.Stores.Projects.(*mockProjectRepo).otherDecidersFn = func(context.Context, string, string) (int, error) {
+				counted = true
+				return tc.others, nil
+			}
+			resp, err := uc.GetProject(tc.ctx, "my-app")
+			require.NoError(t, err)
+			require.NotNil(t, resp.Permissions)
+			assert.Equal(t, tc.want, resp.Permissions.SelfApproveWaivers)
+			assert.Equal(t, tc.stored == auth.RoleManager, counted, "only a project manager needs the count")
+		})
+	}
+}
+
 func TestGetProjectOmitsRoleForAPIKeys(t *testing.T) {
 	resp, err := permissionsUsecase("", false).GetProject(apiKeyCtx("key-1", makeProject(true).ID), "my-app")
 	require.NoError(t, err)

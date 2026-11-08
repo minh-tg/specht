@@ -58,6 +58,11 @@ export interface ProjectPermissions {
   request_waiver: boolean;
   manage_waivers: boolean;
   approve_waivers: boolean;
+  /**
+   * Approve the caller's own requests: a global admin, or a manager nobody else on the project can
+   * overrule. That manager has to give a note.
+   */
+  self_approve_waivers: boolean;
   manage_members: boolean;
   manage_ci: boolean;
   triage: boolean;

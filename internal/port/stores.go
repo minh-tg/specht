@@ -271,6 +271,11 @@ type ProjectStore interface {
 	// CountAdmins returns the number of admins who can sign in. A deactivated
 	// account keeps its row but does not count.
 	CountAdmins(ctx context.Context, projectID string) (int, error)
+	// CountOtherWaiverDeciders returns how many people besides userID can
+	// decide the project's waiver requests: active accounts that reach the
+	// project directly or through a team with manager or admin rights there, or
+	// that reach it at all while holding the global admin role.
+	CountOtherWaiverDeciders(ctx context.Context, projectID, userID string) (int, error)
 	// ListSoleAdminProjects returns the slugs of the projects where the user
 	// is the only admin who can sign in.
 	ListSoleAdminProjects(ctx context.Context, userID string) ([]string, error)

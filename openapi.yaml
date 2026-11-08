@@ -2526,7 +2526,11 @@ paths:
       description: |
         Moves a pending request to approved, after which it counts in the gate.
         Needs the project manager or admin role. The requester cannot approve
-        their own request, except a global admin, whose approval is marked
+        their own request while someone else can decide it (403
+        `self_approval`). A global admin may approve their own. So may a
+        manager when nobody else on the project holds the manager or admin
+        role, directly or through a team, or is a global admin; that manager
+        has to send a note (400 otherwise). Either approval is marked
         `self_approved` in the audit event. An expired request cannot be
         approved.
       x-auth: session
@@ -2546,6 +2550,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Waiver" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
@@ -4171,11 +4176,17 @@ components:
       description: |
         What the caller may do on the project, for showing and hiding controls.
         The server checks the role again on every request.
-      required: [request_waiver, manage_waivers, approve_waivers, manage_members, manage_ci, triage, upload_reports]
+      required: [request_waiver, manage_waivers, approve_waivers, self_approve_waivers, manage_members, manage_ci, triage, upload_reports]
       properties:
         request_waiver: { type: boolean, description: Ask for a waiver. Every project member. }
         manage_waivers: { type: boolean, description: Create, edit, delete and toggle waivers. }
         approve_waivers: { type: boolean, description: Approve or reject waiver requests. }
+        self_approve_waivers:
+          type: boolean
+          description: |
+            Approve the caller's own waiver requests. True for a global admin,
+            and for a manager when nobody else can decide the project's
+            requests; that manager has to give a note.
         manage_members: { type: boolean, description: Add and remove members, up to the caller's own role. }
         manage_ci: { type: boolean, description: Create, list and revoke the project's API keys. }
         triage: { type: boolean, description: Change analysis state and reachability. }

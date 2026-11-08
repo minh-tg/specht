@@ -1456,7 +1456,11 @@ export interface paths {
      * Approve a waiver request
      * @description Moves a pending request to approved, after which it counts in the gate.
      *     Needs the project manager or admin role. The requester cannot approve
-     *     their own request, except a global admin, whose approval is marked
+     *     their own request while someone else can decide it (403
+     *     `self_approval`). A global admin may approve their own. So may a
+     *     manager when nobody else on the project holds the manager or admin
+     *     role, directly or through a team, or is a global admin; that manager
+     *     has to send a note (400 otherwise). Either approval is marked
      *     `self_approved` in the audit event. An expired request cannot be
      *     approved.
      */
@@ -2507,6 +2511,12 @@ export interface components {
       manage_waivers: boolean;
       /** @description Approve or reject waiver requests. */
       approve_waivers: boolean;
+      /**
+       * @description Approve the caller's own waiver requests. True for a global admin,
+       *     and for a manager when nobody else can decide the project's
+       *     requests; that manager has to give a note.
+       */
+      self_approve_waivers: boolean;
       /** @description Add and remove members */
       manage_members: boolean;
       /** @description Create */
@@ -6547,6 +6557,7 @@ export interface operations {
           "application/json": components["schemas"]["Waiver"];
         };
       };
+      400: components["responses"]["BadRequest"];
       403: components["responses"]["Forbidden"];
       404: components["responses"]["NotFound"];
       409: components["responses"]["Conflict"];

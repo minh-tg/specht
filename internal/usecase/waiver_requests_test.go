@@ -246,6 +246,85 @@ func TestApproveWaiverSelfApproval(t *testing.T) {
 	require.NoError(t, err, "a global admin may approve their own request")
 	assert.Equal(t, WaiverStatusApproved, resp.Status)
 	assert.JSONEq(t, `{"note":"","self_approved":true}`, string(got.Event.Metadata))
+
+	// A manager nobody else on the project can overrule may approve their own
+	// request with a note. The store counts the other deciders, team grants and
+	// global admins on the project included; any one of them keeps the
+	// two-person rule.
+	for name, tc := range map[string]struct {
+		others   int
+		note     string
+		wantErr  error
+		approves bool
+	}{
+		"only manager with a note":      {others: 0, note: "  Nobody else manages this project.  ", approves: true},
+		"only manager without a note":   {others: 0, note: "   ", wantErr: ErrWaiverSelfApprovalNote},
+		"second direct manager":         {others: 1, note: "Nobody else manages this project.", wantErr: ErrWaiverSelfApproval},
+		"second manager through a team": {others: 1, note: "", wantErr: ErrWaiverSelfApproval},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var got port.WaiverDecision
+			wr := &mockWaiverRepo{
+				getByIDFn: func(context.Context, string, string) (port.Waiver, error) {
+					return pendingWaiver(requesterID, &future), nil
+				},
+				decideFn: decideRecorder(&got, WaiverStatusApproved),
+			}
+			uc := waiverRequestUsecase(t, auth.RoleManager, wr)
+			var asked []string
+			uc.deps.Stores.Projects.(*mockProjectRepo).otherDecidersFn = func(_ context.Context, projectID, userID string) (int, error) {
+				asked = append(asked, projectID, userID)
+				return tc.others, nil
+			}
+
+			resp, err := uc.ApproveWaiver(sessionCtx(requesterID, auth.RoleMember), "my-app", requestWaiverID, tc.note)
+			assert.Equal(t, []string{makeProject(true).ID, requesterID}, asked)
+			if !tc.approves {
+				require.ErrorIs(t, err, tc.wantErr)
+				assert.Empty(t, got.Status, "a refused approval must not reach the store")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, WaiverStatusApproved, resp.Status)
+			assert.Equal(t, "Nobody else manages this project.", got.Note)
+			assert.JSONEq(t, `{"note":"Nobody else manages this project.","self_approved":true}`, string(got.Event.Metadata))
+		})
+	}
+}
+
+func TestApproveWaiverSoleManagerStoreFailure(t *testing.T) {
+	future := time.Now().Add(time.Hour)
+	wr := &mockWaiverRepo{getByIDFn: func(context.Context, string, string) (port.Waiver, error) {
+		return pendingWaiver(requesterID, &future), nil
+	}}
+	uc := waiverRequestUsecase(t, auth.RoleManager, wr)
+	uc.deps.Stores.Projects.(*mockProjectRepo).otherDecidersFn = func(context.Context, string, string) (int, error) {
+		return 0, errors.New("db down")
+	}
+	_, err := uc.ApproveWaiver(sessionCtx(requesterID, auth.RoleMember), "my-app", requestWaiverID, "note")
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrWaiverSelfApproval)
+}
+
+func TestSoleManagerSelfApprovalNotifies(t *testing.T) {
+	future := time.Now().Add(time.Hour)
+	var got port.WaiverDecision
+	wr := &mockWaiverRepo{
+		getByIDFn: func(context.Context, string, string) (port.Waiver, error) {
+			return pendingWaiver(requesterID, &future), nil
+		},
+		decideFn: decideRecorder(&got, WaiverStatusApproved),
+	}
+	uc := waiverRequestUsecase(t, auth.RoleManager, wr)
+	uc.deps.Stores.Projects.(*mockProjectRepo).otherDecidersFn = func(context.Context, string, string) (int, error) { return 0, nil }
+	recorder := &noticeRecorder{got: make(chan WaiverNotice, 4)}
+	uc.deps.WaiverNotifier = recorder
+
+	_, err := uc.ApproveWaiver(sessionCtx(requesterID, auth.RoleMember), "my-app", requestWaiverID, "Only manager here.")
+	require.NoError(t, err)
+	notice := recorder.next(t)
+	assert.Equal(t, WaiverEventApproved, notice.Event)
+	assert.Equal(t, "Only manager here.", notice.Detail)
 }
 
 func TestApproveWaiverRefusesExpiredAndDecidedRequests(t *testing.T) {

@@ -94,6 +94,30 @@ func TestWaiverLifecycleErrorMapping(t *testing.T) {
 	}
 }
 
+// A project's only manager approving their own request without a note gets a
+// 400 that says so, not the 403 a second decider's presence gives.
+func TestApproveOwnWaiverWithoutNoteIsBadRequest(t *testing.T) {
+	mock := &mockUsecases{
+		approveWaiverFn: func(_ context.Context, _, _, note string) (*usecase.WaiverResponse, error) {
+			assert.Empty(t, note)
+			return nil, usecase.ErrWaiverSelfApprovalNote
+		},
+	}
+	w := postWaiver(t, mock, "/wvr-1/approve", `{}`)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, "invalid_body", errorCode(t, w))
+	assert.Contains(t, w.Body.String(), "a note is required when you approve your own request")
+
+	approved := sampleWaiverResponse()
+	approved.Status = usecase.WaiverStatusApproved
+	mock.approveWaiverFn = func(_ context.Context, _, _, note string) (*usecase.WaiverResponse, error) {
+		assert.Equal(t, "nobody else manages this project", note)
+		return &approved, nil
+	}
+	w = postWaiver(t, mock, "/wvr-1/approve", `{"note":"nobody else manages this project"}`)
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
 func TestWaiverLifecycleUnknownErrorIsInternal(t *testing.T) {
 	mock := &mockUsecases{
 		rejectWaiverFn: func(context.Context, string, string, string) (*usecase.WaiverResponse, error) {
