@@ -211,7 +211,7 @@ type (
 	GateUsecases interface {
 		GetGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16) (*usecase.GateStatusOutput, error)
 		AssignFinding(ctx context.Context, findingID, assigneeID string) (*usecase.AssigneeResponse, error)
-		GetBranchGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, branch string) (*usecase.GateStatusOutput, error)
+		GetScannerGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, branch, scanner string) (*usecase.GateStatusOutput, error)
 		GetIntroducedGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, reportID string) (*usecase.GateStatusOutput, error)
 		PreviewPRCheck(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error)
 	}

@@ -6185,6 +6185,8 @@ export interface operations {
         introduced_only?: boolean;
         /** @description Adds the findings seen on this branch to the project verdict, for a full gate run on a change branch. Without it the verdict answers for the default branch. */
         branch?: string;
+        /** @description Counts only the findings a report of this scanner observed, the verdict of that scanner's CI step. The name must match the scanner name of its reports exactly. Without it every scanner counts. `unrated_count` stays the project's count. Ignored with `introduced_only`, which is scoped to one report already. */
+        scanner?: string;
         /** @description Required when `introduced_only` is set. */
         report_id?: string;
       };

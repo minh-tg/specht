@@ -3170,6 +3170,35 @@ func TestGetGateStatus_Success(t *testing.T) {
 	assert.Len(t, status.BlockedBy, 3)
 }
 
+// TestGetScannerGateStatus_CountsOnlyThatScanner checks the scanners of a gate
+// candidate reach the gate: a Semgrep step's verdict leaves Trivy's blocker out
+// while the project verdict keeps it.
+func TestGetScannerGateStatus_CountsOnlyThatScanner(t *testing.T) {
+	pr := &mockProjectRepo{}
+	fr := &mockFindingRepo{}
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return makeProject(true), nil
+	}
+	fr.listGateCandidatesFn = func(ctx context.Context, projectID string, minSeverityRank int16) ([]port.GateCandidate, error) {
+		return []port.GateCandidate{
+			{Finding: makeFindingRow(1), Scanners: []string{"trivy"}},
+			{Finding: makeFindingRow(2), Scanners: []string{"semgrep"}},
+		}, nil
+	}
+	uc := New(Deps{
+		Stores: &port.Stores{Projects: pr, Findings: fr, Waivers: &mockWaiverRepo{}},
+	})
+
+	semgrep, err := uc.GetScannerGateStatus(adminCtx(), "my-app", 2, "", "semgrep")
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), semgrep.BlockingCount)
+	assert.Equal(t, []string{makeFindingRow(2).ID}, semgrep.BlockedBy)
+
+	project, err := uc.GetBranchGateStatus(adminCtx(), "my-app", 2, "")
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), project.BlockingCount)
+}
+
 // TestGetGateStatus_ReportsWaivedFindingIDs checks the API output carries the
 // ids of the blocking findings an active waiver covers, so a UI can label
 // each finding as waived without a second request.

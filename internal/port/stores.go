@@ -1239,6 +1239,8 @@ type GateCandidate struct {
 	// ChangeBranches names the branches the finding was seen on when it was
 	// seen only on change branches. Empty means it counts toward the verdict.
 	ChangeBranches []string
+	// Scanners names every scanner whose reports observed the finding.
+	Scanners []string
 }
 
 // FindingAssignee is the person a finding is assigned to.

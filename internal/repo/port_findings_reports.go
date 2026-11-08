@@ -1358,6 +1358,7 @@ func (r *pgFindingPort) ListGateCandidates(ctx context.Context, projectID string
 			Reachability:   string(row.ReachabilityState),
 			Aliases:        row.Aliases,
 			ChangeBranches: row.ChangeBranches,
+			Scanners:       row.Scanners,
 		}
 	}
 	return out, nil

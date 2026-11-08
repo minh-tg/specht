@@ -1922,6 +1922,82 @@ func TestParseFlags_IntroducedOnlyRejectsNonBoolean(t *testing.T) {
 	assert.Nil(t, parseFlags([]string{"-introduced-only=maybe"}, &stderr, false))
 }
 
+// TestRun_ScannerStepIgnoresOtherScannersBlockers pins the exit code of a
+// scanner's step to its own findings: a clean Semgrep step passes while Trivy
+// findings block the project, and the log still names the project total.
+func TestRun_ScannerStepIgnoresOtherScannersBlockers(t *testing.T) {
+	clearCIEnvironment(t)
+	t.Setenv("API_KEY", "test-key")
+
+	var scannerQueries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/reports":
+			writeTestJSONResponse(t, w, client.IngestResponse{ReportID: "rep-1"})
+		case "/api/v1/projects/my-app/gate":
+			scanner := r.URL.Query().Get("scanner")
+			scannerQueries = append(scannerQueries, scanner)
+			assert.Equal(t, "main", r.URL.Query().Get("branch"))
+			if scanner == "semgrep" {
+				writeTestJSONResponse(t, w, client.GateStatus{WaivedFindingIDs: []string{}})
+				return
+			}
+			writeTestJSONResponse(t, w, client.GateStatus{ThresholdBreached: true, BlockingCount: 4, BlockedBy: []string{"f1", "f2", "f3", "f4"}, WaivedFindingIDs: []string{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("API_URL", srv.URL)
+
+	var stdout, stderr bytes.Buffer
+	args := []string{
+		"-file=../../internal/parser/semgrep/testdata/semgrep-native.json",
+		"-project=my-app",
+		"-tool=semgrep",
+		"-branch=main",
+	}
+	code := run(args, bytes.NewReader(nil), &stdout, &stderr, srv.Client())
+	assert.Equal(t, 0, code, stderr.String())
+	assert.ElementsMatch(t, []string{"", "semgrep"}, scannerQueries, "one project-wide and one scanner-scoped gate call")
+	assert.Contains(t, stderr.String(), "gate PASSED: no blocking findings from semgrep")
+	assert.Contains(t, stderr.String(), "project gate: 4 blocking across all scanners")
+}
+
+func TestRun_ScannerStepFailsOnItsOwnBlockers(t *testing.T) {
+	clearCIEnvironment(t)
+	t.Setenv("API_KEY", "test-key")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/reports":
+			writeTestJSONResponse(t, w, client.IngestResponse{ReportID: "rep-1"})
+		case "/api/v1/projects/my-app/gate":
+			if r.URL.Query().Get("scanner") == "semgrep" {
+				writeTestJSONResponse(t, w, client.GateStatus{ThresholdBreached: true, BlockingCount: 1, WaivedFindingIDs: []string{}})
+				return
+			}
+			writeTestJSONResponse(t, w, client.GateStatus{ThresholdBreached: true, BlockingCount: 5, WaivedFindingIDs: []string{}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("API_URL", srv.URL)
+
+	var stdout, stderr bytes.Buffer
+	args := []string{
+		"-file=../../internal/parser/semgrep/testdata/semgrep-native.json",
+		"-project=my-app",
+		"-tool=semgrep",
+		"-branch=main",
+	}
+	code := run(args, bytes.NewReader(nil), &stdout, &stderr, srv.Client())
+	assert.Equal(t, 1, code, stderr.String())
+	assert.Contains(t, stderr.String(), "gate FAILED: 1 blocking finding(s) from semgrep")
+	assert.Contains(t, stderr.String(), "project gate: 5 blocking across all scanners")
+}
+
 func TestRun_IntroducedOnlyFalseWithBaseRefUsesProjectGate(t *testing.T) {
 	clearCIEnvironment(t)
 	t.Setenv("API_KEY", "test-key")

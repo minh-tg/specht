@@ -30,6 +30,15 @@ labels these findings and can filter to them. A project-wide gate run on another
 branch also counts that branch's own findings. A report without a branch counts,
 because nothing shows it is off the default branch.
 
+In a pipeline with one step per scanner, the adapter's exit code on a
+project-wide gate counts only the findings that scanner reported. A Semgrep step
+does not fail on Trivy findings, which the Trivy step reports and can close on
+its own. The log still prints the project total across all scanners, and the
+project verdict (`GET /api/v1/projects/{slug}/gate` without `scanner`) and the
+UI still count every scanner. So does the check the adapter publishes on the
+commit: every step writes the same check, and the last one to finish must leave
+the whole project's verdict, not only its own scanner's.
+
 The introduced-findings gate compares the report with a baseline: the newest
 full report of the same scanner for `base_revision`, a commit or a branch name.
 Only a report on a trunk can be the baseline. Once the project names its

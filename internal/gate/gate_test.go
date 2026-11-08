@@ -928,6 +928,61 @@ func TestChangeBranchFindingsCountOnlyOnTheirBranch(t *testing.T) {
 	}
 }
 
+func TestScannerVerdictCountsOnlyItsOwnFindings(t *testing.T) {
+	repo := &floorRepo{findings: []Finding{
+		{ID: "trivy", CurrentSeverityRank: 4, Scanners: []string{"trivy"}},
+		{ID: "both", CurrentSeverityRank: 3, Scanners: []string{"grype", "trivy"}},
+		{ID: "watcher", CurrentSeverityRank: 4},
+		{ID: "semgrep-branch", CurrentSeverityRank: 3, Scanners: []string{"semgrep"}, ChangeBranches: []string{"feat/x"}},
+	}}
+	g := New(repo, emptyWaivers{})
+
+	semgrep, err := g.EvaluateForScanner(context.Background(), "p", 3, nil, "", "semgrep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if semgrep.Status != StatusPass || len(semgrep.BlockedBy) != 0 {
+		t.Fatalf("a Semgrep run does not count Trivy or watcher findings, got %v %v", semgrep.Status, semgrep.BlockedBy)
+	}
+
+	onBranch, err := g.EvaluateForScanner(context.Background(), "p", 3, nil, "feat/x", "semgrep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(onBranch.BlockedBy, []string{"semgrep-branch"}) {
+		t.Fatalf("the branch filter still applies, got %v", onBranch.BlockedBy)
+	}
+
+	trivy, err := g.EvaluateForScanner(context.Background(), "p", 3, nil, "", "trivy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(trivy.BlockedBy, []string{"trivy", "both"}) {
+		t.Fatalf("a finding any Trivy report observed counts for Trivy, got %v", trivy.BlockedBy)
+	}
+
+	all, err := g.EvaluateForScanner(context.Background(), "p", 3, nil, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(all.BlockedBy, []string{"trivy", "both", "watcher"}) {
+		t.Fatalf("no scanner counts every scanner, got %v", all.BlockedBy)
+	}
+}
+
+func TestReportedByMatchesTheExactName(t *testing.T) {
+	f := Finding{Scanners: []string{"trivy"}}
+	if reportedBy("Trivy")(f) {
+		t.Fatal("scanner names match exactly, like the report's scanner name")
+	}
+	if !reportedBy("trivy")(f) || !reportedBy("")(f) {
+		t.Fatal("the scanner itself and the empty name keep the finding")
+	}
+	if reportedBy("trivy")(Finding{}) {
+		t.Fatal("a finding no scanner reported belongs to no scanner")
+	}
+}
+
 // floorRepo applies the rank filter the real query applies.
 type floorRepo struct{ findings []Finding }
 

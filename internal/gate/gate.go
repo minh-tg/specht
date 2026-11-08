@@ -104,6 +104,9 @@ type Finding struct {
 	// seen only on change branches. Empty means it counts toward the verdict
 	// of the default branch.
 	ChangeBranches []string
+	// Scanners names every scanner whose reports observed the finding. Empty
+	// for a finding no scanner reported, such as a watcher finding.
+	Scanners []string
 }
 
 // WaiverCondition is a predicate on a finding field: Field is one of
@@ -260,6 +263,11 @@ type Gate interface {
 	// branch, for a full gate run on that branch. A build of a change branch
 	// must not pass because its own findings are not on the default branch yet.
 	EvaluateForBranch(ctx context.Context, projectID string, minSeverityRank int16, policies []GatePolicy, branch string) (Decision, error)
+	// EvaluateForScanner is EvaluateForBranch limited to the findings one
+	// scanner reported, for the CI step of that scanner: its exit code must
+	// not follow what another scanner's step reports and may close later.
+	// An empty scanner is EvaluateForBranch.
+	EvaluateForScanner(ctx context.Context, projectID string, minSeverityRank int16, policies []GatePolicy, branch, scanner string) (Decision, error)
 	// EvaluateIntroducedOnly evaluates the gate over findings one report
 	// introduced, letting policies target introduced risk without ignoring
 	// existing debt (the full gate still covers it). Waivers, reachability
@@ -304,11 +312,28 @@ func (g *gate) EvaluateForBranch(ctx context.Context, projectID string, minSever
 	return g.evaluate(ctx, projectID, minSeverityRank, policies, countsOnBranch(branch))
 }
 
+func (g *gate) EvaluateForScanner(ctx context.Context, projectID string, minSeverityRank int16, policies []GatePolicy, branch, scanner string) (Decision, error) {
+	onBranch := countsOnBranch(branch)
+	ofScanner := reportedBy(scanner)
+	return g.evaluate(ctx, projectID, minSeverityRank, policies, func(f Finding) bool {
+		return onBranch(f) && ofScanner(f)
+	})
+}
+
 // countsOnBranch keeps the findings that count toward the default branch, and
 // those seen on branch when one is named.
 func countsOnBranch(branch string) func(Finding) bool {
 	return func(f Finding) bool {
 		return len(f.ChangeBranches) == 0 || (branch != "" && slices.Contains(f.ChangeBranches, branch))
+	}
+}
+
+// reportedBy keeps the findings a report of scanner observed. The name must
+// match exactly, as the report's scanner name does. An empty scanner keeps
+// every finding.
+func reportedBy(scanner string) func(Finding) bool {
+	return func(f Finding) bool {
+		return scanner == "" || slices.Contains(f.Scanners, scanner)
 	}
 }
 

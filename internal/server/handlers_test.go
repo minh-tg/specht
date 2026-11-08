@@ -72,6 +72,7 @@ type mockUsecases struct {
 	bulkTriageFn            func(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
 	getGateStatusFn         func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error)
 	getIntroducedGateFn     func(ctx context.Context, slug string, minRank int16, reportID string) (*usecase.GateStatusOutput, error)
+	getScannerGateFn        func(ctx context.Context, slug string, minRank int16, branch, scanner string) (*usecase.GateStatusOutput, error)
 	previewPRCheckFn        func(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error)
 	previewPatchFn          func(ctx context.Context, findingID string) (*patch.Outcome, error)
 	previewNotifyFn         func(ctx context.Context, findingID, channel, target string, alreadyLinked bool) (*notify.Outcome, error)
@@ -372,7 +373,10 @@ func (m *mockUsecases) ResumeSession(context.Context, string) (*usecase.AuthResp
 	return nil, usecase.ErrNoResume
 }
 
-func (m *mockUsecases) GetBranchGateStatus(ctx context.Context, slug string, minRank int16, branch string) (*usecase.GateStatusOutput, error) {
+func (m *mockUsecases) GetScannerGateStatus(ctx context.Context, slug string, minRank int16, branch, scanner string) (*usecase.GateStatusOutput, error) {
+	if m.getScannerGateFn != nil {
+		return m.getScannerGateFn(ctx, slug, minRank, branch, scanner)
+	}
 	return m.GetGateStatus(ctx, slug, minRank)
 }
 
@@ -2435,6 +2439,24 @@ func TestGateStatus_WaivedFindingIDsSerialized(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	require.Contains(t, body, "waived_finding_ids", "the field must be present even when empty")
 	assert.JSONEq(t, `[]`, string(body["waived_finding_ids"]))
+}
+
+func TestGateStatus_PassesBranchAndScanner(t *testing.T) {
+	var gotBranch, gotScanner string
+	mock := &mockUsecases{
+		getScannerGateFn: func(_ context.Context, _ string, _ int16, branch, scanner string) (*usecase.GateStatusOutput, error) {
+			gotBranch, gotScanner = branch, scanner
+			return &usecase.GateStatusOutput{WaivedFindingIDs: []string{}}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/gate?branch=main&scanner=semgrep", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "main", gotBranch)
+	assert.Equal(t, "semgrep", gotScanner)
 }
 
 func TestGateStatus_IntroducedOnly(t *testing.T) {

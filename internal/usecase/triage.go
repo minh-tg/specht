@@ -558,17 +558,18 @@ func gatePoliciesFor(eff *PolicyEffectiveResponse) []gate.GatePolicy {
 // The statistics take their blocking numbers from the same call, so the two
 // cannot disagree.
 func (u *Usecases) evaluateProjectGate(ctx context.Context, project port.Project, minSeverityRank int16) (gate.Decision, *PolicyEffectiveResponse, error) {
-	return u.evaluateBranchGate(ctx, project, minSeverityRank, "")
+	return u.evaluateBranchGate(ctx, project, minSeverityRank, "", "")
 }
 
-// evaluateBranchGate is evaluateProjectGate plus the findings seen on branch.
-func (u *Usecases) evaluateBranchGate(ctx context.Context, project port.Project, minSeverityRank int16, branch string) (gate.Decision, *PolicyEffectiveResponse, error) {
+// evaluateBranchGate is evaluateProjectGate plus the findings seen on branch,
+// limited to the findings scanner reported when scanner is not empty.
+func (u *Usecases) evaluateBranchGate(ctx context.Context, project port.Project, minSeverityRank int16, branch, scanner string) (gate.Decision, *PolicyEffectiveResponse, error) {
 	floor, policy, err := u.gateFloor(ctx, project, minSeverityRank)
 	if err != nil {
 		return gate.Decision{}, policy, fmt.Errorf("resolve policy: %w", err)
 	}
 	u.initGate()
-	decision, err := u.gate.EvaluateForBranch(ctx, project.ID, floor, gatePoliciesFor(policy), branch)
+	decision, err := u.gate.EvaluateForScanner(ctx, project.ID, floor, gatePoliciesFor(policy), branch, scanner)
 	if err != nil {
 		return gate.Decision{}, policy, fmt.Errorf("gate eval: %w", err)
 	}
@@ -583,6 +584,13 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 // GetBranchGateStatus answers for the default branch plus the findings seen on
 // one branch. An empty branch is the project's own verdict.
 func (u *Usecases) GetBranchGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, branch string) (*GateStatusOutput, error) {
+	return u.GetScannerGateStatus(ctx, projectSlug, minSeverityRank, branch, "")
+}
+
+// GetScannerGateStatus is GetBranchGateStatus limited to the findings one
+// scanner reported, the verdict of that scanner's CI step. An empty scanner
+// counts every scanner. UnratedCount stays the project's count.
+func (u *Usecases) GetScannerGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, branch, scanner string) (*GateStatusOutput, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
@@ -591,7 +599,7 @@ func (u *Usecases) GetBranchGateStatus(ctx context.Context, projectSlug string, 
 		return nil, err
 	}
 
-	decision, policy, err := u.evaluateBranchGate(ctx, project, minSeverityRank, branch)
+	decision, policy, err := u.evaluateBranchGate(ctx, project, minSeverityRank, branch, scanner)
 	if err != nil {
 		return nil, err
 	}
