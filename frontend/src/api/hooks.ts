@@ -77,6 +77,7 @@ export const queryKeys = {
   watcher: (slug: string) => ["watcher", slug] as const,
   policyTemplates: () => ["policy-templates"] as const,
   projects: () => ["projects"] as const,
+  projectSummaries: () => ["project-summaries"] as const,
   me: () => ["me"] as const,
   version: () => ["version"] as const,
   project: (slug?: string) =>
@@ -287,22 +288,41 @@ export function useProject(slug: string) {
   return useQuery(projectQueryOptions(slug));
 }
 
+/**
+ * The stats as the cache keeps them. The server sends Go nil slices as null, so the lists become
+ * empty arrays here, wherever the stats come from.
+ */
+export function normalizeProjectStats(stats: ProjectStats): ProjectStats {
+  return {
+    ...stats,
+    by_severity: stats.by_severity ?? [],
+    by_analysis_state: stats.by_analysis_state ?? [],
+  };
+}
+
+/** The gate as the cache keeps it, with null id lists turned into empty arrays. */
+export function normalizeGateStatus(gate: GateStatus): GateStatus {
+  return {
+    ...gate,
+    blocked_by: gate.blocked_by ?? [],
+    waived_finding_ids: gate.waived_finding_ids ?? [],
+  };
+}
+
 export function useProjectStats(
   slug: string,
   options?: { refetchInterval?: number | false; },
 ) {
   return useQuery({
     queryKey: queryKeys.projectStats(slug),
-    queryFn: async () => {
-      const stats = await apiFetch<ProjectStats>(
-        `/api/v1/projects/${encodeURIComponent(slug)}/stats`,
-      );
-      return {
-        ...stats,
-        by_severity: stats.by_severity ?? [],
-      };
-    },
+    queryFn: async () =>
+      normalizeProjectStats(
+        await apiFetch<ProjectStats>(`/api/v1/projects/${encodeURIComponent(slug)}/stats`),
+      ),
     enabled: !!slug,
+    // The project list fills this entry for every project. A project opened within a few seconds
+    // uses it without asking again; later it shows it at once and refreshes in the background.
+    staleTime: PREFETCH_STALE_MS,
     refetchInterval: options?.refetchInterval,
   });
 }
@@ -473,9 +493,15 @@ export function useGateStatus(projectSlug: string, severity?: string, poll?: Pol
     queryKey: severity
       ? [...queryKeys.gate(projectSlug), "severity", severity]
       : queryKeys.gate(projectSlug),
-    queryFn: () =>
-      apiFetch<GateStatus>(`/api/v1/projects/${encodeURIComponent(projectSlug)}/gate${suffix}`),
+    queryFn: async () =>
+      normalizeGateStatus(
+        await apiFetch<GateStatus>(
+          `/api/v1/projects/${encodeURIComponent(projectSlug)}/gate${suffix}`,
+        ),
+      ),
     enabled: !!projectSlug,
+    // The project list fills the default-severity entry for every project, like the stats above.
+    staleTime: PREFETCH_STALE_MS,
     refetchInterval: poll?.refetchInterval,
     refetchIntervalInBackground: false,
   });

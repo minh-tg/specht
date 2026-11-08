@@ -1,9 +1,10 @@
+import { queryKeys, useGateStatus, useProjectStats } from "@/api/hooks";
 import { formatDateTime } from "@/lib/format";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import { vi } from "vitest";
 import { ProjectList } from "./ProjectList";
 
@@ -19,10 +20,13 @@ const DEFAULT_STATS = {
 type MaybePromise<T> = T | Promise<T>;
 
 interface ApiRoutes {
-  readonly projects?: unknown;
+  readonly projects?: readonly { slug: string; }[];
   readonly me?: unknown;
-  readonly gate?: (slug: string) => MaybePromise<unknown>;
-  readonly stats?: (slug: string) => MaybePromise<unknown>;
+  /** One project's gate and stats. The summaries answer is built from them. */
+  readonly gate?: (slug: string) => unknown;
+  readonly stats?: (slug: string) => unknown;
+  /** Replaces the whole summaries answer, for a pending, failed or partial batch. */
+  readonly summaries?: () => MaybePromise<unknown>;
 }
 
 beforeEach(() => {
@@ -40,6 +44,17 @@ function mockApi(routes: ApiRoutes): void {
     if (url.endsWith("/api/v1/projects")) {
       return jsonResponse(routes.projects ?? []);
     }
+    if (url.endsWith("/api/v1/project-summaries")) {
+      if (routes.summaries) return respond(routes.summaries());
+      return jsonResponse((routes.projects ?? []).map(({ slug }) => ({
+        slug,
+        gate: routes.gate ? routes.gate(slug) : DEFAULT_GATE,
+        stats: routes.stats ? routes.stats(slug) : DEFAULT_STATS,
+      })));
+    }
+
+    // The list must not ask per project. These answer anyway so a regression shows up as a
+    // request count, not as a hung row.
 
     const gateMatch = /\/api\/v1\/projects\/([^/]+)\/gate$/.exec(url);
     if (gateMatch) {
@@ -111,19 +126,38 @@ function rowFor(name: string): HTMLElement {
   return row;
 }
 
+/** Every URL the page fetched so far. */
+function requestedUrls(): string[] {
+  return vi.mocked(globalThis.fetch).mock.calls.map(([input]) => String(input));
+}
+
+/** Stands in for a project page: it reads the gate and stats the way the real pages do. */
+function ProjectPageProbe() {
+  const { slug = "" } = useParams();
+  const gate = useGateStatus(slug);
+  const stats = useProjectStats(slug);
+  return (
+    <p>
+      Findings page: {gate.data?.blocked_by?.length ?? "?"} blocking of{" "}
+      {stats.data?.total_findings ?? "?"}
+    </p>
+  );
+}
+
 function renderProjectRoutes() {
   const qc = createTestQueryClient();
-  return render(
+  const view = render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={["/"]}>
         <Routes>
           <Route path="/" element={<ProjectList />} />
-          <Route path="/:slug/findings" element={<p>Findings page</p>} />
+          <Route path="/:slug/findings" element={<ProjectPageProbe />} />
           <Route path="/projects/new" element={<p>New project page</p>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return { ...view, qc };
 }
 
 describe("ProjectList", () => {
@@ -176,8 +210,8 @@ describe("ProjectList", () => {
     expect(within(rowFor("Gamma")).getByText("0")).toBeInTheDocument();
   });
 
-  it("keeps rows alphabetical until all settle, then orders blocked first", async () => {
-    const alphaGate = deferred();
+  it("keeps rows alphabetical until the summaries answer, then orders blocked first", async () => {
+    const batch = deferred();
     const scannedAt = recentIso(2);
     mockApi({
       projects: [
@@ -185,18 +219,103 @@ describe("ProjectList", () => {
         { id: "p1", slug: "alpha", name: "Alpha", description: null },
       ],
       me: { role: "member" },
-      gate: (slug) => (slug === "alpha" ? alphaGate.promise : makeGate(["f1", "f2"])),
-      stats: () => makeStats(1, 1, scannedAt),
+      summaries: () => batch.promise,
     });
     renderProjectRoutes();
 
-    // Zulu is blocked but Alpha is still loading, so no reordering may happen.
-    await screen.findByText("BLOCKED");
-    expect(within(rowFor("Alpha")).getByText("UNKNOWN")).toBeInTheDocument();
-    await waitFor(() => expect(rowNames()).toEqual(["Alpha", "Zulu"]));
+    await screen.findByRole("link", { name: "Zulu" });
+    expect(rowNames()).toEqual(["Alpha", "Zulu"]);
+    expect(within(rowFor("Zulu")).getByText("UNKNOWN")).toBeInTheDocument();
 
-    alphaGate.resolve(makeGate(["f1"]));
+    batch.resolve([
+      { slug: "zulu", gate: makeGate(["f1", "f2"]), stats: makeStats(1, 2, scannedAt) },
+      { slug: "alpha", gate: makeGate(["f1"]), stats: makeStats(1, 1, scannedAt) },
+    ]);
     await waitFor(() => expect(rowNames()).toEqual(["Zulu", "Alpha"]));
+  });
+
+  it("asks once for every row, however many projects there are", async () => {
+    const projects = Array.from({ length: 8 }, (_, i) => ({
+      id: `p${i}`,
+      slug: `proj-${i}`,
+      name: `Project ${i}`,
+      description: null,
+    }));
+    mockApi({
+      projects,
+      me: { role: "member" },
+      gate: (slug) => (slug === "proj-3" ? makeGate(["f1"]) : makeGate([])),
+      stats: () => makeStats(1, 2, recentIso(2)),
+    });
+    renderProjectRoutes();
+
+    await waitFor(() =>
+      expect(within(rowFor("Project 3")).getByText("BLOCKED")).toBeInTheDocument()
+    );
+    expect(screen.getAllByText("PASSING")).toHaveLength(7);
+
+    const urls = requestedUrls();
+    expect(urls.filter((url) => url.endsWith("/api/v1/project-summaries"))).toHaveLength(1);
+    expect(urls.filter((url) => /\/(gate|stats)$/.test(url))).toEqual([]);
+    expect(urls).toHaveLength(3); // me, projects and the summaries
+  });
+
+  it("fills each project's gate and stats so opening the project does not ask again", async () => {
+    mockApi({
+      projects: [{ id: "p1", slug: "alpha", name: "Alpha", description: null }],
+      me: { role: "member" },
+      gate: () => makeGate(["f1", "f2"]),
+      stats: () => makeStats(1, 9, recentIso(2)),
+    });
+    const { qc } = renderProjectRoutes();
+
+    await screen.findByText("BLOCKED");
+    expect(qc.getQueryData(queryKeys.gate("alpha"))).toMatchObject({ blocked_by: ["f1", "f2"] });
+    expect(qc.getQueryData(queryKeys.projectStats("alpha"))).toMatchObject({ total_findings: 9 });
+
+    await userEvent.setup().click(screen.getByRole("link", { name: "Alpha" }));
+    expect(await screen.findByText("Findings page: 2 blocking of 9")).toBeInTheDocument();
+    expect(requestedUrls().filter((url) => /\/(gate|stats)$/.test(url))).toEqual([]);
+  });
+
+  it("turns null lists from the server into empty ones", async () => {
+    mockApi({
+      projects: [{ id: "p1", slug: "alpha", name: "Alpha", description: null }],
+      me: { role: "member" },
+      summaries: () => [{
+        slug: "alpha",
+        gate: {
+          threshold_breached: false,
+          blocking_count: 0,
+          blocked_by: null,
+          waived_finding_ids: null,
+        },
+        stats: { ...makeStats(1, 0, recentIso(2)), by_severity: null, by_analysis_state: null },
+      }],
+    });
+    const { qc } = renderProjectRoutes();
+
+    await waitFor(() => expect(within(rowFor("Alpha")).getByText("PASSING")).toBeInTheDocument());
+    expect(qc.getQueryData(queryKeys.gate("alpha"))).toMatchObject({
+      blocked_by: [],
+      waived_finding_ids: [],
+    });
+    expect(qc.getQueryData(queryKeys.projectStats("alpha"))).toMatchObject({
+      by_severity: [],
+      by_analysis_state: [],
+    });
+  });
+
+  it("treats a null summaries answer as no rows of data", async () => {
+    mockApi({
+      projects: [{ id: "p1", slug: "alpha", name: "Alpha", description: null }],
+      me: { role: "member" },
+      summaries: () => null,
+    });
+    renderProjectRoutes();
+
+    await waitFor(() => expect(within(rowFor("Alpha")).getAllByText("None")).toHaveLength(3));
+    expect(within(rowFor("Alpha")).getByText("UNKNOWN")).toBeInTheDocument();
   });
 
   it("names the project to start with once everything has settled", async () => {
@@ -227,23 +346,26 @@ describe("ProjectList", () => {
     );
   });
 
-  it("says nothing about where to start while a project is still loading or when nothing is blocked", async () => {
-    const alphaGate = deferred();
+  it("says nothing about where to start while the summaries are still loading", async () => {
+    const batch = deferred();
+    const stats = makeStats(1, 1, recentIso(2));
     mockApi({
       projects: [
         { id: "p1", slug: "alpha", name: "Alpha", description: null },
         { id: "p2", slug: "beta", name: "Beta", description: null },
       ],
       me: { role: "member" },
-      gate: (slug) => (slug === "alpha" ? alphaGate.promise : makeGate(["f1"])),
-      stats: () => makeStats(1, 1, recentIso(2)),
+      summaries: () => batch.promise,
     });
     renderProjectRoutes();
 
-    await screen.findByText("BLOCKED");
+    await screen.findByRole("link", { name: "Beta" });
     expect(screen.queryByText(/Start with/)).not.toBeInTheDocument();
 
-    alphaGate.resolve(makeGate([]));
+    batch.resolve([
+      { slug: "alpha", gate: makeGate([]), stats },
+      { slug: "beta", gate: makeGate(["f1"]), stats },
+    ]);
     expect(await screen.findByText(/1 project is blocked/)).toBeInTheDocument();
     expect(screen.getByText("Start with", { exact: false })).toHaveTextContent("Start with Beta.");
   });
@@ -302,7 +424,7 @@ describe("ProjectList", () => {
     expect(within(rowFor("Gamma")).queryByText(/latest scan/)).not.toBeInTheDocument();
   });
 
-  it("shows UNKNOWN for a failed gate request without breaking other rows", async () => {
+  it("shows UNKNOWN for a project the summaries left out without breaking other rows", async () => {
     const scannedAt = recentIso(2);
     mockApi({
       projects: [
@@ -310,11 +432,7 @@ describe("ProjectList", () => {
         { id: "p2", slug: "beta", name: "Beta", description: null },
       ],
       me: { role: "member" },
-      gate: (slug) => {
-        if (slug === "alpha") throw new Error("gate unavailable");
-        return makeGate([]);
-      },
-      stats: () => makeStats(1, 5, scannedAt),
+      summaries: () => [{ slug: "beta", gate: makeGate([]), stats: makeStats(1, 5, scannedAt) }],
     });
     renderProjectRoutes();
 
@@ -326,6 +444,23 @@ describe("ProjectList", () => {
     const beta = rowFor("Beta");
     expect(within(beta).getByText("PASSING")).toBeInTheDocument();
     expect(within(beta).getByText("5")).toBeInTheDocument();
+  });
+
+  it("keeps the table with dashes in every row when the summaries request fails", async () => {
+    mockApi({
+      projects: [
+        { id: "p1", slug: "alpha", name: "Alpha", description: null },
+        { id: "p2", slug: "beta", name: "Beta", description: null },
+      ],
+      me: { role: "member" },
+      summaries: () => new Error("summaries unavailable"),
+    });
+    renderProjectRoutes();
+
+    await waitFor(() => expect(screen.getAllByText("UNKNOWN")).toHaveLength(2));
+    expect(within(rowFor("Alpha")).getAllByText("None")).toHaveLength(3);
+    expect(within(rowFor("Beta")).getAllByText("None")).toHaveLength(3);
+    expect(screen.queryByText(/Start with/)).not.toBeInTheDocument();
   });
 
   it("links a project name to its findings page", async () => {
@@ -342,7 +477,7 @@ describe("ProjectList", () => {
     expect(link).toHaveAttribute("href", "/alpha/findings");
 
     await userEvent.setup().click(link);
-    expect(await screen.findByText("Findings page")).toBeInTheDocument();
+    expect(await screen.findByText(/Findings page/)).toBeInTheDocument();
   });
 
   it("warms the project and its first findings page when the mouse rests on a project name", async () => {
@@ -447,8 +582,13 @@ describe("ProjectList", () => {
         return jsonResponse([{ id: "p1", slug: "alpha", name: "Alpha", description: null }]);
       }
       if (url.endsWith("/api/v1/me")) return jsonResponse({ role: "member" });
-      if (url.endsWith("/gate")) return jsonResponse(makeGate([]));
-      if (url.endsWith("/stats")) return jsonResponse(makeStats(1, 1, scannedAt));
+      if (url.endsWith("/api/v1/project-summaries")) {
+        return jsonResponse([{
+          slug: "alpha",
+          gate: makeGate([]),
+          stats: makeStats(1, 1, scannedAt),
+        }]);
+      }
       return jsonResponse({});
     });
     renderProjectRoutes();

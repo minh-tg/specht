@@ -6,11 +6,18 @@ import type {
   JoinInviteResponse,
   LoginResponse,
   ProjectStats,
+  ProjectSummary,
   RegisterResponse,
 } from "@/types/api";
-import { queryOptions, useMutation, useQuery } from "@tanstack/react-query";
+import {
+  queryOptions,
+  skipToken,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import { queryKeys } from "./hooks";
+import { normalizeGateStatus, normalizeProjectStats, queryKeys } from "./hooks";
 
 /** Keys for requests that only one page makes. Shared keys come from `queryKeys` in hooks.ts. */
 export const pageKeys = {
@@ -100,18 +107,41 @@ export function useJoinInvite(token: string) {
   });
 }
 
-/** The gate status of a project, one query per row of the project list. */
-export function projectGateQuery(slug: string) {
-  return queryOptions({
-    queryKey: queryKeys.gate(slug),
-    queryFn: () => apiFetch<GateStatus>(`/api/v1/projects/${slug}/gate`),
+/**
+ * The gate and stats of every project the caller can see, in one request. Each row also fills
+ * the per-project gate and stats cache entries, so a project page opened from the list starts
+ * with them.
+ */
+export function useProjectSummaries() {
+  const queryClient = useQueryClient();
+  return useQuery({
+    queryKey: queryKeys.projectSummaries(),
+    queryFn: async () => {
+      const rows = await apiFetch<ProjectSummary[] | null>("/api/v1/project-summaries");
+      const summaries = (rows ?? []).map((row) => ({
+        slug: row.slug,
+        gate: normalizeGateStatus(row.gate),
+        stats: normalizeProjectStats(row.stats),
+      }));
+      for (const summary of summaries) {
+        queryClient.setQueryData(queryKeys.gate(summary.slug), summary.gate);
+        queryClient.setQueryData(queryKeys.projectStats(summary.slug), summary.stats);
+      }
+      return summaries;
+    },
   });
 }
 
-/** The finding and scan counts of a project, one query per row of the project list. */
-export function projectStatsQuery(slug: string) {
-  return queryOptions({
-    queryKey: queryKeys.projectStats(slug),
-    queryFn: () => apiFetch<ProjectStats>(`/api/v1/projects/${slug}/stats`),
-  });
+/**
+ * Reads one project's gate from the cache without fetching it. The project list renders from
+ * these entries, which the summaries request fills, so a change made on a project page shows in
+ * the list as soon as that page has the new answer.
+ */
+export function cachedProjectGate(slug: string) {
+  return queryOptions<GateStatus>({ queryKey: queryKeys.gate(slug), queryFn: skipToken });
+}
+
+/** Reads one project's stats from the cache without fetching them, like `cachedProjectGate`. */
+export function cachedProjectStats(slug: string) {
+  return queryOptions<ProjectStats>({ queryKey: queryKeys.projectStats(slug), queryFn: skipToken });
 }

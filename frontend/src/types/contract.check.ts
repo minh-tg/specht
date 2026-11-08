@@ -5,6 +5,7 @@ import type {
   FindingEvent,
   IngestResponse,
   ProjectStats,
+  ProjectSummary,
   Report,
   RetentionResult,
   Team,
@@ -101,4 +102,10 @@ type Schemas = components["schemas"];
   type Keys = "finding_kind" | "current_severity" | "state" | "analysis_state" | "gate_effect";
   expectTypeOf<Omit<Finding, Keys>>().toMatchTypeOf<Omit<Schemas["Finding"], Keys>>();
   expectTypeOf<Omit<Schemas["Finding"], Keys>>().toMatchTypeOf<Omit<Finding, Keys>>();
+}
+
+// keeps the ProjectSummary fields in step with the schema. Its gate and stats are the types the
+// per-project endpoints use, so they are not compared field by field here.
+{
+  expectTypeOf<keyof ProjectSummary>().toEqualTypeOf<keyof Schemas["ProjectSummary"]>();
 }

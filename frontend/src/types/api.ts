@@ -537,6 +537,13 @@ export interface ProjectStats {
   latest_completed_report?: Report;
 }
 
+/** One project's gate and stats, as the per-project gate and stats endpoints answer them. */
+export interface ProjectSummary {
+  slug: string;
+  gate: GateStatus;
+  stats: ProjectStats;
+}
+
 export interface IngestResponse {
   report_id: string;
   total_findings: number;
