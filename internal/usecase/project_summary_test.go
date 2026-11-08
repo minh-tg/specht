@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -148,4 +149,27 @@ func TestListProjectSummaries_GateFailureIsAnError(t *testing.T) {
 	_, err := uc.ListProjectSummaries(adminCtx())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "own-app")
+}
+
+// The projects are evaluated a few at a time, but the rows keep the order
+// ListProjects gives, with more projects than evaluate at once.
+func TestListProjectSummaries_KeepsOrderWithManyProjects(t *testing.T) {
+	projects := make([]port.Project, 3*summaryWorkers+1)
+	want := make([]string, len(projects))
+	for i := range projects {
+		projects[i] = port.Project{ID: fmt.Sprintf("00000000-0000-0000-0000-%012d", i+1), Slug: fmt.Sprintf("app-%02d", i)}
+		want[i] = projects[i].Slug
+	}
+	uc := summaryUsecase(t)
+	uc.deps.Stores.Projects = &mockProjectRepo{
+		listFn: func(context.Context) ([]port.Project, error) { return projects, nil },
+	}
+
+	summaries, err := uc.ListProjectSummaries(adminCtx())
+	require.NoError(t, err)
+	assert.Equal(t, want, summarySlugs(summaries))
+	for _, row := range summaries {
+		require.NotNil(t, row.Gate, row.Slug)
+		require.NotNil(t, row.Stats, row.Slug)
+	}
 }

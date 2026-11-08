@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -28,14 +29,19 @@ type mockStatsStore struct {
 
 // gateRows is what the fake finding store offers the gate as blocking
 // candidates. The fake filters by the floor it is asked for, as the query does.
+// The project summaries call it from several goroutines, so the floor it
+// records is written under a lock.
 type gateRows struct {
+	mu         sync.Mutex
 	candidates []port.GateCandidate
 	err        error
 	askedFloor int16
 }
 
 func (g *gateRows) list(_ context.Context, _ string, minRank int16) ([]port.GateCandidate, error) {
+	g.mu.Lock()
 	g.askedFloor = minRank
+	g.mu.Unlock()
 	if g.err != nil {
 		return nil, g.err
 	}
