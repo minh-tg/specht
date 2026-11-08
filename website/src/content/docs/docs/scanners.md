@@ -46,10 +46,16 @@ upload form accepts files up to 10 MiB; the HTTP API accepts request bodies up t
 
 ## Scope and repeat scans
 
-Send replacement reports with the same scanner, target, branch and other scan
-metadata. Findings are matched across scans, and evidence from different scopes
-can remain active independently. A clean scan of one target does not establish
-that every other target is clean.
+A report's scope is five things: the scanner, the target, the artifact name
+(`-artifact`), the branch and the environment (`-environment`). Send repeat
+scans with the same five. Findings are matched across scans, and evidence from
+different scopes stays active independently: a clean scan of one target, or of
+the staging environment, says nothing about another.
+
+A clean scan closes only findings its own scope saw. If you rename the target,
+artifact or environment, the old scope's findings stay open until a scan of the
+old scope comes back clean or someone closes them, so keep these values stable
+in CI.
 
 A manual upload through the web form does not add CI branch or revision
 metadata. Use the adapter or API for [change-linked gates](../ci-gates/).
