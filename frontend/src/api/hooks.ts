@@ -484,23 +484,34 @@ export function useGateStatus(projectSlug: string, severity?: string, poll?: Pol
 /**
  * Evaluates the scope and severity carried by a CI link. The default covers
  * only findings the report introduced. Explicit project-wide links include
- * existing debt. Both require completed report evidence before querying.
+ * existing debt on the report's branch, as the CI run judged it: the default
+ * branch plus the findings seen on `branch`. Both require completed report
+ * evidence before querying.
  */
 export function useChangeGate(
   projectSlug: string,
   reportId: string | undefined,
   projectWide = false,
   severity?: string,
+  branch?: string | null,
 ) {
   const query = new URLSearchParams();
+  const gateBranch = projectWide ? branch ?? "" : "";
   if (!projectWide) {
     query.set("introduced_only", "true");
     query.set("report_id", reportId ?? "");
+  } else if (gateBranch) {
+    query.set("branch", gateBranch);
   }
   if (severity) query.set("severity", severity);
   const suffix = query.size ? `?${query.toString()}` : "";
   return useQuery({
-    queryKey: [...queryKeys.changeGate(projectSlug, reportId), projectWide, severity ?? ""],
+    queryKey: [
+      ...queryKeys.changeGate(projectSlug, reportId),
+      projectWide,
+      severity ?? "",
+      gateBranch,
+    ],
     queryFn: () =>
       apiFetch<GateStatus>(
         `/api/v1/projects/${encodeURIComponent(projectSlug)}/gate${suffix}`,

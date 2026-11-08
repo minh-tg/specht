@@ -113,12 +113,14 @@ export function ChangeView() {
   const report = resolveReport(reportsQuery.data, commit, reportParam);
   const degraded = report !== null
     && (isReportInProgress(report.status) || report.status === "failed");
-  // A scan without a verdict must not be scoped through the gate.
+  // A scan without a verdict must not be scoped through the gate. The project gate is the one of
+  // the report's branch, the same one the CI run checked.
   const changeGateQuery = useChangeGate(
     slug,
     degraded ? undefined : report?.id,
     projectWide,
     severity,
+    report?.branch,
   );
   const projectGateQuery = useGateStatus(slug, severity);
 
