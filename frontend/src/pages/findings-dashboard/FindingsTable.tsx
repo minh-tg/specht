@@ -12,7 +12,7 @@ import { ChevronRightIcon } from "lucide-react";
 import { type MouseEvent, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { locationText, shortLocation } from "./location";
-import { compactMeta } from "./sort";
+import { compactMeta, scannersText } from "./sort";
 import type { FindingsSort } from "./useFindingsQuery";
 
 /** Clicks on these keep their own behaviour instead of opening the finding. */
@@ -33,6 +33,8 @@ interface FindingsTableProps {
   onToggleSort: (column: string) => void;
   /** Absent when the person can do nothing to a selection, so there is nothing to select. */
   selection?: FindingsSelection;
+  /** What people call each scanner, by name. A name without an entry is shown as it is. */
+  scannerNames?: ReadonlyMap<string, string>;
 }
 
 function SelectAll({ findings, selection }: {
@@ -66,7 +68,7 @@ function SelectAll({ findings, selection }: {
  * title, so no field is lost to a small viewport.
  */
 export function FindingsTable(
-  { slug, findings, gate, sort, onToggleSort, selection }: FindingsTableProps,
+  { slug, findings, gate, sort, onToggleSort, selection, scannerNames }: FindingsTableProps,
 ) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -133,6 +135,13 @@ export function FindingsTable(
       hideBelow: "md",
       cellClassName: "max-w-[22rem] font-mono text-code",
       cell: (f) => <span title={locationText(f.location)}>{shortLocation(f.location)}</span>,
+    },
+    {
+      id: "scanner",
+      header: "Scanner",
+      hideBelow: "md",
+      cellClassName: "text-muted-foreground",
+      cell: (f) => scannersText(f.scanners ?? [], scannerNames) || EMPTY_VALUE,
     },
     {
       id: "state",

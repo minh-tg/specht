@@ -65,6 +65,9 @@ releases.
 - The findings list can be narrowed to scanners. `GET /projects/{slug}/findings` takes `scanner`, a
   comma list of scanner names, and each listed finding carries `scanners`, the scanners whose reports
   observed it.
+- The findings list has a scanner filter and a Scanner column, so one tool's findings can be triaged
+  at a time. The filter lives in the URL like the others, and on a phone the scanner joins the line
+  under each title.
 - A finding can have an owner. `PUT /api/v1/findings/{id}/assignee` sets it: a manager can assign anyone
   in the project, and a member can take a finding or let go of their own. The findings list shows it and
   gains an "Assigned to me" view, and `GET /projects/{slug}/findings` takes `assignee`, with `me` for the

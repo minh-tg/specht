@@ -10,7 +10,7 @@ import {
   technicalStateLabel,
 } from "@/lib/enums";
 import { NEEDS_TRIAGE_STATES, OPEN_FINDING_STATES } from "@/lib/findingViews";
-import type { SeverityCount } from "@/types/api";
+import type { ScannerDescriptor, SeverityCount } from "@/types/api";
 import { SearchIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { SeverityChips } from "./SeverityChips";
@@ -27,6 +27,8 @@ interface FindingsFiltersProps {
   onSortChange: (by: FindingsSort["by"], dir: "asc" | "desc") => void;
   /** How many open findings each severity holds, for the chips. */
   severityCounts?: readonly SeverityCount[];
+  /** The scanners to offer as a filter, by name and what people call them. */
+  scanners?: readonly ScannerDescriptor[];
 }
 
 /**
@@ -76,7 +78,7 @@ function SearchBox({ value, onSearch }: { value: string; onSearch: (value: strin
  * reports changes.
  */
 export function FindingsFilters(
-  { filters, sort, onFilterChange, onSortChange, severityCounts }: FindingsFiltersProps,
+  { filters, sort, onFilterChange, onSortChange, severityCounts, scanners }: FindingsFiltersProps,
 ) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -122,6 +124,17 @@ export function FindingsFilters(
           { value: "change", label: "Unmerged branches only" },
         ]}
       />
+      {(scanners?.length ?? 0) > 0 && (
+        <SelectField
+          aria-label="Filter by scanner"
+          value={filters.scanner}
+          onValueChange={(v) => onFilterChange("scanner", v)}
+          options={[
+            { value: "", label: "All scanners" },
+            ...(scanners ?? []).map((s) => ({ value: s.name, label: s.display_name || s.name })),
+          ]}
+        />
+      )}
       <SelectField
         aria-label="Filter by finding type"
         value={filters.kind}

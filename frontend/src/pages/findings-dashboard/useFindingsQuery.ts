@@ -14,6 +14,8 @@ export interface FindingsFilters {
   branchScope: string;
   /** "me" for what the signed-in person owns, or empty for everyone's. */
   assignee: string;
+  /** Comma list of scanner names, or empty for every scanner. */
+  scanner: string;
 }
 
 export interface FindingsSort {
@@ -38,6 +40,7 @@ const FILTER_KEYS = [
   "q",
   "branch_scope",
   "assignee",
+  "scanner",
 ] as const;
 
 /**
@@ -55,6 +58,7 @@ export function findingsViewFromSearch(
     q: searchParams.get("q") ?? "",
     branchScope: searchParams.get("branch_scope") ?? "",
     assignee: searchParams.get("assignee") ?? "",
+    scanner: searchParams.get("scanner") ?? "",
   };
 
   const rawSort = searchParams.get("sort");

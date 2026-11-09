@@ -5,6 +5,7 @@ import {
   useGateStatus,
   useProject,
   useProjectStats,
+  useScanners,
 } from "@/api/hooks";
 import { INLINE_LINK } from "@/components/inlineLink";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -39,6 +40,10 @@ export function FindingsDashboard() {
   const total = data?.total ?? null;
   const gateQuery = useGateStatus(slug ?? "");
   const statsQuery = useProjectStats(slug ?? "");
+  // Anything but a list (an old server, an error body) offers no scanner filter.
+  const scannerData = useScanners().data;
+  const scanners = Array.isArray(scannerData) ? scannerData : [];
+  const scannerNames = new Map(scanners.map((s) => [s.name, s.display_name || s.name]));
   const gate = gateQuery.data;
   const stats = statsQuery.data;
   const { data: project } = useProject(slug ?? "");
@@ -128,6 +133,7 @@ export function FindingsDashboard() {
         onFilterChange={setFilter}
         onSortChange={setSort}
         severityCounts={stats?.by_severity}
+        scanners={scanners}
       />
 
       <UpdatedHint
@@ -200,6 +206,7 @@ export function FindingsDashboard() {
             gate={gate}
             sort={sort}
             onToggleSort={toggleSort}
+            scannerNames={scannerNames}
             selection={canTriage || canRequestWaiver
               ? { keys: selectedIds, onToggle: toggleSelected, onToggleAll: toggleAll }
               : undefined}
