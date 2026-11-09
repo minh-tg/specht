@@ -421,6 +421,9 @@ WHERE f.project_id = $1
     OR ($9::text = 'default' AND cardinality(finding_change_branches(f.id)) = 0)
     OR ($9::text = 'change' AND cardinality(finding_change_branches(f.id)) > 0))
   AND ($10::uuid IS NULL OR f.assignee_id = $10::uuid)
+  AND (array_length($11::text[], 1) IS NULL OR EXISTS (
+    SELECT 1 FROM finding_occurrences so
+    WHERE so.finding_id = f.id AND so.tool_name = ANY($11::text[])))
 `
 
 type CountFindingsByProjectParams struct {
@@ -434,6 +437,7 @@ type CountFindingsByProjectParams struct {
 	Search         string      `json:"search"`
 	BranchScope    string      `json:"branch_scope"`
 	AssigneeID     pgtype.UUID `json:"assignee_id"`
+	Scanners       []string    `json:"scanners"`
 }
 
 // The same filter predicates as ListFindingsByProject, without the page
@@ -451,6 +455,7 @@ func (q *Queries) CountFindingsByProject(ctx context.Context, arg CountFindingsB
 		arg.Search,
 		arg.BranchScope,
 		arg.AssigneeID,
+		arg.Scanners,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -1342,6 +1347,39 @@ func (q *Queries) ListFindingObservedContexts(ctx context.Context, findingID pgt
 	return items, nil
 }
 
+const listFindingScanners = `-- name: ListFindingScanners :many
+SELECT so.finding_id, array_agg(DISTINCT so.tool_name ORDER BY so.tool_name)::text[] AS scanners
+FROM finding_occurrences so
+WHERE so.finding_id = ANY($1::uuid[])
+GROUP BY so.finding_id
+`
+
+type ListFindingScannersRow struct {
+	FindingID pgtype.UUID `json:"finding_id"`
+	Scanners  []string    `json:"scanners"`
+}
+
+// The scanners whose reports observed each given finding, in name order.
+func (q *Queries) ListFindingScanners(ctx context.Context, findingIds []pgtype.UUID) ([]ListFindingScannersRow, error) {
+	rows, err := q.db.Query(ctx, listFindingScanners, findingIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListFindingScannersRow
+	for rows.Next() {
+		var i ListFindingScannersRow
+		if err := rows.Scan(&i.FindingID, &i.Scanners); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFindingScopeSeverities = `-- name: ListFindingScopeSeverities :many
 SELECT finding_id, scope_hash, severity, severity_rank, observed_at
 FROM finding_scope_severities
@@ -1525,15 +1563,18 @@ WHERE f.project_id = $1
     OR ($11::text = 'default' AND cardinality(finding_change_branches(f.id)) = 0)
     OR ($11::text = 'change' AND cardinality(finding_change_branches(f.id)) > 0))
   AND ($12::uuid IS NULL OR f.assignee_id = $12::uuid)
+  AND (array_length($13::text[], 1) IS NULL OR EXISTS (
+    SELECT 1 FROM finding_occurrences so
+    WHERE so.finding_id = f.id AND so.tool_name = ANY($13::text[])))
 ORDER BY
-  CASE WHEN $13::text = 'severity' AND $14::text = 'desc' THEN f.current_severity_rank END DESC,
-  CASE WHEN $13::text = 'severity' AND $14::text = 'asc' THEN f.current_severity_rank END ASC,
-  CASE WHEN $13::text = 'first_seen' AND $14::text = 'desc' THEN f.first_seen_at END DESC,
-  CASE WHEN $13::text = 'first_seen' AND $14::text = 'asc' THEN f.first_seen_at END ASC,
-  CASE WHEN $13::text = 'last_seen' AND $14::text = 'desc' THEN f.last_seen_at END DESC,
-  CASE WHEN $13::text = 'last_seen' AND $14::text = 'asc' THEN f.last_seen_at END ASC,
-  CASE WHEN $13::text = 'title' AND $14::text = 'desc' THEN lower(f.current_title) END DESC,
-  CASE WHEN $13::text = 'title' AND $14::text = 'asc' THEN lower(f.current_title) END ASC,
+  CASE WHEN $14::text = 'severity' AND $15::text = 'desc' THEN f.current_severity_rank END DESC,
+  CASE WHEN $14::text = 'severity' AND $15::text = 'asc' THEN f.current_severity_rank END ASC,
+  CASE WHEN $14::text = 'first_seen' AND $15::text = 'desc' THEN f.first_seen_at END DESC,
+  CASE WHEN $14::text = 'first_seen' AND $15::text = 'asc' THEN f.first_seen_at END ASC,
+  CASE WHEN $14::text = 'last_seen' AND $15::text = 'desc' THEN f.last_seen_at END DESC,
+  CASE WHEN $14::text = 'last_seen' AND $15::text = 'asc' THEN f.last_seen_at END ASC,
+  CASE WHEN $14::text = 'title' AND $15::text = 'desc' THEN lower(f.current_title) END DESC,
+  CASE WHEN $14::text = 'title' AND $15::text = 'asc' THEN lower(f.current_title) END ASC,
   f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 LIMIT $7 OFFSET $8
 `
@@ -1551,6 +1592,7 @@ type ListFindingsByProjectParams struct {
 	Search         string      `json:"search"`
 	BranchScope    string      `json:"branch_scope"`
 	AssigneeID     pgtype.UUID `json:"assignee_id"`
+	Scanners       []string    `json:"scanners"`
 	SortKey        string      `json:"sort_key"`
 	SortDir        string      `json:"sort_dir"`
 }
@@ -1571,6 +1613,7 @@ func (q *Queries) ListFindingsByProject(ctx context.Context, arg ListFindingsByP
 		arg.Search,
 		arg.BranchScope,
 		arg.AssigneeID,
+		arg.Scanners,
 		arg.SortKey,
 		arg.SortDir,
 	)

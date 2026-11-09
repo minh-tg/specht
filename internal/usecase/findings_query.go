@@ -28,11 +28,19 @@ func invalidFindingQuery(format string, args ...any) error {
 // the database scan for an arbitrarily long pattern.
 const maxFindingSearchLen = 100
 
+// maxFindingScanners and maxFindingScannerLen bound the scanner filter: far
+// above the scanners Specht parses, far below a query worth refusing.
+const (
+	maxFindingScanners   = 32
+	maxFindingScannerLen = 64
+)
+
 // FindingSortKeys lists the accepted sort keys, default first.
 var FindingSortKeys = []string{"severity", "first_seen", "last_seen", "title"}
 
 type findingQuery struct {
 	assigneeID string
+	scanners   []string
 	search     string
 	sortKey    string
 	sortDir    string
@@ -84,6 +92,16 @@ func (f FindingFilter) normalize() (findingQuery, error) {
 		return q, invalidFindingQuery("q is longer than %d characters", maxFindingSearchLen)
 	}
 	q.search = escapeLike(search)
+	if len(f.Scanners) > maxFindingScanners {
+		return q, invalidFindingQuery("scanner may list at most %d scanners", maxFindingScanners)
+	}
+	for _, s := range f.Scanners {
+		s = strings.ToLower(strings.TrimSpace(s))
+		if s == "" || len(s) > maxFindingScannerLen {
+			return q, invalidFindingQuery("scanner must be a comma list of scanner names")
+		}
+		q.scanners = append(q.scanners, s)
+	}
 	return q, nil
 }
 

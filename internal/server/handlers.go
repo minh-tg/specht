@@ -848,6 +848,9 @@ func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 	if s := r.URL.Query().Get("analysis_state"); s != "" {
 		filter.AnalysisStates = strings.Split(s, ",")
 	}
+	if s := r.URL.Query().Get("scanner"); s != "" {
+		filter.Scanners = strings.Split(s, ",")
+	}
 	filter.Search = r.URL.Query().Get("q")
 	filter.BranchScope = r.URL.Query().Get("branch_scope")
 	filter.Assignee = r.URL.Query().Get("assignee")

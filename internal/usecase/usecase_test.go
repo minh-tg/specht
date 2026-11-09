@@ -678,6 +678,7 @@ func (m *mockAdminRepo) Overview(ctx context.Context) (port.AdminOverview, error
 
 type mockFindingRepo struct {
 	port.FindingStore
+	listScannersFn                    func() (map[string][]string, error)
 	hasOccurrenceFn                   func(context.Context, string, string) (bool, error)
 	markFixedFn                       func(context.Context, string) (port.Finding, error)
 	markAbsentFixedFn                 func(context.Context, string, string, string) ([]port.Finding, error)
@@ -887,6 +888,13 @@ func (m *mockFindingRepo) ListAssignees(context.Context, []string) (map[string]p
 }
 
 func (m *mockFindingRepo) ListChangeBranches(context.Context, []string) (map[string][]string, error) {
+	return map[string][]string{}, nil
+}
+
+func (m *mockFindingRepo) ListScanners(context.Context, []string) (map[string][]string, error) {
+	if m.listScannersFn != nil {
+		return m.listScannersFn()
+	}
 	return map[string][]string{}, nil
 }
 

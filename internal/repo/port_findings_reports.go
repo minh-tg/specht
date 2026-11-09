@@ -1340,6 +1340,26 @@ func (r *pgFindingPort) ListChangeBranches(ctx context.Context, findingIDs []str
 	return out, nil
 }
 
+func (r *pgFindingPort) ListScanners(ctx context.Context, findingIDs []string) (map[string][]string, error) {
+	uuids := make([]pgtype.UUID, 0, len(findingIDs))
+	for _, id := range findingIDs {
+		fid, err := parseID(id)
+		if err != nil {
+			return nil, err
+		}
+		uuids = append(uuids, fid)
+	}
+	rows, err := r.inner.q.ListFindingScanners(ctx, uuids)
+	if err != nil {
+		return nil, mappingErr(err)
+	}
+	out := make(map[string][]string, len(rows))
+	for _, row := range rows {
+		out[toUUID(row.FindingID)] = row.Scanners
+	}
+	return out, nil
+}
+
 func (r *pgFindingPort) ListGateCandidates(ctx context.Context, projectID string, minSeverityRank int16) ([]port.GateCandidate, error) {
 	pid, err := parseID(projectID)
 	if err != nil {
