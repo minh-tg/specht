@@ -1,7 +1,9 @@
 import { InfoTip } from "@/components/InfoTip";
+import { INLINE_LINK } from "@/components/inlineLink";
 import { RelativeTime } from "@/components/RelativeTime";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VerdictBadge } from "@/components/VerdictBadge";
+import { codeSource, pullRequestUrl } from "@/lib/codeLinks";
 import { formatClockTime, pluralize } from "@/lib/format";
 import { reportToolLabel } from "@/lib/reportTool";
 import { useDelayedFlag } from "@/lib/useDelayedFlag";
@@ -229,6 +231,7 @@ export function ChangeHero(
             </code>
           </>
         )}
+        {report && <ChangeLinks report={report} />}
       </p>
       <div className="grid items-center gap-x-6 gap-y-2 max-md:justify-items-start md:grid-cols-[auto_minmax(0,1fr)]">
         <VerdictBadge verdict={stamp.verdict} scanning={stamp.scanning} size="lg" />
@@ -279,6 +282,50 @@ export function ChangeHero(
       </p>
       <div aria-hidden="true" className="page-rule" />
     </section>
+  );
+}
+
+/**
+ * Links back to where the change came from: its pull or merge request and the CI run that sent
+ * the report. Each shows only when the report named it and Specht knows the host's URL layout.
+ */
+function ChangeLinks({ report }: { readonly report: Report; }) {
+  const source = codeSource(report);
+  const pr = source ? pullRequestUrl(source, report.pull_request_number) : null;
+  const run = report.ci_run_url && /^https?:\/\//.test(report.ci_run_url)
+    ? report.ci_run_url
+    : null;
+  if (!pr && !run) return null;
+  const linkClass = `${INLINE_LINK} normal-case`;
+  return (
+    <>
+      {pr && (
+        <>
+          <span aria-hidden="true">·</span>
+          <a
+            href={pr}
+            target="_blank"
+            rel="noreferrer"
+            className={`${linkClass} min-w-0 [overflow-wrap:anywhere]`}
+          >
+            {source?.host === "gitlab" ? "!" : "#"}
+            {report.pull_request_number}
+            {report.pull_request_title && (
+              <>
+                {" "}
+                <span className="text-muted-foreground">{report.pull_request_title}</span>
+              </>
+            )}
+          </a>
+        </>
+      )}
+      {run && (
+        <>
+          <span aria-hidden="true">·</span>
+          <a href={run} target="_blank" rel="noreferrer" className={linkClass}>CI run</a>
+        </>
+      )}
+    </>
   );
 }
 

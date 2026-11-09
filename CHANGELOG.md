@@ -14,6 +14,9 @@ releases.
   `pull_request_number`, `pull_request_title` and `ci_run_url`, and report responses return them.
   They are display only. A URL must be absolute http or https and carry no user name or password,
   so a GitLab `CI_REPOSITORY_URL` with its job token is refused with 400 and never stored.
+- The change view links back to the code. Next to the commit it links the pull or merge request
+  and the CI run, and each blocker's location opens the file at the scanned commit and line on GitHub
+  or GitLab. A link shows only when the report named its repository and Specht knows the host.
 - `specht-adapter` sends the repository, pull or merge request and run from GitHub Actions and
   GitLab CI on its own, and takes `-repo-url`, `-pull-request` and `-run-url` elsewhere. A value the
   server would refuse is left out with a note instead of failing the upload.
