@@ -243,6 +243,10 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		ArtifactType:       req.ArtifactType,
 		ScanFilter:         req.domainFilter(),
 		PartialScan:        req.PartialScan,
+		RepositoryURL:      req.RepositoryURL,
+		PullRequestNumber:  int32(req.PullRequestNumber), // invalidField keeps it within int32
+		PullRequestTitle:   req.PullRequestTitle,
+		CIRunURL:           req.CIRunURL,
 	})
 	if err != nil {
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {

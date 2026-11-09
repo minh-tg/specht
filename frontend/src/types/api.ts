@@ -487,6 +487,14 @@ export interface Report {
   tool_name: string;
   /** The tools the file says wrote it, such as a SARIF file's driver names. Display only. */
   producer?: string;
+  /** The repository the uploader named, for links back to the code. Absent when it sent none. */
+  repository_url?: string;
+  /** The pull or merge request the uploader named. */
+  pull_request_number?: number;
+  /** The title of that pull or merge request. */
+  pull_request_title?: string;
+  /** The CI run that uploaded the report. */
+  ci_run_url?: string;
   tool_version?: string | null;
   scan_type: string;
   scan_target?: string | null;

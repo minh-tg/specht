@@ -1376,6 +1376,12 @@ type Report struct {
 	FilterFixableOnly bool
 	// ProducerName names the tools the file says wrote it, for display.
 	ProducerName *string
+	// RepositoryURL, PullRequestNumber, PullRequestTitle and CIRunURL say
+	// where the report came from, for links back to the code. Display only.
+	RepositoryURL     *string
+	PullRequestNumber *int32
+	PullRequestTitle  *string
+	CIRunURL          *string
 }
 
 // CreateReportInput carries report create fields.
@@ -1411,6 +1417,12 @@ type CreateReportInput struct {
 	Status            string
 	// ProducerName names the tools the file says wrote it. Nil stores NULL.
 	ProducerName *string
+	// RepositoryURL, PullRequestNumber, PullRequestTitle and CIRunURL say
+	// where the report came from, for links back to the code. Display only; nil stores NULL.
+	RepositoryURL     *string
+	PullRequestNumber *int32
+	PullRequestTitle  *string
+	CIRunURL          *string
 }
 
 // ReportStore persists scan reports.

@@ -2643,6 +2643,28 @@ export interface components {
        * @default false
        */
       partial_scan: boolean;
+      /**
+       * Format: uri
+       * @description The repository the scan ran on, for links back to the pull request and the code. An absolute http or https URL without a user name or password; a GitLab CI_REPOSITORY_URL, which carries the job token, is refused. Display only.
+       * @example https://github.com/acme/shop
+       */
+      repository_url?: string;
+      /**
+       * @description The pull or merge request the scan ran for. Display only.
+       * @example 123
+       */
+      pull_request_number?: number;
+      /**
+       * @description The title of that pull or merge request. Display only.
+       * @example Bump lodash to 4.17.21
+       */
+      pull_request_title?: string;
+      /**
+       * Format: uri
+       * @description The CI run or job that uploaded the report. Same rules as repository_url. Display only.
+       * @example https://github.com/acme/shop/actions/runs/42
+       */
+      ci_run_url?: string;
       /** @description Comma-separated override for the post-ingest threshold check. */
       gate_severity?: string;
       /** @description Scope the post-ingest threshold check to what this report introduced. */
@@ -2732,6 +2754,28 @@ export interface components {
        * @example Gosec
        */
       producer?: string;
+      /**
+       * Format: uri
+       * @description The repository the uploader named. Absent when it sent none.
+       * @example https://github.com/acme/shop
+       */
+      repository_url?: string;
+      /**
+       * @description The pull or merge request the uploader named. Absent when it sent none.
+       * @example 123
+       */
+      pull_request_number?: number;
+      /**
+       * @description The title of that pull or merge request. Absent when it sent none.
+       * @example Bump lodash to 4.17.21
+       */
+      pull_request_title?: string;
+      /**
+       * Format: uri
+       * @description The CI run that uploaded the report. Absent when it sent none.
+       * @example https://github.com/acme/shop/actions/runs/42
+       */
+      ci_run_url?: string;
       tool_version?: string | null;
       /** @example image */
       scan_type: string;

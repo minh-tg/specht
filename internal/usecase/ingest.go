@@ -879,6 +879,10 @@ func (u *Usecases) createReport(ctx context.Context, project port.Project, input
 		FilterFixableOnly:   input.ScanFilter.FixableOnly,
 		Status:              "processing",
 		ProducerName:        textPtr(nr.Producer),
+		RepositoryURL:       textPtr(input.RepositoryURL),
+		PullRequestNumber:   positiveInt32Ptr(input.PullRequestNumber),
+		PullRequestTitle:    textPtr(input.PullRequestTitle),
+		CIRunURL:            textPtr(input.CIRunURL),
 	})
 	if err != nil {
 		if errors.Is(err, port.ErrDuplicateReport) {

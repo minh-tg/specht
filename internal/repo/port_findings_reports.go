@@ -56,6 +56,10 @@ func (r *pgReportPort) Create(ctx context.Context, input port.CreateReportInput)
 		FilterSeverities:    input.FilterSeverities,
 		FilterFixableOnly:   input.FilterFixableOnly,
 		ProducerName:        textPtrFromString(input.ProducerName),
+		RepositoryURL:       textPtrFromString(input.RepositoryURL),
+		PullRequestNumber:   int4FromInt32Ptr(input.PullRequestNumber),
+		PullRequestTitle:    textPtrFromString(input.PullRequestTitle),
+		CIRunURL:            textPtrFromString(input.CIRunURL),
 	})
 	if err != nil {
 		// The duplicate-report unique violation (23505 on the raw-content
@@ -1773,6 +1777,10 @@ func reportRowToPort(re sqlc.Report) port.Report {
 		FilterSeverities:  re.FilterSeverities,
 		FilterFixableOnly: re.FilterFixableOnly,
 		ProducerName:      stringFromTextPtr(re.ProducerName),
+		RepositoryURL:     stringFromTextPtr(re.RepositoryUrl),
+		PullRequestNumber: int32PtrFromInt4(re.PullRequestNumber),
+		PullRequestTitle:  stringFromTextPtr(re.PullRequestTitle),
+		CIRunURL:          stringFromTextPtr(re.CiRunUrl),
 	}
 }
 
@@ -1791,6 +1799,13 @@ func changedFilesToPort(raw []byte) json.RawMessage {
 	out := make([]byte, len(raw))
 	copy(out, raw)
 	return json.RawMessage(out)
+}
+
+func int4FromInt32Ptr(i *int32) pgtype.Int4 {
+	if i == nil {
+		return pgtype.Int4{}
+	}
+	return pgtype.Int4{Int32: *i, Valid: true}
 }
 
 func int32PtrFromInt4(i pgtype.Int4) *int32 {

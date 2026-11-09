@@ -4341,6 +4341,35 @@ components:
             The caller cannot vouch that the scan finished, such as a scanner
             that wrote no output at all. The report adds and updates findings
             but closes none, and its scan_completeness is `partial`.
+        repository_url:
+          type: string
+          format: uri
+          maxLength: 2048
+          example: https://github.com/acme/shop
+          description: >-
+            The repository the scan ran on, for links back to the pull request
+            and the code. An absolute http or https URL without a user name or
+            password; a GitLab CI_REPOSITORY_URL, which carries the job token,
+            is refused. Display only.
+        pull_request_number:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+          example: 123
+          description: The pull or merge request the scan ran for. Display only.
+        pull_request_title:
+          type: string
+          maxLength: 512
+          example: Bump lodash to 4.17.21
+          description: The title of that pull or merge request. Display only.
+        ci_run_url:
+          type: string
+          format: uri
+          maxLength: 2048
+          example: https://github.com/acme/shop/actions/runs/42
+          description: >-
+            The CI run or job that uploaded the report. Same rules as
+            repository_url. Display only.
         gate_severity: { type: string, description: Comma-separated override for the post-ingest threshold check. }
         gate_introduced_only:
           type: boolean
@@ -4439,6 +4468,24 @@ components:
             The tools the uploaded file says wrote it, such as the SARIF runs'
             driver names, comma-separated. Display only; `tool_name` is the
             scanner Specht parsed it with. Absent when the file names none.
+        repository_url:
+          type: string
+          format: uri
+          example: https://github.com/acme/shop
+          description: The repository the uploader named. Absent when it sent none.
+        pull_request_number:
+          type: integer
+          example: 123
+          description: The pull or merge request the uploader named. Absent when it sent none.
+        pull_request_title:
+          type: string
+          example: Bump lodash to 4.17.21
+          description: The title of that pull or merge request. Absent when it sent none.
+        ci_run_url:
+          type: string
+          format: uri
+          example: https://github.com/acme/shop/actions/runs/42
+          description: The CI run that uploaded the report. Absent when it sent none.
         tool_version: { type: [string, "null"] }
         scan_type: { type: string, example: image }
         scan_target: { type: [string, "null"] }
