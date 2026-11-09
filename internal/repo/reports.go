@@ -51,6 +51,10 @@ type CreateReportParams struct {
 	FilterSeverities  []string
 	FilterFixableOnly bool
 	ProducerName      pgtype.Text
+	RepositoryURL     pgtype.Text
+	PullRequestNumber pgtype.Int4
+	PullRequestTitle  pgtype.Text
+	CIRunURL          pgtype.Text
 }
 
 func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc.Report, error) {
@@ -85,6 +89,10 @@ func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc
 		FilterSeverities:    arg.FilterSeverities,
 		FilterFixableOnly:   arg.FilterFixableOnly,
 		ProducerName:        arg.ProducerName,
+		RepositoryUrl:       arg.RepositoryURL,
+		PullRequestNumber:   arg.PullRequestNumber,
+		PullRequestTitle:    arg.PullRequestTitle,
+		CiRunUrl:            arg.CIRunURL,
 	})
 }
 

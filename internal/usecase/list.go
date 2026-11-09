@@ -202,14 +202,21 @@ type ReportResponse struct {
 	ToolName  string `json:"tool_name"`
 	// Producer names the tools the file says wrote it, such as "Gosec" for
 	// a generic SARIF upload. Display only; ToolName stays the scanner.
-	Producer      *string `json:"producer,omitempty"`
-	ToolVersion   *string `json:"tool_version"`
-	ScanType      string  `json:"scan_type"`
-	ScanTarget    *string `json:"scan_target"`
-	Status        string  `json:"status"`
-	TotalFindings *int32  `json:"total_findings"`
-	Branch        *string `json:"branch"`
-	CommitSha     *string `json:"commit_sha"`
+	Producer *string `json:"producer,omitempty"`
+	// RepositoryURL, PullRequestNumber, PullRequestTitle and CIRunURL say
+	// where the report came from, as the uploader sent them. Each is omitted
+	// when it was not sent.
+	RepositoryURL     *string `json:"repository_url,omitempty"`
+	PullRequestNumber *int32  `json:"pull_request_number,omitempty"`
+	PullRequestTitle  *string `json:"pull_request_title,omitempty"`
+	CIRunURL          *string `json:"ci_run_url,omitempty"`
+	ToolVersion       *string `json:"tool_version"`
+	ScanType          string  `json:"scan_type"`
+	ScanTarget        *string `json:"scan_target"`
+	Status            string  `json:"status"`
+	TotalFindings     *int32  `json:"total_findings"`
+	Branch            *string `json:"branch"`
+	CommitSha         *string `json:"commit_sha"`
 	// BaseRevision is the revision an incremental scan was compared
 	// against; ScanMode is full or incremental; ChangedFiles lists the
 	// paths an incremental scan covered. Together they keep incremental
@@ -331,27 +338,31 @@ func rawExpiresAt(created time.Time, expired bool, retentionDays int) *time.Time
 
 func toReport(r port.Report, retentionDays int) ReportResponse {
 	return ReportResponse{
-		ID:               uuidStr(r.ID),
-		ProjectID:        uuidStr(r.ProjectID),
-		ToolName:         r.ToolName,
-		Producer:         strOpt(r.ProducerName),
-		ToolVersion:      strOpt(r.ToolVersion),
-		ScanType:         r.ScanType,
-		ScanTarget:       strOpt(r.ScanTarget),
-		Status:           r.Status,
-		TotalFindings:    intOpt(r.TotalFindings),
-		Branch:           strOpt(r.Branch),
-		CommitSha:        strOpt(r.CommitSha),
-		BaseRevision:     strOpt(r.BaseRevision),
-		ScanMode:         r.ScanMode,
-		ChangedFiles:     changedFilesOpt(r.ChangedFiles),
-		ScanCompleteness: completenessOrUnknown(r.ScanCompleteness),
-		ErrorMessage:     reportFailureReasonForResponse(r.ErrorMessage),
-		CreatedAt:        timePtr(r.CreatedAt),
-		CompletedAt:      timeOpt(r.CompletedAt),
-		RawDataExpired:   r.RawDataExpired,
-		RawDataExpiresAt: rawExpiresAt(r.CreatedAt, r.RawDataExpired, retentionDays),
-		ScanFilter:       scanFilterOpt(r),
+		ID:                uuidStr(r.ID),
+		ProjectID:         uuidStr(r.ProjectID),
+		ToolName:          r.ToolName,
+		Producer:          strOpt(r.ProducerName),
+		RepositoryURL:     strOpt(r.RepositoryURL),
+		PullRequestNumber: intOpt(r.PullRequestNumber),
+		PullRequestTitle:  strOpt(r.PullRequestTitle),
+		CIRunURL:          strOpt(r.CIRunURL),
+		ToolVersion:       strOpt(r.ToolVersion),
+		ScanType:          r.ScanType,
+		ScanTarget:        strOpt(r.ScanTarget),
+		Status:            r.Status,
+		TotalFindings:     intOpt(r.TotalFindings),
+		Branch:            strOpt(r.Branch),
+		CommitSha:         strOpt(r.CommitSha),
+		BaseRevision:      strOpt(r.BaseRevision),
+		ScanMode:          r.ScanMode,
+		ChangedFiles:      changedFilesOpt(r.ChangedFiles),
+		ScanCompleteness:  completenessOrUnknown(r.ScanCompleteness),
+		ErrorMessage:      reportFailureReasonForResponse(r.ErrorMessage),
+		CreatedAt:         timePtr(r.CreatedAt),
+		CompletedAt:       timeOpt(r.CompletedAt),
+		RawDataExpired:    r.RawDataExpired,
+		RawDataExpiresAt:  rawExpiresAt(r.CreatedAt, r.RawDataExpired, retentionDays),
+		ScanFilter:        scanFilterOpt(r),
 	}
 }
 

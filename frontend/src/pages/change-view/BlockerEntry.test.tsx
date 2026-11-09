@@ -1,4 +1,5 @@
 import { Ledger } from "@/components/Ledger";
+import type { CodeSource } from "@/lib/codeLinks";
 import type { Finding } from "@/types/api";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -27,7 +28,7 @@ function finding(overrides: Partial<Finding> = {}): Finding {
   };
 }
 
-function renderEntry(item: Finding) {
+function renderEntry(item: Finding, source?: CodeSource | null) {
   render(
     <MemoryRouter>
       <Ledger label="Blocking findings">
@@ -48,6 +49,7 @@ function renderEntry(item: Finding) {
           who={{}}
           onRequestWaiver={vi.fn()}
           onWithdrawWaiver={vi.fn()}
+          source={source}
         />
       </Ledger>
     </MemoryRouter>,
@@ -155,5 +157,28 @@ describe("BlockerEntry fix", () => {
     expect(screen.getByText(/Open the full finding to decide what to do/)).toBeInTheDocument();
     expect(screen.queryByText(/Start at/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Copy fix/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("BlockerEntry location", () => {
+  const sha = "9fceb02d0ae598e95dc970b74767f19372d61af8";
+  const source: CodeSource = {
+    repoUrl: "https://github.com/acme/shop",
+    host: "github",
+    commit: sha,
+  };
+
+  it("links the file at the scanned commit and line", () => {
+    renderEntry(finding({ location: { file: "src/cart.ts", start_line: 12 } }), source);
+    expect(screen.getByRole("link", { name: "src/cart.ts:12" })).toHaveAttribute(
+      "href",
+      `https://github.com/acme/shop/blob/${sha}/src/cart.ts#L12`,
+    );
+  });
+
+  it("shows the location as text without a source or for a path outside the repository", () => {
+    renderEntry(finding({ location: { file: "src/cart.ts", start_line: 12 } }));
+    expect(screen.queryByRole("link", { name: "src/cart.ts:12" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("src/cart.ts:12").length).toBeGreaterThan(0);
   });
 });

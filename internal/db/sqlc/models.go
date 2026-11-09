@@ -413,6 +413,10 @@ type Report struct {
 	FilterSeverities    []string           `json:"filter_severities"`
 	FilterFixableOnly   bool               `json:"filter_fixable_only"`
 	ProducerName        pgtype.Text        `json:"producer_name"`
+	RepositoryUrl       pgtype.Text        `json:"repository_url"`
+	PullRequestNumber   pgtype.Int4        `json:"pull_request_number"`
+	PullRequestTitle    pgtype.Text        `json:"pull_request_title"`
+	CiRunUrl            pgtype.Text        `json:"ci_run_url"`
 }
 
 type ReportIntroducedFinding struct {

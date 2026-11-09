@@ -50,6 +50,26 @@ func TestIngestRequest_InvalidFieldNamesTheFirstBadField(t *testing.T) {
 		{"changed_files entry at the cap", func(r *ingestRequest) { r.ChangedFiles = []string{strings.Repeat("f", 1024)} }, ""},
 		{"changed_files entry over the cap", func(r *ingestRequest) { r.ChangedFiles = []string{"a.go", strings.Repeat("f", 1025)} }, "changed_files"},
 		{"changed_files entry with a newline", func(r *ingestRequest) { r.ChangedFiles = []string{"a.go\nb.go"} }, "changed_files"},
+		{"repository_url on GitHub", func(r *ingestRequest) { r.RepositoryURL = "https://github.com/acme/shop" }, ""},
+		{"repository_url on plain http", func(r *ingestRequest) { r.RepositoryURL = "http://git.internal:8080/acme/shop" }, ""},
+		{"repository_url with a token", func(r *ingestRequest) {
+			r.RepositoryURL = "https://gitlab-ci-token:glcbt-secret@gitlab.com/acme/shop.git"
+		}, "repository_url"},
+		{"repository_url with javascript", func(r *ingestRequest) { r.RepositoryURL = "javascript:alert(1)" }, "repository_url"},
+		{"repository_url in capitals", func(r *ingestRequest) { r.RepositoryURL = "HTTPS://github.com/acme/shop" }, "repository_url"},
+		{"repository_url relative", func(r *ingestRequest) { r.RepositoryURL = "/acme/shop" }, "repository_url"},
+		{"repository_url without a host", func(r *ingestRequest) { r.RepositoryURL = "https:///acme" }, "repository_url"},
+		{"repository_url with a space", func(r *ingestRequest) { r.RepositoryURL = "https://github.com/acme shop" }, "repository_url"},
+		{"repository_url over the cap", func(r *ingestRequest) { r.RepositoryURL = "https://e.com/" + strings.Repeat("p", 2048) }, "repository_url"},
+		{"ci_run_url on GitHub", func(r *ingestRequest) { r.CIRunURL = "https://github.com/acme/shop/actions/runs/42" }, ""},
+		{"ci_run_url with a newline", func(r *ingestRequest) { r.CIRunURL = "https://e.com/\nx" }, "ci_run_url"},
+		{"ci_run_url with ftp", func(r *ingestRequest) { r.CIRunURL = "ftp://e.com/run" }, "ci_run_url"},
+		{"pull_request_number set", func(r *ingestRequest) { r.PullRequestNumber = 123 }, ""},
+		{"pull_request_number negative", func(r *ingestRequest) { r.PullRequestNumber = -1 }, "pull_request_number"},
+		{"pull_request_number over int32", func(r *ingestRequest) { r.PullRequestNumber = 1 << 31 }, "pull_request_number"},
+		{"pull_request_title at the cap", func(r *ingestRequest) { r.PullRequestTitle = strings.Repeat("t", 512) }, ""},
+		{"pull_request_title over the cap", func(r *ingestRequest) { r.PullRequestTitle = strings.Repeat("t", 513) }, "pull_request_title"},
+		{"pull_request_title with a newline", func(r *ingestRequest) { r.PullRequestTitle = "fix\n## forged" }, "pull_request_title"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -60,6 +80,16 @@ func TestIngestRequest_InvalidFieldNamesTheFirstBadField(t *testing.T) {
 			assert.Equal(t, tc.field == "", problem == "", "a problem is reported exactly when a field is named")
 		})
 	}
+}
+
+// A refused repository URL must not echo the credential it carried.
+func TestIngestRequest_URLWithTokenIsRefusedWithoutEchoingIt(t *testing.T) {
+	field, problem := ingestRequest{
+		Project: "p", Scanner: "s", RepositoryURL: "https://gitlab-ci-token:glcbt-secret@gitlab.com/acme/shop.git",
+	}.invalidField()
+	assert.Equal(t, "repository_url", field)
+	assert.Equal(t, "must not contain a user name or password", problem)
+	assert.NotContains(t, problem, "glcbt-secret")
 }
 
 func TestIngestRequest_InvalidFieldKeepsTheNULMessage(t *testing.T) {
