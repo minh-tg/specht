@@ -8,6 +8,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { FindingsTable } from "./FindingsTable";
 import { locationText } from "./location";
+import { scannersText } from "./sort";
 import type { FindingsSort } from "./useFindingsQuery";
 
 const FINDINGS: Finding[] = [
@@ -191,10 +192,10 @@ describe("FindingsTable on the data grid", () => {
     expect(screen.queryByTestId("detail-state")).not.toBeInTheDocument();
   });
 
-  it("hides Where, State and Age below md but keeps them in the DOM", () => {
+  it("hides Where, Scanner, State and Age below md but keeps them in the DOM", () => {
     renderTable();
 
-    for (const name of ["Where", "State", "Age"]) {
+    for (const name of ["Where", "Scanner", "State", "Age"]) {
       const header = screen.getByRole("columnheader", { name: new RegExp(name) });
       expect(hasClass(header, "hidden")).toBe(true);
       expect(hasClass(header, "md:table-cell")).toBe(true);
@@ -204,14 +205,14 @@ describe("FindingsTable on the data grid", () => {
       expect(hasClass(header, "hidden")).toBe(false);
     }
 
-    // Severity, Finding, Where, State, Age, and the chevron that says the row opens.
+    // Severity, Finding, Where, Scanner, State, Age, and the chevron that says the row opens.
     const cells = dataCells(0);
-    expect(cells).toHaveLength(6);
-    for (const index of [2, 3, 4]) {
+    expect(cells).toHaveLength(7);
+    for (const index of [2, 3, 4, 5]) {
       expect(hasClass(cells[index], "hidden")).toBe(true);
       expect(hasClass(cells[index], "md:table-cell")).toBe(true);
     }
-    for (const index of [0, 1, 5]) {
+    for (const index of [0, 1, 6]) {
       expect(hasClass(cells[index], "hidden")).toBe(false);
     }
   });
@@ -399,3 +400,15 @@ function DetailState() {
   const location = useLocation();
   return <div data-testid="detail-state">{JSON.stringify(location.state)}</div>;
 }
+
+describe("the Scanner column", () => {
+  it("names each scanner by what people call it, and the raw name when it has no label", () => {
+    expect(scannersText(["semgrep", "trivy"], new Map([["trivy", "Trivy"]]))).toBe(
+      "semgrep, Trivy",
+    );
+  });
+
+  it("says nothing for a finding no scanner reported, including a server that sent no list", () => {
+    expect(scannersText([])).toBe("");
+  });
+});

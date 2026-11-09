@@ -12,6 +12,7 @@ const NO_FILTERS: FindingsFilters = {
   analysisState: "",
   branchScope: "",
   assignee: "",
+  scanner: "",
   q: "",
 };
 
@@ -32,6 +33,7 @@ export function findingsRequest(
     analysisState: filters.analysisState || undefined,
     branchScope: filters.branchScope || undefined,
     assignee: filters.assignee || undefined,
+    scanner: filters.scanner || undefined,
     q: filters.q || undefined,
     sort: sort.by,
     dir: sort.dir,

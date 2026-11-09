@@ -23,8 +23,17 @@ export const SORT_OPTIONS: ReadonlyArray<{ value: string; label: string; }> = [
 export function compactMeta(finding: Finding): string {
   return [
     findingKindLabel(finding.finding_kind),
+    scannersText(finding.scanners ?? []),
     technicalStateLabel(finding.state),
     analysisStateLabel(finding.analysis_state),
     `Last seen ${formatDate(finding.last_seen_at)}`,
   ].filter(Boolean).join(" · ");
+}
+
+/** The scanners that reported a finding, by what people call them, or "" when none did. */
+export function scannersText(
+  names: readonly string[],
+  labels?: ReadonlyMap<string, string>,
+): string {
+  return names.map((name) => labels?.get(name) ?? name).join(", ");
 }

@@ -40,3 +40,35 @@ it("is the cache entry the dashboard fills when it opens with no filters", async
   const { queryKey } = findingsQueryOptions("p", findingsRequest());
   expect(qc.getQueryData(queryKey)).toMatchObject({ findings: [] });
 });
+
+it("sends the scanner filter from the URL and offers the scanners the server knows", async () => {
+  const urls: string[] = [];
+  globalThis.fetch = vi.fn().mockImplementation(async (input) => {
+    const url = String(input);
+    urls.push(url);
+    if (url.endsWith("/gate")) return jsonResponse({ blocked_by: [] });
+    if (url.endsWith("/api/v1/scanners")) {
+      return jsonResponse([{ name: "trivy", display_name: "Trivy" }, {
+        name: "semgrep",
+        display_name: "Semgrep",
+      }]);
+    }
+    return jsonResponse([]);
+  });
+  const qc = createTestQueryClient();
+  render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={["/p/findings?scanner=trivy"]}>
+        <Routes>
+          <Route path="/:slug/findings" element={<FindingsDashboard />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  await screen.findByText("No findings found");
+
+  expect(urls.some((u) => u.includes("/findings?") && u.includes("scanner=trivy"))).toBe(true);
+  expect(await screen.findByRole("combobox", { name: "Filter by scanner" })).toHaveTextContent(
+    "Trivy",
+  );
+});

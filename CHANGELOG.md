@@ -13,6 +13,9 @@ releases.
 - The findings list can be narrowed to scanners. `GET /projects/{slug}/findings` takes `scanner`, a
   comma list of scanner names, and each listed finding carries `scanners`, the scanners whose reports
   observed it.
+- The findings list has a scanner filter and a Scanner column, so one tool's findings can be triaged
+  at a time. The filter lives in the URL like the others, and on a phone the scanner joins the line
+  under each title.
 - A report can say where it came from. `POST /api/v1/reports` takes `repository_url`,
   `pull_request_number`, `pull_request_title` and `ci_run_url`, and report responses return them.
   They are display only. A URL must be absolute http or https and carry no user name or password,
