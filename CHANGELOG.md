@@ -14,6 +14,9 @@ releases.
   `pull_request_number`, `pull_request_title` and `ci_run_url`, and report responses return them.
   They are display only. A URL must be absolute http or https and carry no user name or password,
   so a GitLab `CI_REPOSITORY_URL` with its job token is refused with 400 and never stored.
+- `specht-adapter` sends the repository, pull or merge request and run from GitHub Actions and
+  GitLab CI on its own, and takes `-repo-url`, `-pull-request` and `-run-url` elsewhere. A value the
+  server would refuse is left out with a note instead of failing the upload.
 - `GET /api/v1/project-summaries` returns the gate and the statistics of every project the caller
   can see, the same values `GET /projects/{slug}/gate` and `/stats` return. The project list uses
   it, so 33 projects load in 3 requests instead of 68.

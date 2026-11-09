@@ -51,6 +51,9 @@ type adapterFlags struct {
 	publishCheck    bool
 	githubToken     string
 	githubRepo      string
+	repoURL         string
+	pullRequest     int64
+	runURL          string
 	summaryFile     string
 	help            bool
 	showVersion     bool
@@ -89,6 +92,9 @@ func parseFlags(args []string, stderr io.Writer, inGitHubActions bool) *adapterF
 	fs.BoolVar(&f.publishCheck, "publish-check", false, "Publish GitHub check run via API (default: true if GITHUB_TOKEN & GITHUB_REPOSITORY are set in CI)")
 	fs.StringVar(&f.githubToken, "github-token", getEnvAny("GITHUB_TOKEN", "GH_TOKEN"), "GitHub token for check-runs API")
 	fs.StringVar(&f.githubRepo, "github-repo", os.Getenv("GITHUB_REPOSITORY"), "GitHub repository (owner/repo)")
+	fs.StringVar(&f.repoURL, "repo-url", "", "Web address of the repository, for links back to the code (default: from GitHub Actions or GitLab CI)")
+	fs.Int64Var(&f.pullRequest, "pull-request", 0, "Pull or merge request number (default: from the GitHub event or GitLab merge request pipeline)")
+	fs.StringVar(&f.runURL, "run-url", "", "Address of the CI run that uploads the report (default: from GitHub Actions or GitLab CI)")
 	fs.StringVar(&f.summaryFile, "summary-file", os.Getenv("GITHUB_STEP_SUMMARY"), "Path to write Markdown summary (e.g. GITHUB_STEP_SUMMARY)")
 	fs.BoolVar(&f.help, "help", false, "Show usage")
 	fs.BoolVar(&f.showVersion, "version", false, "Print the adapter version and exit")
@@ -223,6 +229,7 @@ func buildPayload(rawInput []byte, f *adapterFlags, stderr io.Writer) (client.In
 	applyOwnerEnvironment(&payload, f)
 	applyGateFlags(&payload, f)
 	applyScanFilter(&payload, f, stderr)
+	applyCIContext(&payload, f, stderr)
 	return payload, 0
 }
 
@@ -1132,7 +1139,9 @@ func githubDefaultBranch() (def, current string) {
 // fork jobs, so the adapter must recognize this case before checking the key.
 type githubPullRequestEvent struct {
 	PullRequest *struct {
-		Head struct {
+		Number int64  `json:"number"`
+		Title  string `json:"title"`
+		Head   struct {
 			Sha  string `json:"sha"`
 			Ref  string `json:"ref"`
 			Repo struct {
