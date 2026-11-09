@@ -45,6 +45,7 @@ func (r *pgFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UUID
 		Search:         params.Search,
 		BranchScope:    params.BranchScope,
 		AssigneeID:     optionalUUIDParam(params.AssigneeID),
+		Scanners:       params.Scanners,
 		SortKey:        orDefault(params.SortKey, "severity"),
 		SortDir:        orDefault(params.SortDir, "desc"),
 	})
@@ -65,6 +66,7 @@ func (r *pgFindingRepo) CountByProject(ctx context.Context, projectID pgtype.UUI
 		Search:         params.Search,
 		BranchScope:    params.BranchScope,
 		AssigneeID:     optionalUUIDParam(params.AssigneeID),
+		Scanners:       params.Scanners,
 	})
 }
 

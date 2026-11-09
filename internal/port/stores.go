@@ -1044,6 +1044,8 @@ type ListFindingsParams struct {
 	Search string
 	// AssigneeID keeps the findings assigned to this person. Empty keeps everyone's.
 	AssigneeID string
+	// Scanners keeps the findings a report of one of these scanners observed.
+	Scanners []string
 	// BranchScope is "default" for findings that count toward the verdict,
 	// "change" for those seen only on change branches, empty for both.
 	BranchScope string
@@ -1137,6 +1139,9 @@ type FindingStore interface {
 	// ListChangeBranches maps each given finding seen only on change branches
 	// to those branches. A finding that counts toward the verdict has no entry.
 	ListChangeBranches(ctx context.Context, findingIDs []string) (map[string][]string, error)
+	// ListScanners maps each given finding to the scanners whose reports
+	// observed it, in name order.
+	ListScanners(ctx context.Context, findingIDs []string) (map[string][]string, error)
 	// ListIntroducedGateCandidates returns the findings one report introduced,
 	// filtered by the report's project so a foreign report id can never pull
 	// another tenant's rows into a gate evaluation.

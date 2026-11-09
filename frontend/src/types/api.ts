@@ -193,6 +193,8 @@ export interface Finding {
   assignee?: { user_id: string; name: string; };
   /** Change branches of a finding seen only there. The verdict leaves it out. */
   only_on_branches?: string[];
+  /** Scanners whose reports observed the finding; the list response sends it, others leave it out. */
+  scanners?: string[];
   project_id: string;
   finding_kind: string;
   fingerprint: string;

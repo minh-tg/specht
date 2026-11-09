@@ -102,6 +102,9 @@ WHERE f.project_id = $1
     OR (sqlc.arg(branch_scope)::text = 'default' AND cardinality(finding_change_branches(f.id)) = 0)
     OR (sqlc.arg(branch_scope)::text = 'change' AND cardinality(finding_change_branches(f.id)) > 0))
   AND (sqlc.narg(assignee_id)::uuid IS NULL OR f.assignee_id = sqlc.narg(assignee_id)::uuid)
+  AND (array_length(sqlc.arg(scanners)::text[], 1) IS NULL OR EXISTS (
+    SELECT 1 FROM finding_occurrences so
+    WHERE so.finding_id = f.id AND so.tool_name = ANY(sqlc.arg(scanners)::text[])))
 ORDER BY
   CASE WHEN sqlc.arg(sort_key)::text = 'severity' AND sqlc.arg(sort_dir)::text = 'desc' THEN f.current_severity_rank END DESC,
   CASE WHEN sqlc.arg(sort_key)::text = 'severity' AND sqlc.arg(sort_dir)::text = 'asc' THEN f.current_severity_rank END ASC,
@@ -141,7 +144,17 @@ WHERE f.project_id = $1
   AND (sqlc.arg(branch_scope)::text = ''
     OR (sqlc.arg(branch_scope)::text = 'default' AND cardinality(finding_change_branches(f.id)) = 0)
     OR (sqlc.arg(branch_scope)::text = 'change' AND cardinality(finding_change_branches(f.id)) > 0))
-  AND (sqlc.narg(assignee_id)::uuid IS NULL OR f.assignee_id = sqlc.narg(assignee_id)::uuid);
+  AND (sqlc.narg(assignee_id)::uuid IS NULL OR f.assignee_id = sqlc.narg(assignee_id)::uuid)
+  AND (array_length(sqlc.arg(scanners)::text[], 1) IS NULL OR EXISTS (
+    SELECT 1 FROM finding_occurrences so
+    WHERE so.finding_id = f.id AND so.tool_name = ANY(sqlc.arg(scanners)::text[])));
+
+-- name: ListFindingScanners :many
+-- The scanners whose reports observed each given finding, in name order.
+SELECT so.finding_id, array_agg(DISTINCT so.tool_name ORDER BY so.tool_name)::text[] AS scanners
+FROM finding_occurrences so
+WHERE so.finding_id = ANY(sqlc.arg(finding_ids)::uuid[])
+GROUP BY so.finding_id;
 
 -- name: ListFindingChangeBranches :many
 -- The change branches of each finding seen only there. A finding that counts

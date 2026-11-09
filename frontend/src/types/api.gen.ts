@@ -2905,6 +2905,14 @@ export interface components {
       };
       /** @description The change branches of a finding seen only there. The project verdict leaves it out until the default branch sees it. Absent means it counts toward the verdict. */
       only_on_branches?: string[];
+      /**
+       * @description The scanners whose reports observed the finding, in name order. The finding list sends it, empty for a finding no scanner reported, such as a watcher finding. Other responses leave it out.
+       * @example [
+       *       "semgrep",
+       *       "trivy"
+       *     ]
+       */
+      scanners?: string[];
       suggestion?: components["schemas"]["Suggestion"];
       /** @description Present for CVE-shaped findings whose identifier a configured feed knows. */
       intel?: components["schemas"]["Intel"];
@@ -5486,6 +5494,8 @@ export interface operations {
         analysis_state?: string;
         /** @description Keeps the findings assigned to this person. `me` is the caller. */
         assignee?: string;
+        /** @description Comma list of scanner names, as reports are stored under (`tool_name`). Keeps the findings a report of one of them observed. Matched in lower case, at most 32 names. */
+        scanner?: string;
         /** @description `default` keeps findings that count toward the project verdict. `change` keeps those seen only on change branches, which the verdict leaves out. Absent keeps both. */
         branch_scope?: "default" | "change";
         /** @description Text to find in the title or the fingerprint, which carries the CVE id and package for dependency findings. Case-insensitive, matched literally, at most 100 characters. */

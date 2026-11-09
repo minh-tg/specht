@@ -92,6 +92,10 @@ type FindingResponse struct {
 	// OnlyOnBranches names the change branches of a finding seen only there.
 	// Such a finding is left out of the project verdict. Absent means it counts.
 	OnlyOnBranches []string `json:"only_on_branches,omitempty"`
+	// Scanners names the scanners whose reports observed the finding. The
+	// finding list sends it, empty for a finding no scanner reported; other
+	// responses leave it out.
+	Scanners []string `json:"scanners,omitempty"`
 	// Suggestion is the reviewable remediation proposal for this finding,
 	// built from persisted dimensions and source guidance.
 	Suggestion *SuggestionResponse `json:"suggestion,omitempty"`
@@ -658,6 +662,8 @@ type FindingFilter struct {
 	Search string
 	// Assignee keeps the findings assigned to this person. "me" is the caller.
 	Assignee string
+	// Scanners keeps the findings a report of one of these scanners observed.
+	Scanners []string
 	// BranchScope is "default" for findings that count toward the project
 	// verdict, "change" for those seen only on change branches, empty for both.
 	BranchScope string
@@ -694,6 +700,7 @@ func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, filter 
 		Search:         query.search,
 		BranchScope:    filter.BranchScope,
 		AssigneeID:     query.assigneeID,
+		Scanners:       query.scanners,
 		SortKey:        query.sortKey,
 		SortDir:        query.sortDir,
 	}
@@ -723,7 +730,34 @@ func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, filter 
 	if err := u.attachAssignees(ctx, resp); err != nil {
 		return nil, 0, err
 	}
+	if err := u.attachScanners(ctx, resp); err != nil {
+		return nil, 0, err
+	}
 	return resp, total, nil
+}
+
+// attachScanners names the scanners whose reports observed each finding, in
+// one query for the page. A finding no scanner reported, such as a watcher
+// finding, gets an empty list.
+func (u *Usecases) attachScanners(ctx context.Context, findings []FindingResponse) error {
+	if len(findings) == 0 {
+		return nil
+	}
+	ids := make([]string, len(findings))
+	for i := range findings {
+		ids[i] = findings[i].ID
+	}
+	scanners, err := u.deps.Stores.Findings.ListScanners(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("list finding scanners: %w", err)
+	}
+	for i := range findings {
+		findings[i].Scanners = scanners[findings[i].ID]
+		if findings[i].Scanners == nil {
+			findings[i].Scanners = []string{}
+		}
+	}
+	return nil
 }
 
 // attachAssignees names who owns each finding, in one query for the page.

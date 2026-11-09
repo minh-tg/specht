@@ -63,6 +63,30 @@ func TestE2E_FindingsFiltersAndPagination(t *testing.T) {
 	ingestRaw(t, slug, "trivy", "trivy-alpine-full.json", nil)
 	require.Len(t, listFindingsPage(t, slug, ""), 10)
 
+	t.Run("the scanner filter keeps one scanner's findings and names them", func(t *testing.T) {
+		type scanned struct {
+			FindingKind string   `json:"finding_kind"`
+			Scanners    []string `json:"scanners"`
+		}
+		for query, want := range map[string]int{
+			"scanner=trivy":       8,
+			"scanner=TRIVY":       8,
+			"scanner=sarif":       2,
+			"scanner=trivy,sarif": 10,
+			"scanner=grype":       0,
+		} {
+			page, total := findingsPage(t, slug, query)
+			require.Len(t, page, want, query)
+			require.Equal(t, strconv.Itoa(want), total, query)
+		}
+		listed := request[[]scanned](t, http.MethodGet, "/api/v1/projects/"+slug+"/findings?scanner=trivy", adminToken, nil, http.StatusOK)
+		for _, f := range listed {
+			require.Equal(t, []string{"trivy"}, f.Scanners, "%s finding", f.FindingKind)
+		}
+		status, body := doJSON(t, http.MethodGet, "/api/v1/projects/"+slug+"/findings?scanner=trivy,", adminToken, nil)
+		require.Equal(t, http.StatusBadRequest, status, "%s", body)
+	})
+
 	t.Run("every listed finding says where it is", func(t *testing.T) {
 		type located struct {
 			FindingKind string `json:"finding_kind"`

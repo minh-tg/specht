@@ -1504,6 +1504,12 @@ paths:
           in: query
           description: Keeps the findings assigned to this person. `me` is the caller.
           schema: { type: string, example: me }
+        - name: scanner
+          in: query
+          description: >-
+            Comma list of scanner names, as reports are stored under (`tool_name`). Keeps the
+            findings a report of one of them observed. Matched in lower case, at most 32 names.
+          schema: { type: string, example: "trivy,semgrep" }
         - name: branch_scope
           in: query
           description: >-
@@ -4589,6 +4595,14 @@ components:
           description: >-
             The change branches of a finding seen only there. The project verdict leaves it out
             until the default branch sees it. Absent means it counts toward the verdict.
+        scanners:
+          type: array
+          items: { type: string }
+          example: [semgrep, trivy]
+          description: >-
+            The scanners whose reports observed the finding, in name order. The finding list
+            sends it, empty for a finding no scanner reported, such as a watcher finding. Other
+            responses leave it out.
         suggestion: { $ref: "#/components/schemas/Suggestion" }
         intel:
           $ref: "#/components/schemas/Intel"

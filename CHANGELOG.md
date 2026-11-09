@@ -10,6 +10,9 @@ releases.
 
 ### Added
 
+- The findings list can be narrowed to scanners. `GET /projects/{slug}/findings` takes `scanner`, a
+  comma list of scanner names, and each listed finding carries `scanners`, the scanners whose reports
+  observed it.
 - A report can say where it came from. `POST /api/v1/reports` takes `repository_url`,
   `pull_request_number`, `pull_request_title` and `ci_run_url`, and report responses return them.
   They are display only. A URL must be absolute http or https and carry no user name or password,
