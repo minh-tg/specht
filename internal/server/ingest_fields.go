@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"unicode"
 
@@ -54,6 +55,9 @@ func (r ingestRequest) invalidField() (field, problem string) {
 		{"artifact_name", r.ArtifactName, maxTextFieldBytes},
 		{"artifact_version", r.ArtifactVersion, maxTextFieldBytes},
 		{"artifact_type", r.ArtifactType, maxTextFieldBytes},
+		{"repository_url", r.RepositoryURL, domain.MaxLinkURLBytes},
+		{"pull_request_title", r.PullRequestTitle, domain.MaxPullRequestTitleBytes},
+		{"ci_run_url", r.CIRunURL, domain.MaxLinkURLBytes},
 	} {
 		if problem := textProblem(f.value, f.max); problem != "" {
 			return f.name, problem
@@ -79,6 +83,17 @@ func (r ingestRequest) invalidField() (field, problem string) {
 		if problem := scanFilterProblem(*r.ScanFilter); problem != "" {
 			return "scan_filter.severities", problem
 		}
+	}
+	for _, f := range []struct{ name, value string }{
+		{"repository_url", r.RepositoryURL},
+		{"ci_run_url", r.CIRunURL},
+	} {
+		if problem := domain.LinkURLProblem(f.value); problem != "" {
+			return f.name, problem
+		}
+	}
+	if r.PullRequestNumber < 0 || r.PullRequestNumber > math.MaxInt32 {
+		return "pull_request_number", fmt.Sprintf("must be between 1 and %d", math.MaxInt32)
 	}
 	return "", ""
 }

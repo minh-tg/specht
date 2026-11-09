@@ -41,6 +41,7 @@ SELECT
     id, project_id, tool_name, tool_version, scan_type,
     scan_target, status, total_findings, branch, commit_sha,
     scan_completeness, created_at, completed_at, producer_name,
+    repository_url, pull_request_number, pull_request_title, ci_run_url,
     CAST((raw_data = 'null'::jsonb) IS TRUE AS boolean) AS raw_data_expired
 FROM reports
 WHERE project_id = $1
@@ -52,6 +53,7 @@ SELECT
     id, project_id, tool_name, tool_version, scan_type,
     scan_target, status, total_findings, branch, commit_sha,
     scan_completeness, created_at, completed_at, producer_name,
+    repository_url, pull_request_number, pull_request_title, ci_run_url,
     CAST((raw_data = 'null'::jsonb) IS TRUE AS boolean) AS raw_data_expired
 FROM reports
 WHERE project_id = $1 AND status = 'completed'

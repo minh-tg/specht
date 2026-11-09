@@ -113,6 +113,13 @@ type IngestReportInput struct {
 	// as a Nuclei run that wrote nothing. The report closes no finding by
 	// absence and is stored as partial.
 	PartialScan bool
+	// RepositoryURL, PullRequestNumber, PullRequestTitle and CIRunURL say
+	// where the report came from, for links back to the pull request, the run
+	// and the code. Display only; empty and zero store nothing.
+	RepositoryURL     string
+	PullRequestNumber int32
+	PullRequestTitle  string
+	CIRunURL          string
 }
 
 // IngestReportOutput reports what a completed ingest produced.
@@ -484,6 +491,14 @@ func scoreToFloat(s float64) float64 {
 		return 0
 	}
 	return s
+}
+
+// positiveInt32Ptr returns nil for zero or less, so an unset number stores NULL.
+func positiveInt32Ptr(n int32) *int32 {
+	if n <= 0 {
+		return nil
+	}
+	return &n
 }
 
 func textPtr(s string) *string {

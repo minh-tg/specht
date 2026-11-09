@@ -5,6 +5,7 @@ import { LedgerEntry, type LedgerTone } from "@/components/Ledger";
 import { Button } from "@/components/ui/button";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { type CodeSource, fileUrl } from "@/lib/codeLinks";
 import { changeViewState, fromChangePath } from "@/lib/entryMode";
 import { normalizeSeverity } from "@/lib/enums";
 import { findingHeadline } from "@/lib/findingTitle";
@@ -46,6 +47,8 @@ export interface BlockerEntryProps {
   readonly who: ActorContext;
   readonly onRequestWaiver: () => void;
   readonly onWithdrawWaiver: (waiver: Waiver) => void;
+  /** Where the scanned code lives, so the location can link to the file at the commit. */
+  readonly source?: CodeSource | null;
 }
 
 /** One blocking finding as a ledger entry, from data the caller already has. */
@@ -94,10 +97,14 @@ function LoadedEntry(
     who,
     onRequestWaiver,
     onWithdrawWaiver,
+    source,
   }: BlockerEntryProps & { finding: Finding; },
 ) {
   const { status, copy } = useCopyToClipboard();
   const where = locationLine(finding.location);
+  const whereHref = source
+    ? fileUrl(source, finding.location?.file, finding.location?.start_line)
+    : null;
   const fix = fixSentence(finding);
   const routerLocation = useLocation();
   // The finding page reads the state to offer a way back to this exact change view.
@@ -151,7 +158,13 @@ function LoadedEntry(
             <>
               <dt className="text-muted-foreground pt-0.5 text-meta">Where</dt>
               <dd className="m-0 min-w-0 font-mono text-code [overflow-wrap:anywhere]">
-                {where}
+                {whereHref
+                  ? (
+                    <a href={whereHref} target="_blank" rel="noreferrer" className={INLINE_LINK}>
+                      {where}
+                    </a>
+                  )
+                  : where}
               </dd>
             </>
           )}

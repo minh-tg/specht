@@ -39,6 +39,12 @@ type IngestPayload struct {
 	// PartialScan says the caller cannot vouch that the scan finished. The
 	// server stores the report as partial and closes nothing by absence.
 	PartialScan bool `json:"partial_scan,omitempty"`
+	// RepositoryURL, PullRequestNumber, PullRequestTitle and CIRunURL say
+	// where the report came from, for links back to the code. Display only.
+	RepositoryURL     string `json:"repository_url,omitempty"`
+	PullRequestNumber int64  `json:"pull_request_number,omitempty"`
+	PullRequestTitle  string `json:"pull_request_title,omitempty"`
+	CIRunURL          string `json:"ci_run_url,omitempty"`
 }
 
 // ScanFilter is the scan_filter object of an ingest request.

@@ -161,6 +161,7 @@ SELECT
     id, project_id, tool_name, tool_version, scan_type,
     scan_target, status, total_findings, branch, commit_sha,
     scan_completeness, created_at, completed_at, producer_name,
+    repository_url, pull_request_number, pull_request_title, ci_run_url,
     CAST((raw_data = 'null'::jsonb) IS TRUE AS boolean) AS raw_data_expired
 FROM reports
 WHERE project_id = $1 AND status = 'completed'
@@ -169,21 +170,25 @@ LIMIT 1
 `
 
 type GetProjectLatestCompletedReportRow struct {
-	ID               pgtype.UUID        `json:"id"`
-	ProjectID        pgtype.UUID        `json:"project_id"`
-	ToolName         string             `json:"tool_name"`
-	ToolVersion      pgtype.Text        `json:"tool_version"`
-	ScanType         string             `json:"scan_type"`
-	ScanTarget       pgtype.Text        `json:"scan_target"`
-	Status           string             `json:"status"`
-	TotalFindings    pgtype.Int4        `json:"total_findings"`
-	Branch           pgtype.Text        `json:"branch"`
-	CommitSha        pgtype.Text        `json:"commit_sha"`
-	ScanCompleteness string             `json:"scan_completeness"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
-	CompletedAt      pgtype.Timestamptz `json:"completed_at"`
-	ProducerName     pgtype.Text        `json:"producer_name"`
-	RawDataExpired   bool               `json:"raw_data_expired"`
+	ID                pgtype.UUID        `json:"id"`
+	ProjectID         pgtype.UUID        `json:"project_id"`
+	ToolName          string             `json:"tool_name"`
+	ToolVersion       pgtype.Text        `json:"tool_version"`
+	ScanType          string             `json:"scan_type"`
+	ScanTarget        pgtype.Text        `json:"scan_target"`
+	Status            string             `json:"status"`
+	TotalFindings     pgtype.Int4        `json:"total_findings"`
+	Branch            pgtype.Text        `json:"branch"`
+	CommitSha         pgtype.Text        `json:"commit_sha"`
+	ScanCompleteness  string             `json:"scan_completeness"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	CompletedAt       pgtype.Timestamptz `json:"completed_at"`
+	ProducerName      pgtype.Text        `json:"producer_name"`
+	RepositoryUrl     pgtype.Text        `json:"repository_url"`
+	PullRequestNumber pgtype.Int4        `json:"pull_request_number"`
+	PullRequestTitle  pgtype.Text        `json:"pull_request_title"`
+	CiRunUrl          pgtype.Text        `json:"ci_run_url"`
+	RawDataExpired    bool               `json:"raw_data_expired"`
 }
 
 // Completion order can differ from receipt order when ingests overlap.
@@ -205,6 +210,10 @@ func (q *Queries) GetProjectLatestCompletedReport(ctx context.Context, projectID
 		&i.CreatedAt,
 		&i.CompletedAt,
 		&i.ProducerName,
+		&i.RepositoryUrl,
+		&i.PullRequestNumber,
+		&i.PullRequestTitle,
+		&i.CiRunUrl,
 		&i.RawDataExpired,
 	)
 	return i, err
@@ -215,6 +224,7 @@ SELECT
     id, project_id, tool_name, tool_version, scan_type,
     scan_target, status, total_findings, branch, commit_sha,
     scan_completeness, created_at, completed_at, producer_name,
+    repository_url, pull_request_number, pull_request_title, ci_run_url,
     CAST((raw_data = 'null'::jsonb) IS TRUE AS boolean) AS raw_data_expired
 FROM reports
 WHERE project_id = $1
@@ -223,21 +233,25 @@ LIMIT 1
 `
 
 type GetProjectLatestReportRow struct {
-	ID               pgtype.UUID        `json:"id"`
-	ProjectID        pgtype.UUID        `json:"project_id"`
-	ToolName         string             `json:"tool_name"`
-	ToolVersion      pgtype.Text        `json:"tool_version"`
-	ScanType         string             `json:"scan_type"`
-	ScanTarget       pgtype.Text        `json:"scan_target"`
-	Status           string             `json:"status"`
-	TotalFindings    pgtype.Int4        `json:"total_findings"`
-	Branch           pgtype.Text        `json:"branch"`
-	CommitSha        pgtype.Text        `json:"commit_sha"`
-	ScanCompleteness string             `json:"scan_completeness"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
-	CompletedAt      pgtype.Timestamptz `json:"completed_at"`
-	ProducerName     pgtype.Text        `json:"producer_name"`
-	RawDataExpired   bool               `json:"raw_data_expired"`
+	ID                pgtype.UUID        `json:"id"`
+	ProjectID         pgtype.UUID        `json:"project_id"`
+	ToolName          string             `json:"tool_name"`
+	ToolVersion       pgtype.Text        `json:"tool_version"`
+	ScanType          string             `json:"scan_type"`
+	ScanTarget        pgtype.Text        `json:"scan_target"`
+	Status            string             `json:"status"`
+	TotalFindings     pgtype.Int4        `json:"total_findings"`
+	Branch            pgtype.Text        `json:"branch"`
+	CommitSha         pgtype.Text        `json:"commit_sha"`
+	ScanCompleteness  string             `json:"scan_completeness"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	CompletedAt       pgtype.Timestamptz `json:"completed_at"`
+	ProducerName      pgtype.Text        `json:"producer_name"`
+	RepositoryUrl     pgtype.Text        `json:"repository_url"`
+	PullRequestNumber pgtype.Int4        `json:"pull_request_number"`
+	PullRequestTitle  pgtype.Text        `json:"pull_request_title"`
+	CiRunUrl          pgtype.Text        `json:"ci_run_url"`
+	RawDataExpired    bool               `json:"raw_data_expired"`
 }
 
 func (q *Queries) GetProjectLatestReport(ctx context.Context, projectID pgtype.UUID) (GetProjectLatestReportRow, error) {
@@ -258,6 +272,10 @@ func (q *Queries) GetProjectLatestReport(ctx context.Context, projectID pgtype.U
 		&i.CreatedAt,
 		&i.CompletedAt,
 		&i.ProducerName,
+		&i.RepositoryUrl,
+		&i.PullRequestNumber,
+		&i.PullRequestTitle,
+		&i.CiRunUrl,
 		&i.RawDataExpired,
 	)
 	return i, err
