@@ -66,6 +66,9 @@ releases.
   `pull_request_number`, `pull_request_title` and `ci_run_url`, and report responses return them.
   They are display only. A URL must be absolute http or https and carry no user name or password,
   so a GitLab `CI_REPOSITORY_URL` with its job token is refused with 400 and never stored.
+- `specht-adapter` sends the repository, pull or merge request and run from GitHub Actions and
+  GitLab CI on its own, and takes `-repo-url`, `-pull-request` and `-run-url` elsewhere. A value the
+  server would refuse is left out with a note instead of failing the upload.
 - A finding can have an owner. `PUT /api/v1/findings/{id}/assignee` sets it: a manager can assign anyone
   in the project, and a member can take a finding or let go of their own. The findings list shows it and
   gains an "Assigned to me" view, and `GET /projects/{slug}/findings` takes `assignee`, with `me` for the
