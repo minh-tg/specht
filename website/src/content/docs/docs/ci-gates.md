@@ -103,6 +103,14 @@ release is published, use an adapter built from the same checkout as your server
 A placeholder release tag is not an installable version.
 :::
 
+On GitHub Actions and GitLab CI the adapter also sends where the report came
+from: the repository's web address, the pull or merge request number and title,
+and the address of the run. The change view uses them to link back to the pull
+request, the run and each file at the scanned commit. Elsewhere, set
+`-repo-url`, `-pull-request` and `-run-url`. A URL with a user name or password
+is never sent, so GitLab's `CI_REPOSITORY_URL`, which carries the job token, is
+not read; the adapter uses `CI_PROJECT_URL` instead.
+
 After a release exists, pin the action and server to the same release. The
 repository includes [complete GitHub Actions and GitLab examples](https://github.com/minh-tg/specht/tree/main/examples/ci).
 

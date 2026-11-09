@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"net/http"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -48,4 +49,33 @@ func TestE2E_ReportKeepsWhereItCameFrom(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, status, "%s", body)
 	assert.Contains(t, string(body), "repository_url")
 	assert.NotContains(t, string(body), "glcbt-secret", "the refusal must not echo the token")
+}
+
+// TestE2E_AdapterSendsWhereTheReportCameFrom runs the adapter with the
+// variables a GitLab merge request pipeline sets and reads them back from the
+// stored report. The job token in CI_REPOSITORY_URL must never reach it.
+func TestE2E_AdapterSendsWhereTheReportCameFrom(t *testing.T) {
+	semgrep, err := filepath.Abs("../internal/parser/semgrep/testdata/semgrep-sarif.json")
+	require.NoError(t, err)
+	slug := newProject(t, "ci-context-adapter")
+	key := mintKey(t, slug)
+
+	_, stderr, exit := runBin(t, adapterBin, []string{
+		"API_URL=" + baseURL, "API_KEY=" + key, "GITLAB_CI=true",
+		"CI_PROJECT_URL=https://gitlab.example.com/acme/shop",
+		"CI_REPOSITORY_URL=https://gitlab-ci-token:glcbt-secret@gitlab.example.com/acme/shop.git",
+		"CI_JOB_URL=https://gitlab.example.com/acme/shop/-/jobs/77",
+		"CI_MERGE_REQUEST_IID=15", "CI_MERGE_REQUEST_TITLE=Fix the cart",
+	}, "-project", slug, "-tool", "semgrep", "-branch", "fix/cart",
+		"-commit", "5555555555555555555555555555555555555555", "-file", semgrep)
+	require.Less(t, exit, 2, stderr)
+	assert.NotContains(t, stderr, "glcbt-secret")
+
+	status, raw := doJSON(t, http.MethodGet, "/api/v1/projects/"+slug+"/reports", adminToken, nil)
+	require.Equal(t, http.StatusOK, status, "%s", raw)
+	assert.Contains(t, string(raw), `"repository_url":"https://gitlab.example.com/acme/shop"`)
+	assert.Contains(t, string(raw), `"pull_request_number":15`)
+	assert.Contains(t, string(raw), `"pull_request_title":"Fix the cart"`)
+	assert.Contains(t, string(raw), `"ci_run_url":"https://gitlab.example.com/acme/shop/-/jobs/77"`)
+	assert.NotContains(t, string(raw), "glcbt-secret")
 }

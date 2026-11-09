@@ -8,58 +8,6 @@ releases.
 
 ## [Unreleased]
 
-### Changed
-
-- A project's verdict answers for its default branch. A finding seen only on change branches stays
-  out of it until the default branch reports it, so an open pull request or an abandoned branch can
-  no longer turn `main` red. A pull request is still judged on what it introduces, and a full gate
-  run on a branch counts that branch's own findings too. `GET /projects/{slug}/gate` takes `branch`,
-  `GET /projects/{slug}/findings` takes `branch_scope` and returns `only_on_branches`, and project
-  stats return `only_on_change_branches_count`. Findings with no branch to go by still count.
-- The adapter's exit code on a project-wide gate counts only the findings its own scanner (`-tool`)
-  reported, so a Semgrep step no longer fails on Trivy findings that the Trivy step can close. The log
-  still prints the project total across all scanners, and the published commit check keeps the
-  project verdict across all scanners. `GET /projects/{slug}/gate` takes `scanner`; without it the
-  verdict and the UI count every scanner, as before.
-- Two CI jobs of one scanner without `-artifact` no longer close each other's findings. A full report
-  that finds another report of its scan scope at the same commit with different content closes
-  nothing, and the ingest response carries a `warnings` entry, printed by the adapter and shown on
-  the upload page, that says to give each job its own `-artifact`.
-
-- A full scan closes a finding it no longer reports, for every scanner. OSV-Scanner, Semgrep,
-  Dependency-Check, Gitleaks, tfsec, Nuclei and SBOMs with a vulnerability section left findings open
-  for good, so fixing one left the gate blocked. A failed run, a Semgrep run with errors, a rule a
-  Semgrep SARIF does not list, a plain SBOM inventory and a scan declared incremental or filtered
-  still close nothing. A project can keep a scanner manual on its Policy page or with the
-  `manual_close_scanners` policy key, and `supports_auto_close` on a finding's scanner reflects that.
-- A finding with no severity no longer passes the gate silently. No floor can judge one, so a
-  Checkov-only project always passed. The gate response carries `unrated_count`, the project page and
-  the adapter say how many it left out, and the `unrated_gate` policy key (`ignore` by default, or
-  `block`) makes them block.
-- `specht-adapter -tool nuclei` accepts an empty file, which is what a clean Nuclei run writes, and
-  reports it as a clean scan instead of failing.
-- The scan scope of OSV-Scanner and Dependency-Check reports no longer depends on their results, and
-  Dependency-Check names its target from `projectInfo.name` instead of the first dependency. Before,
-  a clean run landed in another scope, and a lodash finding could show a jQuery target.
-
-### Changed
-
-- Plainer words on the Access and Teams pages, and in the change view. An upload refused for the wrong
-  scanner offers the right one. The adapter names up to five blockers when a whole-project gate fails,
-  and calls findings on the base branch that instead of pre-existing debt. Locations no longer carry
-  `?lodash` from Dependency-Check or a leading `/` from Checkov. That changes the identity of Checkov
-  findings, so they are reported once more as new.
-- Findings read better on screen. A scanner message used as a title becomes a one-line name with the
-  rest below it, a repeated prefix goes, and an advisory id gains its package. Long paths in the findings
-  list keep the file name. Someone who cannot record a decision sees the fix first, evidence and sign-off
-  fold away, a phone no longer scrolls sideways on a long title, and branch names and commits are no
-  longer shown in capitals.
-- The change view numbers its rows in the order they read, stops repeating the fix in an open row, and
-  "Copy all fixes" no longer outranks the fixes themselves.
-- The finding page explains when to fix, accept, waive or mark a finding unreachable. The waiver dialog
-  says a waiver applies on every branch. A manager sees why they cannot approve their own request, and a
-  waiver a global admin approved for themselves says so.
-
 ### Added
 
 - A report can say where it came from. `POST /api/v1/reports` takes `repository_url`,
@@ -69,6 +17,15 @@ releases.
 - The change view links back to the code. Next to the commit it links the pull or merge request
   and the CI run, and each blocker's location opens the file at the scanned commit and line on GitHub
   or GitLab. A link shows only when the report named its repository and Specht knows the host.
+- `specht-adapter` sends the repository, pull or merge request and run from GitHub Actions and
+  GitLab CI on its own, and takes `-repo-url`, `-pull-request` and `-run-url` elsewhere. A value the
+  server would refuse is left out with a note instead of failing the upload.
+- `GET /api/v1/project-summaries` returns the gate and the statistics of every project the caller
+  can see, the same values `GET /projects/{slug}/gate` and `/stats` return. The project list uses
+  it, so 33 projects load in 3 requests instead of 68.
+- A generic SARIF report names the tool that wrote it. Report responses carry `producer`, read from
+  the SARIF `tool.driver.name`, and the report history and change view show it, such as
+  "Gosec (SARIF)" instead of "SARIF".
 - A finding can have an owner. `PUT /api/v1/findings/{id}/assignee` sets it: a manager can assign anyone
   in the project, and a member can take a finding or let go of their own. The findings list shows it and
   gains an "Assigned to me" view, and `GET /projects/{slug}/findings` takes `assignee`, with `me` for the
@@ -234,6 +191,55 @@ releases.
 
 ### Changed
 
+- The change view judges the project gate on the branch of the report it shows, so a pull request
+  is no longer measured against the default branch's verdict alone. A change on an older commit says
+  that the project gate it shows is the one as of now, not the one at that commit.
+- A project's verdict answers for its default branch. A finding seen only on change branches stays
+  out of it until the default branch reports it, so an open pull request or an abandoned branch can
+  no longer turn `main` red. A pull request is still judged on what it introduces, and a full gate
+  run on a branch counts that branch's own findings too. `GET /projects/{slug}/gate` takes `branch`,
+  `GET /projects/{slug}/findings` takes `branch_scope` and returns `only_on_branches`, and project
+  stats return `only_on_change_branches_count`. Findings with no branch to go by still count.
+- The adapter's exit code on a project-wide gate counts only the findings its own scanner (`-tool`)
+  reported, so a Semgrep step no longer fails on Trivy findings that the Trivy step can close. The log
+  still prints the project total across all scanners, and the published commit check keeps the
+  project verdict across all scanners. `GET /projects/{slug}/gate` takes `scanner`; without it the
+  verdict and the UI count every scanner, as before.
+- Two CI jobs of one scanner without `-artifact` no longer close each other's findings. A full report
+  that finds another report of its scan scope at the same commit with different content closes
+  nothing, and the ingest response carries a `warnings` entry, printed by the adapter and shown on
+  the upload page, that says to give each job its own `-artifact`.
+
+- A full scan closes a finding it no longer reports, for every scanner. OSV-Scanner, Semgrep,
+  Dependency-Check, Gitleaks, tfsec, Nuclei and SBOMs with a vulnerability section left findings open
+  for good, so fixing one left the gate blocked. A failed run, a Semgrep run with errors, a rule a
+  Semgrep SARIF does not list, a plain SBOM inventory and a scan declared incremental or filtered
+  still close nothing. A project can keep a scanner manual on its Policy page or with the
+  `manual_close_scanners` policy key, and `supports_auto_close` on a finding's scanner reflects that.
+- A finding with no severity no longer passes the gate silently. No floor can judge one, so a
+  Checkov-only project always passed. The gate response carries `unrated_count`, the project page and
+  the adapter say how many it left out, and the `unrated_gate` policy key (`ignore` by default, or
+  `block`) makes them block.
+- `specht-adapter -tool nuclei` accepts an empty file, which is what a clean Nuclei run writes, and
+  reports it as a clean scan instead of failing.
+- The scan scope of OSV-Scanner and Dependency-Check reports no longer depends on their results, and
+  Dependency-Check names its target from `projectInfo.name` instead of the first dependency. Before,
+  a clean run landed in another scope, and a lodash finding could show a jQuery target.
+- Plainer words on the Access and Teams pages, and in the change view. An upload refused for the wrong
+  scanner offers the right one. The adapter names up to five blockers when a whole-project gate fails,
+  and calls findings on the base branch that instead of pre-existing debt. Locations no longer carry
+  `?lodash` from Dependency-Check or a leading `/` from Checkov. That changes the identity of Checkov
+  findings, so they are reported once more as new.
+- Findings read better on screen. A scanner message used as a title becomes a one-line name with the
+  rest below it, a repeated prefix goes, and an advisory id gains its package. Long paths in the findings
+  list keep the file name. Someone who cannot record a decision sees the fix first, evidence and sign-off
+  fold away, a phone no longer scrolls sideways on a long title, and branch names and commits are no
+  longer shown in capitals.
+- The change view numbers its rows in the order they read, stops repeating the fix in an open row, and
+  "Copy all fixes" no longer outranks the fixes themselves.
+- The finding page explains when to fix, accept, waive or mark a finding unreachable. The waiver dialog
+  says a waiver applies on every branch. A manager sees why they cannot approve their own request, and a
+  waiver a global admin approved for themselves says so.
 - Releases are signed with cosign v3 (cosign-installer 4.1.2) in the legacy format, so `SHA256SUMS.sig`, `SHA256SUMS.pem` and the image signatures still verify with cosign v2 and v3 and with the action. The action installs the same cosign release.
 - API key names and project names are limited to 100 characters, and project descriptions to 2000. Control characters are refused in all three (descriptions may hold line breaks and tabs). A longer or unclean value answers `400 invalid_field` on `POST /api/v1/auth/apikeys`, `POST /api/v1/projects` and `PUT /api/v1/projects/{slug}`; existing values are left as they are.
 - The adapter sends the repository default branch as `base_revision` on push builds of a
