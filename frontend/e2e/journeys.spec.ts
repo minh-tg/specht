@@ -188,7 +188,8 @@ test("selecting findings in the list triages them together", async ({ page, requ
 
   await expect(page.getByText("Triage saved for 2 findings")).toBeVisible();
   await expect(bar).toHaveCount(0);
-  const states = page.locator("tbody tr td:nth-child(5)");
+  // Columns: select, severity, finding, where, scanner, state.
+  const states = page.locator("tbody tr td:nth-child(6)");
   await expect(states.first()).toContainText("Exploitable");
   await expect(states.nth(1)).toContainText("Exploitable");
 
