@@ -9,6 +9,7 @@ import {
 } from "@/api/hooks";
 import { ErrorState } from "@/components/ErrorState";
 import { INLINE_LINK, TOUCH_TARGET } from "@/components/inlineLink";
+import { codeSource } from "@/lib/codeLinks";
 import { formatRelativeTime } from "@/lib/format";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { useOnline } from "@/lib/useOnline";
@@ -387,6 +388,7 @@ export function ChangeView() {
           permissionsLoading={projectQuery.isPending}
           projectWide={projectWide}
           branch={report.branch}
+          source={codeSource(report)}
           watch={watch}
         />
       )}

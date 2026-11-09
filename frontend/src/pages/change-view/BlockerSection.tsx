@@ -1,6 +1,7 @@
 import { useMe, useWaivers } from "@/api/hooks";
 import { INLINE_LINK } from "@/components/inlineLink";
 import { Ledger } from "@/components/Ledger";
+import type { CodeSource } from "@/lib/codeLinks";
 import { waiverAction } from "@/lib/waiverRequest";
 import { BlockerEntry } from "@/pages/change-view/BlockerEntry";
 import { ChangeAside } from "@/pages/change-view/ChangeAside";
@@ -46,6 +47,8 @@ export interface BlockerSectionProps {
   readonly projectWide?: boolean;
   /** The branch the page watches for the next scan. */
   readonly branch?: string | null;
+  /** Where the scanned code lives, so each location can link to its file at the commit. */
+  readonly source?: CodeSource | null;
   /** The page's watching, or absent when it is not watching. */
   readonly watch?: WatchState;
 }
@@ -65,6 +68,7 @@ export function BlockerSection(
     permissionsLoading = false,
     projectWide = false,
     branch,
+    source,
     watch,
   }: BlockerSectionProps,
 ) {
@@ -311,6 +315,7 @@ export function BlockerSection(
                   canApprove={permissions?.approve_waivers === true}
                   canSelfApprove={permissions?.self_approve_waivers === true}
                   who={who}
+                  source={source}
                   onRequestWaiver={() =>
                     setDialog({
                       ids: [id],

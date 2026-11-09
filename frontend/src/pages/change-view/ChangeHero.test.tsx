@@ -226,3 +226,51 @@ describe("ChangeHero project gate beside an older report", () => {
     expect(document.body).not.toHaveTextContent(/as of now|A newer report/);
   });
 });
+
+describe("ChangeHero links back to the code", () => {
+  const sha = "9fceb02d0ae598e95dc970b74767f19372d61af8";
+  function renderWith(extra: Partial<Report>) {
+    render(
+      <ChangeHero
+        commit={sha}
+        report={{ ...report, commit_sha: sha, ...extra } as Report}
+        state="passing"
+        blockers={0}
+        existing={0}
+        waived={0}
+        policy={policy}
+      />,
+    );
+  }
+
+  it("links the pull request and the CI run the report names", () => {
+    renderWith({
+      repository_url: "https://github.com/acme/shop",
+      pull_request_number: 123,
+      pull_request_title: "Bump lodash",
+      ci_run_url: "https://github.com/acme/shop/actions/runs/42",
+    });
+
+    const pr = screen.getByRole("link", { name: /#123 Bump lodash/ });
+    expect(pr).toHaveAttribute("href", "https://github.com/acme/shop/pull/123");
+    expect(pr).toHaveAttribute("target", "_blank");
+    expect(pr).toHaveAttribute("rel", "noreferrer");
+    expect(screen.getByRole("link", { name: "CI run" })).toHaveAttribute(
+      "href",
+      "https://github.com/acme/shop/actions/runs/42",
+    );
+  });
+
+  it("names a GitLab merge request with !", () => {
+    renderWith({ repository_url: "https://gitlab.com/acme/shop", pull_request_number: 15 });
+    expect(screen.getByRole("link", { name: "!15" })).toHaveAttribute(
+      "href",
+      "https://gitlab.com/acme/shop/-/merge_requests/15",
+    );
+  });
+
+  it("shows no link when the report names nothing, or a host Specht cannot link", () => {
+    renderWith({ repository_url: "https://bitbucket.org/acme/shop", pull_request_number: 7 });
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+});
