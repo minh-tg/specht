@@ -72,6 +72,7 @@ type mockUsecases struct {
 	bulkTriageFn            func(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
 	getGateStatusFn         func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error)
 	getIntroducedGateFn     func(ctx context.Context, slug string, minRank int16, reportID string) (*usecase.GateStatusOutput, error)
+	getCommitGateFn         func(ctx context.Context, slug string, minRank int16, commit string) (*usecase.GateStatusOutput, error)
 	getScannerGateFn        func(ctx context.Context, slug string, minRank int16, branch, scanner string) (*usecase.GateStatusOutput, error)
 	previewPRCheckFn        func(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error)
 	previewPatchFn          func(ctx context.Context, findingID string) (*patch.Outcome, error)
@@ -385,6 +386,13 @@ func (m *mockUsecases) GetIntroducedGateStatus(ctx context.Context, slug string,
 		return nil, fmt.Errorf("unexpected call to GetIntroducedGateStatus")
 	}
 	return m.getIntroducedGateFn(ctx, slug, minRank, reportID)
+}
+
+func (m *mockUsecases) GetIntroducedCommitGateStatus(ctx context.Context, slug string, minRank int16, commit string) (*usecase.GateStatusOutput, error) {
+	if m.getCommitGateFn == nil {
+		return nil, fmt.Errorf("unexpected call to GetIntroducedCommitGateStatus")
+	}
+	return m.getCommitGateFn(ctx, slug, minRank, commit)
 }
 
 func (m *mockUsecases) PreviewPRCheck(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error) {

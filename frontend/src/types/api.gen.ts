@@ -1273,7 +1273,12 @@ export interface paths {
      *     belongs to another project both answer 403 `project_access_denied`, so
      *     report ids cannot be probed. A malformed one answers 400 `invalid_id`.
      *     A report that is processing or failed answers 409 `report_not_completed`;
-     *     it cannot supply a passing verdict.
+     *     it cannot supply a passing verdict. With `introduced_only` and `commit`
+     *     instead of `report_id`, the verdict covers the findings that every
+     *     completed report of that commit introduced, whichever scanner sent it.
+     *     This is the verdict of the pull-request check for the commit. A commit
+     *     with no completed report answers 404 `no_report_for_commit`. Sending
+     *     both `report_id` and `commit` answers 400 `conflicting_scope`.
      */
     get: operations["getGateStatus"];
     put?: never;
@@ -6242,14 +6247,16 @@ export interface operations {
       query?: {
         /** @description Overrides the policy floor. A list floors at its lowest-named severity. */
         severity?: string;
-        /** @description Scope the verdict to what one report introduced. */
+        /** @description Scope the verdict to what one report, or one commit, introduced. */
         introduced_only?: boolean;
         /** @description Adds the findings seen on this branch to the project verdict, for a full gate run on a change branch. Without it the verdict answers for the default branch. */
         branch?: string;
         /** @description Counts only the findings a report of this scanner observed, the verdict of that scanner's CI step. The name must match the scanner name of its reports exactly. Without it every scanner counts. `unrated_count` stays the project's count. Ignored with `introduced_only`, which is scoped to one report already. */
         scanner?: string;
-        /** @description Required when `introduced_only` is set. */
+        /** @description With `introduced_only`, the report whose introduced findings count. Set this or `commit`. */
         report_id?: string;
+        /** @description With `introduced_only`, the commit whose completed reports count, all scanners together. The full commit SHA as the reports recorded it, case-insensitive; a prefix matches nothing. Set this or `report_id`. */
+        commit?: string;
       };
       header?: never;
       path: {

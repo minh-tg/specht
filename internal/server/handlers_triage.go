@@ -270,8 +270,17 @@ func (h *Handler) GetGateStatus(w http.ResponseWriter, r *http.Request) {
 
 	if r.URL.Query().Get("introduced_only") == "1" || r.URL.Query().Get("introduced_only") == "true" {
 		reportID := r.URL.Query().Get("report_id")
+		commit := r.URL.Query().Get("commit")
+		if reportID != "" && commit != "" {
+			respondError(w, http.StatusBadRequest, "conflicting_scope", "use report_id or commit with introduced_only, not both")
+			return
+		}
+		if commit != "" {
+			h.getIntroducedCommitGate(w, r, slug, minRank, commit)
+			return
+		}
 		if reportID == "" {
-			respondError(w, http.StatusBadRequest, "missing_report_id", "report_id is required with introduced_only")
+			respondError(w, http.StatusBadRequest, "missing_report_id", "report_id or commit is required with introduced_only")
 			return
 		}
 		result, err := h.usecase.GetIntroducedGateStatus(r.Context(), slug, minRank, reportID)
@@ -303,6 +312,29 @@ func (h *Handler) GetGateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	respondJSON(w, http.StatusOK, result)
+}
+
+// getIntroducedCommitGate answers the gate over every completed report of one
+// commit: the verdict the pull-request check for that commit gives.
+func (h *Handler) getIntroducedCommitGate(w http.ResponseWriter, r *http.Request, slug string, minRank int16, commit string) {
+	if len(commit) > maxCommitShaBytes || strings.IndexFunc(commit, func(c rune) bool { return !commitShaRune(c) }) >= 0 {
+		respondError(w, http.StatusBadRequest, "invalid_commit", "commit must be at most 64 letters, digits, dots, dashes or underscores")
+		return
+	}
+	result, err := h.usecase.GetIntroducedCommitGateStatus(r.Context(), slug, minRank, commit)
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrNoReportForCommit):
+			respondError(w, http.StatusNotFound, "no_report_for_commit", "no completed scan report carries this commit")
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondAccessDenied(w, r, "project")
+		default:
+			slog.Error("get commit gate status", "project", slug, "error", err)
+			respondError(w, http.StatusInternalServerError, "gate_failed", "could not evaluate gate status")
+		}
+		return
+	}
 	respondJSON(w, http.StatusOK, result)
 }
 

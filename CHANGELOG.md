@@ -10,6 +10,10 @@ releases.
 
 ### Added
 
+- `GET /projects/{slug}/gate?introduced_only=true&commit=<sha>` judges a whole commit: the findings
+  that every completed report of the commit introduced, whichever scanner sent it. This is the
+  verdict of the pull-request check for that commit. A commit with no completed report answers 404
+  `no_report_for_commit`, and `commit` with `report_id` answers 400 `conflicting_scope`.
 - The findings list can be narrowed to scanners. `GET /projects/{slug}/findings` takes `scanner`, a
   comma list of scanner names, and each listed finding carries `scanners`, the scanners whose reports
   observed it.

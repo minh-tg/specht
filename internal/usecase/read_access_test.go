@@ -54,6 +54,10 @@ func projectReaders(uc *Usecases, slug string) map[string]func(context.Context) 
 			_, err := uc.GetIntroducedGateStatus(ctx, slug, 3, "")
 			return err
 		},
+		"GetIntroducedCommitGateStatus": func(ctx context.Context) error {
+			_, err := uc.GetIntroducedCommitGateStatus(ctx, slug, 3, "0123abcd")
+			return err
+		},
 		"PreviewPRCheck": func(ctx context.Context) error {
 			_, err := uc.PreviewPRCheck(ctx, PRCheckPreviewInput{ProjectSlug: slug, CommitSha: "0123abcd"})
 			return err
