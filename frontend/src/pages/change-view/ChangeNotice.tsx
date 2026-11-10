@@ -2,6 +2,7 @@ import { INLINE_LINK } from "@/components/inlineLink";
 import { RelativeTime } from "@/components/RelativeTime";
 import { formatClockTime } from "@/lib/format";
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
 
 /**
  * A boxed sentence or two under the verdict, for a reason the verdict on screen may not be the
@@ -59,6 +60,28 @@ export function UncheckedNotice({ onRetry }: { readonly onRetry: () => void; }) 
       <button type="button" className={`${INLINE_LINK} text-body`} onClick={onRetry}>
         Try again
       </button>
+    </Notice>
+  );
+}
+
+/**
+ * A newer commit of the branch was already scanned when the page opened, so this page shows an
+ * older change. The verdict stays the one of this commit; the link goes to the newer one.
+ */
+export function NewerChangeNotice(
+  { branch, href, commit }: {
+    readonly branch: string;
+    readonly href: string;
+    readonly commit: string;
+  },
+) {
+  return (
+    <Notice>
+      A newer commit of <code className="text-code [overflow-wrap:anywhere]">{branch}</code>{" "}
+      was scanned since.{" "}
+      <Link to={href} className={INLINE_LINK}>
+        See change <code className="text-code">{commit}</code>
+      </Link>
     </Notice>
   );
 }

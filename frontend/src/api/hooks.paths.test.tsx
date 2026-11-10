@@ -50,13 +50,8 @@ describe("API paths built from route params", () => {
     ["reports", () => useReports(HOSTILE), `/api/v1/projects/${ENCODED}/reports`],
     [
       "change reports",
-      () => useChangeReports(HOSTILE, "abcdef1", null),
-      `/api/v1/projects/${ENCODED}/reports?commit=abcdef1&commit_prefix=true`,
-    ],
-    [
-      "exact report",
-      () => useChangeReports("demo", "abcdef1", HOSTILE),
-      `/api/v1/reports/${ENCODED}`,
+      () => useChangeReports(HOSTILE, "abcdef1"),
+      `/api/v1/projects/${ENCODED}/reports?commit=abcdef1&commit_prefix=true&limit=100`,
     ],
     ["finding", () => useFinding(HOSTILE), `/api/v1/findings/${ENCODED}`],
     [

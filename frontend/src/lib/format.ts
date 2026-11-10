@@ -84,6 +84,12 @@ export function pluralize(count: number, one: string, other?: string): string {
   return `${count} ${count === 1 ? one : (other ?? `${one}s`)}`;
 }
 
+/** "a", "a and b", "a, b and c": names in a sentence. Empty for no names. */
+export function andList(words: readonly string[]): string {
+  if (words.length <= 1) return words.join("");
+  return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
 /**
  * How long a finding has existed, in the shortest honest form: "Today", then whole days up to
  * 99, then whole months, then years. Empty or unparsable input yields an em-dash.

@@ -10,21 +10,27 @@ import {
 import { ErrorState } from "@/components/ErrorState";
 import { INLINE_LINK, TOUCH_TARGET } from "@/components/inlineLink";
 import { codeSource } from "@/lib/codeLinks";
+import { scannedCommit } from "@/lib/commit";
 import { formatRelativeTime } from "@/lib/format";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { useOnline } from "@/lib/useOnline";
 import { blockerCount, isReportInProgress } from "@/lib/verdict";
 import { BlockerSection, MAX_BLOCKER_ROWS } from "@/pages/change-view/BlockerSection";
 import { ChangeHero, ChangeHeroSkeleton, type ChangeState } from "@/pages/change-view/ChangeHero";
-import { OfflineNotice, StalledNotice, UncheckedNotice } from "@/pages/change-view/ChangeNotice";
+import {
+  NewerChangeNotice,
+  OfflineNotice,
+  StalledNotice,
+  UncheckedNotice,
+} from "@/pages/change-view/ChangeNotice";
 import { carryPrevious, judgeCleared, readPrevious } from "@/pages/change-view/cleared";
 import { ClearedEnd } from "@/pages/change-view/ClearedEnd";
 import { ExistingDebt } from "@/pages/change-view/ExistingDebt";
-import { existingBlockers, resolveReport, shortCommit } from "@/pages/change-view/resolve";
+import { commitScans, existingBlockers, shortCommit } from "@/pages/change-view/resolve";
 import { useEarlierGate } from "@/pages/change-view/useEarlierGate";
 import { type WatchState, WatchStrip } from "@/pages/change-view/WatchStrip";
 import { useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useEffect, useMemo } from "react";
+import { type ReactNode, useEffect } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 export { MAX_BLOCKER_ROWS };
@@ -110,15 +116,19 @@ export function ChangeView() {
   useDocumentTitle(`${slug} · Change ${short}`);
 
   const projectQuery = useProject(slug);
-  const reportsQuery = useChangeReports(slug, commit, reportParam);
-  const report = resolveReport(reportsQuery.data, commit, reportParam);
-  const degraded = report !== null
-    && (isReportInProgress(report.status) || report.status === "failed");
-  // A scan without a verdict must not be scoped through the gate. The project gate is the one of
-  // the report's branch, the same one the CI run checked.
+  const reportsQuery = useChangeReports(slug, commit);
+  // Every scanner's reports of the commit count together, as in the pull-request check. A `report`
+  // in the link only picks the report the header links from.
+  const scans = commitScans(reportsQuery.data, commit, reportParam);
+  const report = scans?.focus ?? null;
+  const sha = scans?.sha;
+  const degraded = scans !== null && !scans.judged;
+  const scanned = scans?.latest.filter((scan) => scan.status === "completed") ?? [];
+  // A commit without a completed scan has no verdict, so it must not be scoped through the gate.
+  // The project gate is the one of the commit's branch, the same one the CI run checked.
   const changeGateQuery = useChangeGate(
     slug,
-    degraded ? undefined : report?.id,
+    degraded ? undefined : sha,
     projectWide,
     severity,
     report?.branch,
@@ -127,11 +137,11 @@ export function ChangeView() {
 
   // After a blocked scan, the findings that blocked it ride along in the location state. When this
   // scan passes, the gate of that earlier scan says which of them are still open.
-  const previous = projectWide ? null : readPrevious(location.state, slug, report?.id);
+  const previous = projectWide ? null : readPrevious(location.state, slug, sha);
   const passedNow = !degraded && changeGateQuery.data?.threshold_breached === false;
   const earlierGateQuery = useEarlierGate(
     slug,
-    previous && passedNow ? previous.reportId : undefined,
+    previous && passedNow ? previous.commit : undefined,
     severity,
   );
   const cleared = previous && passedNow
@@ -149,18 +159,23 @@ export function ChangeView() {
     return Promise.all(pending);
   };
 
-  // Watching for the next scan runs for as long as the page shows a finished report on a branch. It
-  // ends when a newer report on that branch is final, and the page moves to its change.
+  // Watching for the next scan runs for as long as the page shows a judged commit on a branch. A
+  // newer report of this commit is another scanner's and joins the page. A newer report of another
+  // commit ends the watch once it is final, and the page moves to its change.
   const online = useOnline();
-  const watching = report !== null && report.status === "completed" && !!report.branch;
+  const newestHere = scans?.reports[0];
+  const watching = scans !== null && scans.judged && !!report?.branch;
   const signal = useScanSignal(slug, {
     branch: report?.branch,
     enabled: watching,
-    current: report ? { id: report.id, createdAt: report.created_at } : undefined,
+    current: newestHere ? { id: newestHere.id, createdAt: newestHere.created_at } : undefined,
+    commit: sha,
   });
   const newer = signal.newer;
-  const scanningNewer = newer !== null && isReportInProgress(newer.status);
-  const landed = newer !== null && !scanningNewer ? newer : null;
+  const joined = newer !== null && !!sha && scannedCommit(newer, sha) ? newer : null;
+  const elsewhere = newer !== null && !joined ? newer : null;
+  const scanningNewer = elsewhere !== null && isReportInProgress(elsewhere.status);
+  const landed = elsewhere !== null && !scanningNewer ? elsewhere : null;
   const watch: WatchState | undefined = signal.watching
     ? {
       online,
@@ -172,23 +187,24 @@ export function ChangeView() {
 
   // What the next page needs to know about this one: the blockers it showed, or the earlier ones
   // that are still open. Keyed by value so the landing effect below runs once per landing.
-  const carryReport = changeGateQuery.data?.threshold_breached
-    ? report?.id
+  const carryCommit = changeGateQuery.data?.threshold_breached
+    ? sha
     : cleared?.kind === "open"
-    ? previous?.reportId
+    ? previous?.commit
     : undefined;
   const carryIds = changeGateQuery.data?.threshold_breached
     ? (changeGateQuery.data.blocked_by ?? []).join(",")
     : cleared?.kind === "open"
     ? cleared.ids.join(",")
     : "";
-  const carry = useMemo(
-    () =>
-      carryReport && carryIds && !projectWide
-        ? carryPrevious({ slug, reportId: carryReport, ids: carryIds.split(",") })
-        : undefined,
-    [slug, carryReport, carryIds, projectWide],
-  );
+
+  // Another scanner reported on this commit: read the commit's reports and its verdict again.
+  const joinedId = joined?.id;
+  useEffect(() => {
+    if (!joinedId) return;
+    void queryClient.invalidateQueries({ queryKey: queryKeys.reports(slug) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.gate(slug) });
+  }, [joinedId, queryClient, slug]);
 
   useEffect(() => {
     if (!landed) return;
@@ -200,12 +216,15 @@ export function ChangeView() {
         scope: projectWide ? "project" : "introduced",
       });
       if (severity) query.set("severity", severity);
+      const carry = carryCommit && carryIds && !projectWide
+        ? carryPrevious({ slug, commit: carryCommit, ids: carryIds.split(",") })
+        : undefined;
       navigate(`/${slug}/changes/${shortCommit(landed.commit_sha)}?${query}`, {
         replace: true,
         state: carry,
       });
     }
-  }, [landed, navigate, queryClient, slug, projectWide, severity, carry]);
+  }, [landed, navigate, queryClient, slug, projectWide, severity, carryCommit, carryIds]);
 
   if (
     projectQuery.isError && projectQuery.error instanceof APIError
@@ -259,7 +278,7 @@ export function ChangeView() {
     );
   }
 
-  if (!report) {
+  if (!scans || !report) {
     return (
       <Page>
         {crumbs}
@@ -273,13 +292,18 @@ export function ChangeView() {
   }
 
   if (degraded) {
-    const state: ChangeState = report.status === "failed" ? "failed" : "processing";
+    const state: ChangeState = scans.running.length > 0 ? "processing" : "failed";
     return (
       <Page>
         {crumbs}
         <ChangeHero
           commit={commit}
-          report={report}
+          report={state === "failed"
+            ? scans.latest.find((scan) => scan.status === "failed") ?? report
+            : report}
+          outstanding={state === "failed"
+            ? { running: [], failed: scans.failed.length > 1 ? scans.failed : [] }
+            : { running: [], failed: scans.failed }}
           state={state}
           blockers={0}
           existing={0}
@@ -316,6 +340,8 @@ export function ChangeView() {
   const blockedBy = gate.blocked_by ?? [];
   const existing = existingBlockers(projectGateQuery.data?.blocked_by, blockedBy);
   const passing = !scanningNewer && !gate.threshold_breached;
+  const outstanding = { running: scans.running, failed: scans.failed };
+  const complete = outstanding.running.length === 0 && outstanding.failed.length === 0;
   // A passing scan after a blocked one is judged before it is named: the page waits for the earlier
   // scan's gate, and says "Unblocked" only when no earlier blocker is still open.
   if (passing && cleared?.kind === "checking") {
@@ -330,18 +356,33 @@ export function ChangeView() {
     ? "scanning"
     : gate.threshold_breached
     ? "blocked"
+    : !complete
+    ? "incomplete"
     : passing && cleared?.kind === "unblocked"
     ? "unblocked"
     : passing && cleared?.kind === "open"
     ? "unconfirmed"
     : "passing";
-  const reportAt = report.completed_at ?? report.created_at;
+  const reportAt = newestHere?.completed_at ?? newestHere?.created_at ?? report.created_at;
+  const latestElsewhere = signal.latest?.commit_sha ? signal.latest : null;
   const notice = !online
     ? <OfflineNotice verdictAt={new Date(changeGateQuery.dataUpdatedAt).toISOString()} />
     : state === "blocked" && watch?.stalled
     ? <StalledNotice reportAt={reportAt} checkedAt={signal.dataUpdatedAt} />
     : passing && cleared?.kind === "unchecked"
     ? <UncheckedNotice onRetry={() => void earlierGateQuery.refetch()} />
+    : latestElsewhere?.commit_sha && !projectWide
+    ? (
+      <NewerChangeNotice
+        branch={report.branch ?? ""}
+        commit={shortCommit(latestElsewhere.commit_sha)}
+        href={`/${slug}/changes/${shortCommit(latestElsewhere.commit_sha)}?${new URLSearchParams({
+          report: latestElsewhere.id,
+          scope: "introduced",
+          ...(severity ? { severity } : {}),
+        })}`}
+      />
+    )
     : undefined;
   // The project gate is always evaluated now. Beside a report that is no longer the newest on its
   // branch, the page says so with the time, so nobody reads it as the state at this commit.
@@ -364,6 +405,8 @@ export function ChangeView() {
       <ChangeHero
         commit={commit}
         report={report}
+        scans={scanned}
+        outstanding={outstanding}
         state={state}
         blockers={blockerCount(gate)}
         existing={existing.length}
@@ -379,9 +422,9 @@ export function ChangeView() {
       />
       {gate.threshold_breached && (
         <BlockerSection
-          key={report.id}
+          key={scans.sha}
           slug={slug}
-          reportId={report.id}
+          commit={scans.sha}
           ids={blockedBy}
           floor={gate.policy?.severity_floor}
           permissions={projectQuery.data?.permissions}
@@ -397,7 +440,7 @@ export function ChangeView() {
           <ClearedEnd
             slug={slug}
             projectName={projectQuery.data?.name}
-            report={report}
+            reports={scanned}
             gate={gate}
             earlierGate={earlierGateQuery.data}
             previous={previous}
