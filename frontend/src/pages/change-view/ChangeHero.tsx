@@ -4,7 +4,7 @@ import { RelativeTime } from "@/components/RelativeTime";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { codeSource, pullRequestUrl } from "@/lib/codeLinks";
-import { formatClockTime, pluralize } from "@/lib/format";
+import { andList, formatClockTime, pluralize } from "@/lib/format";
 import { reportToolLabel } from "@/lib/reportTool";
 import { useDelayedFlag } from "@/lib/useDelayedFlag";
 import { floorSourceLabel, shortCommit } from "@/pages/change-view/resolve";
@@ -12,24 +12,38 @@ import type { PolicyEffective, Report } from "@/types/api";
 import type { ReactNode } from "react";
 
 /**
- * What the header says about the change. `scanning` is a newer report being processed while the page
- * waits; `processing` and `failed` describe the scan this page is about. `unblocked` is a passing
- * scan after one that blocked, with every earlier blocker accounted for; `unconfirmed` is a passing
- * scan while some earlier blocker is still open. None of them claims a verdict the evidence does
- * not support.
+ * What the header says about the change. `scanning` is a newer commit's report being processed
+ * while the page waits; `processing` and `failed` say no scan of this commit completed. `incomplete`
+ * is a commit nothing blocks yet while some scanner has not reported on it, or failed. `unblocked`
+ * is a passing commit after one that blocked, with every earlier blocker accounted for;
+ * `unconfirmed` is a passing commit while some earlier blocker is still open. None of them claims a
+ * verdict the evidence does not support.
  */
 export type ChangeState =
   | "blocked"
   | "passing"
+  | "incomplete"
   | "unblocked"
   | "unconfirmed"
   | "scanning"
   | "processing"
   | "failed";
 
+/** Scanners of the commit whose findings the verdict does not count yet, by name. */
+export interface Outstanding {
+  /** Their newest report of the commit is still being processed. */
+  readonly running: readonly string[];
+  /** Their newest report of the commit failed. */
+  readonly failed: readonly string[];
+}
+
 export interface ChangeHeroProps {
   readonly commit: string;
+  /** The report the header links from: the one the CI link named, else the newest. */
   readonly report: Report | null;
+  /** The newest completed report of each scanner of the commit. */
+  readonly scans?: readonly Report[];
+  readonly outstanding?: Outstanding;
   readonly state: ChangeState;
   /** Findings this change introduced that block it. */
   readonly blockers: number;
@@ -91,6 +105,8 @@ function headline(
       return projectWide
         ? "Project gate passed."
         : "Nothing new in this commit blocks this change.";
+    case "incomplete":
+      return projectWide ? "Project gate passed so far." : "Nothing blocks this change so far.";
     case "unblocked":
       return "Unblocked. Nothing blocks this change now.";
     case "unconfirmed":
@@ -98,7 +114,7 @@ function headline(
         earlierOpen === 1 ? "is" : "are"
       } still open.`;
     case "scanning":
-      return "A newer report is processing.";
+      return "A newer commit is being scanned.";
     case "processing":
       return `The scan of ${shortCommit(commit)} is still being processed.`;
     case "failed":
@@ -159,10 +175,12 @@ function subline(
           ? ` The ${pluralize(waived, "waived finding")} ${waived === 1 ? "does" : "do"} not count.`
           : ""
       } Nothing to do here.`;
+    case "incomplete":
+      return `The verdict is not final until every scanner of ${shortCommit(commit)} has reported.`;
     case "unblocked":
-      return "Specht works out this verdict now, from the report on this page and today's findings and waivers, so it counts anything waived or decided since the scan uploaded. The check CI posted for an older run does not update; re-run the job if it still shows failed.";
+      return "Specht works out this verdict now, from the reports of this commit and today's findings and waivers, so it counts anything waived or decided since the scan uploaded. The check CI posted for an older run does not update; re-run the job if it still shows failed.";
     case "unconfirmed":
-      return "This verdict counts only the findings this scan introduced. The findings below blocked the earlier scan and are still open.";
+      return "This verdict counts only the findings this commit introduced. The findings below blocked the earlier commit and are still open.";
     case "scanning":
       return "The verdict updates when the scan finishes.";
     case "processing":
@@ -176,8 +194,11 @@ function subline(
 function stampFor(
   state: ChangeState,
   reportOnly: boolean,
+  outstanding: Outstanding | undefined,
 ): { verdict: "blocked" | "would_block" | "passing" | "unknown"; scanning: boolean; } {
   switch (state) {
+    case "incomplete":
+      return { verdict: "unknown", scanning: (outstanding?.running.length ?? 0) > 0 };
     case "blocked":
       return { verdict: reportOnly ? "would_block" : "blocked", scanning: false };
     case "passing":
@@ -200,6 +221,8 @@ export function ChangeHero(
   {
     commit,
     report,
+    scans = [],
+    outstanding,
     state,
     blockers,
     existing,
@@ -213,7 +236,8 @@ export function ChangeHero(
     gateAsOf,
   }: ChangeHeroProps,
 ) {
-  const stamp = stampFor(state, reportOnly);
+  const stamp = stampFor(state, reportOnly, outstanding);
+  const waiting = outstandingText(outstanding, commit);
   const branch = report?.branch;
   const asOf = projectWide && gateAsOf
     ? asOfHeadline(state, blockers, reportOnly, gateAsOf)
@@ -242,6 +266,9 @@ export function ChangeHero(
           <p className="max-w-[58ch] text-section font-normal leading-snug">
             {subline(state, report, projectWide, commit, policy, waived, reportOnly)}
           </p>
+          {waiting.map((line) => (
+            <p key={line} className="max-w-[58ch] text-meta font-medium">{line}</p>
+          ))}
           {asOf && (
             <p className="text-muted-foreground max-w-[58ch] text-meta [overflow-wrap:anywhere]">
               A newer report exists on{" "}
@@ -271,17 +298,64 @@ export function ChangeHero(
           </FactItem>
         )}
         {waived > 0 && <FactItem>{waived} waived</FactItem>}
-        {report && (
-          <FactItem>
-            <span>
-              Report received <RelativeTime iso={report.created_at} frozen />
-            </span>
-            {report.tool_name ? ` from a ${reportToolLabel(report)} report` : ""}
-          </FactItem>
-        )}
+        <ScannedBy scans={scans} report={report} />
       </p>
       <div aria-hidden="true" className="page-rule" />
     </section>
+  );
+}
+
+/**
+ * The lines that say which scanners the verdict does not count yet. Empty when every scanner of the
+ * commit has a completed report.
+ */
+function outstandingText(outstanding: Outstanding | undefined, commit: string): string[] {
+  const lines: string[] = [];
+  const running = outstanding?.running ?? [];
+  const failed = outstanding?.failed ?? [];
+  if (running.length > 0) {
+    lines.push(
+      `Still scanning ${shortCommit(commit)}: ${andList(running)}. More findings may block it.`,
+    );
+  }
+  if (failed.length > 0) {
+    lines.push(
+      `The ${andList(failed)} ${failed.length === 1 ? "scan" : "scans"} of ${
+        shortCommit(commit)
+      } failed, so ${failed.length === 1 ? "its" : "their"} findings are not counted. Re-run ${
+        failed.length === 1 ? "that job" : "those jobs"
+      }.`,
+    );
+  }
+  return lines;
+}
+
+/**
+ * "Scanned by gitleaks, semgrep and trivy, last report 2 minutes ago": every scanner the verdict
+ * counts. Before any scan completed it names the report the page shows.
+ */
+function ScannedBy(
+  { scans, report }: { readonly scans: readonly Report[]; readonly report: Report | null; },
+) {
+  if (scans.length === 0) {
+    if (!report) return null;
+    return (
+      <FactItem>
+        <span>
+          Report received <RelativeTime iso={report.created_at} frozen />
+        </span>
+        {report.tool_name ? ` from a ${reportToolLabel(report)} report` : ""}
+      </FactItem>
+    );
+  }
+  const last = scans.reduce((newest, scan) => scan.created_at > newest.created_at ? scan : newest);
+  return (
+    <FactItem>
+      Scanned by {andList(scans.map((scan) => reportToolLabel(scan)))},{" "}
+      <span>
+        last report <RelativeTime iso={last.created_at} frozen />
+      </span>
+    </FactItem>
   );
 }
 

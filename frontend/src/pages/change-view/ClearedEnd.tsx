@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { changeViewState, fromChangePath } from "@/lib/entryMode";
 import { findingHeadline } from "@/lib/findingTitle";
 import { pluralize } from "@/lib/format";
+import { reportToolLabel } from "@/lib/reportTool";
 import { BlockerRow } from "@/pages/change-view/BlockerRow";
 import { MAX_BLOCKER_ROWS } from "@/pages/change-view/BlockerSection";
 import {
@@ -99,11 +100,36 @@ function ClearedRow(
   );
 }
 
+/** What the passing scans covered: one line for one scanner, one line per scanner for several. */
+function ScanCoverageNote({ reports }: { readonly reports: readonly Report[]; }) {
+  if (reports.length === 1) {
+    return (
+      <p className="text-muted-foreground mt-6 max-w-[68ch] text-meta">
+        <span className="text-foreground font-medium">What this scan covered.</span>{" "}
+        {scanCoverage(reports[0]).text}
+      </p>
+    );
+  }
+  return (
+    <div className="text-muted-foreground mt-6 max-w-[68ch] text-meta">
+      <p className="text-foreground font-medium">What these scans covered.</p>
+      <ul className="mt-1 grid gap-1">
+        {reports.map((report) => (
+          <li key={report.id}>
+            <span className="text-foreground">{reportToolLabel(report)}:</span>{" "}
+            {scanCoverage(report).text}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export interface ClearedEndProps {
   readonly slug: string;
   readonly projectName?: string;
-  /** The passing report. */
-  readonly report: Report;
+  /** The newest completed report of each scanner on the passing commit. */
+  readonly reports: readonly Report[];
   /** The passing scan's gate. */
   readonly gate: GateStatus;
   readonly earlierGate: GateStatus;
@@ -120,7 +146,7 @@ export interface ClearedEndProps {
  * finding's state, the gate's waivers and the analysis state, and nothing more.
  */
 export function ClearedEnd(
-  { slug, projectName, report, gate, earlierGate, previous, openIds, children }: ClearedEndProps,
+  { slug, projectName, reports, gate, earlierGate, previous, openIds, children }: ClearedEndProps,
 ) {
   const [showAll, setShowAll] = useState(false);
   const [now] = useState(() => new Date());
@@ -129,7 +155,6 @@ export function ClearedEnd(
   const open = new Set(openIds);
   const rest = previous.ids.filter((id) => !open.has(id));
   const shown = showAll ? rest : rest.slice(0, MAX_BLOCKER_ROWS);
-  const coverage = scanCoverage(report);
 
   return (
     <>
@@ -180,9 +205,7 @@ export function ClearedEnd(
           )}
         </section>
       )}
-      <p className="text-muted-foreground mt-6 max-w-[68ch] text-meta">
-        <span className="text-foreground font-medium">What this scan covered.</span> {coverage.text}
-      </p>
+      <ScanCoverageNote reports={reports} />
       {children}
       <Link
         to={`/${slug}/findings`}

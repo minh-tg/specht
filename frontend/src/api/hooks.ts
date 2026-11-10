@@ -1,3 +1,4 @@
+import { scannedCommit } from "@/lib/commit";
 import { type AnalysisState, gateEffectLabel, type ReachabilityState } from "@/lib/enums";
 import { isReportInProgress } from "@/lib/verdict";
 import type {
@@ -111,10 +112,10 @@ export const queryKeys = {
     projectSlug === undefined ? (["reports"] as const) : (["reports", projectSlug] as const),
   gate: (projectSlug?: string) =>
     projectSlug === undefined ? (["gate"] as const) : (["gate", projectSlug] as const),
-  changeGate: (projectSlug?: string, reportId?: string) =>
+  changeGate: (projectSlug?: string, commit?: string) =>
     projectSlug === undefined
       ? (["gate"] as const)
-      : (["gate", projectSlug, "introduced", reportId ?? ""] as const),
+      : (["gate", projectSlug, "introduced", commit ?? ""] as const),
   reachability: (findingId?: string) =>
     findingId === undefined ? (["reachability"] as const) : (["reachability", findingId] as const),
   findingEvents: (findingId?: string) =>
@@ -451,38 +452,28 @@ export function useReports(projectSlug: string, limit?: number) {
   });
 }
 
-/** The report a change resolves to: the newest one, as `resolveReport` picks it. */
-function newestOf(reports: Report[] | undefined): Report | undefined {
-  return reports?.reduce<Report | undefined>(
-    (newest, report) => !newest || report.created_at > newest.created_at ? report : newest,
-    undefined,
-  );
-}
+/** Most reports one commit is expected to have: a scanner matrix with reruns stays well under. */
+export const CHANGE_REPORT_LIMIT = 100;
 
-/** Resolves exact scan evidence without a capped walk through project history. */
-export function useChangeReports(projectSlug: string, commit: string, reportId: string | null) {
+/**
+ * Every report of a commit, from every scanner. The server matches the commit as a prefix, so the
+ * route's short form works. While any report of the commit is still processing, it asks again.
+ */
+export function useChangeReports(projectSlug: string, commit: string) {
   return useQuery({
-    queryKey: [...queryKeys.reports(projectSlug), "change", commit, reportId ?? ""],
-    queryFn: async () => {
-      if (!reportId) {
-        return apiFetch<Report[]>(
-          `/api/v1/projects/${encodeURIComponent(projectSlug)}/reports?commit=${
-            encodeURIComponent(commit)
-          }&commit_prefix=true`,
-        );
-      }
-      try {
-        const report = await apiFetch<Report>(`/api/v1/reports/${encodeURIComponent(reportId)}`);
-        return [report];
-      } catch (error) {
-        if (error instanceof APIError && error.status === 404) return [];
-        throw error;
-      }
-    },
+    queryKey: [...queryKeys.reports(projectSlug), "change", commit],
+    queryFn: () =>
+      apiFetch<Report[]>(
+        `/api/v1/projects/${encodeURIComponent(projectSlug)}/reports?commit=${
+          encodeURIComponent(commit)
+        }&commit_prefix=true&limit=${CHANGE_REPORT_LIMIT}`,
+      ),
     enabled: !!projectSlug && !!commit,
-    // A scan that is still running has no verdict. Ask again until it has one.
+    // A scan that is still running has no verdict. Ask again until every one has.
     refetchInterval: (query) =>
-      isReportInProgress(newestOf(query.state.data)?.status) ? PROCESSING_POLL_MS : false,
+      (query.state.data ?? []).some((report) => isReportInProgress(report.status))
+        ? PROCESSING_POLL_MS
+        : false,
     refetchIntervalInBackground: false,
   });
 }
@@ -512,14 +503,15 @@ export function useGateStatus(projectSlug: string, severity?: string, poll?: Pol
 
 /**
  * Evaluates the scope and severity carried by a CI link. The default covers
- * only findings the report introduced. Explicit project-wide links include
- * existing debt on the report's branch, as the CI run judged it: the default
- * branch plus the findings seen on `branch`. Both require completed report
- * evidence before querying.
+ * the findings the commit introduced, every scanner's reports together: the
+ * verdict of the pull-request check. Explicit project-wide links include
+ * existing debt on the commit's branch, as the CI run judged it: the default
+ * branch plus the findings seen on `branch`. Both wait for a completed report
+ * of the commit (`commit` stays undefined until then).
  */
 export function useChangeGate(
   projectSlug: string,
-  reportId: string | undefined,
+  commit: string | undefined,
   projectWide = false,
   severity?: string,
   branch?: string | null,
@@ -528,7 +520,7 @@ export function useChangeGate(
   const gateBranch = projectWide ? branch ?? "" : "";
   if (!projectWide) {
     query.set("introduced_only", "true");
-    query.set("report_id", reportId ?? "");
+    query.set("commit", commit ?? "");
   } else if (gateBranch) {
     query.set("branch", gateBranch);
   }
@@ -536,7 +528,7 @@ export function useChangeGate(
   const suffix = query.size ? `?${query.toString()}` : "";
   return useQuery({
     queryKey: [
-      ...queryKeys.changeGate(projectSlug, reportId),
+      ...queryKeys.changeGate(projectSlug, commit),
       projectWide,
       severity ?? "",
       gateBranch,
@@ -545,7 +537,7 @@ export function useChangeGate(
       apiFetch<GateStatus>(
         `/api/v1/projects/${encodeURIComponent(projectSlug)}/gate${suffix}`,
       ),
-    enabled: !!projectSlug && !!reportId,
+    enabled: !!projectSlug && !!commit,
   });
 }
 
@@ -1052,20 +1044,24 @@ export function scanPollInterval(elapsedMs: number): number {
  * minutes without a newer report, and the checks go on at the capped interval.
  *
  * `newer` is a report that appeared after the first answer and was created after `current`, the
- * report on screen. A newer report that was already there when watching began means the page shows
- * an old change: `superseded` is then true and the checks stop, since waiting for a scan that
- * already happened would be wrong.
+ * newest report on screen. A newer report of another commit that was already there when watching
+ * began means the page shows an old change: `superseded` is then true, `latest` names that report,
+ * and the checks stop, since waiting for a scan that already happened would be wrong. A newer report
+ * of `commit` itself is another scanner's report of the change on screen, never a reason to stop:
+ * it comes back as `newer` so the page can count it.
  */
 export function useScanSignal(
   slug: string,
   options: {
     branch: string | null | undefined;
     enabled: boolean;
-    /** The report on screen. A new one restarts the ten minutes. */
+    /** The newest report on screen. A new one restarts the ten minutes. */
     current?: { id: string; createdAt: string; };
+    /** The commit on screen. Reports of it are part of the page, not a newer change. */
+    commit?: string;
   },
 ) {
-  const { branch, enabled, current } = options;
+  const { branch, enabled, current, commit } = options;
   const startedAt = useRef<number | null>(null);
   // One key per run of watching; the page counts as stalled when the run that is current gave up. A
   // new run (another report on screen, or watching started again) has a new key, so no reset is
@@ -1088,8 +1084,10 @@ export function useScanSignal(
   const stalled = enabled && stalledRun === runKey;
 
   const baseline = first?.key === runKey ? first.report : undefined;
-  const superseded = enabled && !!baseline && !!current && baseline.id !== current.id
+  const baselineAhead = enabled && !!baseline && !!current && baseline.id !== current.id
     && baseline.created_at > current.createdAt;
+  const baselineHere = !!commit && !!baseline && scannedCommit(baseline, commit);
+  const superseded = baselineAhead && !baselineHere;
 
   const query = useQuery({
     queryKey: queryKeys.scanSignal(slug, branch ?? ""),
@@ -1115,14 +1113,19 @@ export function useScanSignal(
   }
 
   const newest = query.data ?? null;
-  const newer = baseline !== undefined && newest && newest.id !== baseline?.id
+  const landed = baseline !== undefined && newest && newest.id !== baseline?.id
       && newest.id !== current?.id && (!current || newest.created_at > current.createdAt)
     ? newest
     : null;
+  // A report of this commit that was already there when watching began, but the page has not
+  // counted yet: the page's own list was read a moment earlier.
+  const newer = landed ?? (baselineAhead && baselineHere ? baseline : null);
   return {
     newer,
     stalled,
     superseded,
+    /** With `superseded`: the newer report of another commit. */
+    latest: superseded ? baseline : null,
     watching: enabled && !superseded,
     isError: query.isError,
     /** When the last check succeeded, in epoch milliseconds; 0 before the first. */

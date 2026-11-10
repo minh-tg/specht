@@ -592,40 +592,41 @@ describe("useAddTeamMember", () => {
 });
 
 describe("useChangeGate", () => {
-  it("scopes the gate to one report and encodes every parameter", async () => {
+  it("scopes the gate to one commit and encodes every parameter", async () => {
     const urls: string[] = [];
     globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
       urls.push(String(input));
       return Promise.resolve(jsonResponse({ threshold_breached: true, blocking_count: 1 }));
     });
 
-    const { result } = renderHook(() => useChangeGate("p/1", "r 1/2"), { wrapper });
+    const { result } = renderHook(() => useChangeGate("p/1", "ab c/1"), { wrapper });
 
     await waitFor(() => expect(result.current.data?.threshold_breached).toBe(true));
-    expect(urls[0]).toBe("/api/v1/projects/p%2F1/gate?introduced_only=true&report_id=r+1%2F2");
+    expect(urls[0]).toBe("/api/v1/projects/p%2F1/gate?introduced_only=true&commit=ab+c%2F1");
   });
 
-  it("asks for the project gate of the report's branch, and only in project scope", async () => {
+  it("asks for the project gate of the commit's branch, and only in project scope", async () => {
     const urls: string[] = [];
     globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
       urls.push(String(input));
       return Promise.resolve(jsonResponse({ threshold_breached: false, blocking_count: 0 }));
     });
 
-    const project = renderHook(() => useChangeGate("p1", "r1", true, "high", "feat/a b"), {
+    const project = renderHook(() => useChangeGate("p1", "abc1234", true, "high", "feat/a b"), {
       wrapper,
     });
-    const introduced = renderHook(() => useChangeGate("p1", "r1", false, undefined, "feat/a"), {
-      wrapper,
-    });
+    const introduced = renderHook(
+      () => useChangeGate("p1", "abc1234", false, undefined, "feat/a"),
+      { wrapper },
+    );
 
     await waitFor(() => expect(project.result.current.isSuccess).toBe(true));
     await waitFor(() => expect(introduced.result.current.isSuccess).toBe(true));
     expect(urls).toContain("/api/v1/projects/p1/gate?branch=feat%2Fa+b&severity=high");
-    expect(urls).toContain("/api/v1/projects/p1/gate?introduced_only=true&report_id=r1");
+    expect(urls).toContain("/api/v1/projects/p1/gate?introduced_only=true&commit=abc1234");
   });
 
-  it("stays disabled without a report", async () => {
+  it("stays disabled until the commit has a completed report", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}));
     globalThis.fetch = fetchMock;
 

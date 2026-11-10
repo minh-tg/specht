@@ -1,3 +1,6 @@
+import { scannedCommit } from "@/lib/commit";
+import { reportToolLabel } from "@/lib/reportTool";
+import { isReportInProgress } from "@/lib/verdict";
 import type { FindingLocation, FindingRemediation, FindingSuggestion, Report } from "@/types/api";
 
 /** Shortest commit prefix the change route accepts and renders. */
@@ -8,36 +11,68 @@ export function shortCommit(commit: string): string {
   return commit.slice(0, SHORT_COMMIT_LENGTH);
 }
 
+/** What the reports of one commit say, scanner by scanner. */
+export interface CommitScans {
+  /** The full SHA the commit in the route resolved to. */
+  readonly sha: string;
+  /** Every report of that SHA, newest first. */
+  readonly reports: readonly Report[];
+  /** The report the header takes its links from: the one a CI link named, else the newest. */
+  readonly focus: Report;
+  /** The newest report of each scanner, by scanner name. */
+  readonly latest: readonly Report[];
+  /** At least one report completed, so the commit has a verdict. */
+  readonly judged: boolean;
+  /** Scanners whose newest report of the commit is still being processed. */
+  readonly running: readonly string[];
+  /** Scanners whose newest report of the commit failed. Their findings are not counted. */
+  readonly failed: readonly string[];
+}
+
 /**
- * The report a change resolves to.
- *
- * A commit is matched case-insensitively against the start of each report's
- * `commit_sha`, so both the full SHA and any prefix the route carries resolve
- * to the same scan; the newest by `created_at` wins when several match. An
- * explicit `reportId` wins over the commit match, but only when it names a
- * report that is actually in the list: a stale or unknown override must not
- * silently fall back to a different scan.
+ * The scans of the commit a change page is about. Every scanner's reports count: the verdict is
+ * the commit's, the same one the pull-request check gives, so it does not depend on which CI step
+ * a reader followed. A `reportId` only picks the SHA (when the route's prefix matches more than
+ * one) and the report the header links from. A commit prefix is matched case-insensitively and
+ * the newest matching report picks the SHA. Null when no report matches.
  */
-export function resolveReport(
-  reports: Report[] | undefined,
+export function commitScans(
+  reports: readonly Report[] | undefined,
   commit: string,
   reportId?: string | null,
-): Report | null {
-  if (!reports?.length) return null;
+): CommitScans | null {
+  const matching = (reports ?? []).filter((report) => scannedCommit(report, commit));
+  if (matching.length === 0) return null;
+  const ordered = [...matching].sort(newestFirst);
+  const named = reportId ? ordered.find((report) => report.id === reportId) : undefined;
+  const sha = (named ?? ordered[0]).commit_sha?.toLowerCase() ?? "";
+  const own = ordered.filter((report) => report.commit_sha?.toLowerCase() === sha);
 
-  if (reportId) {
-    return reports.find((report) => report.id === reportId) ?? null;
+  const byScanner = new Map<string, Report>();
+  for (const report of own) {
+    const name = reportToolLabel(report);
+    if (!byScanner.has(name)) byScanner.set(name, report);
   }
+  const latest = [...byScanner.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, report]) => report);
+  const names = (keep: (report: Report) => boolean) =>
+    latest.filter(keep).map((report) => reportToolLabel(report));
 
-  if (!commit) return null;
+  return {
+    sha,
+    reports: own,
+    focus: named ?? own[0],
+    latest,
+    judged: own.some((report) => report.status === "completed"),
+    running: names((report) => isReportInProgress(report.status)),
+    failed: names((report) => report.status === "failed"),
+  };
+}
 
-  const prefix = commit.toLowerCase();
-  let newest: Report | null = null;
-  for (const report of reports) {
-    if (!report.commit_sha?.toLowerCase().startsWith(prefix)) continue;
-    if (newest === null || report.created_at > newest.created_at) newest = report;
-  }
-  return newest;
+function newestFirst(a: Report, b: Report): number {
+  if (a.created_at === b.created_at) return a.id < b.id ? 1 : -1;
+  return a.created_at < b.created_at ? 1 : -1;
 }
 
 /**

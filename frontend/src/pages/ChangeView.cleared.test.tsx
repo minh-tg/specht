@@ -84,9 +84,9 @@ function waiver(overrides: Record<string, unknown> = {}) {
   };
 }
 
-/** The earlier scan (r1) blocked on these; the scan on screen (r2) passes. */
+/** The earlier commit (scanned by r1) blocked on these; the commit on screen (r2) passes. */
 function previousState(ids: string[]) {
-  return { previousBlockers: { slug: "acme", reportId: "r1", ids } };
+  return { previousBlockers: { slug: "acme", commit: OLD_SHA, ids } };
 }
 
 beforeEach(() => {
@@ -120,6 +120,16 @@ beforeEach(() => {
       );
     }
     if (url.startsWith("/api/v1/projects/acme/reports?")) {
+      const commit = new URL(url, "http://x").searchParams.get("commit");
+      if (commit) {
+        return Promise.resolve(
+          jsonResponse(
+            Object.values(reportsById).filter((r) =>
+              String((r as { commit_sha: string; }).commit_sha).startsWith(commit)
+            ),
+          ),
+        );
+      }
       return Promise.resolve(jsonResponse(signalReports));
     }
     if (url.startsWith("/api/v1/projects/acme/waivers")) {
@@ -127,8 +137,9 @@ beforeEach(() => {
     }
     if (url.startsWith("/api/v1/projects/acme/gate?introduced_only=")) {
       gateUrls.push(url);
-      const id = new URL(url, "http://x").searchParams.get("report_id") ?? "";
-      const entry = gates[id];
+      // Gates are kept by the report that scanned the commit: r1 the earlier one, r2 this one.
+      const commit = new URL(url, "http://x").searchParams.get("commit") ?? "";
+      const entry = gates[commit === OLD_SHA ? "r1" : "r2"];
       if (typeof entry === "number") {
         return Promise.resolve(
           jsonResponse({ error: { code: "boom", message: "gate failed" } }, entry),
@@ -334,22 +345,29 @@ describe("ChangeView after a blocked scan", () => {
       "Nothing new in this commit blocks this change.",
     );
     expect(screen.queryByText(/What cleared/)).not.toBeInTheDocument();
-    expect(gateUrls.some((url) => url.includes("report_id=r1"))).toBe(false);
+    expect(gateUrls.some((url) => url.includes(`commit=${OLD_SHA}`))).toBe(false);
   });
 
-  it("ignores carried state from another project or for the report on screen", async () => {
-    renderPage({ previousBlockers: { slug: "other", reportId: "r1", ids: ["x"] } });
+  it("ignores carried state from another project or for the commit on screen", async () => {
+    renderPage({ previousBlockers: { slug: "other", commit: OLD_SHA, ids: ["x"] } });
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
+      "Nothing new in this commit",
+    );
+  });
+
+  it("ignores carried state for the commit on screen", async () => {
+    renderPage({ previousBlockers: { slug: "acme", commit: SHA, ids: ["x"] } });
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
       "Nothing new in this commit",
     );
   });
 
   it("ignores carried state that is not a list of ids", async () => {
-    renderPage({ previousBlockers: { slug: "acme", reportId: "r1", ids: null } });
+    renderPage({ previousBlockers: { slug: "acme", commit: OLD_SHA, ids: null } });
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
       "Nothing new in this commit",
     );
-    expect(gateUrls.some((url) => url.includes("report_id=r1"))).toBe(false);
+    expect(gateUrls.some((url) => url.includes(`commit=${OLD_SHA}`))).toBe(false);
   });
 
   it("says what a filtered scan covered and never calls it a full scan", async () => {
@@ -502,7 +520,7 @@ describe("ChangeView carrying a blocked scan to the next page", () => {
       expect(screen.getByTestId("where")).toHaveTextContent("/acme/changes/2222222")
     );
     expect(JSON.parse(screen.getByTestId("carried").textContent ?? "null")).toEqual({
-      previousBlockers: { slug: "acme", reportId: "r1", ids: ["f1", "f2"] },
+      previousBlockers: { slug: "acme", commit: OLD_SHA, ids: ["f1", "f2"] },
     });
   });
 });
