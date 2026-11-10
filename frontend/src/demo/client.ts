@@ -179,14 +179,14 @@ function resolve(path: string, options: Options): Fixture {
     };
   }
   if (url.pathname === `${project}/gate`) {
-    queryKeys(url, ["severity", "introduced_only", "report_id"]);
+    queryKeys(url, ["severity", "introduced_only", "commit"]);
     const severity = url.searchParams.get("severity");
     if (severity && severity !== "high") {
       unavailable("Only the sample's high-severity floor is available in this demo.");
     }
     if (url.searchParams.get("introduced_only") === "true") {
       return stored(
-        `${url.pathname}?introduced_only=true&report_id=${url.searchParams.get("report_id") ?? ""}`,
+        `${url.pathname}?introduced_only=true&commit=${url.searchParams.get("commit") ?? ""}`,
       );
     }
     return stored(url.pathname);
