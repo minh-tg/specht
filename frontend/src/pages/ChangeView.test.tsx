@@ -16,6 +16,7 @@ let reports: unknown[];
 let reportsStatus: number;
 let reportsPending: boolean;
 let signalReports: unknown[];
+let branchReports: unknown[];
 let changeGate: Record<string, unknown> | null;
 let changeGateStatus: number;
 let changeGateRequestId: string | null;
@@ -140,6 +141,7 @@ beforeEach(() => {
   reportsStatus = 200;
   reportsPending = false;
   signalReports = [];
+  branchReports = [];
   changeGate = gate({ blocked_by: ["f1", "f2"] });
   changeGateStatus = 200;
   changeGateRequestId = null;
@@ -184,6 +186,9 @@ beforeEach(() => {
       return Promise.resolve(
         found ? jsonResponse(found) : jsonResponse({ error: { code: "not_found" } }, 404),
       );
+    }
+    if (url.startsWith("/api/v1/projects/acme/reports?branch=")) {
+      return Promise.resolve(jsonResponse(branchReports));
     }
     if (
       url.startsWith("/api/v1/projects/acme/reports?") && !url.includes("commit=")
@@ -480,6 +485,36 @@ describe("ChangeView", () => {
     );
     expect(screen.getByText("Still scanning abcdef1: semgrep. More findings may block it."))
       .toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/Nothing to do here/);
+  });
+
+  it("waits for a scanner that reported on the previous commit but not on this one", async () => {
+    branchReports = [
+      report(),
+      report({
+        id: "p1",
+        tool_name: "trivy",
+        commit_sha: NEWER_SHA,
+        created_at: "2024-12-31T00:00:00Z",
+      }),
+      report({
+        id: "p2",
+        tool_name: "semgrep",
+        commit_sha: NEWER_SHA,
+        created_at: "2024-12-31T00:01:00Z",
+      }),
+    ];
+    changeGate = gate({ threshold_breached: false, blocked_by: [], blocking_count: 0 });
+    renderPage();
+
+    expect(
+      await screen.findByText(
+        "No report for abcdef1 yet from semgrep, which scanned the previous commit. More findings may block it.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Nothing blocks this change so far.",
+    );
     expect(document.body).not.toHaveTextContent(/Nothing to do here/);
   });
 

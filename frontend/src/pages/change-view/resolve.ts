@@ -70,6 +70,36 @@ export function commitScans(
   };
 }
 
+/**
+ * Scanners that reported on the branch's previous scanned commit but have sent nothing for this one:
+ * their CI step most likely has not finished. Only the commit just before counts, so a scanner taken
+ * out of the pipeline drops off after one push. Empty for the first commit of a branch.
+ */
+export function missingScanners(
+  branchReports: readonly Report[] | undefined,
+  scans: CommitScans,
+): string[] {
+  const start = scans.reports.reduce(
+    (oldest, report) => report.created_at < oldest ? report.created_at : oldest,
+    scans.reports[0]?.created_at ?? "",
+  );
+  const earlier = (branchReports ?? [])
+    .filter((report) =>
+      !!report.commit_sha && report.commit_sha.toLowerCase() !== scans.sha
+      && report.created_at < start
+    )
+    .sort(newestFirst);
+  const previous = earlier[0]?.commit_sha?.toLowerCase();
+  if (!previous) return [];
+  const here = new Set(scans.reports.map((report) => reportToolLabel(report)));
+  const expected = new Set(
+    earlier
+      .filter((report) => report.commit_sha?.toLowerCase() === previous)
+      .map((report) => reportToolLabel(report)),
+  );
+  return [...expected].filter((name) => !here.has(name)).sort((a, b) => a.localeCompare(b));
+}
+
 function newestFirst(a: Report, b: Report): number {
   if (a.created_at === b.created_at) return a.id < b.id ? 1 : -1;
   return a.created_at < b.created_at ? 1 : -1;

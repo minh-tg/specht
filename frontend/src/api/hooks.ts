@@ -478,6 +478,31 @@ export function useChangeReports(projectSlug: string, commit: string) {
   });
 }
 
+/** How far back a change page looks on its branch for the scanners of the previous commit. */
+export const BRANCH_REPORT_LIMIT = 50;
+
+/**
+ * The newest reports of a branch, for the scanners a change page should expect. Kept under the
+ * reports key, so a page that refetches its reports refetches these too.
+ */
+export function useBranchReports(
+  projectSlug: string,
+  branch: string | null | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: [...queryKeys.reports(projectSlug), "branch", branch ?? ""],
+    queryFn: () =>
+      apiFetch<Report[]>(
+        `/api/v1/projects/${encodeURIComponent(projectSlug)}/reports?${new URLSearchParams({
+          branch: branch ?? "",
+          limit: String(BRANCH_REPORT_LIMIT),
+        })}`,
+      ),
+    enabled: enabled && !!projectSlug && !!branch,
+  });
+}
+
 /** How often a page waiting for its own scan to finish asks again. */
 export const PROCESSING_POLL_MS = 5_000;
 
