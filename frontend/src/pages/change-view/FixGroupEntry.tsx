@@ -8,6 +8,7 @@ import { findingHeadline } from "@/lib/findingTitle";
 import { pluralize } from "@/lib/format";
 import { useCopyToClipboard } from "@/lib/useCopyToClipboard";
 import type { WaiverAction } from "@/lib/waiverRequest";
+import { useChangeScope } from "@/pages/change-view/changeScope";
 import {
   type GroupItem,
   groupWaiverNoteId,
@@ -78,6 +79,7 @@ export function FixGroupEntry(
   const { status, copy } = useCopyToClipboard();
   const routerLocation = useLocation();
   const state = changeViewState(routerLocation);
+  const scope = useChangeScope();
   const instruction = upgradeInstruction(item.target);
   const count = item.ids.length;
   const severity = worstSeverity(item.ids, findings);
@@ -158,7 +160,7 @@ export function FixGroupEntry(
                 >
                   {finding && <SeverityBadge severity={finding.current_severity} plain />}
                   <Link
-                    to={fromChangePath(`/${slug}/findings/${id}`)}
+                    to={fromChangePath(`/${slug}/findings/${id}`, scope)}
                     state={state}
                     className={`${INLINE_LINK} min-w-0 text-body [overflow-wrap:anywhere]`}
                   >

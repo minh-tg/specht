@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  changeScopeFromSearch,
   changeViewBackPath,
   changeViewState,
   entryModeFromSearch,
@@ -53,6 +54,54 @@ describe("fromChangePath", () => {
   it("gives the fix-first mode when read back", () => {
     const search = fromChangePath("/acme/findings/f1?tab=history").split("?")[1];
     expect(entryModeFromSearch(search)).toBe("unblock");
+  });
+});
+
+describe("changeScopeFromSearch", () => {
+  const SHA = "0123456789abcdef0123456789abcdef01234567";
+  const search = (path: string) => `?${path.split("?")[1]}`;
+
+  it("reads back the gate of an introduced-scope link", () => {
+    const path = fromChangePath("/acme/findings/f1", {
+      commit: SHA,
+      projectWide: false,
+      severity: "critical,high",
+      branch: "feat/x",
+    });
+    // The introduced gate has no branch; only the project-wide one reads it.
+    expect(path).toBe(`/acme/findings/f1?from=change&commit=${SHA}&severity=critical%2Chigh`);
+    expect(changeScopeFromSearch(search(path))).toEqual({
+      commit: SHA,
+      projectWide: false,
+      severity: "critical,high",
+      branch: undefined,
+    });
+  });
+
+  it("reads back a project-wide link with its branch", () => {
+    const path = fromChangePath("/acme/findings/f1", {
+      commit: SHA,
+      projectWide: true,
+      branch: "feat/x",
+    });
+    expect(changeScopeFromSearch(search(path))).toEqual({
+      commit: SHA,
+      projectWide: true,
+      severity: undefined,
+      branch: "feat/x",
+    });
+  });
+
+  it("has no scope without a commit or outside a change", () => {
+    expect(changeScopeFromSearch("?from=change")).toBeNull();
+    expect(changeScopeFromSearch(`?commit=${SHA}`)).toBeNull();
+    expect(changeScopeFromSearch(`?from=list&commit=${SHA}`)).toBeNull();
+  });
+
+  it("refuses a commit or severity the server would refuse", () => {
+    expect(changeScopeFromSearch("?from=change&commit=abc%20def")).toBeNull();
+    expect(changeScopeFromSearch(`?from=change&commit=${"a".repeat(65)}`)).toBeNull();
+    expect(changeScopeFromSearch(`?from=change&commit=${SHA}&severity=HIGH%3B`)).toBeNull();
   });
 });
 

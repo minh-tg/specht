@@ -499,6 +499,13 @@ releases.
 
 ### Fixed
 
+- A finding opened from a change's blocker is judged with that change's gate, the verdict the change
+  view showed. Before, the finding page used the project gate of the default branch, so a blocker
+  seen only on the change's branch read "does not block (only on an unmerged branch)" and its
+  Request waiver button was off. The link now names the commit, and the scope and severity of the
+  CI link, so it also works when opened in a new tab. Findings opened from existing debt keep the
+  project gate, which is the gate they block.
+
 - A project's only manager can approve their own waiver request with a note. Before, nobody could
   approve it unless a global admin stepped in. The approval is marked self-approved, as a global
   admin's is. Anyone else on the project with manager or admin rights, directly or through a team, or a

@@ -11,6 +11,7 @@ import { normalizeSeverity } from "@/lib/enums";
 import { findingHeadline } from "@/lib/findingTitle";
 import { useCopyToClipboard } from "@/lib/useCopyToClipboard";
 import type { WaiverAction } from "@/lib/waiverRequest";
+import { useChangeScope } from "@/pages/change-view/changeScope";
 import { fixSentence, locationLine } from "@/pages/change-view/resolve";
 import { WaiverPath } from "@/pages/change-view/WaiverPath";
 import { waiverChip, type WaiverView } from "@/pages/change-view/waiverState";
@@ -107,8 +108,9 @@ function LoadedEntry(
     : null;
   const fix = fixSentence(finding);
   const routerLocation = useLocation();
+  const scope = useChangeScope();
   // The finding page reads the state to offer a way back to this exact change view.
-  const target = fromChangePath(`/${slug}/findings/${findingId}`);
+  const target = fromChangePath(`/${slug}/findings/${findingId}`, scope);
   const targetState = changeViewState(routerLocation);
   const severity = normalizeSeverity(finding.current_severity);
   // The accessible name starts with the visible text, so a speech user can say what they see.
