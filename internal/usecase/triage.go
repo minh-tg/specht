@@ -675,12 +675,56 @@ func (u *Usecases) GetIntroducedGateStatus(ctx context.Context, projectSlug stri
 	if err != nil {
 		return nil, fmt.Errorf("gate eval: %w", err)
 	}
+	return introducedGateOutput(decision, policy), nil
+}
 
+// GetIntroducedCommitGateStatus evaluates the gate over the findings that
+// every completed report of one commit introduced, whichever scanner sent
+// it. This is the verdict of the pull-request check for that commit, so a
+// page built on it and the check CI shows cannot disagree. ErrNoReportForCommit
+// when no scan of the commit has completed: nothing was checked, which is not
+// the same as a pass.
+func (u *Usecases) GetIntroducedCommitGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, commit string) (*GateStatusOutput, error) {
+	commit = normalizeRevision(commit)
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
+	if err != nil {
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
+	}
+	if err := u.requireProjectMember(ctx, project.ID); err != nil {
+		return nil, err
+	}
+	if commit == "" {
+		return nil, ErrNoReportForCommit
+	}
+	found, err := u.deps.Stores.Reports.HasCompletedForCommit(ctx, project.ID, commit)
+	if err != nil {
+		return nil, fmt.Errorf("lookup commit reports: %w", err)
+	}
+	if !found {
+		return nil, ErrNoReportForCommit
+	}
+
+	floor, policy, err := u.gateFloor(ctx, project, minSeverityRank)
+	if err != nil {
+		return nil, fmt.Errorf("resolve policy: %w", err)
+	}
+
+	u.initGate()
+	decision, err := u.gate.EvaluateIntroducedAtCommit(ctx, project.ID, floor, commit, gatePoliciesFor(policy))
+	if err != nil {
+		return nil, fmt.Errorf("gate eval: %w", err)
+	}
+	return introducedGateOutput(decision, policy), nil
+}
+
+// introducedGateOutput is the gate endpoint's answer for a change-scoped
+// evaluation. It leaves out the unrated count, which counts the whole
+// project and says nothing about one change.
+func introducedGateOutput(decision gate.Decision, policy *PolicyEffectiveResponse) *GateStatusOutput {
 	reachability := make(map[string]string, len(decision.BlockedByReachability))
 	for id, state := range decision.BlockedByReachability {
 		reachability[id] = string(state)
 	}
-
 	return &GateStatusOutput{
 		ThresholdBreached:     decision.Status == gate.StatusFail,
 		BlockingCount:         int64(decision.TotalBlocking - decision.WaivedCount),
@@ -690,7 +734,7 @@ func (u *Usecases) GetIntroducedGateStatus(ctx context.Context, projectSlug stri
 		WaivedFindingIDs:      decision.WaivedFindingIDs,
 		Policy:                policy,
 		ReportOnly:            libpolicy.ReportOnly(policy.GateMode, true),
-	}, nil
+	}
 }
 
 func (u *Usecases) GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]FindingEvent, error) {

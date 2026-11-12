@@ -2175,7 +2175,12 @@ paths:
         belongs to another project both answer 403 `project_access_denied`, so
         report ids cannot be probed. A malformed one answers 400 `invalid_id`.
         A report that is processing or failed answers 409 `report_not_completed`;
-        it cannot supply a passing verdict.
+        it cannot supply a passing verdict. With `introduced_only` and `commit`
+        instead of `report_id`, the verdict covers the findings that every
+        completed report of that commit introduced, whichever scanner sent it.
+        This is the verdict of the pull-request check for the commit. A commit
+        with no completed report answers 404 `no_report_for_commit`. Sending
+        both `report_id` and `commit` answers 400 `conflicting_scope`.
       x-required-scope: read
       security:
         - sessionAuth: []
@@ -2188,7 +2193,7 @@ paths:
           schema: { type: string, example: "high,critical" }
         - name: introduced_only
           in: query
-          description: Scope the verdict to what one report introduced.
+          description: Scope the verdict to what one report, or one commit, introduced.
           schema: { type: boolean }
         - name: branch
           in: query
@@ -2206,8 +2211,15 @@ paths:
           schema: { type: string, example: semgrep }
         - name: report_id
           in: query
-          description: Required when `introduced_only` is set.
+          description: With `introduced_only`, the report whose introduced findings count. Set this or `commit`.
           schema: { type: string, format: uuid }
+        - name: commit
+          in: query
+          description: >-
+            With `introduced_only`, the commit whose completed reports count, all scanners
+            together. The full commit SHA as the reports recorded it, case-insensitive; a
+            prefix matches nothing. Set this or `report_id`.
+          schema: { type: string, maxLength: 64, example: 9f8e7d6c5b4a39281706f5e4d3c2b1a098765432 }
       responses:
         "200":
           description: The verdict.
