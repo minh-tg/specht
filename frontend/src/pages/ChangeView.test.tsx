@@ -711,9 +711,10 @@ describe("ChangeView", () => {
     expect(entry.getByText(/Severity CRITICAL is at or above the project floor \(HIGH\)/))
       .toBeInTheDocument();
     expect(entry.getAllByText("Fix f1").length).toBeGreaterThan(0);
+    // The link names the change's commit, so the finding page judges it with the same gate.
     expect(entry.getByRole("link", { name: "Open the full finding" })).toHaveAttribute(
       "href",
-      "/acme/findings/f1?from=change",
+      `/acme/findings/f1?from=change&commit=${FULL_SHA}`,
     );
   });
 
@@ -907,6 +908,11 @@ describe("ChangeView", () => {
     const details = summary.closest("details");
     if (!details) throw new Error("debt summary is not inside a details element");
     expect(within(details).queryByText("Finding f1")).not.toBeInTheDocument();
+    // Debt blocks the project, not this change, so its link keeps the project's gate.
+    const debtLink = within(details).getAllByRole("link").find((link) =>
+      link.getAttribute("href")?.startsWith("/acme/findings/pre1")
+    );
+    expect(debtLink).toHaveAttribute("href", "/acme/findings/pre1?from=change");
   });
 
   it("resolves a commit prefix and honours the report override", async () => {
@@ -1577,7 +1583,7 @@ describe("ChangeView grouping by fix", { timeout: 40_000 }, () => {
       "Finding g1",
       "Finding g2",
     ]);
-    expect(links[1]).toHaveAttribute("href", "/acme/findings/g1?from=change");
+    expect(links[1]).toHaveAttribute("href", `/acme/findings/g1?from=change&commit=${FULL_SHA}`);
     expect(document.body.textContent).not.toMatch(/the merge/);
   });
 
