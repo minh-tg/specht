@@ -208,6 +208,9 @@ releases.
   failed it says so and does not say "Nothing to do here". Another scanner's report of the same
   commit joins the page instead of ending the watch for the next push, and a page showing an older
   commit links to the newer one.
+- The change view waits for scanners that reported on the branch's previous commit but have sent
+  nothing for this one yet. It names them and says "Nothing blocks this change so far" until they
+  report, so a fast scanner's clean result no longer reads as the whole verdict.
 - The change view judges the project gate on the branch of the report it shows, so a pull request
   is no longer measured against the default branch's verdict alone. A change on an older commit says
   that the project gate it shows is the one as of now, not the one at that commit.

@@ -1,6 +1,7 @@
 import { APIError } from "@/api/client";
 import {
   queryKeys,
+  useBranchReports,
   useChangeGate,
   useChangeReports,
   useGateStatus,
@@ -26,7 +27,12 @@ import {
 import { carryPrevious, judgeCleared, readPrevious } from "@/pages/change-view/cleared";
 import { ClearedEnd } from "@/pages/change-view/ClearedEnd";
 import { ExistingDebt } from "@/pages/change-view/ExistingDebt";
-import { commitScans, existingBlockers, shortCommit } from "@/pages/change-view/resolve";
+import {
+  commitScans,
+  existingBlockers,
+  missingScanners,
+  shortCommit,
+} from "@/pages/change-view/resolve";
 import { useEarlierGate } from "@/pages/change-view/useEarlierGate";
 import { type WatchState, WatchStrip } from "@/pages/change-view/WatchStrip";
 import { useQueryClient } from "@tanstack/react-query";
@@ -171,6 +177,11 @@ export function ChangeView() {
     current: newestHere ? { id: newestHere.id, createdAt: newestHere.created_at } : undefined,
     commit: sha,
   });
+  // A page showing an older commit expects nothing more: those scanners moved on.
+  const branchReportsQuery = useBranchReports(slug, report?.branch, watching && !signal.superseded);
+  const missing = scans && !signal.superseded
+    ? missingScanners(branchReportsQuery.data, scans)
+    : [];
   const newer = signal.newer;
   const joined = newer !== null && !!sha && scannedCommit(newer, sha) ? newer : null;
   const elsewhere = newer !== null && !joined ? newer : null;
@@ -340,8 +351,9 @@ export function ChangeView() {
   const blockedBy = gate.blocked_by ?? [];
   const existing = existingBlockers(projectGateQuery.data?.blocked_by, blockedBy);
   const passing = !scanningNewer && !gate.threshold_breached;
-  const outstanding = { running: scans.running, failed: scans.failed };
-  const complete = outstanding.running.length === 0 && outstanding.failed.length === 0;
+  const outstanding = { running: scans.running, failed: scans.failed, missing };
+  const complete = outstanding.running.length === 0 && outstanding.failed.length === 0
+    && missing.length === 0;
   // A passing scan after a blocked one is judged before it is named: the page waits for the earlier
   // scan's gate, and says "Unblocked" only when no earlier blocker is still open.
   if (passing && cleared?.kind === "checking") {

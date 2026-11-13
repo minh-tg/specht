@@ -35,6 +35,8 @@ export interface Outstanding {
   readonly running: readonly string[];
   /** Their newest report of the commit failed. */
   readonly failed: readonly string[];
+  /** They reported on the branch's previous commit and have sent nothing for this one yet. */
+  readonly missing?: readonly string[];
 }
 
 export interface ChangeHeroProps {
@@ -198,7 +200,10 @@ function stampFor(
 ): { verdict: "blocked" | "would_block" | "passing" | "unknown"; scanning: boolean; } {
   switch (state) {
     case "incomplete":
-      return { verdict: "unknown", scanning: (outstanding?.running.length ?? 0) > 0 };
+      return {
+        verdict: "unknown",
+        scanning: (outstanding?.running.length ?? 0) + (outstanding?.missing?.length ?? 0) > 0,
+      };
     case "blocked":
       return { verdict: reportOnly ? "would_block" : "blocked", scanning: false };
     case "passing":
@@ -313,9 +318,17 @@ function outstandingText(outstanding: Outstanding | undefined, commit: string): 
   const lines: string[] = [];
   const running = outstanding?.running ?? [];
   const failed = outstanding?.failed ?? [];
+  const missing = outstanding?.missing ?? [];
   if (running.length > 0) {
     lines.push(
       `Still scanning ${shortCommit(commit)}: ${andList(running)}. More findings may block it.`,
+    );
+  }
+  if (missing.length > 0) {
+    lines.push(
+      `No report for ${shortCommit(commit)} yet from ${
+        andList(missing)
+      }, which scanned the previous commit. More findings may block it.`,
     );
   }
   if (failed.length > 0) {

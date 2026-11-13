@@ -7,6 +7,7 @@ import {
   floorSourceLabel,
   isRealFix,
   locationLine,
+  missingScanners,
   shortCommit,
 } from "./resolve";
 
@@ -266,5 +267,69 @@ describe("existingBlockers", () => {
 
   it("tolerates a missing gate", () => {
     expect(existingBlockers(undefined, ["a"])).toEqual([]);
+  });
+});
+
+describe("missingScanners", () => {
+  const PREV = "1111111111111111111111111111111111111111";
+  const OLDER = "0000000000000000000000000000000000000000";
+  const here = (tool: string) =>
+    report({ id: `h-${tool}`, tool_name: tool, created_at: "2025-01-05T00:00:00Z" });
+  const before = (tool: string, sha: string, created: string) =>
+    report({
+      id: `${sha.slice(0, 2)}-${tool}`,
+      tool_name: tool,
+      commit_sha: sha,
+      created_at: created,
+    });
+
+  it("names the scanners of the previous commit that have not reported on this one", () => {
+    const scans = commitScans([here("trivy")], "abcdef1");
+    if (!scans) throw new Error("no scans");
+    const branch = [
+      here("trivy"),
+      before("trivy", PREV, "2025-01-04T00:00:00Z"),
+      before("semgrep", PREV, "2025-01-04T00:01:00Z"),
+      before("gitleaks", PREV, "2025-01-04T00:02:00Z"),
+      before("checkov", OLDER, "2025-01-03T00:00:00Z"),
+    ];
+
+    expect(missingScanners(branch, scans)).toEqual(["gitleaks", "semgrep"]);
+  });
+
+  it("expects nothing on the first commit of a branch or once every scanner reported", () => {
+    const first = commitScans([here("trivy")], "abcdef1");
+    const all = commitScans([here("trivy"), here("semgrep")], "abcdef1");
+    if (!first || !all) throw new Error("no scans");
+    const branch = [
+      before("trivy", PREV, "2025-01-04T00:00:00Z"),
+      before("semgrep", PREV, "2025-01-04T00:01:00Z"),
+    ];
+
+    expect(missingScanners([here("trivy")], first)).toEqual([]);
+    expect(missingScanners(undefined, first)).toEqual([]);
+    expect(missingScanners(branch, all)).toEqual([]);
+  });
+
+  it("counts a scanner that is still running on this commit as reported", () => {
+    const scans = commitScans([
+      here("trivy"),
+      report({
+        id: "s",
+        tool_name: "semgrep",
+        status: "processing",
+        created_at: "2025-01-05T00:01:00Z",
+      }),
+    ], "abcdef1");
+    if (!scans) throw new Error("no scans");
+
+    expect(missingScanners([before("semgrep", PREV, "2025-01-04T00:00:00Z")], scans)).toEqual([]);
+  });
+
+  it("ignores commits scanned after this one", () => {
+    const scans = commitScans([here("trivy")], "abcdef1");
+    if (!scans) throw new Error("no scans");
+
+    expect(missingScanners([before("semgrep", PREV, "2025-01-06T00:00:00Z")], scans)).toEqual([]);
   });
 });
