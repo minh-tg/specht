@@ -13,7 +13,6 @@ const NEWER_SHA = "2222222222222222222222222222222222222222";
 let projectStatus: number;
 let permissions: Record<string, boolean> | undefined;
 let reports: unknown[];
-let exactReports: Record<string, unknown>;
 let reportsStatus: number;
 let reportsPending: boolean;
 let signalReports: unknown[];
@@ -138,7 +137,6 @@ beforeEach(() => {
   projectStatus = 200;
   permissions = { request_waiver: true };
   reports = [report()];
-  exactReports = {};
   reportsStatus = 200;
   reportsPending = false;
   signalReports = [];
@@ -182,7 +180,7 @@ beforeEach(() => {
     }
     if (url.startsWith("/api/v1/reports/")) {
       const id = decodeURIComponent(url.slice("/api/v1/reports/".length));
-      const found = exactReports[id] ?? reports.find((r) => (r as { id: string; }).id === id);
+      const found = reports.find((r) => (r as { id: string; }).id === id);
       return Promise.resolve(
         found ? jsonResponse(found) : jsonResponse({ error: { code: "not_found" } }, 404),
       );
@@ -434,21 +432,91 @@ describe("ChangeView", () => {
     expect(screen.getByRole("heading", { level: 1 })).not.toHaveTextContent(/as of now/);
   });
 
-  it("loads an exact report even when it is outside the report list", async () => {
-    reports = [];
-    exactReports = { old: report({ id: "old" }) };
-    renderPage(`/acme/changes/${FULL_SHA}?report=old`);
+  it("judges the whole commit whichever scanner's link was followed", async () => {
+    reports = [
+      report({ id: "trivy", tool_name: "trivy", ci_run_url: "https://ci.example/run/1" }),
+      report({
+        id: "leaks",
+        tool_name: "gitleaks",
+        ci_run_url: "https://ci.example/run/2",
+        created_at: "2025-01-01T00:05:00Z",
+      }),
+    ];
+    changeGate = gate({ blocked_by: ["f1", "f2"], blocking_count: 2 });
+    renderPage(`/acme/changes/${FULL_SHA}?report=trivy`);
+
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
       "2 findings block this change.",
     );
-    expect(globalThis.fetch).toHaveBeenCalledWith("/api/v1/reports/old", expect.anything());
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      `/api/v1/projects/acme/gate?introduced_only=true&commit=${FULL_SHA}`,
+      expect.anything(),
+    );
+    const gateCalls = vi.mocked(globalThis.fetch).mock.calls.map(([url]) => String(url));
+    expect(gateCalls.some((url) => url.includes("report_id="))).toBe(false);
+    expect(screen.getByText(/^Scanned by gitleaks and trivy,/)).toBeInTheDocument();
+    // The header links to the run of the step the reader came from.
+    expect(screen.getByRole("link", { name: "CI run" })).toHaveAttribute(
+      "href",
+      "https://ci.example/run/1",
+    );
+  });
+
+  it("does not call a commit done while another scanner is still scanning it", async () => {
+    reports = [
+      report({ id: "trivy", tool_name: "trivy" }),
+      report({
+        id: "semgrep",
+        tool_name: "semgrep",
+        status: "processing",
+        created_at: "2025-01-01T00:05:00Z",
+      }),
+    ];
+    changeGate = gate({ threshold_breached: false, blocked_by: [], blocking_count: 0 });
+    renderPage();
+
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
+      "Nothing blocks this change so far.",
+    );
+    expect(screen.getByText("Still scanning abcdef1: semgrep. More findings may block it."))
+      .toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/Nothing to do here/);
+  });
+
+  it("says a failed scanner's findings are not counted", async () => {
+    reports = [
+      report({ id: "trivy", tool_name: "trivy" }),
+      report({ id: "leaks", tool_name: "gitleaks", status: "failed" }),
+    ];
+    changeGate = gate({ threshold_breached: false, blocked_by: [], blocking_count: 0 });
+    renderPage();
+
+    expect(
+      await screen.findByText(
+        "The gitleaks scan of abcdef1 failed, so its findings are not counted. Re-run that job.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Nothing blocks this change so far.",
+    );
+  });
+
+  it("links to the newer commit when the page shows an older one", async () => {
+    signalReports = [
+      report({ id: "r2", commit_sha: NEWER_SHA, created_at: "2025-01-02T00:00:00Z" }),
+    ];
+    renderPage();
+
+    const link = await screen.findByRole("link", { name: "See change 2222222" });
+    expect(link).toHaveAttribute("href", "/acme/changes/2222222?report=r2&scope=introduced");
+    expect(screen.getByTestId("where")).toHaveTextContent(FULL_SHA);
   });
 
   it("queries the commit on the server instead of walking project history", async () => {
     renderPage();
     await screen.findByRole("heading", { level: 1 });
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      `/api/v1/projects/acme/reports?commit=${FULL_SHA}&commit_prefix=true`,
+      `/api/v1/projects/acme/reports?commit=${FULL_SHA}&commit_prefix=true&limit=100`,
       expect.anything(),
     );
   });
@@ -493,7 +561,7 @@ describe("ChangeView", () => {
     expect(screen.getByTitle(formatDateTime("2025-01-01T00:00:00Z"))).toBeInTheDocument();
     expect(screen.getByText("abcdef1")).toBeInTheDocument();
     expect(screen.getByText("main")).toBeInTheDocument();
-    expect(screen.getByText(/from a trivy report/)).toBeInTheDocument();
+    expect(screen.getByText(/^Scanned by trivy,/)).toBeInTheDocument();
   });
 
   it("offers a neutral no-report page with the reports and upload links", async () => {
@@ -1220,7 +1288,7 @@ describe("ChangeView watching for the next scan", () => {
 
     expect(await screen.findByText("SCANNING")).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "A newer report is processing.",
+      "A newer commit is being scanned.",
     );
     expect(screen.getByTestId("where")).toHaveTextContent(FULL_SHA);
 
@@ -1245,6 +1313,45 @@ describe("ChangeView watching for the next scan", () => {
       expect(screen.getByTestId("where")).toHaveTextContent("/acme/changes/2222222")
     );
     expect(await screen.findByText("PASSING")).toBeInTheDocument();
+  });
+
+  it("counts another scanner's report of the same commit instead of leaving the page", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    changeGate = gate({ blocked_by: ["f1"], blocking_count: 1 });
+    renderPage(`/acme/changes/${FULL_SHA}?report=r1`);
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
+      "1 finding blocks this change.",
+    );
+    signalReports = [report()];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_100);
+    });
+
+    const leaks = report({
+      id: "leaks",
+      tool_name: "gitleaks",
+      created_at: "2025-01-01T00:05:00Z",
+    });
+    signalReports = [leaks];
+    reports = [report(), leaks];
+    changeGate = gate({ blocked_by: ["f1", "f2"], blocking_count: 2 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_100);
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+        "2 findings block this change.",
+      )
+    );
+    expect(screen.getByTestId("where")).toHaveTextContent(`/acme/changes/${FULL_SHA}`);
+    expect(screen.getByText(/^Scanned by gitleaks and trivy,/)).toBeInTheDocument();
+    // Watching goes on for the next commit.
+    const before = signalCalls();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_100);
+    });
+    expect(signalCalls()).toBeGreaterThan(before);
   });
 
   it("ignores an older report on the branch", async () => {

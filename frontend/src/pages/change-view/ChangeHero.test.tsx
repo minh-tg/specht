@@ -134,7 +134,7 @@ describe("ChangeHero unblocked and unconfirmed copy", () => {
     expect(document.body).not.toHaveTextContent(/blocks the merge|\bgreen\b/i);
   });
 
-  it("says the unconfirmed verdict counts only what this scan introduced", () => {
+  it("says the unconfirmed verdict counts only what this commit introduced", () => {
     render(
       <ChangeHero
         commit="abcdef1234"
@@ -150,7 +150,7 @@ describe("ChangeHero unblocked and unconfirmed copy", () => {
 
     expect(
       screen.getByText(
-        "This verdict counts only the findings this scan introduced. The findings below blocked the earlier scan and are still open.",
+        "This verdict counts only the findings this commit introduced. The findings below blocked the earlier commit and are still open.",
       ),
     ).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(/did not examine|recorded as passing/);
@@ -272,5 +272,92 @@ describe("ChangeHero links back to the code", () => {
   it("shows no link when the report names nothing, or a host Specht cannot link", () => {
     renderWith({ repository_url: "https://bitbucket.org/acme/shop", pull_request_number: 7 });
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+});
+
+describe("ChangeHero across scanners", () => {
+  const scan = (tool: string, created: string) =>
+    ({ ...report, id: tool, tool_name: tool, created_at: created }) as unknown as Report;
+
+  it("names every scanner the verdict counts and the time of the last report", () => {
+    render(
+      <ChangeHero
+        commit="abcdef1234"
+        report={report}
+        scans={[
+          scan("gitleaks", "2026-10-30T10:00:00Z"),
+          scan("semgrep", "2026-10-30T10:02:00Z"),
+          scan("trivy", "2026-10-30T10:01:00Z"),
+        ]}
+        state="blocked"
+        blockers={9}
+        existing={0}
+        waived={0}
+        policy={policy}
+      />,
+    );
+
+    expect(screen.getByText(/^Scanned by gitleaks, semgrep and trivy,/)).toBeInTheDocument();
+    expect(screen.getByText(/^last report/).querySelector("time")).toHaveAttribute(
+      "datetime",
+      "2026-10-30T10:02:00Z",
+    );
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "9 findings block this change.",
+    );
+  });
+
+  it("does not call a commit done while a scanner is still running or failed", () => {
+    render(
+      <ChangeHero
+        commit="abcdef1234"
+        report={report}
+        scans={[scan("trivy", "2026-10-30T10:01:00Z")]}
+        outstanding={{ running: ["semgrep"], failed: ["gitleaks", "checkov"] }}
+        state="incomplete"
+        blockers={0}
+        existing={0}
+        waived={0}
+        policy={policy}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Nothing blocks this change so far.",
+    );
+    expect(
+      screen.getByText("The verdict is not final until every scanner of abcdef1 has reported."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Still scanning abcdef1: semgrep. More findings may block it."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The gitleaks and checkov scans of abcdef1 failed, so their findings are not counted. Re-run those jobs.",
+      ),
+    ).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(/Nothing to do here/);
+  });
+
+  it("names a running scanner beside a blocked verdict too", () => {
+    render(
+      <ChangeHero
+        commit="abcdef1234"
+        report={report}
+        scans={[scan("trivy", "2026-10-30T10:01:00Z")]}
+        outstanding={{ running: ["semgrep", "gitleaks"], failed: [] }}
+        state="blocked"
+        blockers={7}
+        existing={0}
+        waived={0}
+        policy={policy}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "Still scanning abcdef1: semgrep and gitleaks. More findings may block it.",
+      ),
+    ).toBeInTheDocument();
   });
 });

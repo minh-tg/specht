@@ -1,20 +1,21 @@
 import type { Report } from "@/types/api";
 import { describe, expect, it } from "vitest";
 import {
+  commitScans,
   existingBlockers,
   fixAction,
   floorSourceLabel,
   isRealFix,
   locationLine,
-  resolveReport,
   shortCommit,
 } from "./resolve";
 
 const FULL_SHA = "abcdef1234567890abcdef1234567890abcdef12";
 
-function report(overrides: Partial<Report> & { id: string; commit_sha: string; }): Report {
+function report(overrides: Partial<Report> & { id: string; }): Report {
   return {
     project_id: "p1",
+    commit_sha: FULL_SHA,
     tool_name: "trivy",
     tool_version: null,
     scan_type: "filesystem",
@@ -28,76 +29,109 @@ function report(overrides: Partial<Report> & { id: string; commit_sha: string; }
   };
 }
 
-describe("resolveReport", () => {
-  it("resolves an exact full SHA", () => {
+describe("commitScans", () => {
+  const OTHER_SHA = "abcdef1999999999999999999999999999999999";
+
+  it("resolves an exact full SHA and a prefix of it", () => {
     const target = report({ id: "r1", commit_sha: FULL_SHA });
     const other = report({ id: "r2", commit_sha: "9999999999999999999999999999999999999999" });
 
-    expect(resolveReport([other, target], FULL_SHA)?.id).toBe("r1");
+    expect(commitScans([other, target], FULL_SHA)?.reports.map((r) => r.id)).toEqual(["r1"]);
+    expect(commitScans([target], "abcdef1")?.sha).toBe(FULL_SHA);
   });
 
-  it("resolves a prefix of at least seven characters", () => {
-    const target = report({ id: "r1", commit_sha: FULL_SHA });
-
-    expect(resolveReport([target], "abcdef1")?.id).toBe("r1");
-  });
-
-  it("matches the commit case-insensitively", () => {
+  it("matches the commit case-insensitively and gives the SHA in lower case", () => {
     const target = report({ id: "r1", commit_sha: FULL_SHA.toUpperCase() });
 
-    expect(resolveReport([target], "ABCDEF1")?.id).toBe("r1");
+    expect(commitScans([target], "ABCDEF1")?.sha).toBe(FULL_SHA);
   });
 
-  it("picks the newest matching report by created_at", () => {
-    const older = report({
-      id: "old",
-      commit_sha: FULL_SHA,
+  it("counts every scanner of the commit and keeps the newest report of each", () => {
+    const trivyOld = report({ id: "t1", tool_name: "trivy", created_at: "2025-01-01T00:00:00Z" });
+    const trivyNew = report({ id: "t2", tool_name: "trivy", created_at: "2025-01-03T00:00:00Z" });
+    const semgrep = report({ id: "s1", tool_name: "semgrep", created_at: "2025-01-02T00:00:00Z" });
+    const gosec = report({
+      id: "g1",
+      tool_name: "sarif",
+      producer: "Gosec",
+      created_at: "2025-01-02T00:00:00Z",
+    });
+
+    const scans = commitScans([trivyOld, semgrep, trivyNew, gosec], "abcdef1");
+    expect(scans?.reports.map((r) => r.id)).toEqual(["t2", "s1", "g1", "t1"]);
+    expect(scans?.latest.map((r) => r.id)).toEqual(["g1", "s1", "t2"]);
+    expect(scans?.focus.id).toBe("t2");
+    expect(scans?.judged).toBe(true);
+  });
+
+  it("names scanners still running or failed by their newest report only", () => {
+    const scans = commitScans([
+      report({
+        id: "t1",
+        tool_name: "trivy",
+        status: "failed",
+        created_at: "2025-01-01T00:00:00Z",
+      }),
+      report({
+        id: "t2",
+        tool_name: "trivy",
+        status: "completed",
+        created_at: "2025-01-02T00:00:00Z",
+      }),
+      report({ id: "s1", tool_name: "semgrep", status: "processing" }),
+      report({ id: "g1", tool_name: "gitleaks", status: "failed" }),
+    ], "abcdef1");
+
+    expect(scans?.running).toEqual(["semgrep"]);
+    expect(scans?.failed).toEqual(["gitleaks"]);
+    expect(scans?.judged).toBe(true);
+  });
+
+  it("has no verdict until one report of the commit completed", () => {
+    const scans = commitScans([
+      report({ id: "s1", tool_name: "semgrep", status: "processing" }),
+      report({ id: "g1", tool_name: "gitleaks", status: "failed" }),
+    ], "abcdef1");
+
+    expect(scans?.judged).toBe(false);
+  });
+
+  it("takes the header's report from the link, never the verdict", () => {
+    const newest = report({ id: "new", created_at: "2025-02-01T00:00:00Z" });
+    const linked = report({
+      id: "linked",
+      tool_name: "semgrep",
       created_at: "2025-01-01T00:00:00Z",
     });
-    const newer = report({
-      id: "new",
-      commit_sha: FULL_SHA,
-      created_at: "2025-02-01T00:00:00Z",
-    });
 
-    expect(resolveReport([older, newer], "abcdef1")?.id).toBe("new");
-    // Order in the response must not decide the winner.
-    expect(resolveReport([newer, older], "abcdef1")?.id).toBe("new");
+    const scans = commitScans([newest, linked], "abcdef1", "linked");
+    expect(scans?.focus.id).toBe("linked");
+    expect(scans?.reports).toHaveLength(2);
   });
 
-  it("lets an explicit report id override the commit match", () => {
-    const byCommit = report({
-      id: "by-commit",
-      commit_sha: FULL_SHA,
-      created_at: "2025-02-01T00:00:00Z",
-    });
-    const override = report({
-      id: "override",
-      commit_sha: "0000000000",
-      created_at: "2025-01-01T00:00:00Z",
-    });
+  it("falls back to the newest report when the link names one that is gone", () => {
+    const only = report({ id: "only" });
 
-    expect(resolveReport([byCommit, override], "abcdef1", "override")?.id).toBe("override");
+    expect(commitScans([only], "abcdef1", "deleted")?.focus.id).toBe("only");
   });
 
-  it("returns null for an override that is not in the list", () => {
-    const byCommit = report({ id: "by-commit", commit_sha: FULL_SHA });
+  it("lets the linked report pick the SHA when a short prefix matches two commits", () => {
+    const newer = report({ id: "a", commit_sha: OTHER_SHA, created_at: "2025-02-01T00:00:00Z" });
+    const linked = report({ id: "b", commit_sha: FULL_SHA, created_at: "2025-01-01T00:00:00Z" });
 
-    expect(resolveReport([byCommit], "abcdef1", "missing")).toBeNull();
+    expect(commitScans([newer, linked], "abcdef1")?.sha).toBe(OTHER_SHA);
+    const scans = commitScans([newer, linked], "abcdef1", "b");
+    expect(scans?.sha).toBe(FULL_SHA);
+    expect(scans?.reports.map((r) => r.id)).toEqual(["b"]);
   });
 
   it("returns null when nothing matches the commit", () => {
     const other = report({ id: "r2", commit_sha: "9999999999999999999999999999999999999999" });
-
-    expect(resolveReport([other], "abcdef1")).toBeNull();
-    expect(resolveReport([], "abcdef1")).toBeNull();
-    expect(resolveReport(undefined, "abcdef1")).toBeNull();
-  });
-
-  it("does not match reports whose commit is unknown", () => {
     const unattributed = { ...report({ id: "r1", commit_sha: "" }), commit_sha: null };
 
-    expect(resolveReport([unattributed], "abcdef1")).toBeNull();
+    expect(commitScans([other, unattributed], "abcdef1")).toBeNull();
+    expect(commitScans([], "abcdef1")).toBeNull();
+    expect(commitScans(undefined, "abcdef1")).toBeNull();
   });
 });
 

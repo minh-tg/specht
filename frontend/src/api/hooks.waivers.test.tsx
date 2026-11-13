@@ -268,6 +268,52 @@ describe("useScanSignal", () => {
     expect(result.current.watching).toBe(false);
   });
 
+  it("names the newer report of another commit when the page shows an old change", async () => {
+    reportsAnswer = [{
+      id: "r9",
+      status: "completed",
+      commit_sha: "9999999999999999999999999999999999999999",
+      created_at: "2025-01-02T00:00:00Z",
+    }];
+    const { result } = renderHook(
+      () =>
+        useScanSignal("acme", {
+          branch: "main",
+          enabled: true,
+          current,
+          commit: "abcdef1234567890abcdef1234567890abcdef12",
+        }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.superseded).toBe(true));
+    expect(result.current.latest?.id).toBe("r9");
+  });
+
+  it("keeps watching when the newer report is another scanner's report of the same commit", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const commit = "abcdef1234567890abcdef1234567890abcdef12";
+    reportsAnswer = [{
+      id: "gitleaks",
+      status: "completed",
+      commit_sha: commit,
+      created_at: "2025-01-02T00:00:00Z",
+    }];
+    const { result } = renderHook(
+      () => useScanSignal("acme", { branch: "main", enabled: true, current, commit }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.newer?.id).toBe("gitleaks"));
+    expect(result.current.superseded).toBe(false);
+    expect(result.current.latest).toBeNull();
+    const settled = calls.length;
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_100);
+    });
+    expect(calls.length).toBeGreaterThan(settled);
+    expect(result.current.watching).toBe(true);
+  });
+
   it("keeps asking after the stall, at the capped interval", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     reportsAnswer = [{ id: "r1", status: "completed", created_at: "2025-01-01T00:00:00Z" }];

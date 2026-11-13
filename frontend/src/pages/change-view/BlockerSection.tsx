@@ -35,8 +35,8 @@ const BATCH_NOTE_ID = "blocker-waiver-all";
 
 export interface BlockerSectionProps {
   readonly slug: string;
-  /** The report this list comes from, which keeps the reader's ticks apart from a newer scan's. */
-  readonly reportId: string;
+  /** The commit this list comes from, which keeps the reader's ticks apart from a newer change's. */
+  readonly commit: string;
   /** Finding ids that block this change, worst first. */
   readonly ids: readonly string[];
   /** The policy severity floor, in words. */
@@ -61,7 +61,7 @@ export interface BlockerSectionProps {
 export function BlockerSection(
   {
     slug,
-    reportId,
+    commit,
     ids,
     floor,
     permissions,
@@ -76,7 +76,7 @@ export function BlockerSection(
   const found = useBlockerFindings(ids);
   const waivers = useWaivers(slug);
   const { data: me } = useMe();
-  const [handled, setHandled] = useHandledFindings(reportId);
+  const [handled, setHandled] = useHandledFindings(commit);
   // Open entries by key: a finding id for a plain row, the group's key for a group. A group is also
   // open when a member was, so folding rows together does not close what the reader had open.
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(ids.slice(0, 1)));

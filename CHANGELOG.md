@@ -201,6 +201,13 @@ releases.
 
 ### Changed
 
+- The change view judges the whole commit. Every scanner's reports of the commit count together,
+  the verdict the pull-request check gives, so the Trivy step's link and the Gitleaks step's link
+  show the same blockers. A `report` in the link now only picks which CI run the header links to.
+  The header names the scanners it counted, and while a scanner of the commit is still scanning or
+  failed it says so and does not say "Nothing to do here". Another scanner's report of the same
+  commit joins the page instead of ending the watch for the next push, and a page showing an older
+  commit links to the newer one.
 - The change view judges the project gate on the branch of the report it shows, so a pull request
   is no longer measured against the default branch's verdict alone. A change on an older commit says
   that the project gate it shows is the one as of now, not the one at that commit.

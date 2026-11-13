@@ -67,9 +67,11 @@ describe("read-only sample transport", () => {
     expect(reports).toHaveLength(1);
     expect((await apiFetch<Report>(`/api/v1/reports/${reports[0].id}`)).id).toBe(reports[0].id);
   });
-  it("does not invent a gate for an unknown report or a different floor", async () => {
-    await expect(apiFetch(`${root}/gate?introduced_only=true&report_id=missing`)).rejects
+  it("does not invent a gate for an unknown commit or a different floor", async () => {
+    await expect(apiFetch(`${root}/gate?introduced_only=true&commit=missing`)).rejects
       .toMatchObject({ status: 404 });
+    expect(await apiFetch(`${root}/gate?introduced_only=true&commit=${snapshot.commit}`))
+      .toMatchObject({ threshold_breached: true });
     await expect(apiFetch(`${root}/gate?severity=critical`)).rejects.toMatchObject({ status: 404 });
   });
   it("keeps the observer distinct from the requester and denies every management permission", async () => {

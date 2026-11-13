@@ -24,35 +24,39 @@ function gate(overrides: Partial<GateStatus> = {}): GateStatus {
 }
 
 describe("readPrevious", () => {
-  const valid = carryPrevious({ slug: "acme", reportId: "r1", ids: ["f1"] });
+  const OLD = "1111111111111111111111111111111111111111";
+  const NOW = "2222222222222222222222222222222222222222";
+  const valid = carryPrevious({ slug: "acme", commit: OLD, ids: ["f1"] });
 
   it("reads what a blocked page carried", () => {
-    expect(readPrevious(valid, "acme", "r2")).toEqual({
-      slug: "acme",
-      reportId: "r1",
-      ids: ["f1"],
-    });
+    expect(readPrevious(valid, "acme", NOW)).toEqual({ slug: "acme", commit: OLD, ids: ["f1"] });
   });
 
   it.each([
     ["no state", undefined],
     ["a string", "x"],
-    ["another project", carryPrevious({ slug: "other", reportId: "r1", ids: ["f1"] })],
-    ["no ids", carryPrevious({ slug: "acme", reportId: "r1", ids: [] })],
-    ["null ids", { previousBlockers: { slug: "acme", reportId: "r1", ids: null } }],
-    ["a non-string id", { previousBlockers: { slug: "acme", reportId: "r1", ids: [1] } }],
-    ["no report id", { previousBlockers: { slug: "acme", ids: ["f1"] } }],
+    ["another project", carryPrevious({ slug: "other", commit: OLD, ids: ["f1"] })],
+    ["no ids", carryPrevious({ slug: "acme", commit: OLD, ids: [] })],
+    ["null ids", { previousBlockers: { slug: "acme", commit: OLD, ids: null } }],
+    ["a non-string id", { previousBlockers: { slug: "acme", commit: OLD, ids: [1] } }],
+    ["no commit", { previousBlockers: { slug: "acme", ids: ["f1"] } }],
+    ["a report id from before", {
+      previousBlockers: { slug: "acme", reportId: "r1", ids: ["f1"] },
+    }],
+    ["a commit that is not hex", {
+      previousBlockers: { slug: "acme", commit: "../x", ids: ["f1"] },
+    }],
   ])("rejects %s", (_, state) => {
-    expect(readPrevious(state, "acme", "r2")).toBeNull();
+    expect(readPrevious(state, "acme", NOW)).toBeNull();
   });
 
-  it("rejects state naming the report on screen", () => {
-    expect(readPrevious(valid, "acme", "r1")).toBeNull();
+  it("rejects state naming the commit on screen", () => {
+    expect(readPrevious(valid, "acme", OLD)).toBeNull();
   });
 });
 
 describe("judgeCleared", () => {
-  const previous = { slug: "acme", reportId: "r1", ids: ["a", "b"] };
+  const previous = { slug: "acme", commit: "1111111", ids: ["a", "b"] };
 
   it("waits, and gives up, without a gate", () => {
     expect(judgeCleared(previous, undefined, "pending")).toEqual({ kind: "checking" });

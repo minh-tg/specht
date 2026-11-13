@@ -4,15 +4,15 @@ import { waiverBucket, waiverTitle } from "@/pages/project-waivers/classify";
 import type { Finding, GateStatus, Report, Waiver } from "@/types/api";
 
 /**
- * The findings that blocked the scan a reader was looking at, handed to the page of the scan that
- * replaces it. The server keeps no record of what blocked an earlier scan (a gate is always
+ * The findings that blocked the commit a reader was looking at, handed to the page of the commit
+ * that replaces it. The server keeps no record of what blocked an earlier commit (a gate is always
  * evaluated against today's findings), so the only exact list is the one the blocked page showed.
  * It travels in the router's location state and survives a reload.
  */
 export interface PreviousBlockers {
   readonly slug: string;
-  /** The report that blocked. */
-  readonly reportId: string;
+  /** The full SHA of the commit that blocked. */
+  readonly commit: string;
   readonly ids: readonly string[];
 }
 
@@ -25,21 +25,22 @@ export function carryPrevious(previous: PreviousBlockers): { [STATE_KEY]: Previo
 
 /**
  * The blockers a navigation carried, or null. Location state is not trusted: it must have the
- * expected shape, belong to this project, and name another report than the one on screen.
+ * expected shape, belong to this project, and name another commit than the one on screen.
  */
 export function readPrevious(
   state: unknown,
   slug: string,
-  currentReportId: string | undefined,
+  currentCommit: string | undefined,
 ): PreviousBlockers | null {
   if (typeof state !== "object" || state === null) return null;
   const value = (state as Record<string, unknown>)[STATE_KEY];
   if (typeof value !== "object" || value === null) return null;
-  const { slug: from, reportId, ids } = value as Record<string, unknown>;
-  if (from !== slug || typeof reportId !== "string" || reportId === currentReportId) return null;
+  const { slug: from, commit, ids } = value as Record<string, unknown>;
+  if (from !== slug || typeof commit !== "string" || !/^[0-9a-f]{7,64}$/.test(commit)) return null;
+  if (commit === currentCommit) return null;
   if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string")) return null;
   if (ids.length === 0) return null;
-  return { slug, reportId, ids: ids as string[] };
+  return { slug, commit, ids: ids as string[] };
 }
 
 /** How the page answers "did the earlier blockers clear?". */
