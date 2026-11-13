@@ -663,6 +663,10 @@ releases.
 
 ### Security
 
+- The server and adapter are built with Go 1.27.4, which fixes GO-2026-6859: an HTTP/1 server
+  could crash on a data race between `http.MaxBytesReader` and the request headers. Specht wraps
+  request bodies in `MaxBytesReader`, so a client could take the server down. Go 1.27.3 was affected.
+
 - The compose deployment runs the server's queries as `specht_app`, a role with only
   `SELECT`, `INSERT`, `UPDATE` and `DELETE` on the tables and `USAGE` on the sequences.
   Migrations run as `specht`, the owner, through the new `MIGRATE_DATABASE_URL`, which

@@ -10,7 +10,7 @@
     in {
       devShells.${system}.default = pkgs.mkShell {
         packages = with pkgs; [
-          go_1_27 # builds go.mod's toolchain, go 1.27.3
+          go_1_27 # builds go.mod's toolchain, go 1.27.4
           gopls
           gcc13  # cgo (pgx etc.) needs a C compiler on NixOS
           gofumpt
