@@ -11,7 +11,7 @@ RUN CGO_ENABLED=0 go build \
     -ldflags "-X github.com/minh-tg/specht/internal/version.Version=${VERSION} -X github.com/minh-tg/specht/internal/version.Commit=${COMMIT}" \
     -o /bin/adapter ./cmd/adapter
 
-FROM docker.io/library/alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+FROM docker.io/library/alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 # Package policy matches deploy/Dockerfile: see the note there on why Alpine
 # package versions are not hard-pinned. The adapter talks HTTPS to the Specht
 # API and to GitHub, so it needs the CA bundle.
