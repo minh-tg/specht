@@ -499,6 +499,11 @@ releases.
 
 ### Fixed
 
+- The change page reads the commit's verdict again when a scanner that was still processing
+  completes. Before, it kept "Nothing new in this commit blocks this change" after a slow scanner
+  finished with a blocker, until a reload.
+- The change page judges each target of a scanner on its own. A scanner that scans two images of a
+  commit no longer hides a failed or running scan of one image behind a clean scan of the other.
 - A project's only manager can approve their own waiver request with a note. Before, nobody could
   approve it unless a global admin stepped in. The approval is marked self-approved, as a global
   admin's is. Anyone else on the project with manager or admin rights, directly or through a team, or a
