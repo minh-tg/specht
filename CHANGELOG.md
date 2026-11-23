@@ -499,6 +499,10 @@ releases.
 
 ### Fixed
 
+- A rerun of a CI job gets the same exit code as the first run in `changes_only` mode. The server
+  answered `change_report: false` for an identical upload it replayed, so the adapter took the
+  project's report-only verdict and let a branch push that introduced a blocker pass on "Re-run
+  failed jobs".
 - A project's only manager can approve their own waiver request with a note. Before, nobody could
   approve it unless a global admin stepped in. The approval is marked self-approved, as a global
   admin's is. Anyone else on the project with manager or admin rights, directly or through a team, or a

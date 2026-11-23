@@ -483,12 +483,28 @@ func (u *Usecases) replayReport(ctx context.Context, project port.Project, input
 		return nil, err
 	}
 	introduced, preExisting := u.replayCounts(ctx, project.ID, report)
+	reportOnly := u.ingestReportOnly(ctx, project, input)
+	// The first run told the adapter whether this report scans a change, and a rerun must give
+	// the same answer or "Re-run failed jobs" turns a failing change into a passing one. The
+	// stored report knows its branch and base, which is what the first run classified.
+	changeReport := false
+	if reportOnly {
+		stored := input
+		stored.Branch = derefStr(report.Branch)
+		stored.BaseRevision = derefStr(report.BaseRevision)
+		var err error
+		changeReport, err = u.reportIsChange(ctx, project, stored, "")
+		if err != nil {
+			slog.Warn("classify replayed report as a change", "report_id", reportID, "error", err)
+		}
+	}
 	slog.Info("ingest replay", "project", project.ID, "report", reportID, "commit", input.CommitSha)
 	return &IngestReportOutput{
 		ReportID:          reportID,
 		TotalFindings:     reportTotalFindings(report),
 		ThresholdBreached: breached,
-		ReportOnly:        u.ingestReportOnly(ctx, project, input),
+		ReportOnly:        reportOnly,
+		ChangeReport:      changeReport,
 		ScanMode:          report.ScanMode,
 		IntroducedCount:   introduced,
 		PreExistingCount:  preExisting,
