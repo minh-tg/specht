@@ -499,6 +499,11 @@ releases.
 
 ### Fixed
 
+- A change page with a waiver request waiting asks for the waivers and the gate again every 20
+  seconds, so a tab left open learns that a manager approved it. Before, it stayed blocked until a
+  reload or a window focus.
+- A rejected finding in a fix group on the change page shows the reviewer's note. It was on the
+  Waivers tab only, so a developer asked again with the same reason.
 - A project's only manager can approve their own waiver request with a note. Before, nobody could
   approve it unless a global admin stepped in. The approval is marked self-approved, as a global
   admin's is. Anyone else on the project with manager or admin rights, directly or through a team, or a

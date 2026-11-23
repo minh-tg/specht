@@ -1873,6 +1873,27 @@ describe("ChangeView grouping by fix", { timeout: 40_000 }, () => {
       expect(screen.getByText("BLOCKED")).toBeInTheDocument();
     });
 
+    it("shows why a member's waiver was rejected, so the next request can answer it", async () => {
+      setBlockers(lodashBlockers(2));
+      waivers = [
+        {
+          ...pendingWaiver("g0"),
+          status: "rejected",
+          decided_by: "u-kim",
+          decided_by_name: "A. Kim",
+          decision_note: "Needs a fix date before we can accept this.",
+        },
+      ];
+      renderPage();
+      const { entry } = await openGroup();
+
+      expect(entry.getByText("Waiver rejected")).toBeInTheDocument();
+      expect(entry.getByText(/^Note from A\. Kim: Needs a fix date before we can accept this\.$/))
+        .toBeInTheDocument();
+      // A member nobody rejected carries no note.
+      expect(entry.getAllByText(/^Note from/)).toHaveLength(1);
+    });
+
     it("leaves out members already waived or waiting, and says so", async () => {
       setBlockers(lodashBlockers(4));
       waivers = [
@@ -2015,5 +2036,58 @@ describe("ChangeView grouping by fix", { timeout: 40_000 }, () => {
 
     expect(await screen.findByRole("heading", { level: 1 })).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "Blocking findings" })).not.toBeInTheDocument();
+  });
+});
+
+describe("ChangeView with a waiver request waiting", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("learns that the request was approved without a reload, and the verdict follows", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    reports = [report()];
+    signalReports = [report()];
+    changeGate = gate({ blocked_by: ["f1", "f2"], blocking_count: 2 });
+    waivers = [pendingWaiver("f1")];
+    renderPage();
+    await loadedLedger();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "2 findings block this change.",
+    );
+
+    // A manager approves it in another browser: the gate stops counting the finding.
+    waivers = [{ ...pendingWaiver("f1"), status: "approved", expires_at: "2099-01-01T00:00:00Z" }];
+    changeGate = gate({ blocked_by: ["f2"], blocking_count: 1, waived_count: 1 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(21_000);
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+        "1 finding blocks this change.",
+      )
+    );
+  });
+
+  it("does not ask again when no request is waiting", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    reports = [report()];
+    signalReports = [report()];
+    changeGate = gate({ blocked_by: ["f1", "f2"], blocking_count: 2 });
+    waivers = [];
+    renderPage();
+    await loadedLedger();
+    const waiverCalls = () =>
+      vi.mocked(globalThis.fetch).mock.calls.filter(([url]) =>
+        String(url).endsWith("/api/v1/projects/acme/waivers")
+      ).length;
+    const before = waiverCalls();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(41_000);
+    });
+
+    expect(waiverCalls()).toBe(before);
   });
 });
