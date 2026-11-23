@@ -1873,6 +1873,27 @@ describe("ChangeView grouping by fix", { timeout: 40_000 }, () => {
       expect(screen.getByText("BLOCKED")).toBeInTheDocument();
     });
 
+    it("shows why a member's waiver was rejected, so the next request can answer it", async () => {
+      setBlockers(lodashBlockers(2));
+      waivers = [
+        {
+          ...pendingWaiver("g0"),
+          status: "rejected",
+          decided_by: "u-kim",
+          decided_by_name: "A. Kim",
+          decision_note: "Needs a fix date before we can accept this.",
+        },
+      ];
+      renderPage();
+      const { entry } = await openGroup();
+
+      expect(entry.getByText("Waiver rejected")).toBeInTheDocument();
+      expect(entry.getByText(/^Note from A\. Kim: Needs a fix date before we can accept this\.$/))
+        .toBeInTheDocument();
+      // A member nobody rejected carries no note.
+      expect(entry.getAllByText(/^Note from/)).toHaveLength(1);
+    });
+
     it("leaves out members already waived or waiting, and says so", async () => {
       setBlockers(lodashBlockers(4));
       waivers = [

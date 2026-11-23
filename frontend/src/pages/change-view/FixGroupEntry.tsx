@@ -169,6 +169,15 @@ export function FixGroupEntry(
                       {waiverChip(view.kind)}
                     </span>
                   )}
+                  {view?.kind === "rejected" && view.waiver.decision_note && (
+                    // The reviewer wrote why. Without it a developer asks again with the same reason.
+                    <p className="text-muted-foreground basis-full text-meta [overflow-wrap:anywhere]">
+                      {view.waiver.decided_by_name
+                        ? `Note from ${view.waiver.decided_by_name}: `
+                        : "Note from the reviewer: "}
+                      {view.waiver.decision_note}
+                    </p>
+                  )}
                 </li>
               );
             })}
