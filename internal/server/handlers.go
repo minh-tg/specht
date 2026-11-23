@@ -179,6 +179,7 @@ type (
 		IsProjectMember(ctx context.Context, projectID, userID string) (bool, error)
 		ListProjects(ctx context.Context) ([]usecase.ProjectResponse, error)
 		ListProjectSummaries(ctx context.Context) ([]usecase.ProjectSummary, error)
+		GetNeedsYou(ctx context.Context) (*usecase.NeedsYouResponse, error)
 		GetProject(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
 		UpdateProject(ctx context.Context, slug string, name, description, defaultBranch *string) (*usecase.ProjectResponse, error)
 		DeleteProject(ctx context.Context, slug string) (*usecase.ProjectResponse, error)

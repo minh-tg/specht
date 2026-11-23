@@ -239,6 +239,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		}
 
 		r.With(session).Get("/api/v1/me", h.Me)
+		r.With(session).Get("/api/v1/me/needs-you", h.NeedsYou)
 		r.With(h.audited(audit.EventUpdateProfile), session).Put("/api/v1/me", h.UpdateMe)
 		// Changing a password checks the current one, so it is a guessing target
 		// for anyone holding a stolen session. It gets its own login-sized bucket.

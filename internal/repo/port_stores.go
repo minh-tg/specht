@@ -41,6 +41,7 @@ func PortStoresFromRepos(repos *Repos, q *sqlc.Queries) *port.Stores {
 		Admin:           &pgAdminPort{q: q},
 		Identities:      &pgIdentityPort{q: q, withTx: repos.WithTx},
 		SSOCodes:        &pgSSOCodePort{q: q},
+		NeedsYou:        &pgNeedsYouPort{q: q},
 	}
 	stores.Ingest = &pgIngestTransaction{pool: repos.pool, stores: stores}
 	return stores

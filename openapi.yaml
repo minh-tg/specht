@@ -645,6 +645,38 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/SessionRequired" }
 
+  /api/v1/me/needs-you:
+    get:
+      tags: [Profile]
+      operationId: getNeedsYou
+      summary: List what waits on the signed-in person
+      description: |
+        What waits on the caller across the projects they can reach, in four kinds:
+
+        - `waiver_to_decide`: a pending waiver request on a project where the caller may approve or
+          reject. The caller's own request is listed only when nobody else can decide it, the same
+          rule as approving it.
+        - `waiver_ending`: an approved waiver on a project the caller manages that ends within
+          seven days, after which its findings block again.
+        - `finding_assigned`: an open finding assigned to the caller, most severe first.
+        - `request_decided`: the answer to a request the caller made, kept for 14 days.
+
+        There are no read marks. An item stays until its cause is gone or its window has passed.
+        `count` is what a badge shows: the items that ask for action, and answers newer than three
+        days. Each kind lists at most 50 items, and `assigned_findings` is the exact number of
+        assigned findings. Sessions only.
+      x-auth: session
+      security:
+        - sessionAuth: []
+      responses:
+        "200":
+          description: What waits on the caller. `items` is empty, not null, when nothing does.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NeedsYouResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/SessionRequired" }
+
   /api/v1/me/password:
     put:
       tags: [Profile]
@@ -5441,6 +5473,36 @@ components:
         locator: { type: string }
         created_at: { type: string, format: date-time }
 
+    NeedsYouItem:
+      type: object
+      required: [kind, project_slug, project_name, title, at, link]
+      properties:
+        kind:
+          type: string
+          enum: [waiver_to_decide, request_decided, waiver_ending, finding_assigned]
+        project_slug: { type: string }
+        project_name: { type: string }
+        title: { type: string, description: The waiver's name or the finding's title. }
+        status:
+          type: string
+          enum: [approved, rejected, expired]
+          description: How an answered request ended. `expired` is a request that lapsed unanswered. Sent for `request_decided` only.
+        detail: { type: string, description: The request's reason, or the reviewer's note on an answer. }
+        severity: { type: string, description: The finding's severity. Sent for `finding_assigned` only. }
+        at:
+          type: string
+          format: date-time
+          description: When the request was made or answered, when the waiver ends, or when the finding was last seen.
+        link: { type: string, description: The app path that opens the item., example: /payments-api/waivers }
+    NeedsYouResponse:
+      type: object
+      required: [count, items, assigned_findings]
+      properties:
+        count: { type: integer, description: What a badge shows. }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/NeedsYouItem" }
+        assigned_findings: { type: integer, description: The exact number of open findings assigned to the caller. }
     ProjectSummary:
       type: object
       required: [slug, gate, stats]
