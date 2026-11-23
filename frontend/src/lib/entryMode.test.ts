@@ -98,6 +98,13 @@ describe("changeScopeFromSearch", () => {
     expect(changeScopeFromSearch(`?from=list&commit=${SHA}`)).toBeNull();
   });
 
+  it("accepts the severity spelling CI copies from the scanner, as the server does", () => {
+    for (const spelling of ["HIGH,CRITICAL", "High, Critical", " high ,critical "]) {
+      const search = `?from=change&commit=${SHA}&severity=${encodeURIComponent(spelling)}`;
+      expect(changeScopeFromSearch(search)?.severity, spelling).toBe("high,critical");
+    }
+  });
+
   it("refuses a commit or severity the server would refuse", () => {
     expect(changeScopeFromSearch("?from=change&commit=abc%20def")).toBeNull();
     expect(changeScopeFromSearch(`?from=change&commit=${"a".repeat(65)}`)).toBeNull();

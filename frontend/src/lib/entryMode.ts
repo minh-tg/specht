@@ -39,7 +39,9 @@ const SCOPE_PROJECT = "project";
 // The server's commit_sha pattern and length (POST /reports), so a hand-edited link fails here
 // instead of asking the gate for something it refuses.
 const COMMIT_PATTERN = /^[0-9A-Za-z._-]{1,64}$/;
-const SEVERITY_PATTERN = /^[a-z]+(,[a-z]+)*$/;
+// The server trims and lower-cases each label (`policy.LowestListedRank`), and CI passes the
+// scanner's own spelling such as "HIGH,CRITICAL", so the link accepts both.
+const SEVERITY_PATTERN = /^\s*[A-Za-z]+\s*(,\s*[A-Za-z]+\s*)*$/;
 
 /**
  * Marks a path as opened from the change view, keeping its other query params and its hash. With
@@ -71,8 +73,10 @@ export function changeScopeFromSearch(search: string): ChangeScope | null {
   if (params.get(FROM_PARAM) !== FROM_CHANGE) return null;
   const commit = params.get(COMMIT_PARAM);
   if (!commit || !COMMIT_PATTERN.test(commit)) return null;
-  const severity = params.get(SEVERITY_PARAM) || undefined;
-  if (severity && !SEVERITY_PATTERN.test(severity)) return null;
+  const rawSeverity = params.get(SEVERITY_PARAM) || undefined;
+  if (rawSeverity && !SEVERITY_PATTERN.test(rawSeverity)) return null;
+  // One spelling, so "HIGH, CRITICAL" and "high,critical" share a cache entry.
+  const severity = rawSeverity?.split(",").map((label) => label.trim().toLowerCase()).join(",");
   const projectWide = params.get(SCOPE_PARAM) === SCOPE_PROJECT;
   const branch = projectWide ? params.get(BRANCH_PARAM) || undefined : undefined;
   return { commit, projectWide, severity, branch };

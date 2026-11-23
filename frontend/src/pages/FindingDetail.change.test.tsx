@@ -103,6 +103,14 @@ describe("FindingDetail opened from a change's blocker", () => {
     expect(gateQueries).toContain("?branch=feat%2Fx&severity=critical");
   });
 
+  it("judges with the change gate when CI spelled the severity as the scanner does", async () => {
+    renderDetail(`?from=change&commit=${SHA}&severity=${encodeURIComponent("HIGH, CRITICAL")}`);
+
+    expect(await screen.findByText(/Blocks gate/)).toBeInTheDocument();
+    expect(screen.queryByText(/only on an unmerged branch/)).not.toBeInTheDocument();
+    expect(gateQueries).toContain(`?introduced_only=true&commit=${SHA}&severity=high%2Ccritical`);
+  });
+
   it("keeps the project gate for a change link without a commit", async () => {
     renderDetail("?from=change");
     expect(await screen.findByText(/only on an unmerged branch/)).toBeInTheDocument();
