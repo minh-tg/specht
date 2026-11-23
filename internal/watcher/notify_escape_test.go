@@ -38,6 +38,23 @@ func TestBuildSlackPayloadEscapesSlackControlSequences(t *testing.T) {
 	}
 }
 
+// A waiver notice puts the acting person's display name in the message text. Any member sets
+// their own display name, so it must not reach Slack as a mention or a link.
+func TestBuildSlackPayloadEscapesTheHeading(t *testing.T) {
+	raw, err := BuildSlackPayload([]Notification{{
+		Title:   "lodash",
+		Heading: "Waiver requested by <!channel> <https://evil.example/login|Sign in again> & co",
+	}})
+
+	require.NoError(t, err)
+	var got slackPayload
+	require.NoError(t, json.Unmarshal(raw, &got))
+	assert.Equal(t,
+		"Waiver requested by &lt;!channel&gt; &lt;https://evil.example/login|Sign in again&gt; &amp; co",
+		got.Text)
+	assert.NotContains(t, got.Text, "<")
+}
+
 func TestSlackEscapeEscapesAmpersandFirst(t *testing.T) {
 	assert.Equal(t, "&amp;lt; &lt; &gt; &amp;", slackEscape("&lt; < > &"))
 }
