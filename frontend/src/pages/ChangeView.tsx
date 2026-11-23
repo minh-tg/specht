@@ -36,7 +36,7 @@ import {
 import { useEarlierGate } from "@/pages/change-view/useEarlierGate";
 import { type WatchState, WatchStrip } from "@/pages/change-view/WatchStrip";
 import { useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 export { MAX_BLOCKER_ROWS };
@@ -208,6 +208,22 @@ export function ChangeView() {
     : cleared?.kind === "open"
     ? cleared.ids.join(",")
     : "";
+
+  // The server's commit gate counts completed reports only. A report that was processing when the
+  // gate was read is not in that answer, so when one completes the page reads the gate again.
+  const completedKey = (scans?.reports ?? [])
+    .filter((scan) => scan.status === "completed")
+    .map((scan) => scan.id)
+    .sort()
+    .join(",");
+  const seenCompleted = useRef<string | null>(null);
+  useEffect(() => {
+    if (!sha) return;
+    if (seenCompleted.current !== null && seenCompleted.current !== completedKey) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.changeGate(slug, sha) });
+    }
+    seenCompleted.current = completedKey;
+  }, [completedKey, queryClient, sha, slug]);
 
   // Another scanner reported on this commit: read the commit's reports and its verdict again.
   const joinedId = joined?.id;
