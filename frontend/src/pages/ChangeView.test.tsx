@@ -2017,3 +2017,91 @@ describe("ChangeView grouping by fix", { timeout: 40_000 }, () => {
     expect(screen.queryByRole("list", { name: "Blocking findings" })).not.toBeInTheDocument();
   });
 });
+
+describe("ChangeView commit gate freshness", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("reads the commit gate again once a scanner that was processing completes", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const trivy = report({ id: "trivy", tool_name: "trivy" });
+    const semgrepRunning = report({
+      id: "semgrep",
+      tool_name: "semgrep",
+      status: "processing",
+      created_at: "2025-01-01T00:05:00Z",
+    });
+    reports = [trivy, semgrepRunning];
+    signalReports = [semgrepRunning];
+    // The server counts completed reports only, and Trivy found nothing that blocks.
+    changeGate = gate({ threshold_breached: false, blocked_by: [], blocking_count: 0 });
+    renderPage();
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
+      "Nothing blocks this change so far.",
+    );
+
+    // Semgrep finishes, and its finding blocks the commit.
+    const semgrepDone = { ...semgrepRunning, status: "completed" };
+    reports = [trivy, semgrepDone];
+    signalReports = [semgrepDone];
+    changeGate = gate({ blocked_by: ["f1"], blocking_count: 1 });
+    for (let i = 0; i < 2; i++) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_100);
+      });
+    }
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "1 finding blocks this change.",
+    );
+  });
+
+  it("reads the commit gate again once a scanner that joined the page completes", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const trivy = report({ id: "trivy", tool_name: "trivy" });
+    reports = [trivy];
+    signalReports = [trivy];
+    changeGate = gate({ threshold_breached: false, blocked_by: [], blocking_count: 0 });
+    renderPage();
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
+      "Nothing new in this commit blocks this change.",
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_100);
+    });
+
+    // Gitleaks uploads: its report shows as processing while the server ingests it.
+    const leaksRunning = report({
+      id: "leaks",
+      tool_name: "gitleaks",
+      status: "processing",
+      created_at: "2025-01-01T00:05:00Z",
+    });
+    reports = [trivy, leaksRunning];
+    signalReports = [leaksRunning];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_100);
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+        "Nothing blocks this change so far.",
+      )
+    );
+
+    // The ingest finishes, and the leak blocks.
+    const leaksDone = { ...leaksRunning, status: "completed" };
+    reports = [trivy, leaksDone];
+    signalReports = [leaksDone];
+    changeGate = gate({ blocked_by: ["f1"], blocking_count: 1 });
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_100);
+      });
+    }
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "1 finding blocks this change.",
+    );
+  });
+});
