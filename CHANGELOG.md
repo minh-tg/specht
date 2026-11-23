@@ -10,6 +10,11 @@ releases.
 
 ### Added
 
+- A project that was scanned but has no default branch says so in its header: "No default branch is
+  set, so a pull request branch can count toward this verdict", with a link to Settings for a project
+  admin. Without one, a branch whose reports name no base counts toward the project verdict, so the
+  number could include findings only a pull request has, with nothing on the page to explain it. The
+  field in Settings no longer shows a grey `main` that looks like a saved value.
 - `GET /projects/{slug}/gate?introduced_only=true&commit=<sha>` judges a whole commit: the findings
   that every completed report of the commit introduced, whichever scanner sent it. This is the
   verdict of the pull-request check for that commit. A commit with no completed report answers 404

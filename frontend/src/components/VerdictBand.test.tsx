@@ -196,6 +196,53 @@ describe("VerdictBand", () => {
     expect(screen.getByRole("link", { name: "CI setup" })).toHaveAttribute("href", "/alpha/setup");
   });
 
+  describe("without a default branch", () => {
+    const blocked = {
+      gate: { threshold_breached: true, blocking_count: 1, blocked_by: ["a"] },
+      stats: { report_count: 1, total_findings: 1, by_severity: [] },
+    };
+
+    it("tells a project admin that a pull request branch can count, and links Settings", () => {
+      renderBand({ ...blocked, me: { role: "admin" }, project: projectAs("admin") });
+
+      expect(screen.getByText(/No default branch is set/)).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Set the default branch in Settings" }))
+        .toHaveAttribute(
+          "href",
+          "/alpha/settings",
+        );
+    });
+
+    it("tells anyone else who can set it, without a link they could not follow", () => {
+      renderBand({ ...blocked, project: projectAs("member") });
+
+      expect(screen.getByText(/A project admin can set it in Settings\./)).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: /Set the default branch/ })).not
+        .toBeInTheDocument();
+    });
+
+    it("stays quiet once a default branch is set", () => {
+      renderBand({
+        ...blocked,
+        me: { role: "admin" },
+        project: { ...projectAs("admin"), default_branch: "main" },
+      });
+
+      expect(screen.queryByText(/No default branch is set/)).not.toBeInTheDocument();
+    });
+
+    it("stays quiet for a project nothing was scanned in", () => {
+      renderBand({
+        gate: {},
+        stats: { report_count: 0, total_findings: 0, by_severity: [] },
+        me: { role: "admin" },
+        project: projectAs("admin"),
+      });
+
+      expect(screen.queryByText(/No default branch is set/)).not.toBeInTheDocument();
+    });
+  });
+
   it("warns when the latest scan failed", () => {
     renderBand({
       gate: { threshold_breached: false, blocking_count: 0, blocked_by: [] },
