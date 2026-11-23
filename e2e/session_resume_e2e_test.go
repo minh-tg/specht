@@ -117,6 +117,38 @@ func TestE2E_SessionResume(t *testing.T) {
 		require.True(t, cookie.Expires.IsZero())
 	})
 
+	t.Run("a sign-in posted from another site plants no cookie", func(t *testing.T) {
+		body, err := json.Marshal(map[string]string{"email": adminEmail, "password": adminPass})
+		require.NoError(t, err)
+		for name, headers := range map[string]map[string]string{
+			// A form on another site posts text/plain without a preflight.
+			"a plain-text form post":      {"Content-Type": "text/plain", "Origin": "https://evil.example"},
+			"a browser's cross-site mark": {"Content-Type": "application/json", "Sec-Fetch-Site": "cross-site"},
+		} {
+			var resp *http.Response
+			for range 60 {
+				req, err := http.NewRequest(http.MethodPost, baseURL+"/api/v1/auth/login", strings.NewReader(string(body)))
+				require.NoError(t, err)
+				for k, v := range headers {
+					req.Header.Set(k, v)
+				}
+				resp, err = http.DefaultClient.Do(req)
+				require.NoError(t, err)
+				if resp.StatusCode != http.StatusTooManyRequests {
+					break
+				}
+				_ = resp.Body.Close()
+				time.Sleep(500 * time.Millisecond)
+			}
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
+			require.Equal(t, http.StatusOK, resp.StatusCode, name)
+			for _, c := range resp.Cookies() {
+				require.NotEqual(t, "specht_resume", c.Name, "%s must not set the resume cookie", name)
+			}
+		}
+	})
+
 	t.Run("a new tab gets its own working session", func(t *testing.T) {
 		first, cookie := signInWithCookie(t, adminEmail, adminPass)
 		status, tab := resume(t, cookie, true)

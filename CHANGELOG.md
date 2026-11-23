@@ -499,6 +499,11 @@ releases.
 
 ### Fixed
 
+- A page on another site can no longer plant its own resume cookie in a visitor's browser. Sign-in,
+  register, setup, invite accept, refresh, SSO exchange and change password set the cookie only for a
+  request with a JSON content type that the browser does not mark `Sec-Fetch-Site: cross-site`. Before
+  this, a plain-text form post from any site to the login route set it, and the visitor's next new
+  tab signed in as the attacker. The sign-in itself is unchanged.
 - A project's only manager can approve their own waiver request with a note. Before, nobody could
   approve it unless a global admin stepped in. The approval is marked self-approved, as a global
   admin's is. Anyone else on the project with manager or admin rights, directly or through a team, or a
