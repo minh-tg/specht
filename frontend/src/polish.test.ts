@@ -104,7 +104,7 @@ describe("tabular figures", () => {
     ["pages/admin/WatcherHealthSection.tsx", /text-body tabular-nums/],
     ["pages/upload-report/UploadResultCard.tsx", /tabular-nums">\s*\{pluralize/],
     ["pages/change-view/ChangeHero.tsx", /text-meta tabular-nums/],
-    ["components/VerdictBand.tsx", /tabular-nums">\{verdictSentence/],
+    ["components/VerdictBand.tsx", /role="status" className="tabular-nums">/],
   ];
   it.each(sites)("%s sets tabular figures where digits line up", (file, needle) => {
     expect(read(file)).toMatch(needle);

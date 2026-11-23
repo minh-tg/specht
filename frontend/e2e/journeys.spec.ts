@@ -462,6 +462,27 @@ test("the project header gives an honest verdict and links severity counts to th
   await expect(page.getByText("PASSING", { exact: true })).toHaveCount(0);
 });
 
+test("the blocking count opens the list of exactly what blocks the project", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("blocking-list");
+  await seedProject(request, token, slug);
+  // One high finding blocks at the default floor; the medium one does not.
+  await ingestFixture(request, token, slug, FIXTURE_HIGH_MEDIUM);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/findings`);
+  const titles = page.locator("tbody tr a[href*=\"/findings/\"]");
+  await expect(titles).toHaveCount(2);
+
+  await page.getByRole("link", { name: "1 finding blocks this project" }).click();
+  await expect(page).toHaveURL(/blocks_gate=true/);
+  await expect(page.getByRole("combobox", { name: "Filter by gate" })).toHaveText(
+    "Blocks the gate",
+  );
+  await expect(titles).toHaveCount(1);
+  await expect(titles.first()).toHaveText(/Hardcoded credentials/);
+});
+
 test("unknown URLs show a not-found page and a bare project URL opens its findings", async ({ page, request }) => {
   const token = await apiToken(request);
   const slug = uniq("bare-url");

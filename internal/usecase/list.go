@@ -667,6 +667,9 @@ type FindingFilter struct {
 	// BranchScope is "default" for findings that count toward the project
 	// verdict, "change" for those seen only on change branches, empty for both.
 	BranchScope string
+	// BlocksGate keeps the findings the project verdict counts as blocking:
+	// the gate's blocked_by, judged the same way GET /gate judges it.
+	BlocksGate bool
 	// Sort is severity (default), first_seen, last_seen or title. Dir is asc
 	// or desc; empty means desc, except for title where it means asc.
 	Sort string
@@ -703,6 +706,14 @@ func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, filter 
 		Scanners:       query.scanners,
 		SortKey:        query.sortKey,
 		SortDir:        query.sortDir,
+	}
+	if filter.BlocksGate {
+		decision, _, err := u.evaluateBranchGate(ctx, project, 0, "", "")
+		if err != nil {
+			return nil, 0, fmt.Errorf("evaluate gate for the list: %w", err)
+		}
+		scope.OnlyIDs = true
+		scope.IDs = decision.BlockedBy
 	}
 	page := scope
 	page.Limit = limit

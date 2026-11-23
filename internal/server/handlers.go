@@ -860,6 +860,14 @@ func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 	}
 	filter.Search = r.URL.Query().Get("q")
 	filter.BranchScope = r.URL.Query().Get("branch_scope")
+	switch r.URL.Query().Get("blocks_gate") {
+	case "", "false":
+	case "true":
+		filter.BlocksGate = true
+	default:
+		respondError(w, http.StatusBadRequest, "invalid_query", "blocks_gate must be true or false")
+		return
+	}
 	filter.Assignee = r.URL.Query().Get("assignee")
 	if filter.Assignee == "me" {
 		// A key has no person behind it, so it matches nobody's findings. An empty

@@ -115,6 +115,15 @@ export function FindingsFilters(
         ]}
       />
       <SelectField
+        aria-label="Filter by gate"
+        value={filters.blocksGate}
+        onValueChange={(v) => onFilterChange("blocks_gate", v)}
+        options={[
+          { value: "", label: "Blocking or not" },
+          { value: "true", label: "Blocks the gate" },
+        ]}
+      />
+      <SelectField
         aria-label="Filter by branch"
         value={filters.branchScope}
         onValueChange={(v) => onFilterChange("branch_scope", v)}

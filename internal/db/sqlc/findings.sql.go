@@ -424,20 +424,23 @@ WHERE f.project_id = $1
   AND (array_length($11::text[], 1) IS NULL OR EXISTS (
     SELECT 1 FROM finding_occurrences so
     WHERE so.finding_id = f.id AND so.tool_name = ANY($11::text[])))
+  AND (NOT $12::boolean OR f.id = ANY($13::uuid[]))
 `
 
 type CountFindingsByProjectParams struct {
-	ProjectID      pgtype.UUID `json:"project_id"`
-	Column2        []string    `json:"column_2"`
-	Column3        []string    `json:"column_3"`
-	Column4        []string    `json:"column_4"`
-	Column5        []string    `json:"column_5"`
-	Column6        []string    `json:"column_6"`
-	AnalysisStates []string    `json:"analysis_states"`
-	Search         string      `json:"search"`
-	BranchScope    string      `json:"branch_scope"`
-	AssigneeID     pgtype.UUID `json:"assignee_id"`
-	Scanners       []string    `json:"scanners"`
+	ProjectID      pgtype.UUID   `json:"project_id"`
+	Column2        []string      `json:"column_2"`
+	Column3        []string      `json:"column_3"`
+	Column4        []string      `json:"column_4"`
+	Column5        []string      `json:"column_5"`
+	Column6        []string      `json:"column_6"`
+	AnalysisStates []string      `json:"analysis_states"`
+	Search         string        `json:"search"`
+	BranchScope    string        `json:"branch_scope"`
+	AssigneeID     pgtype.UUID   `json:"assignee_id"`
+	Scanners       []string      `json:"scanners"`
+	ByIds          bool          `json:"by_ids"`
+	Ids            []pgtype.UUID `json:"ids"`
 }
 
 // The same filter predicates as ListFindingsByProject, without the page
@@ -456,6 +459,8 @@ func (q *Queries) CountFindingsByProject(ctx context.Context, arg CountFindingsB
 		arg.BranchScope,
 		arg.AssigneeID,
 		arg.Scanners,
+		arg.ByIds,
+		arg.Ids,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -1566,35 +1571,38 @@ WHERE f.project_id = $1
   AND (array_length($13::text[], 1) IS NULL OR EXISTS (
     SELECT 1 FROM finding_occurrences so
     WHERE so.finding_id = f.id AND so.tool_name = ANY($13::text[])))
+  AND (NOT $14::boolean OR f.id = ANY($15::uuid[]))
 ORDER BY
-  CASE WHEN $14::text = 'severity' AND $15::text = 'desc' THEN f.current_severity_rank END DESC,
-  CASE WHEN $14::text = 'severity' AND $15::text = 'asc' THEN f.current_severity_rank END ASC,
-  CASE WHEN $14::text = 'first_seen' AND $15::text = 'desc' THEN f.first_seen_at END DESC,
-  CASE WHEN $14::text = 'first_seen' AND $15::text = 'asc' THEN f.first_seen_at END ASC,
-  CASE WHEN $14::text = 'last_seen' AND $15::text = 'desc' THEN f.last_seen_at END DESC,
-  CASE WHEN $14::text = 'last_seen' AND $15::text = 'asc' THEN f.last_seen_at END ASC,
-  CASE WHEN $14::text = 'title' AND $15::text = 'desc' THEN lower(f.current_title) END DESC,
-  CASE WHEN $14::text = 'title' AND $15::text = 'asc' THEN lower(f.current_title) END ASC,
+  CASE WHEN $16::text = 'severity' AND $17::text = 'desc' THEN f.current_severity_rank END DESC,
+  CASE WHEN $16::text = 'severity' AND $17::text = 'asc' THEN f.current_severity_rank END ASC,
+  CASE WHEN $16::text = 'first_seen' AND $17::text = 'desc' THEN f.first_seen_at END DESC,
+  CASE WHEN $16::text = 'first_seen' AND $17::text = 'asc' THEN f.first_seen_at END ASC,
+  CASE WHEN $16::text = 'last_seen' AND $17::text = 'desc' THEN f.last_seen_at END DESC,
+  CASE WHEN $16::text = 'last_seen' AND $17::text = 'asc' THEN f.last_seen_at END ASC,
+  CASE WHEN $16::text = 'title' AND $17::text = 'desc' THEN lower(f.current_title) END DESC,
+  CASE WHEN $16::text = 'title' AND $17::text = 'asc' THEN lower(f.current_title) END ASC,
   f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 LIMIT $7 OFFSET $8
 `
 
 type ListFindingsByProjectParams struct {
-	ProjectID      pgtype.UUID `json:"project_id"`
-	Column2        []string    `json:"column_2"`
-	Column3        []string    `json:"column_3"`
-	Column4        []string    `json:"column_4"`
-	Column5        []string    `json:"column_5"`
-	Column6        []string    `json:"column_6"`
-	Limit          int32       `json:"limit"`
-	Offset         int32       `json:"offset"`
-	AnalysisStates []string    `json:"analysis_states"`
-	Search         string      `json:"search"`
-	BranchScope    string      `json:"branch_scope"`
-	AssigneeID     pgtype.UUID `json:"assignee_id"`
-	Scanners       []string    `json:"scanners"`
-	SortKey        string      `json:"sort_key"`
-	SortDir        string      `json:"sort_dir"`
+	ProjectID      pgtype.UUID   `json:"project_id"`
+	Column2        []string      `json:"column_2"`
+	Column3        []string      `json:"column_3"`
+	Column4        []string      `json:"column_4"`
+	Column5        []string      `json:"column_5"`
+	Column6        []string      `json:"column_6"`
+	Limit          int32         `json:"limit"`
+	Offset         int32         `json:"offset"`
+	AnalysisStates []string      `json:"analysis_states"`
+	Search         string        `json:"search"`
+	BranchScope    string        `json:"branch_scope"`
+	AssigneeID     pgtype.UUID   `json:"assignee_id"`
+	Scanners       []string      `json:"scanners"`
+	ByIds          bool          `json:"by_ids"`
+	Ids            []pgtype.UUID `json:"ids"`
+	SortKey        string        `json:"sort_key"`
+	SortDir        string        `json:"sort_dir"`
 }
 
 // search is a LIKE pattern the caller has escaped; sort_key and sort_dir are
@@ -1614,6 +1622,8 @@ func (q *Queries) ListFindingsByProject(ctx context.Context, arg ListFindingsByP
 		arg.BranchScope,
 		arg.AssigneeID,
 		arg.Scanners,
+		arg.ByIds,
+		arg.Ids,
 		arg.SortKey,
 		arg.SortDir,
 	)

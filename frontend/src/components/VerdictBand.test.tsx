@@ -112,7 +112,10 @@ describe("VerdictBand", () => {
       stats: { report_count: 4, total_findings: 3, by_severity: [] },
     });
 
-    expect(screen.getByText("3 findings block this project")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "3 findings block this project" })).toHaveAttribute(
+      "href",
+      "/alpha/findings?blocks_gate=true",
+    );
     expect(screen.getByText("BLOCKED")).toBeInTheDocument();
     expect(screen.getByText("· 2 waived")).toBeInTheDocument();
   });
@@ -133,6 +136,8 @@ describe("VerdictBand", () => {
     });
 
     expect(screen.getByText("Nothing blocks this project")).toBeInTheDocument();
+    // Nothing to list, so the sentence is plain text.
+    expect(screen.queryByRole("link", { name: /blocks this project/ })).not.toBeInTheDocument();
     expect(screen.getByText("PASSING")).toBeInTheDocument();
     expect(screen.queryByText(/waived/)).not.toBeInTheDocument();
   });

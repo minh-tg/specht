@@ -55,6 +55,8 @@ export interface FindingsQuery {
   assignee?: string;
   /** Comma list of scanner names; keeps the findings a report of one of them observed. */
   scanner?: string;
+  /** Keeps the findings the project verdict counts as blocking. */
+  blocksGate?: boolean;
   /** Text matched against the title and the fingerprint. */
   q?: string;
   sort?: FindingSort;
@@ -382,6 +384,7 @@ export function findingsQueryOptions(projectSlug: string, filters: FindingsQuery
       if (filters.branchScope) params.set("branch_scope", filters.branchScope);
       if (filters.assignee) params.set("assignee", filters.assignee);
       if (filters.scanner) params.set("scanner", filters.scanner);
+      if (filters.blocksGate) params.set("blocks_gate", "true");
       if (filters.sort) params.set("sort", filters.sort);
       if (filters.dir) params.set("dir", filters.dir);
       if (filters.offset != null) params.set("offset", String(filters.offset));

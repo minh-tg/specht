@@ -5501,6 +5501,8 @@ export interface operations {
         assignee?: string;
         /** @description Comma list of scanner names, as reports are stored under (`tool_name`). Keeps the findings a report of one of them observed. Matched in lower case, at most 32 names. */
         scanner?: string;
+        /** @description `true` keeps the findings the project verdict counts as blocking, the `blocked_by` of `GET /projects/{slug}/gate` with no parameters. The other filters still apply. */
+        blocks_gate?: boolean;
         /** @description `default` keeps findings that count toward the project verdict. `change` keeps those seen only on change branches, which the verdict leaves out. Absent keeps both. */
         branch_scope?: "default" | "change";
         /** @description Text to find in the title or the fingerprint, which carries the CVE id and package for dependency findings. Case-insensitive, matched literally, at most 100 characters. */

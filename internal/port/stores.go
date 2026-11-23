@@ -1046,6 +1046,10 @@ type ListFindingsParams struct {
 	AssigneeID string
 	// Scanners keeps the findings a report of one of these scanners observed.
 	Scanners []string
+	// OnlyIDs keeps the findings whose id is in IDs, so an empty IDs keeps
+	// none. False ignores IDs.
+	OnlyIDs bool
+	IDs     []string
 	// BranchScope is "default" for findings that count toward the verdict,
 	// "change" for those seen only on change branches, empty for both.
 	BranchScope string

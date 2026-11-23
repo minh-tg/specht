@@ -31,6 +31,10 @@ type UpsertFindingParams struct {
 }
 
 func (r *pgFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UUID, params port.ListFindingsParams) ([]sqlc.Finding, error) {
+	ids, err := findingIDParams(params.IDs)
+	if err != nil {
+		return nil, err
+	}
 	return r.q.ListFindingsByProject(ctx, sqlc.ListFindingsByProjectParams{
 		ProjectID: projectID,
 		Column2:   params.Severities,
@@ -46,6 +50,8 @@ func (r *pgFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UUID
 		BranchScope:    params.BranchScope,
 		AssigneeID:     optionalUUIDParam(params.AssigneeID),
 		Scanners:       params.Scanners,
+		ByIds:          params.OnlyIDs,
+		Ids:            ids,
 		SortKey:        orDefault(params.SortKey, "severity"),
 		SortDir:        orDefault(params.SortDir, "desc"),
 	})
@@ -54,6 +60,10 @@ func (r *pgFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UUID
 // CountByProject counts the findings the same filters select, ignoring the
 // page window: the total a client needs to render "n of m".
 func (r *pgFindingRepo) CountByProject(ctx context.Context, projectID pgtype.UUID, params port.ListFindingsParams) (int64, error) {
+	ids, err := findingIDParams(params.IDs)
+	if err != nil {
+		return 0, err
+	}
 	return r.q.CountFindingsByProject(ctx, sqlc.CountFindingsByProjectParams{
 		ProjectID: projectID,
 		Column2:   params.Severities,
@@ -67,7 +77,23 @@ func (r *pgFindingRepo) CountByProject(ctx context.Context, projectID pgtype.UUI
 		BranchScope:    params.BranchScope,
 		AssigneeID:     optionalUUIDParam(params.AssigneeID),
 		Scanners:       params.Scanners,
+		ByIds:          params.OnlyIDs,
+		Ids:            ids,
 	})
+}
+
+// findingIDParams parses the id filter. The use case fills it from server
+// state, so an id that does not parse is a bug, not bad input.
+func findingIDParams(ids []string) ([]pgtype.UUID, error) {
+	out := make([]pgtype.UUID, 0, len(ids))
+	for _, id := range ids {
+		parsed, err := parseID(id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, parsed)
+	}
+	return out, nil
 }
 
 // optionalUUIDParam reads an id the use case already validated. Empty means no filter.
