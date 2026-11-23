@@ -499,6 +499,9 @@ releases.
 
 ### Fixed
 
+- The finding page no longer draws a second rule under its header, which read as an empty tab
+  strip, and the fingerprint in the side list breaks after `:`, `/`, `|` and `@` instead of in the
+  middle of a word such as `npm`.
 - A project's only manager can approve their own waiver request with a note. Before, nobody could
   approve it unless a global admin stepped in. The approval is marked self-approved, as a global
   admin's is. Anyone else on the project with manager or admin rights, directly or through a team, or a

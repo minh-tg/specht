@@ -43,6 +43,12 @@ import { VerifyFixSection } from "./finding-detail/VerifyFixSection";
 import { WaiverControl } from "./finding-detail/WaiverControl";
 import { WhereItOccurs } from "./finding-detail/WhereItOccurs";
 
+/**
+ * The header ends in the page rule, so the block right under it draws no hairline of its own. Two
+ * rules 30px apart read as an empty tab strip.
+ */
+const UNDER_PAGE_RULE = "[&>:first-child]:border-t-0 [&>:first-child]:pt-0";
+
 /** Where "Back to findings" goes: the list page the user came from, if known. */
 function backToFindingsPath(slug: string, state: unknown): string {
   return `/${slug}/findings${findingsListSearch(state) ?? ""}`;
@@ -243,7 +249,7 @@ export function FindingDetail() {
 
       {mode === "unblock" || cannotDecide
         ? (
-          <div className="mt-2 max-w-3xl">
+          <div className={`mt-2 max-w-3xl ${UNDER_PAGE_RULE}`}>
             <FixFirst finding={finding} />
 
             <WhereItOccurs finding={finding} />
@@ -272,7 +278,7 @@ export function FindingDetail() {
         )
         : (
           <div className="mt-2 grid gap-x-10 lg:grid-cols-[minmax(0,1fr)_17rem]">
-            <div className="min-w-0">
+            <div className={`min-w-0 ${UNDER_PAGE_RULE}`}>
               {decideSection}
 
               <HowToFix finding={finding} />
@@ -297,7 +303,10 @@ export function FindingDetail() {
               </DetailsDisclosure>
             </div>
 
-            <aside aria-label="About this finding" className="mt-8 grid content-start gap-5">
+            <aside
+              aria-label="About this finding"
+              className={`mt-8 grid content-start gap-5 ${UNDER_PAGE_RULE}`}
+            >
               <AssigneeControl finding={shown} slug={slug ?? ""} />
               <MetadataGrid finding={shown} />
             </aside>

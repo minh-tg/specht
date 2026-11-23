@@ -53,3 +53,14 @@ describe("MetadataGrid score", () => {
     expect(screen.queryByText("Highest score")).not.toBeInTheDocument();
   });
 });
+
+describe("MetadataGrid fingerprint", () => {
+  it("shows the fingerprint whole, with break chances only between its parts", () => {
+    render(<MetadataGrid finding={{ ...finding(undefined), fingerprint: "CVE-1:pkg:npm/a@1" }} />);
+    const value = screen.getByText("Fingerprint").nextElementSibling;
+    expect(value?.textContent).toBe("CVE-1:pkg:npm/a@1");
+    expect(value?.querySelectorAll("wbr")).toHaveLength(4);
+    // break-all would cut inside "npm" whatever the break chances say.
+    expect(value?.className).not.toContain("break-all");
+  });
+});

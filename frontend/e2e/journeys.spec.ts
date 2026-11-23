@@ -212,6 +212,13 @@ test("finding detail triage applies states and enforces reasons", async ({ page,
   await page.locator("tbody tr").filter({ hasText: HIGH_TITLE }).click();
   await expect(page).toHaveURL(new RegExp(`/${slug}/findings/`));
   await expect(page.getByRole("group", { name: "What is this finding?" })).toBeVisible();
+  // The header ends in the page rule; the blocks under it draw no second rule of their own.
+  const firstBorders = await page.locator("header + div").evaluate((grid) =>
+    [...grid.querySelectorAll(":scope > div, :scope > aside")].map((column) =>
+      getComputedStyle(column.firstElementChild as Element).borderTopWidth
+    )
+  );
+  expect(firstBorders).toEqual(["0px", "0px"]);
 
   const save = page.getByRole("button", { name: "Save decision" });
 

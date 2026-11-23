@@ -19,7 +19,11 @@ export function hasDetails(rows: readonly DetailRow[]): boolean {
 }
 
 function valueClass(code: boolean | undefined): string {
-  return code ? "m-0 font-mono text-code break-all" : "m-0 font-medium tabular-nums";
+  // anywhere, not break-all: a value breaks where it allows (after a "/", or a <wbr>) and is cut
+  // inside a word only when one part is wider than the column.
+  return code
+    ? "m-0 font-mono text-code [overflow-wrap:anywhere]"
+    : "m-0 font-medium tabular-nums";
 }
 
 /**
