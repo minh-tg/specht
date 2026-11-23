@@ -2105,3 +2105,48 @@ describe("ChangeView commit gate freshness", () => {
     );
   });
 });
+
+describe("ChangeView with one scanner scanning several targets", () => {
+  it("does not call the commit done while another target's scan is still processing", async () => {
+    // Trivy scans two images of the commit; the older one is still being ingested.
+    reports = [
+      report({
+        id: "img-api",
+        tool_name: "trivy",
+        scan_target: "acme/api:sha",
+        status: "processing",
+      }),
+      report({
+        id: "img-web",
+        tool_name: "trivy",
+        scan_target: "acme/web:sha",
+        created_at: "2025-01-01T00:01:00Z",
+      }),
+    ];
+    changeGate = gate({ threshold_breached: false, blocked_by: [], blocking_count: 0 });
+    renderPage();
+
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
+      "Nothing blocks this change so far.",
+    );
+    expect(document.body).not.toHaveTextContent(/Nothing to do here/);
+  });
+
+  it("names a failed target scan although a later target of the scanner passed", async () => {
+    reports = [
+      report({ id: "img-api", tool_name: "trivy", scan_target: "acme/api:sha", status: "failed" }),
+      report({
+        id: "img-web",
+        tool_name: "trivy",
+        scan_target: "acme/web:sha",
+        created_at: "2025-01-01T00:01:00Z",
+      }),
+    ];
+    changeGate = gate({ threshold_breached: false, blocked_by: [], blocking_count: 0 });
+    renderPage();
+
+    await screen.findByRole("heading", { level: 1 });
+    expect(document.body).not.toHaveTextContent(/Nothing to do here/);
+    expect(document.body).toHaveTextContent(/failed/i);
+  });
+});

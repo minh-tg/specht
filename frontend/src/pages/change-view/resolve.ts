@@ -23,9 +23,9 @@ export interface CommitScans {
   readonly latest: readonly Report[];
   /** At least one report completed, so the commit has a verdict. */
   readonly judged: boolean;
-  /** Scanners whose newest report of the commit is still being processed. */
+  /** Scanners with a scan of the commit still being processed, one scan per target. */
   readonly running: readonly string[];
-  /** Scanners whose newest report of the commit failed. Their findings are not counted. */
+  /** Scanners with a scan of the commit that failed, one scan per target. Their findings are not counted. */
   readonly failed: readonly string[];
 }
 
@@ -56,8 +56,17 @@ export function commitScans(
   const latest = [...byScanner.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([, report]) => report);
+  // A scanner can scan several targets of one commit, such as two images. Each target is judged by
+  // its own newest report, so a failed or running scan of one target is not hidden by a clean
+  // scan of another.
+  const byTarget = new Map<string, Report>();
+  for (const report of own) {
+    const key = `${reportToolLabel(report)}\u0000${report.scan_target ?? ""}`;
+    if (!byTarget.has(key)) byTarget.set(key, report);
+  }
   const names = (keep: (report: Report) => boolean) =>
-    latest.filter(keep).map((report) => reportToolLabel(report));
+    [...new Set([...byTarget.values()].filter(keep).map((report) => reportToolLabel(report)))]
+      .sort((a, b) => a.localeCompare(b));
 
   return {
     sha,

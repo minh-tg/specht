@@ -41,6 +41,38 @@ describe("commitScans", () => {
     expect(commitScans([target], "abcdef1")?.sha).toBe(FULL_SHA);
   });
 
+  it("judges each target of one scanner by its own newest report", () => {
+    const apiFailed = report({
+      id: "api",
+      scan_target: "acme/api:sha",
+      status: "failed",
+      created_at: "2025-01-01T00:00:00Z",
+    });
+    const webDone = report({
+      id: "web",
+      scan_target: "acme/web:sha",
+      created_at: "2025-01-01T00:01:00Z",
+    });
+    const dbRunning = report({
+      id: "db",
+      scan_target: "acme/db:sha",
+      status: "processing",
+      created_at: "2025-01-01T00:02:00Z",
+    });
+
+    const scans = commitScans([webDone, apiFailed, dbRunning], FULL_SHA);
+
+    expect(scans?.failed).toEqual(["trivy"]);
+    expect(scans?.running).toEqual(["trivy"]);
+    // A later clean scan of the same target replaces its failure.
+    const apiRetried = report({
+      id: "api2",
+      scan_target: "acme/api:sha",
+      created_at: "2025-01-01T00:03:00Z",
+    });
+    expect(commitScans([webDone, apiFailed, apiRetried], FULL_SHA)?.failed).toEqual([]);
+  });
+
   it("matches the commit case-insensitively and gives the SHA in lower case", () => {
     const target = report({ id: "r1", commit_sha: FULL_SHA.toUpperCase() });
 
