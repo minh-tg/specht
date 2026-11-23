@@ -132,6 +132,12 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusUnauthorized, "refresh_reused", "refresh token was already used")
 			return
 		}
+		if errors.Is(err, usecase.ErrRefreshAccountDisabled) {
+			// Not a replay: an admin turned the account off, which ended every sign-in. The
+			// holder of the token is told, so the page says so instead of blaming a stolen token.
+			respondError(w, http.StatusUnauthorized, "account_disabled", "this account was deactivated")
+			return
+		}
 		slog.Error("refresh", "error", err)
 		respondError(w, http.StatusUnauthorized, "refresh_failed", "invalid or expired refresh token")
 		return

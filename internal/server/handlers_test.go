@@ -3172,6 +3172,21 @@ func TestRefresh_ReusedTokenHasItsOwnCode(t *testing.T) {
 
 // ----- SSO Exchange Handler Tests -----
 
+func TestRefresh_ADeactivatedAccountHasItsOwnCode(t *testing.T) {
+	h := &Handler{usecase: &mockUsecases{
+		refreshFn: func(context.Context, string) (*usecase.AuthResponse, error) {
+			return nil, fmt.Errorf("revoked: %w", usecase.ErrRefreshAccountDisabled)
+		},
+	}}
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", strings.NewReader(`{"refresh_token":"r"}`))
+	h.Refresh(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Contains(t, w.Body.String(), `"account_disabled"`)
+	assert.NotContains(t, w.Body.String(), "refresh_reused")
+}
+
 func TestSSOExchange_Success(t *testing.T) {
 	mock := &mockUsecases{
 		exchangeSSOCodeFn: func(ctx context.Context, code string, presented []auth.PresentedLogin) (*usecase.AuthResponse, auth.PresentedLogin, error) {

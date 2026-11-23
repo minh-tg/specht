@@ -739,6 +739,12 @@ func (u *Usecases) RevokeAPIKey(ctx context.Context, projectSlug, keyID string) 
 // the client can tell the user the session ended.
 var ErrRefreshReused = errors.New("refresh token was already used")
 
+// ErrRefreshAccountDisabled is returned when a revoked refresh token belongs to an account an admin
+// deactivated. Deactivating revokes every sign-in, so the next refresh of a signed-in tab is a
+// revoked token, and it must not be taken for a stolen one: the person did nothing wrong and needs
+// to be told the account is off.
+var ErrRefreshAccountDisabled = errors.New("account is deactivated")
+
 const (
 	// refreshReuseGrace is how long after rotation a replay of the old token
 	// is still answered as a benign race and leaves the session alone. It is
@@ -851,6 +857,9 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 
 	now := u.clock()
 	if stored.RevokedAt != nil {
+		if u.accountDisabled(ctx, stored.UserID) {
+			return nil, ErrRefreshAccountDisabled
+		}
 		return nil, u.refuseReuse(ctx, stored, *stored.RevokedAt)
 	}
 
@@ -904,6 +913,13 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 	}
 	resp.Token = token
 	return resp, nil
+}
+
+// accountDisabled reports whether an admin deactivated the account. A read that fails says no, so a
+// store error is treated as the replay it would have been before.
+func (u *Usecases) accountDisabled(ctx context.Context, userID string) bool {
+	user, err := u.deps.Stores.Users.GetByID(ctx, userID)
+	return err == nil && user.DisabledAt != nil
 }
 
 // refuseReuse handles a refresh token that was spent at rotatedAt and is
