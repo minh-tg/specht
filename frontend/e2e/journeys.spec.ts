@@ -462,6 +462,26 @@ test("the project header gives an honest verdict and links severity counts to th
   await expect(page.getByText("PASSING", { exact: true })).toHaveCount(0);
 });
 
+test("a scanned project with no default branch says so, and setting one clears the notice", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("no-default-branch");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/findings`);
+  await expect(page.getByText(/No default branch is set/)).toBeVisible();
+  await page.getByRole("link", { name: "Set the default branch in Settings" }).click();
+  await expect(page).toHaveURL(new RegExp(`/${slug}/settings$`));
+  await page.getByLabel("Default branch").fill("main");
+  await page.getByRole("button", { name: /^Save/ }).click();
+  await expect(page.getByText("Project saved")).toBeVisible();
+
+  await page.goto(`/${slug}/findings`);
+  await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
+  await expect(page.getByText(/No default branch is set/)).toHaveCount(0);
+});
+
 test("unknown URLs show a not-found page and a bare project URL opens its findings", async ({ page, request }) => {
   const token = await apiToken(request);
   const slug = uniq("bare-url");

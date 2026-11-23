@@ -48,7 +48,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
   const gateQuery = useGateStatus(slug, undefined, { refetchInterval: POLL_MS });
   const statsQuery = useProjectStats(slug, { refetchInterval: POLL_MS });
   const { data: project } = useProject(slug);
-  const { canUploadReports, isLoading: roleLoading } = useProjectRole(slug);
+  const { canUploadReports, isAdmin, isLoading: roleLoading } = useProjectRole(slug);
 
   const gate = gateQuery.data;
   const stats = statsQuery.data;
@@ -62,6 +62,10 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
   const unrated = gate?.unrated_count ?? 0;
   const onlyOnChangeBranches = stats?.only_on_change_branches_count ?? 0;
   const policy = gate?.policy;
+  // Without a default branch, a branch whose reports name no base counts toward this verdict, so
+  // the number can include findings only a pull request has. Say so once something was scanned.
+  const noDefaultBranch = project !== undefined && !project.default_branch?.trim()
+    && verdict !== "no_scans" && verdict !== "unknown";
 
   // A failed request never delivers data, so `unknown` must not animate a
   // skeleton forever: an errored, still-empty query is the error state.
@@ -195,6 +199,18 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
           , so the gate does not judge {unrated === 1 ? "it" : "them"}. Review{" "}
           {unrated === 1 ? "it" : "them"}, or block {unrated === 1 ? "it" : "them"} in{" "}
           <Link to={`/${slug}/policy`} className={INLINE_LINK}>Policy</Link>.
+        </p>
+      )}
+
+      {noDefaultBranch && (
+        <p className="text-sev-medium-fg mt-1 text-body">
+          No default branch is set, so a pull request branch can count toward this verdict. {isAdmin
+            ? (
+              <Link to={`/${slug}/settings`} className={INLINE_LINK}>
+                Set the default branch in Settings
+              </Link>
+            )
+            : "A project admin can set it in Settings."}
         </p>
       )}
 

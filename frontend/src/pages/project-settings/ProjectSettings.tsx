@@ -127,7 +127,7 @@ function DetailsForm({ project }: { project: Project; }) {
           <Input
             id="settings-default-branch"
             value={defaultBranch}
-            placeholder="main"
+            placeholder="For example main"
             maxLength={255}
             autoComplete="off"
             spellCheck={false}
