@@ -499,6 +499,11 @@ releases.
 
 ### Fixed
 
+- A person whose account an admin deactivated is told so. The next request of a tab that was open
+  reads a revoked sign-in, which the server took for a replayed token, so the sign-in page said the
+  token "was used twice" and to change the password. `POST /auth/refresh` now answers
+  `account_disabled`, and the page says an administrator deactivated the account. A sign-in revoked
+  for another reason, such as a password change on another device, still reads as a replay.
 - A project's only manager can approve their own waiver request with a note. Before, nobody could
   approve it unless a global admin stepped in. The approval is marked self-approved, as a global
   admin's is. Anyone else on the project with manager or admin rights, directly or through a team, or a

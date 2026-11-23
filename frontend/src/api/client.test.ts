@@ -500,6 +500,28 @@ describe("concurrent 401 handling", () => {
   });
 });
 
+describe("a refresh token of a deactivated account", () => {
+  it("signs the user out saying the account was deactivated, not that a token was reused", async () => {
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const body = String(input) === "/api/v1/auth/refresh"
+        ? { error: { code: "account_disabled", message: "this account was deactivated" } }
+        : { error: { code: "unauthorized", message: "expired" } };
+      return Promise.resolve(responseWithHeaders(body, {}, 401));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const location = { pathname: "/projects/p1", search: "", href: "" };
+    vi.stubGlobal("location", location);
+    setStoredSession("access-1", "refresh-1", { userId: "u1", email: "a@b.c" });
+
+    await expect(apiFetch("/api/v1/projects")).rejects.toMatchObject({ code: "account_disabled" });
+
+    expect(getStoredSession()).toBeNull();
+    expect(location.href).toBe(
+      `/login?redirect=${encodeURIComponent("/projects/p1")}&reason=account_disabled`,
+    );
+  });
+});
+
 describe("a reused refresh token", () => {
   function reusedServer() {
     const refreshBodies: string[] = [];
