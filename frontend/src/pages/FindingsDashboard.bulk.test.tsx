@@ -206,7 +206,9 @@ describe("the findings list's selection and bulk actions", () => {
 
     await user.type(within(dialog).getByLabelText("Reason"), "Behind the VPN until the migration");
     expect(apply).toBeDisabled();
-    await user.type(within(dialog).getByLabelText("Review again on"), "2026-12-31");
+    // A date in the future whenever the test runs: the form refuses a review date already past.
+    const year = new Date().getFullYear() + 1;
+    await user.type(within(dialog).getByLabelText("Review again on"), `${year}-12-31`);
     expect(apply).toBeEnabled();
 
     await user.click(apply);
@@ -214,7 +216,7 @@ describe("the findings list's selection and bulk actions", () => {
     const body = JSON.parse(post?.body ?? "{}");
     expect(body.analysis_state).toBe("accepted_risk");
     expect(body.reason).toBe("Behind the VPN until the migration");
-    expect(body.analysis_expires_at).toBe(new Date(2026, 11, 31, 23, 59, 59, 999).toISOString());
+    expect(body.analysis_expires_at).toBe(new Date(year, 11, 31, 23, 59, 59, 999).toISOString());
   });
 
   it("keeps the selection and says why when the server refuses the whole batch", async () => {
