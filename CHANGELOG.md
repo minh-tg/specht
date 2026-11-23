@@ -10,6 +10,10 @@ releases.
 
 ### Added
 
+- A "Needs you" page and a link with a number in the navigation. The page groups what waits on the
+  person: waiver requests to decide, waivers about to end, findings assigned to them, and the
+  answers to requests they made. The number is the items that ask for action. Before this, nobody
+  learned a waiver request existed unless they opened that project's Waivers tab.
 - `GET /api/v1/me/needs-you` lists what waits on the signed-in person across their projects:
   waiver requests they may decide (their own only when nobody else can, as with approving), the
   answers to requests they made for 14 days, approved waivers on projects they manage that end

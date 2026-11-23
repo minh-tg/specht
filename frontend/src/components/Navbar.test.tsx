@@ -36,8 +36,10 @@ let meSettled: boolean;
 let mePending: boolean;
 let capabilitiesMode: "open" | "closed" | "pending" | "error";
 let capabilitiesCalls: string[];
+let needsYouCount: number;
 
 beforeEach(() => {
+  needsYouCount = 0;
   meCalls = [];
   meRole = "admin";
   meSettled = false;
@@ -64,6 +66,9 @@ beforeEach(() => {
       });
     }
     if (url.endsWith("/api/v1/projects")) return jsonResponse([]);
+    if (url.endsWith("/api/v1/me/needs-you")) {
+      return jsonResponse({ count: needsYouCount, items: [], assigned_findings: 0 });
+    }
     if (url.includes("/api/v1/me")) {
       meCalls.push(url);
       if (mePending) {
@@ -250,6 +255,7 @@ describe("Navbar", () => {
       expect.stringMatching(/^Theme/),
       "Open command palette, Ctrl K",
       "Projects",
+      "Needs you",
       "Teams",
       "API keys",
       "Admin",
@@ -280,7 +286,7 @@ describe("Navbar", () => {
       expect(links.map((link) => link.textContent).slice(0, 3)).toEqual([
         "Specht",
         "Projects",
-        "Teams",
+        "Needs you",
       ]);
     });
 
@@ -348,6 +354,50 @@ describe("Navbar", () => {
     const mark = brand.querySelector("svg");
     expect(mark).not.toBeNull();
     expect(mark).toHaveAttribute("aria-hidden", "true");
+  });
+
+  describe("Needs you link", () => {
+    it("opens the page and shows no number when nothing waits", async () => {
+      renderNavbar(signedIn());
+
+      const link = await screen.findByRole("link", { name: "Needs you" });
+      expect(link).toHaveAttribute("href", "/needs-you");
+      expect(link.textContent).toBe("Needs you");
+    });
+
+    it("names itself from its own text, which starts with what is on screen", async () => {
+      needsYouCount = 3;
+      renderNavbar(signedIn());
+
+      const link = await screen.findByRole("link", { name: /^Needs you 3/ });
+      expect(link).not.toHaveAttribute("aria-label");
+    });
+
+    it("shows how many things wait, and says so in its name", async () => {
+      needsYouCount = 3;
+      renderNavbar(signedIn());
+
+      const link = await screen.findByRole("link", { name: "Needs you 3 waiting" });
+      expect(link).toHaveTextContent("Needs you 3 waiting");
+    });
+
+    it("keeps a long count short", async () => {
+      needsYouCount = 140;
+      renderNavbar(signedIn());
+
+      expect(await screen.findByRole("link", { name: "Needs you 99+ waiting" })).toHaveTextContent(
+        "Needs you 99+ waiting",
+      );
+    });
+
+    it("is not offered, and not asked for, when signed out", () => {
+      renderNavbar(signedOut);
+
+      expect(screen.queryByRole("link", { name: /^Needs you/ })).not.toBeInTheDocument();
+      expect(
+        vi.mocked(globalThis.fetch).mock.calls.some(([url]) => String(url).includes("needs-you")),
+      ).toBe(false);
+    });
   });
 
   it("offers the theme toggle both signed out and signed in", async () => {

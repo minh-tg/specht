@@ -464,6 +464,28 @@ export interface CreatedApiKey extends ApiKey {
   raw_key: string;
 }
 
+/** One thing waiting on the signed-in person, from `GET /api/v1/me/needs-you`. */
+export interface NeedsYouItem {
+  kind: "waiver_to_decide" | "request_decided" | "waiver_ending" | "finding_assigned";
+  project_slug: string;
+  project_name: string;
+  title: string;
+  /** How an answered request ended. Only `request_decided` carries it. */
+  status?: "approved" | "rejected" | "expired";
+  detail?: string;
+  severity?: string;
+  at: string;
+  link: string;
+}
+
+export interface NeedsYou {
+  /** What the navigation badge shows. */
+  count: number;
+  items: NeedsYouItem[];
+  /** The exact number of open findings assigned to the person, which can exceed those listed. */
+  assigned_findings: number;
+}
+
 export interface UserProfile {
   id: string;
   email: string;
