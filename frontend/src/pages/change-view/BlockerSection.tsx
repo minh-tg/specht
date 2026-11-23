@@ -1,4 +1,4 @@
-import { useMe, useWaivers } from "@/api/hooks";
+import { queryKeys, useMe, useWaivers } from "@/api/hooks";
 import { INLINE_LINK } from "@/components/inlineLink";
 import { Ledger } from "@/components/Ledger";
 import type { CodeSource } from "@/lib/codeLinks";
@@ -22,7 +22,11 @@ import { waiverPathId, waiverViewsByFinding } from "@/pages/change-view/waiverSt
 import type { WatchState } from "@/pages/change-view/WatchStrip";
 import { WithdrawWaiverDialog } from "@/pages/change-view/WithdrawWaiverDialog";
 import type { Project } from "@/types/api";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
+
+/** How often a page with a waiver request waiting asks again whether it was decided. */
+export const WAITING_REQUEST_POLL_MS = 20_000;
 
 /**
  * Entries drawn before the "Show all" control reveals the rest. Every blocker is still fetched, so
@@ -116,6 +120,23 @@ export function BlockerSection(
     [waivers.data, waivers.dataUpdatedAt],
   );
   const who = useMemo(() => ({ me }), [me]);
+
+  // A request that waits for a manager is decided somewhere else, and the verdict here changes with
+  // it. A tab that stays open and visible never regains focus, so ask again while one waits.
+  const queryClient = useQueryClient();
+  const requestWaiting = useMemo(
+    () => [...views.values()].some((view) => view.kind === "pending"),
+    [views],
+  );
+  useEffect(() => {
+    if (!requestWaiting) return;
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      void queryClient.invalidateQueries({ queryKey: queryKeys.waivers() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.gate(slug) });
+    }, WAITING_REQUEST_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [requestWaiting, queryClient, slug]);
   const request = waiverAction({
     permissions: permissions?.request_waiver,
     loading: permissionsLoading,
