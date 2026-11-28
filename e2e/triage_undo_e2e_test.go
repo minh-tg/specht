@@ -327,4 +327,13 @@ func TestE2E_BulkTriageUndo(t *testing.T) {
 	for _, r := range again.Results {
 		require.False(t, r.Undone)
 	}
+
+	// An id that matches no finding answers 404 like a finding in a hidden project, so the
+	// endpoint cannot tell a caller which ids exist elsewhere.
+	unknown := append(undos[:1:1], map[string]string{
+		"finding_id": "00000000-0000-0000-0000-00000000dead", "event_id": undos[0]["event_id"],
+	})
+	status, raw := doJSON(t, http.MethodPost, "/api/v1/findings/bulk-analysis/undo", adminToken,
+		map[string]any{"undos": unknown})
+	require.Equal(t, http.StatusNotFound, status, string(raw))
 }
