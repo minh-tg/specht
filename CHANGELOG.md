@@ -502,6 +502,14 @@ releases.
 - A Slack waiver notice escapes the heading. It names the person who acted, and a project member sets
   their own display name, so a name such as `<!channel>` pinged the whole channel and a name with a
   link rendered as a link sent by Specht.
+- A waiver given a new end date after its "ends within a week" warning is warned about again before
+  the new date. The server recorded that it had warned and never cleared the record when the
+  expiry changed, so an extended waiver ended without a second warning and its findings started
+  blocking without notice.
+- A waiver request that outlives its expiry without a decision no longer sends "Waiver ended, so its
+  findings block again". The expiry sweep rejects such a request, but the store dropped the status
+  the sweep returned, so the notifier took every expired request for an approved waiver and
+  announced the end of a waiver that was never in force.
 - A project's only manager can approve their own waiver request with a note. Before, nobody could
   approve it unless a global admin stepped in. The approval is marked self-approved, as a global
   admin's is. Anyone else on the project with manager or admin rights, directly or through a team, or a

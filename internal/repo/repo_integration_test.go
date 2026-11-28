@@ -1167,6 +1167,12 @@ func TestExpiredPendingRequestIsRejectedAndApprovedOneDisabled(t *testing.T) {
 	expired, err := NewWaiverExpiryStore(repos.pool).ExpireExpired(ctx)
 	require.NoError(t, err)
 	assert.Len(t, expired, 2)
+	statuses := map[string]string{}
+	for _, w := range expired {
+		statuses[w.ID] = w.Status
+	}
+	assert.Equal(t, map[string]string{pending.ID: "rejected", approved.ID: "approved"}, statuses,
+		"the announcer needs the status to skip a request that was never in force")
 
 	gotPending, err := stores.Waivers.GetByID(ctx, pending.ID, toUUID(project.ID))
 	require.NoError(t, err)
