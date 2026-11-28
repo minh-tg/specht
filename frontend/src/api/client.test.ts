@@ -522,6 +522,31 @@ describe("a refresh token of a deactivated account", () => {
   });
 });
 
+describe("a refresh token a new password or an SSO link revoked", () => {
+  it.each([
+    ["password_changed", "the account's password was changed"],
+    ["sso_linked", "the account now signs in through SSO"],
+  ])("signs the user out with reason %s, not that a token was reused", async (code, message) => {
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const body = String(input) === "/api/v1/auth/refresh"
+        ? { error: { code, message } }
+        : { error: { code: "unauthorized", message: "expired" } };
+      return Promise.resolve(responseWithHeaders(body, {}, 401));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const location = { pathname: "/projects/p1", search: "", href: "" };
+    vi.stubGlobal("location", location);
+    setStoredSession("access-1", "refresh-1", { userId: "u1", email: "a@b.c" });
+
+    await expect(apiFetch("/api/v1/projects")).rejects.toMatchObject({ code });
+
+    expect(getStoredSession()).toBeNull();
+    expect(location.href).toBe(
+      `/login?redirect=${encodeURIComponent("/projects/p1")}&reason=${code}`,
+    );
+  });
+});
+
 describe("a reused refresh token", () => {
   function reusedServer() {
     const refreshBodies: string[] = [];

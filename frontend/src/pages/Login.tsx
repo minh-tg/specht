@@ -1,4 +1,10 @@
-import { ACCOUNT_DISABLED_REASON, APIError, SESSION_REUSED_REASON } from "@/api/client";
+import {
+  ACCOUNT_DISABLED_REASON,
+  APIError,
+  PASSWORD_CHANGED_REASON,
+  SESSION_REUSED_REASON,
+  SSO_LINKED_REASON,
+} from "@/api/client";
 import { useCapabilities } from "@/api/hooks";
 import { markSsoAttempt } from "@/auth/sso";
 import { useAuth } from "@/auth/useAuth";
@@ -41,6 +47,8 @@ export function Login() {
   const redirect = safeRedirect(searchParams.get("redirect"));
   const sessionRevoked = searchParams.get("reason") === SESSION_REUSED_REASON;
   const accountDisabled = searchParams.get("reason") === ACCOUNT_DISABLED_REASON;
+  const passwordChanged = searchParams.get("reason") === PASSWORD_CHANGED_REASON;
+  const ssoLinked = searchParams.get("reason") === SSO_LINKED_REASON;
   const ssoRefusal = ssoRefusalMessage(searchParams.get("sso_error"));
   const ssoHref = redirect === "/"
     ? "/api/v1/auth/sso/login"
@@ -114,6 +122,22 @@ export function Login() {
           >
             You were signed out because an administrator deactivated your account. Ask an
             administrator to turn it back on.
+          </p>
+        )}
+        {passwordChanged && !error && (
+          <p
+            role="status"
+            className="bg-muted text-foreground rounded-md px-3 py-2 text-body"
+          >
+            You were signed out because your password was changed. Sign in with the new password.
+          </p>
+        )}
+        {ssoLinked && !error && (
+          <p
+            role="status"
+            className="bg-muted text-foreground rounded-md px-3 py-2 text-body"
+          >
+            You were signed out because your account was linked to single sign-on. Sign in with SSO.
           </p>
         )}
         {sessionRevoked && !error && (

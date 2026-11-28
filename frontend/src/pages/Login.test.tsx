@@ -139,6 +139,23 @@ describe("Login", () => {
     expect(notice).not.toHaveTextContent(/used twice/i);
   });
 
+  it("says the password was changed, and does not blame a reused token", () => {
+    renderLoginWithAuth("/login?redirect=%2Fdashboard&reason=password_changed");
+
+    const notice = screen.getByRole("status");
+    expect(notice).toHaveTextContent(/your password was changed/i);
+    expect(notice).toHaveTextContent(/sign in with the new password/i);
+    expect(notice).not.toHaveTextContent(/used twice/i);
+  });
+
+  it("says the account was linked to single sign-on, and does not blame a reused token", () => {
+    renderLoginWithAuth("/login?redirect=%2Fdashboard&reason=sso_linked");
+
+    const notice = screen.getByRole("status");
+    expect(notice).toHaveTextContent(/linked to single sign-on/i);
+    expect(notice).not.toHaveTextContent(/used twice/i);
+  });
+
   it("shows no sign-out notice on a plain visit", () => {
     renderLoginWithAuth("/login");
 

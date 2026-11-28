@@ -499,11 +499,18 @@ releases.
 
 ### Fixed
 
+- A person whose password was changed on another device is told so. The change, a reset link or the
+  host-side recovery revokes every sign-in, and the next refresh of a tab that was open read the
+  revoked token as a replay, so the sign-in page said the token "was used twice" and to change the
+  password the person had just changed. `POST /auth/refresh` now answers `password_changed`, and the
+  page says the password was changed and to sign in with the new one. An SSO login that linked the
+  account and removed its password answers `sso_linked`, and the page says to sign in with SSO. The
+  server records why each refresh token was revoked (migration 000080) to tell these apart; a token
+  spent by a rotation and presented again is still a replay and still ends its sign-in.
 - A person whose account an admin deactivated is told so. The next request of a tab that was open
   reads a revoked sign-in, which the server took for a replayed token, so the sign-in page said the
   token "was used twice" and to change the password. `POST /auth/refresh` now answers
-  `account_disabled`, and the page says an administrator deactivated the account. A sign-in revoked
-  for another reason, such as a password change on another device, still reads as a replay.
+  `account_disabled`, and the page says an administrator deactivated the account.
 - A rerun of a CI job gets the same exit code as the first run in `changes_only` mode. The server
   answered `change_report: false` for an identical upload it replayed, so the adapter took the
   project's report-only verdict and let a branch push that introduced a blocker pass on "Re-run

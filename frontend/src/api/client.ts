@@ -237,6 +237,14 @@ export const SESSION_REUSED_REASON = "session_reused";
 /** The `reason` the sign-in page is sent with after an admin deactivated the account. */
 export const ACCOUNT_DISABLED_REASON = "account_disabled";
 
+/** The `reason` the sign-in page is sent with after a new password on the account ended every
+ * sign-in: a change on another device, a reset link or the host-side recovery. */
+export const PASSWORD_CHANGED_REASON = "password_changed";
+
+/** The `reason` the sign-in page is sent with after an SSO login linked the account and removed its
+ * password. */
+export const SSO_LINKED_REASON = "sso_linked";
+
 /** Tears the session down, bounces to the sign-in page, and rethrows. A reason
  * rides along so the page can tell the user why they are signed out. */
 function endSession(err: unknown, reason?: string): never {
@@ -281,6 +289,14 @@ async function startRefresh(): Promise<Session> {
     // a replay, so it must not say a token was used twice.
     if (err instanceof APIError && err.status === 401 && err.code === "account_disabled") {
       endSession(err, ACCOUNT_DISABLED_REASON);
+    }
+    // `password_changed` and `sso_linked` are changes to the account, usually the person's own on
+    // another device, which ended every sign-in. They are not replays either.
+    if (err instanceof APIError && err.status === 401 && err.code === "password_changed") {
+      endSession(err, PASSWORD_CHANGED_REASON);
+    }
+    if (err instanceof APIError && err.status === 401 && err.code === "sso_linked") {
+      endSession(err, SSO_LINKED_REASON);
     }
     if (unauthorized(err)) endSession(err);
     throw err;
