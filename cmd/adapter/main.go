@@ -456,6 +456,15 @@ func isDuplicateReport(err error) bool {
 	return apiErr.StatusCode == http.StatusConflict && (apiErr.Code == "duplicate_report" || apiErr.Code == "")
 }
 
+// namesOtherBase reports whether the upload compares its branch with another
+// revision. The server counts such a report as a change whether or not the
+// project has a default branch, so this is how the stored report was classified
+// when a duplicate answer does not say. A push build of a branch in CI names the
+// default branch as its base; a build of the default branch names none.
+func namesOtherBase(payload client.IngestPayload) bool {
+	return payload.Branch != "" && payload.BaseRevision != "" && payload.BaseRevision != payload.Branch
+}
+
 // isIngestTimeout reports whether ingest failed because the server ran out of
 // its processing window (503 ingest_timeout).
 func isIngestTimeout(err error) bool {
@@ -798,13 +807,14 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 		// The server holds this exact report already, as when a job runs
 		// again without a code change. Its answer names no report, so the
 		// verdict comes from the stored data: the project gate, or the
-		// change scoped preview for the commit.
+		// change scoped preview for the commit. Under changes_only the
+		// commit's introduced gate stands in for the report's.
 		if payload.GateIntroducedOnly && payload.CommitSha == "" {
 			writeDiagnosticLine(stderr, "error: duplicate report: an identical report was already uploaded, and without a commit the change-scoped verdict cannot be read back")
 			return 2
 		}
 		writeDiagnosticLine(stderr, "notice: an identical report was already uploaded; reading the verdict of the stored report")
-		resp = &client.IngestResponse{Replayed: true}
+		resp = &client.IngestResponse{Replayed: true, ChangeReport: namesOtherBase(payload)}
 		duplicate = true
 	}
 	printChangeLink(stdout, gateChangeURL(apiURL, payload, resp.ReportID, f.severity))
@@ -883,7 +893,7 @@ func resolveStepGate(cl *client.Client, payload client.IngestPayload, severity s
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	check, err = changesOnlyVerdict(cl, project, payload.Project, severity, resp)
+	check, err = changesOnlyVerdict(cl, project, payload, severity, resp)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -891,7 +901,7 @@ func resolveStepGate(cl *client.Client, payload client.IngestPayload, severity s
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	step, err = changesOnlyVerdict(cl, step, payload.Project, severity, resp)
+	step, err = changesOnlyVerdict(cl, step, payload, severity, resp)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -954,14 +964,28 @@ func warnUnrated(stderr io.Writer, count int) {
 // only report, but what this report introduced still fails the run, so a pipeline
 // that never names a pull request still stops a new blocker. A scan of the default
 // branch is not a change: its first scan would otherwise fail on the whole backlog.
-func changesOnlyVerdict(cl *client.Client, project *client.GateStatus, slug, severity string, resp *client.IngestResponse) (*client.GateStatus, error) {
-	if !project.ThresholdBreached || !project.ReportOnly || !resp.ChangeReport || resp.ReportID == "" {
+//
+// A duplicate upload names no report. The commit's introduced findings then stand
+// in for the report's, so a rerun of the same commit fails as the first run did.
+// They cover every scanner's report of the commit, the scope the pull-request
+// check of a duplicate already uses.
+func changesOnlyVerdict(cl *client.Client, project *client.GateStatus, payload client.IngestPayload, severity string, resp *client.IngestResponse) (*client.GateStatus, error) {
+	if !project.ThresholdBreached || !project.ReportOnly || !resp.ChangeReport {
 		return project, nil
 	}
 	if project.Policy == nil || project.Policy.GateMode != "changes_only" {
 		return project, nil
 	}
-	introduced, err := cl.GetIntroducedGateStatus(slug, severity, resp.ReportID)
+	var introduced *client.GateStatus
+	var err error
+	switch {
+	case resp.ReportID != "":
+		introduced, err = cl.GetIntroducedGateStatus(payload.Project, severity, resp.ReportID)
+	case payload.CommitSha != "":
+		introduced, err = cl.GetIntroducedCommitGateStatus(payload.Project, severity, payload.CommitSha)
+	default:
+		return project, nil
+	}
 	if err != nil {
 		return nil, err
 	}

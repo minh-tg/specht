@@ -21,6 +21,10 @@ type duplicateServer struct {
 	uploads int
 	// previewQuery holds the last PR check query string.
 	previewQuery string
+	// introduced answers the introduced-only gate; nil answers 404.
+	introduced *client.GateStatus
+	// introducedQuery holds the last introduced-only gate query string.
+	introducedQuery string
 }
 
 func newDuplicateServer(t *testing.T, gate *client.GateStatus, preview *client.PRCheckPreview) *duplicateServer {
@@ -35,6 +39,15 @@ func newDuplicateServer(t *testing.T, gate *client.GateStatus, preview *client.P
 				"error": map[string]string{"code": "duplicate_report", "message": "report already exists for this project and data"},
 			})
 		case "/api/v1/projects/my-app/gate":
+			if r.URL.Query().Get("introduced_only") != "" {
+				d.introducedQuery = r.URL.RawQuery
+				if d.introduced == nil {
+					http.Error(w, `{"error":{"code":"no_report_for_commit","message":"none"}}`, http.StatusNotFound)
+					return
+				}
+				writeTestJSONResponse(t, w, d.introduced)
+				return
+			}
 			if gate == nil {
 				http.Error(w, `{"error":{"code":"internal","message":"boom"}}`, http.StatusInternalServerError)
 				return
@@ -133,5 +146,45 @@ func TestRun_DuplicateReportExitsAsTheStoredChangeVerdict(t *testing.T) {
 		code, stderr := runDuplicate(t, d, "-introduced-only")
 		require.Equal(t, 2, code, stderr)
 		assert.Contains(t, stderr, "duplicate report")
+	})
+}
+
+// TestRun_DuplicateReportKeepsTheChangesOnlyVerdict pins a push build of a branch
+// under changes_only that uploads the same report again. The first run failed on
+// what its report introduced. The 409 names no report, so the rerun judges what
+// the commit introduced and fails the same way.
+func TestRun_DuplicateReportKeepsTheChangesOnlyVerdict(t *testing.T) {
+	const commit = "0123456789abcdef0123456789abcdef01234567"
+	changesOnly := &client.PolicyEffective{GateMode: "changes_only"}
+	debt := &client.GateStatus{ThresholdBreached: true, ReportOnly: true, BlockingCount: 3, Policy: changesOnly}
+	t.Run("a branch that introduced a blocker fails again", func(t *testing.T) {
+		d := newDuplicateServer(t, debt, nil)
+		d.introduced = &client.GateStatus{ThresholdBreached: true, BlockingCount: 1, Policy: changesOnly}
+		code, stderr := runDuplicate(t, d, "-introduced-only=false", "-branch=feat/x", "-base-ref=main", "-commit="+commit)
+		require.Equal(t, 1, code, stderr)
+		assert.Contains(t, stderr, "gate FAILED: 1 blocking finding(s) from trivy")
+		assert.Contains(t, d.introducedQuery, "commit="+commit)
+		assert.NotContains(t, d.introducedQuery, "report_id")
+	})
+	t.Run("a branch that only carries debt still passes", func(t *testing.T) {
+		d := newDuplicateServer(t, debt, nil)
+		d.introduced = &client.GateStatus{Policy: changesOnly}
+		code, stderr := runDuplicate(t, d, "-introduced-only=false", "-branch=feat/x", "-base-ref=main", "-commit="+commit)
+		require.Equal(t, 0, code, stderr)
+		assert.Contains(t, stderr, "gate WOULD FAIL: 3 blocking finding(s)")
+	})
+	t.Run("a scan of the trunk is not a change", func(t *testing.T) {
+		d := newDuplicateServer(t, debt, nil)
+		d.introduced = &client.GateStatus{ThresholdBreached: true, BlockingCount: 3, Policy: changesOnly}
+		code, stderr := runDuplicate(t, d, "-branch=main", "-commit="+commit)
+		require.Equal(t, 0, code, stderr)
+		assert.Contains(t, stderr, "gate WOULD FAIL: 3 blocking finding(s)")
+		assert.Empty(t, d.introducedQuery, "the trunk's first scan introduces its whole backlog, which only reports")
+	})
+	t.Run("the stored report gone fails closed", func(t *testing.T) {
+		d := newDuplicateServer(t, debt, nil)
+		code, stderr := runDuplicate(t, d, "-introduced-only=false", "-branch=feat/x", "-base-ref=main", "-commit="+commit)
+		require.Equal(t, 2, code, stderr)
+		assert.Contains(t, stderr, "gate check failed")
 	})
 }
