@@ -342,6 +342,8 @@ func authzRows() []authzRow {
 
 		// The signed-in account's own profile: any working session, never a key.
 		{Method: "GET", Pattern: "/api/v1/me", Path: api("/me"), Want: signedIn, Tenants: onlyX},
+		// What waits on the caller: a person's session only, and it lists their own projects only.
+		{Method: "GET", Pattern: "/api/v1/me/needs-you", Path: api("/me/needs-you"), Want: signedIn, Tenants: onlyX},
 		{
 			Method: "PUT", Pattern: "/api/v1/me", Path: api("/me"),
 			Body: jsonBody(map[string]string{"display_name": "Authz Matrix"}),

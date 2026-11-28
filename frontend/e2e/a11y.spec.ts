@@ -297,6 +297,11 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
 
   // Waivers: the waiting list with a request in it, the decision dialog, and the other lists.
   await requestWaiver(request, token, slug, "Not reachable from the public API.");
+
+  // What waits on the person: the request just filed is one they may decide.
+  await page.goto("/needs-you");
+  await expect(page.getByRole("region", { name: /Waiver requests to decide/ })).toBeVisible();
+  await audit(page, "needs you");
   await page.goto(`/${slug}/waivers`);
   await expect(page.getByRole("tab", { name: "Waiting 1" })).toBeVisible();
   await audit(page, "project waivers");

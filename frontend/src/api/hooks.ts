@@ -11,6 +11,7 @@ import type {
   Invite,
   InviteRole,
   LoginResponse,
+  NeedsYou,
   PolicyEffective,
   PolicyTemplate,
   Project,
@@ -67,6 +68,7 @@ export interface FindingsQuery {
 export type FindingSort = "severity" | "first_seen" | "last_seen" | "title";
 
 export const queryKeys = {
+  needsYou: () => ["needs-you"] as const,
   waivers: (slug?: string, status?: string) =>
     slug === undefined ? (["waivers"] as const) : (["waivers", slug, status ?? ""] as const),
   scanSignal: (slug: string, branch: string) => ["scan-signal", slug, branch] as const,
@@ -169,6 +171,24 @@ export function useMe() {
     queryKey: queryKeys.me(),
     queryFn: () => apiFetch<UserProfile>("/api/v1/me"),
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * What waits on the signed-in person. The navigation badge and the page read the same entry. It is
+ * asked again when the window gets focus and after a waiver or an assignment changes, and does not
+ * poll.
+ */
+export function useNeedsYou(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.needsYou(),
+    queryFn: async (): Promise<NeedsYou> => {
+      const data = await apiFetch<NeedsYou>("/api/v1/me/needs-you");
+      return { ...data, items: data.items ?? [] };
+    },
+    enabled,
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -589,6 +609,7 @@ export function useAssignFinding() {
         queryClient.invalidateQueries({ queryKey: queryKeys.finding() }),
         queryClient.invalidateQueries({ queryKey: queryKeys.findings() }),
         queryClient.invalidateQueries({ queryKey: queryKeys.findingEvents() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.needsYou() }),
       ]);
     },
   });
@@ -1036,6 +1057,7 @@ export function useRequestWaiver(slug: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.waivers() });
       void queryClient.invalidateQueries({ queryKey: queryKeys.projectStats() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.needsYou() });
     },
     // A request that already exists is news to this screen: load it so the page can show it.
     onError: (error) => {
@@ -1218,6 +1240,7 @@ function useWaiverDecided(slug: string) {
   const queryClient = useQueryClient();
   return () => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.waivers() });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.needsYou() });
     void queryClient.invalidateQueries({ queryKey: ["waiver-events", slug] });
     void queryClient.invalidateQueries({ queryKey: queryKeys.gate(slug) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.projectStats(slug) });

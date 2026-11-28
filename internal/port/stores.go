@@ -1722,6 +1722,7 @@ type Stores struct {
 	Invites         InviteStore
 	PasswordReset   PasswordResetStore
 	InstanceSecrets InstanceSecretStore
+	NeedsYou        NeedsYouStore
 }
 
 // Team is a named group of users that projects link for access.
@@ -1939,4 +1940,76 @@ type InstanceSecretStore interface {
 	// Ensure stores value under name when the name is new and returns whatever
 	// is stored. Callers racing on first use all receive the same value.
 	Ensure(ctx context.Context, name string, value []byte) ([]byte, error)
+}
+
+// NeedsYouWaiver is a waiver request or waiver on the "Needs you" page, with the project it
+// belongs to.
+type NeedsYouWaiver struct {
+	ID          string
+	ProjectID   string
+	ProjectSlug string
+	ProjectName string
+	Name        string
+	Reason      string
+	// RequestedBy is empty for a waiver nobody requested, such as one created directly.
+	RequestedBy  string
+	Status       string
+	DecisionNote string
+	// DecisionReason is "expired" when a request lapsed unanswered, empty for a reviewer's decision.
+	DecisionReason string
+	// Enabled and ExpiresAt say whether an approved request still lets findings through. Only
+	// ListDecidedWaiverRequests sets them. A nil ExpiresAt means the waiver does not end.
+	Enabled   bool
+	ExpiresAt *time.Time
+	// At is when the request was made, decided or will end, by the query that returned it.
+	At time.Time
+}
+
+// NeedsYouFinding is an open finding assigned to the caller, with its project.
+type NeedsYouFinding struct {
+	ID          string
+	ProjectID   string
+	ProjectSlug string
+	ProjectName string
+	Title       string
+	Severity    string
+	LastSeenAt  time.Time
+}
+
+// NeedsYouWaivers is up to a limit of waivers and how many matched in all.
+type NeedsYouWaivers struct {
+	Items []NeedsYouWaiver
+	// Total counts every match, so it can exceed len(Items).
+	Total int
+	// Fresh counts the matches decided since the given time. Only ListDecidedWaiverRequests sets it.
+	Fresh int
+}
+
+// NeedsYouFindings is up to a limit of findings and how many matched in all.
+type NeedsYouFindings struct {
+	Items []NeedsYouFinding
+	// Total counts every match, so it can exceed len(Items).
+	Total int
+}
+
+// NeedsYouStore reads what is waiting on one person across projects. Each list takes the project
+// ids the caller can reach, so a project they cannot see never contributes a row.
+type NeedsYouStore interface {
+	// ListManagedProjectIDs returns the projects where the user holds manager rights or above,
+	// directly or through a team.
+	ListManagedProjectIDs(ctx context.Context, userID string) ([]string, error)
+	// ListProjectsWithOwnPendingRequests returns the projects among projectIDs where the user has
+	// a pending request of their own.
+	ListProjectsWithOwnPendingRequests(ctx context.Context, userID string, projectIDs []string) ([]string, error)
+	// ListPendingWaiverRequests returns pending requests, oldest first, without the caller's own
+	// requests in the projects of hideOwnIn.
+	ListPendingWaiverRequests(ctx context.Context, callerID string, projectIDs, hideOwnIn []string, limit int32) (NeedsYouWaivers, error)
+	// ListDecidedWaiverRequests returns the user's requests approved or rejected since a time,
+	// newest first, and counts those decided since freshSince. A request the user decided
+	// themselves is left out.
+	ListDecidedWaiverRequests(ctx context.Context, userID string, projectIDs []string, since, freshSince time.Time, limit int32) (NeedsYouWaivers, error)
+	// ListWaiversEnding returns approved waivers that end after one time and by another, soonest first.
+	ListWaiversEnding(ctx context.Context, projectIDs []string, after, until time.Time, limit int32) (NeedsYouWaivers, error)
+	// ListOpenFindingsAssignedTo returns the user's open findings, most severe first.
+	ListOpenFindingsAssignedTo(ctx context.Context, userID string, projectIDs []string, limit int32) (NeedsYouFindings, error)
 }

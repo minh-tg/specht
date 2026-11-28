@@ -20,19 +20,20 @@ var slugPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 // route: /api/... never reaches the SPA, and /login resolves to the login
 // page, not to a project named "login".
 var reservedSlugs = map[string]struct{}{
-	"admin":    {},
-	"api":      {},
-	"api-keys": {},
-	"assets":   {},
-	"ingest":   {},
-	"invite":   {},
-	"login":    {},
-	"profile":  {},
-	"projects": {},
-	"register": {},
-	"reset":    {},
-	"setup":    {},
-	"teams":    {},
+	"admin":     {},
+	"api":       {},
+	"api-keys":  {},
+	"assets":    {},
+	"ingest":    {},
+	"invite":    {},
+	"login":     {},
+	"needs-you": {},
+	"profile":   {},
+	"projects":  {},
+	"register":  {},
+	"reset":     {},
+	"setup":     {},
+	"teams":     {},
 }
 
 // validateProjectSlug checks a slug on creation. Existing projects keep the

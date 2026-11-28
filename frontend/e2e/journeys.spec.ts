@@ -862,6 +862,64 @@ test("a manager approves a waiver request, the verdict passes, and revoking it b
   await expect(page.getByText(/^Revoked by /)).toBeVisible();
 });
 
+test("a waiver request reaches the manager's Needs you page and the answer reaches the member", async ({ page, request, browser }) => {
+  const token = await apiToken(request);
+  const slug = uniq("needs-you");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH);
+  const people = {
+    manager: await registerPerson(request, "ny-manager"),
+    member: await registerPerson(request, "ny-member"),
+  };
+  for (const [role, person] of [["manager", people.manager], ["member", people.member]] as const) {
+    const grant = await request.post(`/api/v1/projects/${slug}/members`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { email: person.email, role },
+    });
+    expect(grant.ok(), await grant.text()).toBeTruthy();
+  }
+  const login = await request.post("/api/v1/auth/login", {
+    data: { email: people.member.email, password: people.member.password },
+  });
+  expect(login.ok(), await login.text()).toBeTruthy();
+  const memberToken = (await login.json()).token as string;
+  await requestWaiver(request, memberToken, slug, "Not reachable from the public API.");
+
+  // The manager has no number to chase until something waits: it shows in the navigation.
+  await uiLoginAs(page, people.manager.email, people.manager.password);
+  const nav = page.getByRole("navigation", { name: "Main" });
+  await expect(nav.getByRole("link", { name: "Needs you 1 waiting" })).toBeVisible();
+  await nav.getByRole("link", { name: /^Needs you/ }).click();
+  await expect(page).toHaveURL(/\/needs-you$/);
+  const requests = page.getByRole("region", { name: /Waiver requests to decide/ });
+  await expect(requests.getByText("Not reachable from the public API.")).toBeVisible();
+
+  // The link opens the project's waivers, where the decision is made.
+  await requests.getByRole("link").first().click();
+  await expect(page).toHaveURL(new RegExp(`/${slug}/waivers$`));
+  await page.getByRole("button", { name: /^Approve / }).click();
+  await page.getByLabel(/^Note/).fill("Fine until the image bump.");
+  await page.getByRole("button", { name: "Approve", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "In force 1" })).toBeVisible();
+
+  // Deciding it clears the manager's list without a reload of the page they left.
+  await nav.getByRole("link", { name: /^Needs you/ }).click();
+  await expect(page.getByText("Nothing waits on you")).toBeVisible();
+
+  // The person who asked finds the answer, with the note, in their own list.
+  const memberContext = await browser.newContext();
+  const memberPage = await memberContext.newPage();
+  await uiLoginAs(memberPage, people.member.email, people.member.password);
+  await memberPage.getByRole("link", { name: /^Needs you/ }).click();
+  const answers = memberPage.getByRole("region", { name: /Answers to your requests/ });
+  await expect(answers).toContainText("Approved: Fine until the image bump.");
+  // The answer opens the tab that holds the waiver now, not the Waiting tab it left.
+  await answers.getByRole("link").first().click();
+  await expect(memberPage).toHaveURL(new RegExp(`/${slug}/waivers\\?state=in_force$`));
+  await expect(memberPage.getByRole("tab", { name: "In force 1", selected: true })).toBeVisible();
+  await memberContext.close();
+});
+
 test("the insights page counts only open findings and shows what blocks the gate", async ({ page, request }) => {
   const token = await apiToken(request);
   const slug = uniq("insights");

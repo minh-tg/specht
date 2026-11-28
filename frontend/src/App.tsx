@@ -10,6 +10,7 @@ import { ChangeView } from "@/pages/ChangeView";
 import { FindingDetail } from "@/pages/FindingDetail";
 import { Invite } from "@/pages/Invite";
 import { Login } from "@/pages/Login";
+import { NeedsYou } from "@/pages/NeedsYou";
 import { NewProject } from "@/pages/NewProject";
 import { NotFound } from "@/pages/NotFound";
 import { Profile } from "@/pages/Profile";
@@ -197,6 +198,16 @@ export function AppRoutes() {
           <ProtectedRoute>
             <Titled title="Your profile">
               <Profile />
+            </Titled>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/needs-you"
+        element={
+          <ProtectedRoute>
+            <Titled title="Needs you">
+              <NeedsYou />
             </Titled>
           </ProtectedRoute>
         }

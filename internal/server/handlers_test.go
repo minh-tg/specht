@@ -53,6 +53,7 @@ type mockUsecases struct {
 	isProjectMemberFn       func(ctx context.Context, projectID, userID string) (bool, error)
 	listProjectsFn          func(ctx context.Context) ([]usecase.ProjectResponse, error)
 	listProjectSummariesFn  func(ctx context.Context) ([]usecase.ProjectSummary, error)
+	getNeedsYouFn           func(ctx context.Context) (*usecase.NeedsYouResponse, error)
 	getProjectFn            func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
 	updateProjectFn         func(ctx context.Context, slug string, name, description, defaultBranch *string) (*usecase.ProjectResponse, error)
 	deleteProjectFn         func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
@@ -208,6 +209,13 @@ func (m *mockUsecases) ListProjectSummaries(ctx context.Context) ([]usecase.Proj
 		return nil, fmt.Errorf("unexpected call to ListProjectSummaries")
 	}
 	return m.listProjectSummariesFn(ctx)
+}
+
+func (m *mockUsecases) GetNeedsYou(ctx context.Context) (*usecase.NeedsYouResponse, error) {
+	if m.getNeedsYouFn == nil {
+		return nil, fmt.Errorf("unexpected call to GetNeedsYou")
+	}
+	return m.getNeedsYouFn(ctx)
 }
 
 func (m *mockUsecases) GetProject(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {

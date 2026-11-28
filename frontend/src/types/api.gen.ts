@@ -394,6 +394,42 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/me/needs-you": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List what waits on the signed-in person
+     * @description What waits on the caller across the projects they can reach, in four kinds:
+     *
+     *     - `waiver_to_decide`: a pending waiver request on a project where the caller may approve or
+     *       reject. The caller's own request is listed when they are a global admin or nobody else can
+     *       decide it, the same rule as approving it.
+     *     - `waiver_ending`: an approved waiver on a project the caller manages that ends within
+     *       seven days, after which its findings block again.
+     *     - `finding_assigned`: an open finding assigned to the caller, most severe first.
+     *     - `request_decided`: the answer to a request the caller made, kept for 14 days. A request
+     *       the caller decided themselves is left out.
+     *
+     *     There are no read marks. An item stays until its cause is gone or its window has passed.
+     *     `items` holds at most 50 of each kind, and `totals` counts every item of each kind, so a
+     *     client can say "showing 50 of 120". `count` is what a badge shows:
+     *     `totals.waiver_to_decide` + `totals.waiver_ending` + `totals.finding_assigned` + the
+     *     answers from the last three days. An older answer stays listed for 14 days and is not
+     *     counted. Sessions only.
+     */
+    get: operations["getNeedsYou"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/me/password": {
     parameters: {
       query?: never;
@@ -2559,7 +2595,7 @@ export interface components {
       /** @description At most 100 characters after trimming, with no control characters. Otherwise 400 `invalid_field`. */
       name: string;
       /**
-       * @description Unique URL-safe identifier for the project, 3 to 48 characters of lowercase letters and digits with single hyphens between groups (`^[a-z0-9]+(-[a-z0-9]+)*$`). Names the server or the web app already uses as a first path segment (`admin`, `api`, `api-keys`, `assets`, `ingest`, `login`, `projects`, `register`, `teams`) are reserved. A rejected slug returns `invalid_slug`.
+       * @description Unique URL-safe identifier for the project, 3 to 48 characters of lowercase letters and digits with single hyphens between groups (`^[a-z0-9]+(-[a-z0-9]+)*$`). Names the server or the web app already uses as a first path segment (`admin`, `api`, `api-keys`, `assets`, `ingest`, `invite`, `login`, `needs-you`, `profile`, `projects`, `register`, `reset`, `setup`, `teams`) are reserved. A rejected slug returns `invalid_slug`.
        * @example my-app
        */
       slug: string;
@@ -3671,6 +3707,48 @@ export interface components {
       /** Format: date-time */
       created_at: string;
     };
+    NeedsYouItem: {
+      /** @enum {string} */
+      kind: "waiver_to_decide" | "request_decided" | "waiver_ending" | "finding_assigned";
+      project_slug: string;
+      project_name: string;
+      /** @description The waiver's name or the finding's title. */
+      title: string;
+      /**
+       * @description How an answered request ended. `expired` is a request that lapsed unanswered. Sent for `request_decided` only.
+       * @enum {string}
+       */
+      status?: "approved" | "rejected" | "expired";
+      /** @description The request's reason, or the reviewer's note on an approved or rejected answer. Not sent for an `expired` answer. */
+      detail?: string;
+      /** @description The finding's severity. Sent for `finding_assigned` only. */
+      severity?: string;
+      /**
+       * Format: date-time
+       * @description When the request was made or answered, when the waiver ends, or when the finding was last seen.
+       */
+      at: string;
+      /**
+       * @description The app path that opens the item. A waiver item opens the Waivers tab that holds it: a request to decide on Waiting, the default; a waiver that ends on `?state=in_force`; an answer on `?state=in_force` while its waiver lets findings through, otherwise on `?state=closed`.
+       * @example /payments-api/waivers?state=in_force
+       */
+      link: string;
+    };
+    NeedsYouResponse: {
+      /** @description What a badge shows: every waiver request to decide, waiver ending and assigned finding, listed or not, and the answers from the last three days. */
+      count: number;
+      /** @description At most 50 items of each kind. */
+      items: components["schemas"]["NeedsYouItem"][];
+      totals: components["schemas"]["NeedsYouTotals"];
+    };
+    /** @description How many items of each kind exist. A total above the items listed of that kind means some were left out. */
+    NeedsYouTotals: {
+      waiver_to_decide: number;
+      waiver_ending: number;
+      finding_assigned: number;
+      /** @description Answers from the last 14 days. */
+      request_decided: number;
+    };
     ProjectSummary: {
       slug: string;
       gate: components["schemas"]["GateStatus"];
@@ -4736,6 +4814,28 @@ export interface operations {
         };
       };
       400: components["responses"]["BadRequest"];
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["SessionRequired"];
+    };
+  };
+  getNeedsYou: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description What waits on the caller. `items` is empty, not null, when nothing does. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["NeedsYouResponse"];
+        };
+      };
       401: components["responses"]["Unauthorized"];
       403: components["responses"]["SessionRequired"];
     };

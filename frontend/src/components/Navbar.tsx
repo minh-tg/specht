@@ -1,4 +1,4 @@
-import { useCapabilities, useMe } from "@/api/hooks";
+import { useCapabilities, useMe, useNeedsYou } from "@/api/hooks";
 import { useAuth } from "@/auth/useAuth";
 import { AccountMenu } from "@/components/AccountMenu";
 import { BrandMark } from "@/components/BrandMark";
@@ -39,6 +39,30 @@ function ProjectsLink() {
   );
 }
 
+/**
+ * What waits on the person, with the number beside it when something does. The badge is text on the
+ * ink colour, so it does not rely on hue. The link's name is its own text, "Needs you 3 waiting":
+ * it starts with what is on screen, which a person who speaks the label to a voice control needs.
+ */
+function NeedsYouLink() {
+  const needs = useNeedsYou();
+  const count = needs.data?.count ?? 0;
+  return (
+    <NavLink to="/needs-you" className={navLinkClass}>
+      Needs you
+      {count > 0 && (
+        <>
+          {" "}
+          <span className="bg-action text-action-fg ml-1.5 inline-flex min-w-5 items-center justify-center rounded-full px-1.5 text-meta font-semibold tabular-nums">
+            {count > 99 ? "99+" : count}
+          </span>{" "}
+          <span className="sr-only">waiting</span>
+        </>
+      )}
+    </NavLink>
+  );
+}
+
 function SignedOutLinks() {
   const capabilities = useCapabilities();
 
@@ -68,6 +92,7 @@ function SignedInLinks({ email, onLogout }: { email: string | null; onLogout: ()
       }
       <div className="flex basis-full flex-wrap items-center gap-1 max-sm:order-last sm:contents">
         <ProjectsLink />
+        <NeedsYouLink />
         <NavLink to="/teams" className={navLinkClass}>
           Teams
         </NavLink>
