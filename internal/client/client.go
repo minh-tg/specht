@@ -445,9 +445,23 @@ func (c *Client) GetScannerGateStatus(projectSlug, severity, branch, scanner str
 // GetIntroducedGateStatus evaluates the gate over findings one report
 // introduced (change-scoped CI feedback).
 func (c *Client) GetIntroducedGateStatus(projectSlug string, severity string, reportID string) (*GateStatus, error) {
+	return c.introducedGateStatus(projectSlug, severity, "report_id", reportID)
+}
+
+// GetIntroducedCommitGateStatus evaluates the gate over findings that every
+// completed report of one commit introduced, whichever scanner sent it: the
+// verdict of the pull-request check for that commit. A commit with no
+// completed report answers 404 no_report_for_commit.
+func (c *Client) GetIntroducedCommitGateStatus(projectSlug, severity, commit string) (*GateStatus, error) {
+	return c.introducedGateStatus(projectSlug, severity, "commit", commit)
+}
+
+// introducedGateStatus asks the introduced-only gate for one scope, a report
+// (report_id) or a commit.
+func (c *Client) introducedGateStatus(projectSlug, severity, scope, value string) (*GateStatus, error) {
 	q := url.Values{}
 	q.Set("introduced_only", "1")
-	q.Set("report_id", reportID)
+	q.Set(scope, value)
 	if severity != "" {
 		q.Set("severity", severity)
 	}
