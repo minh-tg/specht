@@ -2366,7 +2366,7 @@ export interface components {
       default_interval_seconds: number;
       /** @description The shortest interval the server accepts. */
       min_interval_seconds: number;
-      /** @description The longest interval the server accepts */
+      /** @description The longest interval the server accepts, seven days. */
       max_interval_seconds: number;
       /** @description Whether the server runs the watcher at all. */
       server_enabled: boolean;
@@ -2445,7 +2445,7 @@ export interface components {
       password: string;
     };
     PasswordResetLink: {
-      /** @description A path on this instance */
+      /** @description A path on this instance, for example `/reset/abc`. */
       link: string;
       /** Format: date-time */
       expires_at: string;
@@ -2536,7 +2536,7 @@ export interface components {
     ProjectPermissions: {
       /** @description Ask for a waiver. Every project member. */
       request_waiver: boolean;
-      /** @description Create */
+      /** @description Create, edit, delete and toggle waivers. */
       manage_waivers: boolean;
       /** @description Approve or reject waiver requests. */
       approve_waivers: boolean;
@@ -2546,9 +2546,9 @@ export interface components {
        *     requests; that manager has to give a note.
        */
       self_approve_waivers: boolean;
-      /** @description Add and remove members */
+      /** @description Add and remove members, up to the caller's own role. */
       manage_members: boolean;
-      /** @description Create */
+      /** @description Create, list and revoke the project's API keys. */
       manage_ci: boolean;
       /** @description Change analysis state and reachability. */
       triage: boolean;
@@ -2615,7 +2615,7 @@ export interface components {
        * @example Semgrep 1.172.0
        */
       tested_with: string;
-      /** @description Something a person should know */
+      /** @description Something a person should know, such as a limit of the tool. */
       note?: string;
     };
     IngestRequest: {
@@ -3602,10 +3602,10 @@ export interface components {
       created_at: string;
       /**
        * Format: email
-       * @description The member's address. Sent to a signed-in person only
+       * @description The member's address. Sent to a signed-in person only, never to an API key.
        */
       email?: string;
-      /** @description The member's display name */
+      /** @description The member's display name, when they have one. Sent to a signed-in person only, never to an API key. */
       display_name?: string;
     };
     MemberSuggestion: {
@@ -3613,7 +3613,7 @@ export interface components {
       user_id: string;
       /** Format: email */
       email: string;
-      /** @description The person's self-chosen display name */
+      /** @description The person's self-chosen display name, empty when they have none. Show it as secondary text; the email identifies the person. */
       display_name: string;
     };
     Environment: {
@@ -3685,7 +3685,7 @@ export interface components {
       only_on_change_branches_count?: number;
       /** @description Findings the gate holds back right now, so the number always equals the gate's `blocking_count`: open findings at or above the policy's severity floor, admitted by source policy, not exempted by a reachability assessment and not covered by an approved waiver. */
       blocking_count: number;
-      /** @description Approved */
+      /** @description Approved, enabled waivers only. */
       waiver_count: number;
       /** @description Waiver requests waiting for a decision. */
       pending_waiver_count: number;
@@ -3809,7 +3809,7 @@ export interface components {
        * @enum {string}
        */
       kind: "scan_report" | "watcher" | "provider" | "feed";
-      /** @description The scanner */
+      /** @description The scanner, for scan_report and watcher. */
       tool?: string;
       /** Format: uuid */
       report_id?: string;
@@ -3865,7 +3865,7 @@ export interface components {
       date_added: string | null;
       /** Format: date */
       due_date: string | null;
-      /** @description As the KEV catalog spells it */
+      /** @description As the KEV catalog spells it, Known or Unknown. */
       known_ransomware_use: string | null;
       provenance: components["schemas"]["CveProvenance"];
     };

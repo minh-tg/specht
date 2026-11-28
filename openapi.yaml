@@ -4037,7 +4037,7 @@ components:
         interval_seconds: { type: integer, description: The project's own polling interval. }
         default_interval_seconds: { type: integer, description: What a reset returns the interval to. }
         min_interval_seconds: { type: integer, description: The shortest interval the server accepts. }
-        max_interval_seconds: { type: integer, description: The longest interval the server accepts, seven days. }
+        max_interval_seconds: { type: integer, description: "The longest interval the server accepts, seven days." }
         server_enabled: { type: boolean, description: Whether the server runs the watcher at all. }
         effective_enabled: { type: boolean, description: "`enabled` and `server_enabled`: whether the project is polled." }
         effective_interval_seconds: { type: integer }
@@ -4134,7 +4134,7 @@ components:
       type: object
       required: [link, expires_at]
       properties:
-        link: { type: string, description: A path on this instance, for example `/reset/abc`. }
+        link: { type: string, description: "A path on this instance, for example `/reset/abc`." }
         expires_at: { type: string, format: date-time }
 
     ChangePasswordRequest:
@@ -4232,7 +4232,7 @@ components:
       required: [request_waiver, manage_waivers, approve_waivers, self_approve_waivers, manage_members, manage_ci, triage, upload_reports]
       properties:
         request_waiver: { type: boolean, description: Ask for a waiver. Every project member. }
-        manage_waivers: { type: boolean, description: Create, edit, delete and toggle waivers. }
+        manage_waivers: { type: boolean, description: "Create, edit, delete and toggle waivers." }
         approve_waivers: { type: boolean, description: Approve or reject waiver requests. }
         self_approve_waivers:
           type: boolean
@@ -4240,8 +4240,8 @@ components:
             Approve the caller's own waiver requests. True for a global admin,
             and for a manager when nobody else can decide the project's
             requests; that manager has to give a note.
-        manage_members: { type: boolean, description: Add and remove members, up to the caller's own role. }
-        manage_ci: { type: boolean, description: Create, list and revoke the project's API keys. }
+        manage_members: { type: boolean, description: "Add and remove members, up to the caller's own role." }
+        manage_ci: { type: boolean, description: "Create, list and revoke the project's API keys." }
         triage: { type: boolean, description: Change analysis state and reachability. }
         upload_reports: { type: boolean, description: Upload scan reports by hand. The same roles CI ingest admits (admin and manager). }
 
@@ -4315,7 +4315,7 @@ components:
           description: File extensions the upload page accepts for this format.
         command: { type: string, example: "semgrep scan --sarif -o semgrep.sarif", description: How to produce the file. }
         tested_with: { type: string, example: Semgrep 1.172.0, description: The tool version the parser was checked against. }
-        note: { type: string, description: Something a person should know, such as a limit of the tool. }
+        note: { type: string, description: "Something a person should know, such as a limit of the tool." }
 
     IngestRequest:
       type: object
@@ -5385,8 +5385,8 @@ components:
         user_id: { type: string, format: uuid }
         role: { type: string, enum: [admin, manager, member] }
         created_at: { type: string, format: date-time }
-        email: { type: string, format: email, description: The member's address. Sent to a signed-in person only, never to an API key. }
-        display_name: { type: string, description: The member's display name, when they have one. Sent to a signed-in person only, never to an API key. }
+        email: { type: string, format: email, description: "The member's address. Sent to a signed-in person only, never to an API key." }
+        display_name: { type: string, description: "The member's display name, when they have one. Sent to a signed-in person only, never to an API key." }
 
     MemberSuggestion:
       type: object
@@ -5394,7 +5394,7 @@ components:
       properties:
         user_id: { type: string, format: uuid }
         email: { type: string, format: email }
-        display_name: { type: string, description: The person's self-chosen display name, empty when they have none. Show it as secondary text; the email identifies the person. }
+        display_name: { type: string, description: "The person's self-chosen display name, empty when they have none. Show it as secondary text; the email identifies the person." }
 
     Environment:
       type: object
@@ -5469,7 +5469,7 @@ components:
             the gate's `blocking_count`: open findings at or above the policy's
             severity floor, admitted by source policy, not exempted by a
             reachability assessment and not covered by an approved waiver.
-        waiver_count: { type: integer, description: Approved, enabled waivers only. }
+        waiver_count: { type: integer, description: "Approved, enabled waivers only." }
         pending_waiver_count: { type: integer, description: Waiver requests waiting for a decision. }
         report_count: { type: integer }
         by_severity:
@@ -5638,7 +5638,7 @@ components:
           description: |
             `scan_report`: a scanner's report. `watcher`: the CVE watcher's OSV advisory.
             `provider`: an external CVE detail provider. `feed`: the EPSS or KEV feed.
-        tool: { type: string, description: The scanner, for scan_report and watcher. }
+        tool: { type: string, description: "The scanner, for scan_report and watcher." }
         report_id: { type: string, format: uuid }
         observed_at: { type: string, format: date-time }
         provider: { type: string, description: "The provider or feed: nvd, vulncheck, osv, epss or kev." }
@@ -5688,7 +5688,7 @@ components:
         listed: { type: boolean }
         date_added: { type: [string, "null"], format: date }
         due_date: { type: [string, "null"], format: date }
-        known_ransomware_use: { type: [string, "null"], description: As the KEV catalog spells it, Known or Unknown. }
+        known_ransomware_use: { type: [string, "null"], description: "As the KEV catalog spells it, Known or Unknown." }
         provenance: { $ref: "#/components/schemas/CveProvenance" }
 
     CveCwe:
