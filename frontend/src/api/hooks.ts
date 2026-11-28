@@ -334,11 +334,16 @@ export function useCreateProject() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (
-      { name, slug, description }: { name: string; slug: string; description?: string; },
+      { name, slug, description, default_branch }: {
+        name: string;
+        slug: string;
+        description?: string;
+        default_branch?: string;
+      },
     ) =>
       apiFetch<Project>("/api/v1/projects", {
         method: "POST",
-        body: JSON.stringify({ name, slug, description }),
+        body: JSON.stringify({ name, slug, description, default_branch }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.projects() });

@@ -10,6 +10,11 @@ releases.
 
 ### Added
 
+- New projects start with a default branch. The new project form asks for it, filled in with
+  `main`, and `POST /api/v1/projects` takes `default_branch`: blank leaves it unset, and more than
+  255 bytes or a control character is 400 `invalid_field`. Before, the default branch could only be
+  set afterwards in Settings, so until someone did, every branch whose reports name no base counted
+  as the trunk and the verdict could include findings only a pull request had.
 - `GET /projects/{slug}/gate?introduced_only=true&commit=<sha>` judges a whole commit: the findings
   that every completed report of the commit introduced, whichever scanner sent it. This is the
   verdict of the pull-request check for that commit. A commit with no completed report answers 404

@@ -170,7 +170,7 @@ type (
 	}
 
 	ProjectUsecases interface {
-		CreateProject(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error)
+		CreateProject(ctx context.Context, in usecase.CreateProjectInput) (*usecase.ProjectResponse, error)
 		ListProjectMembers(ctx context.Context, projectSlug string) ([]usecase.ProjectMemberResponse, error)
 		AddProjectMember(ctx context.Context, projectSlug, userID, role string) (*usecase.ProjectMemberResponse, error)
 		AddProjectMemberByEmail(ctx context.Context, projectSlug, email, role string) (*usecase.ProjectMemberResponse, error)

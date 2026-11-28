@@ -39,8 +39,9 @@ func TestReadPathQueryBudget(t *testing.T) {
 		require.NoError(t, registry.Register(sc))
 	}
 	uc := usecase.New(usecase.Deps{Stores: stores, Registry: registry})
-	_, err = uc.CreateProject(globalAdminCtx(creator.ID),
-		"Read budget", "read-budget", "validation", creator.ID)
+	_, err = uc.CreateProject(globalAdminCtx(creator.ID), usecase.CreateProjectInput{
+		Name: "Read budget", Slug: "read-budget", Description: "validation", CreatorID: creator.ID,
+	})
 	require.NoError(t, err)
 	_, err = uc.IngestReport(ctx, usecase.IngestReportInput{
 		ProjectSlug: "read-budget",

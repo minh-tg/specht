@@ -44,7 +44,7 @@ type mockUsecases struct {
 	deactivateUserFn        func(ctx context.Context, userID string) (*usecase.UserProfile, []usecase.RevokedAPIKey, error)
 	deactivateForce         bool
 	reactivateUserFn        func(ctx context.Context, userID string) (*usecase.UserProfile, error)
-	createProjectFn         func(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error)
+	createProjectFn         func(ctx context.Context, in usecase.CreateProjectInput) (*usecase.ProjectResponse, error)
 	listProjectMembersFn    func(ctx context.Context, projectSlug string) ([]usecase.ProjectMemberResponse, error)
 	createPasswordResetLink func(ctx context.Context, userID string) (*usecase.PasswordResetLinkResponse, error)
 	redeemPasswordReset     func(ctx context.Context, token, password string) error
@@ -140,11 +140,11 @@ type mockUsecases struct {
 	removeProjectMemberFn   func(ctx context.Context, projectSlug, userID string) error
 }
 
-func (m *mockUsecases) CreateProject(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error) {
+func (m *mockUsecases) CreateProject(ctx context.Context, in usecase.CreateProjectInput) (*usecase.ProjectResponse, error) {
 	if m.createProjectFn == nil {
 		return nil, fmt.Errorf("unexpected call to CreateProject")
 	}
-	return m.createProjectFn(ctx, name, slug, description, creatorID)
+	return m.createProjectFn(ctx, in)
 }
 
 func (m *mockUsecases) ListProjectMembers(ctx context.Context, projectSlug string) ([]usecase.ProjectMemberResponse, error) {
@@ -1333,17 +1333,19 @@ func TestGetProject_NotFound(t *testing.T) {
 }
 
 func TestCreateProject_Success(t *testing.T) {
+	var got usecase.CreateProjectInput
 	mock := &mockUsecases{
-		createProjectFn: func(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error) {
+		createProjectFn: func(ctx context.Context, in usecase.CreateProjectInput) (*usecase.ProjectResponse, error) {
+			got = in
 			return &usecase.ProjectResponse{
 				ID:   "proj-1",
-				Slug: slug,
-				Name: name,
+				Slug: in.Slug,
+				Name: in.Name,
 			}, nil
 		},
 	}
 	router := testRouter(mock)
-	body := `{"name":"My App","slug":"my-app","description":"test"}`
+	body := `{"name":"My App","slug":"my-app","description":"test","default_branch":"main"}`
 	req := httptest.NewRequest("POST", "/api/v1/projects", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1355,6 +1357,8 @@ func TestCreateProject_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "my-app", resp.Slug)
 	assert.Equal(t, "My App", resp.Name)
+	assert.Equal(t, "test", got.Description)
+	assert.Equal(t, "main", got.DefaultBranch, "the default branch reaches the usecase as sent")
 }
 
 func TestCreateProject_MissingFields(t *testing.T) {
@@ -1370,8 +1374,8 @@ func TestCreateProject_MissingFields(t *testing.T) {
 
 func TestCreateProject_InvalidSlug(t *testing.T) {
 	mock := &mockUsecases{
-		createProjectFn: func(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error) {
-			return nil, fmt.Errorf("%w: %q is reserved", usecase.ErrInvalidSlug, slug)
+		createProjectFn: func(ctx context.Context, in usecase.CreateProjectInput) (*usecase.ProjectResponse, error) {
+			return nil, fmt.Errorf("%w: %q is reserved", usecase.ErrInvalidSlug, in.Slug)
 		},
 	}
 	router := testRouter(mock)
@@ -1385,9 +1389,28 @@ func TestCreateProject_InvalidSlug(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "reserved")
 }
 
+// A default branch the usecase refuses answers 400 invalid_field, the same
+// code the update answers.
+func TestCreateProject_InvalidDefaultBranchAnswers400(t *testing.T) {
+	mock := &mockUsecases{
+		createProjectFn: func(context.Context, usecase.CreateProjectInput) (*usecase.ProjectResponse, error) {
+			return nil, fmt.Errorf("%w: at most 255 bytes", usecase.ErrInvalidDefaultBranch)
+		},
+	}
+	body := `{"name":"API","slug":"my-api","default_branch":"` + strings.Repeat("b", 256) + `"}`
+	req := httptest.NewRequest("POST", "/api/v1/projects", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	testRouter(mock).ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), `"code":"invalid_field"`)
+	assert.Contains(t, w.Body.String(), "default_branch")
+}
+
 func TestCreateProject_ACreatorDeactivatedMidRequestIsUnauthorized(t *testing.T) {
 	mock := &mockUsecases{
-		createProjectFn: func(context.Context, string, string, string, string) (*usecase.ProjectResponse, error) {
+		createProjectFn: func(context.Context, usecase.CreateProjectInput) (*usecase.ProjectResponse, error) {
 			return nil, usecase.ErrAccountDeactivated
 		},
 	}

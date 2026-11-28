@@ -1922,7 +1922,7 @@ func TestCreateProject_Success(t *testing.T) {
 		Stores: &port.Stores{Projects: pr},
 	})
 
-	result, err := uc.CreateProject(sessionCtx("creator-1", auth.RoleAdmin), "My App", "my-app", "test description", "creator-1")
+	result, err := uc.CreateProject(sessionCtx("creator-1", auth.RoleAdmin), CreateProjectInput{Name: "My App", Slug: "my-app", Description: "test description", CreatorID: "creator-1"})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, "my-app", result.Slug)
@@ -1934,7 +1934,7 @@ func TestCreateProject_APIKeyCannotCreatePlatformProject(t *testing.T) {
 	pr, _, _ := makeTestRepos()
 	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
 
-	_, err := uc.CreateProject(apiKeyCtx("key-1", findingFixtureProjectID), "My App", "my-app", "description", "key-1")
+	_, err := uc.CreateProject(apiKeyCtx("key-1", findingFixtureProjectID), CreateProjectInput{Name: "My App", Slug: "my-app", Description: "description", CreatorID: "key-1"})
 	require.ErrorIs(t, err, ErrProjectAccessDenied)
 }
 
@@ -1950,7 +1950,7 @@ func TestCreateProject_ADeactivatedCreatorIsRefused(t *testing.T) {
 			}
 			uc := New(Deps{Stores: &port.Stores{Projects: pr}})
 
-			_, err := uc.CreateProject(sessionCtx("creator-1", auth.RoleAdmin), "My App", "my-app", "", "creator-1")
+			_, err := uc.CreateProject(sessionCtx("creator-1", auth.RoleAdmin), CreateProjectInput{Name: "My App", Slug: "my-app", CreatorID: "creator-1"})
 			require.ErrorIs(t, err, ErrAccountDeactivated)
 		})
 	}

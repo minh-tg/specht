@@ -134,6 +134,7 @@ func (r *pgProjectPort) Create(ctx context.Context, input port.CreateProjectInpu
 		Description:         textPtrFromString(&input.Description),
 		DeploymentThreshold: input.DeploymentThreshold,
 		Settings:            settings,
+		DefaultBranch:       textPtrFromString(input.DefaultBranch),
 	}
 	if input.AdminID == "" {
 		row, err := r.q.CreateProject(ctx, params)

@@ -83,8 +83,8 @@ func (q *Queries) CountProjectAdmins(ctx context.Context, projectID pgtype.UUID)
 }
 
 const createProject = `-- name: CreateProject :one
-INSERT INTO projects (slug, name, description, deployment_threshold, settings)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO projects (slug, name, description, deployment_threshold, settings, default_branch)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id, default_branch
 `
 
@@ -94,6 +94,7 @@ type CreateProjectParams struct {
 	Description         pgtype.Text `json:"description"`
 	DeploymentThreshold string      `json:"deployment_threshold"`
 	Settings            []byte      `json:"settings"`
+	DefaultBranch       pgtype.Text `json:"default_branch"`
 }
 
 func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error) {
@@ -103,6 +104,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		arg.Description,
 		arg.DeploymentThreshold,
 		arg.Settings,
+		arg.DefaultBranch,
 	)
 	var i Project
 	err := row.Scan(

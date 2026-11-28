@@ -143,7 +143,36 @@ describe("NewProject", () => {
       name: "Acme API",
       slug: "acme-api",
       description: "Security scans",
+      default_branch: "main",
     }]);
+  });
+
+  it("starts the default branch at main and sends the branch the admin names", async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.type(await screen.findByLabelText("Name"), "Acme API");
+    const branch = screen.getByLabelText("Default branch");
+    expect(branch).toHaveValue("main");
+    expect(branch).toHaveAccessibleDescription(/decide the project verdict/i);
+    await user.clear(branch);
+    await user.type(branch, " trunk ");
+    await user.click(screen.getByRole("button", { name: /create project/i }));
+
+    expect(await screen.findByText("Setup page for acme-api")).toBeInTheDocument();
+    expect(postCalls).toEqual([{ name: "Acme API", slug: "acme-api", default_branch: "trunk" }]);
+  });
+
+  it("sends no default branch when the field is cleared", async () => {
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.type(await screen.findByLabelText("Name"), "Acme API");
+    await user.clear(screen.getByLabelText("Default branch"));
+    await user.click(screen.getByRole("button", { name: /create project/i }));
+
+    expect(await screen.findByText("Setup page for acme-api")).toBeInTheDocument();
+    expect(postCalls).toEqual([{ name: "Acme API", slug: "acme-api" }]);
   });
 
   it("disables the submit button while the project is being created", async () => {

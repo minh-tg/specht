@@ -80,7 +80,7 @@ func TestRealDataDoubleIngest_Idempotent(t *testing.T) {
 
 	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
 	require.NoError(t, err)
-	_, err = uc.CreateProject(globalAdminCtx(creator.ID), "My App", "my-app", "validation", creator.ID)
+	_, err = uc.CreateProject(globalAdminCtx(creator.ID), usecase.CreateProjectInput{Name: "My App", Slug: "my-app", Description: "validation", CreatorID: creator.ID})
 	require.NoError(t, err)
 
 	raw1, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
@@ -125,7 +125,7 @@ func TestIngestBatchPreservesDuplicateAndNullableOccurrenceData(t *testing.T) {
 
 	creator, err := stores.Users.Create(ctx, "batch@example.com", nil, nil)
 	require.NoError(t, err)
-	_, err = uc.CreateProject(globalAdminCtx(creator.ID), "Batch App", "batch-app", "validation", creator.ID)
+	_, err = uc.CreateProject(globalAdminCtx(creator.ID), usecase.CreateProjectInput{Name: "Batch App", Slug: "batch-app", Description: "validation", CreatorID: creator.ID})
 	require.NoError(t, err)
 
 	raw := []byte(`{
@@ -249,7 +249,7 @@ func TestRealDataIdenticalIngest_Replay(t *testing.T) {
 
 	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
 	require.NoError(t, err)
-	_, err = uc.CreateProject(globalAdminCtx(creator.ID), "My App", "my-app", "validation", creator.ID)
+	_, err = uc.CreateProject(globalAdminCtx(creator.ID), usecase.CreateProjectInput{Name: "My App", Slug: "my-app", Description: "validation", CreatorID: creator.ID})
 	require.NoError(t, err)
 
 	raw, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
@@ -289,7 +289,7 @@ func TestRealDataContext_EndToEnd(t *testing.T) {
 
 	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
 	require.NoError(t, err)
-	_, err = uc.CreateProject(globalAdminCtx(creator.ID), "My App", "my-app", "validation", creator.ID)
+	_, err = uc.CreateProject(globalAdminCtx(creator.ID), usecase.CreateProjectInput{Name: "My App", Slug: "my-app", Description: "validation", CreatorID: creator.ID})
 	require.NoError(t, err)
 
 	raw1, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
@@ -383,7 +383,7 @@ func TestAgingRows_EndToEnd(t *testing.T) {
 
 	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
 	require.NoError(t, err)
-	_, err = uc.CreateProject(globalAdminCtx(creator.ID), "My App", "my-app", "validation", creator.ID)
+	_, err = uc.CreateProject(globalAdminCtx(creator.ID), usecase.CreateProjectInput{Name: "My App", Slug: "my-app", Description: "validation", CreatorID: creator.ID})
 	require.NoError(t, err)
 	project, err := stores.Projects.GetBySlug(ctx, "my-app")
 	require.NoError(t, err)
@@ -470,7 +470,7 @@ func TestNucleiIngest_EndToEnd(t *testing.T) {
 
 	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
 	require.NoError(t, err)
-	_, err = uc.CreateProject(globalAdminCtx(creator.ID), "My App", "my-app", "validation", creator.ID)
+	_, err = uc.CreateProject(globalAdminCtx(creator.ID), usecase.CreateProjectInput{Name: "My App", Slug: "my-app", Description: "validation", CreatorID: creator.ID})
 	require.NoError(t, err)
 
 	raw, err := os.ReadFile("../parser/nuclei/testdata/nuclei.jsonl")
@@ -509,7 +509,7 @@ func TestRemediation_EndToEnd(t *testing.T) {
 
 	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
 	require.NoError(t, err)
-	_, err = uc.CreateProject(globalAdminCtx(creator.ID), "My App", "my-app", "validation", creator.ID)
+	_, err = uc.CreateProject(globalAdminCtx(creator.ID), usecase.CreateProjectInput{Name: "My App", Slug: "my-app", Description: "validation", CreatorID: creator.ID})
 	require.NoError(t, err)
 
 	raw, err := os.ReadFile("../parser/checkov/testdata/checkov-terraform.json")
@@ -551,7 +551,7 @@ func TestSuggestion_EndToEnd(t *testing.T) {
 
 	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
 	require.NoError(t, err)
-	_, err = uc.CreateProject(globalAdminCtx(creator.ID), "My App", "my-app", "validation", creator.ID)
+	_, err = uc.CreateProject(globalAdminCtx(creator.ID), usecase.CreateProjectInput{Name: "My App", Slug: "my-app", Description: "validation", CreatorID: creator.ID})
 	require.NoError(t, err)
 
 	raw, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
@@ -596,7 +596,7 @@ func TestVerifyFix_FullCycle(t *testing.T) {
 
 	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
 	require.NoError(t, err)
-	_, err = uc.CreateProject(globalAdminCtx(creator.ID), "My App", "my-app", "validation", creator.ID)
+	_, err = uc.CreateProject(globalAdminCtx(creator.ID), usecase.CreateProjectInput{Name: "My App", Slug: "my-app", Description: "validation", CreatorID: creator.ID})
 	require.NoError(t, err)
 
 	raw1, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
@@ -672,7 +672,7 @@ func TestRegression_DetectedAndReopened(t *testing.T) {
 
 	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
 	require.NoError(t, err)
-	_, err = uc.CreateProject(globalAdminCtx(creator.ID), "Regress App", "regress-app", "validation", creator.ID)
+	_, err = uc.CreateProject(globalAdminCtx(creator.ID), usecase.CreateProjectInput{Name: "Regress App", Slug: "regress-app", Description: "validation", CreatorID: creator.ID})
 	require.NoError(t, err)
 
 	raw1, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
@@ -838,7 +838,7 @@ func TestTracker_DispatchLifecycle(t *testing.T) {
 
 	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
 	require.NoError(t, err)
-	_, err = uc.CreateProject(globalAdminCtx(creator.ID), "Tracker App", "tracker-app", "validation", creator.ID)
+	_, err = uc.CreateProject(globalAdminCtx(creator.ID), usecase.CreateProjectInput{Name: "Tracker App", Slug: "tracker-app", Description: "validation", CreatorID: creator.ID})
 	require.NoError(t, err)
 
 	raw, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")

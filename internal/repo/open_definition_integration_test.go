@@ -35,7 +35,7 @@ func TestOpenDefinition_StatsGateAndAgingAgree(t *testing.T) {
 	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
 	require.NoError(t, err)
 	admin := globalAdminCtx(creator.ID)
-	_, err = uc.CreateProject(admin, "My App", "my-app", "agreement", creator.ID)
+	_, err = uc.CreateProject(admin, usecase.CreateProjectInput{Name: "My App", Slug: "my-app", Description: "agreement", CreatorID: creator.ID})
 	require.NoError(t, err)
 	project, err := stores.Projects.GetBySlug(ctx, "my-app")
 	require.NoError(t, err)

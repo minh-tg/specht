@@ -49,7 +49,7 @@ func TestUpdateProject_InvalidNameOrDescriptionAnswers400(t *testing.T) {
 
 func TestCreateProject_InvalidFieldAnswers400(t *testing.T) {
 	mock := &mockUsecases{
-		createProjectFn: func(context.Context, string, string, string, string) (*usecase.ProjectResponse, error) {
+		createProjectFn: func(context.Context, usecase.CreateProjectInput) (*usecase.ProjectResponse, error) {
 			return nil, fmt.Errorf("%w: name must be at most 100 characters", usecase.ErrInvalidField)
 		},
 	}

@@ -28,8 +28,9 @@ func TestPersistWatcherFinding_AssignsFindingIDsInternally(t *testing.T) {
 	creator, err := stores.Users.Create(ctx, "watcher-persist@example.com", nil, nil)
 	require.NoError(t, err)
 	uc := usecase.New(usecase.Deps{Stores: stores, Registry: scanner.NewRegistry()})
-	_, err = uc.CreateProject(globalAdminCtx(creator.ID),
-		"Watcher persist", "watcher-persist", "validation", creator.ID)
+	_, err = uc.CreateProject(globalAdminCtx(creator.ID), usecase.CreateProjectInput{
+		Name: "Watcher persist", Slug: "watcher-persist", Description: "validation", CreatorID: creator.ID,
+	})
 	require.NoError(t, err)
 	project, err := stores.Projects.GetBySlug(ctx, "watcher-persist")
 	require.NoError(t, err)

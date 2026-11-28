@@ -83,8 +83,8 @@ func TestCreateProject_RefusesAnOverlongOrControlNameOrDescription(t *testing.T)
 	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
 	ctx := sessionCtx("creator-1", auth.RoleAdmin)
 
-	_, err := uc.CreateProject(ctx, strings.Repeat("n", MaxNameChars+1), "my-app", "", "creator-1")
+	_, err := uc.CreateProject(ctx, CreateProjectInput{Name: strings.Repeat("n", MaxNameChars+1), Slug: "my-app", CreatorID: "creator-1"})
 	require.ErrorIs(t, err, ErrInvalidField)
-	_, err = uc.CreateProject(ctx, "My App", "my-app", "bad\x1b[2J", "creator-1")
+	_, err = uc.CreateProject(ctx, CreateProjectInput{Name: "My App", Slug: "my-app", Description: "bad\x1b[2J", CreatorID: "creator-1"})
 	require.ErrorIs(t, err, ErrInvalidField)
 }

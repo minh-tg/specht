@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -124,4 +125,35 @@ func TestE2E_DefaultBranchNeedsAProjectAdmin(t *testing.T) {
 	set := request[projectDefaultBranch](t, http.MethodPut, "/api/v1/projects/"+slug, viewerToken,
 		map[string]any{"default_branch": "main"}, http.StatusOK)
 	require.Equal(t, "main", *set.DefaultBranch, "a project admin may set it")
+}
+
+// TestE2E_CreateProjectNamesTheDefaultBranch pins that a project can start
+// with its default branch: POST /api/v1/projects stores the trimmed value with
+// the project, a blank one leaves it unset, and an overlong one is a 400 that
+// creates no project.
+func TestE2E_CreateProjectNamesTheDefaultBranch(t *testing.T) {
+	slugFor := func(label string) string { return fmt.Sprintf("e2e-create-%s-%s", label, randomHex(4)) }
+
+	named := slugFor("branch")
+	created := request[projectDefaultBranch](t, http.MethodPost, "/api/v1/projects", adminToken,
+		map[string]any{"name": named, "slug": named, "default_branch": " main "}, http.StatusCreated)
+	require.NotNil(t, created.DefaultBranch)
+	require.Equal(t, "main", *created.DefaultBranch, "the value is trimmed")
+	got := request[projectDefaultBranch](t, http.MethodGet, "/api/v1/projects/"+named, adminToken, nil, http.StatusOK)
+	require.NotNil(t, got.DefaultBranch, "the branch was stored with the project")
+	require.Equal(t, "main", *got.DefaultBranch)
+
+	blank := slugFor("blank")
+	request[projectDefaultBranch](t, http.MethodPost, "/api/v1/projects", adminToken,
+		map[string]any{"name": blank, "slug": blank, "default_branch": "  "}, http.StatusCreated)
+	got = request[projectDefaultBranch](t, http.MethodGet, "/api/v1/projects/"+blank, adminToken, nil, http.StatusOK)
+	require.Nil(t, got.DefaultBranch, "a blank value leaves it unset")
+
+	long := slugFor("long")
+	status, raw := doJSON(t, http.MethodPost, "/api/v1/projects", adminToken,
+		map[string]any{"name": long, "slug": long, "default_branch": strings.Repeat("b", 256)})
+	require.Equal(t, http.StatusBadRequest, status)
+	require.Equal(t, "invalid_field", errorCode(t, raw))
+	status, _ = doJSON(t, http.MethodGet, "/api/v1/projects/"+long, adminToken, nil)
+	require.Equal(t, http.StatusNotFound, status, "a refused branch creates no project")
 }
