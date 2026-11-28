@@ -245,6 +245,39 @@ func TestGetFinding_RemediationFromSource(t *testing.T) {
 	assert.Equal(t, "main.tf:10", finding.Location.Summary)
 }
 
+// A SAST finding whose scanner named the rule's documentation page but no fix returns the page as
+// remediation.url next to the kind-level label, so the finding page can link it.
+func TestGetFinding_RuleDocumentationLink(t *testing.T) {
+	fr := &mockFindingRepo{}
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
+		f := makeFindingRow(1)
+		f.FindingKind = "sast"
+		return f, nil
+	}
+	fr.getDisplayContextFn = func(ctx context.Context, findingID string) (port.FindingDisplayContext, error) {
+		return port.FindingDisplayContext{
+			ToolName:        "semgrep",
+			LocationSummary: "app.py:4",
+			Metadata:        json.RawMessage(`{"specht":{"fix":{"Summary":"","Description":"","URL":"https://semgrep.dev/r/python.lang.security.audit.formatted-sql-query.formatted-sql-query","Diff":""}}}`),
+		}, nil
+	}
+
+	uc := New(Deps{Stores: memberFindingDeps(fr)})
+	finding, err := uc.GetFinding(memberSessionCtx(), "00000000-0000-0000-0000-000000000021")
+	require.NoError(t, err)
+	require.NotNil(t, finding.Remediation)
+	assert.Equal(t, "https://semgrep.dev/r/python.lang.security.audit.formatted-sql-query.formatted-sql-query", finding.Remediation.URL)
+	assert.Equal(t, fixFallback("sast"), finding.Remediation.Summary)
+	assert.True(t, finding.Remediation.Fallback, "a rule page is not a fix")
+	assert.Equal(t, "semgrep", finding.Remediation.Source)
+	require.NotNil(t, finding.Suggestion)
+	assert.True(t, finding.Suggestion.Fallback)
+
+	body, err := json.Marshal(finding.Remediation)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"url":"https://semgrep.dev/r/python.lang.security.audit.formatted-sql-query.formatted-sql-query"`)
+}
+
 func TestGetFinding_RemediationFallback(t *testing.T) {
 	fr := &mockFindingRepo{}
 	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
@@ -370,6 +403,46 @@ func TestRemediationFromMetadata(t *testing.T) {
 			},
 			wantSummary: "Upgrade to 1.2.4",
 			wantURL:     "https://advisory",
+		},
+		{
+			name:         "a rule page without fix text keeps the label and the link",
+			kind:         "sast",
+			metadata:     json.RawMessage(`{"specht":{"fix":{"Summary":"","URL":"https://semgrep.dev/r/python.flask.debug-enabled"}}}`),
+			wantSummary:  fixFallback("sast"),
+			wantURL:      "https://semgrep.dev/r/python.flask.debug-enabled",
+			wantFallback: true,
+		},
+		{
+			name:         "a policy guideline without fix text keeps the label and the link",
+			kind:         "iac",
+			metadata:     json.RawMessage(`{"specht":{"fix":{"URL":"https://docs.prismacloud.io/policy/ckv-aws-20"}}}`),
+			wantSummary:  fixFallback("iac"),
+			wantURL:      "https://docs.prismacloud.io/policy/ckv-aws-20",
+			wantFallback: true,
+		},
+		{
+			name:     "a fixed version keeps the scanner's link",
+			kind:     "sca",
+			metadata: json.RawMessage(`{"specht":{"fix":{"URL":"https://example.com/advisory"}}}`),
+			dims: []port.FindingDimension{
+				{Key: "package_name", Value: "curl"},
+				{Key: "fixed_version", Value: "8.10.1-r1"},
+			},
+			wantSummary: "Upgrade curl to 8.10.1-r1.",
+			wantURL:     "https://example.com/advisory",
+		},
+		{
+			name:        "a stored link that is not http or https is not returned",
+			kind:        "sast",
+			metadata:    json.RawMessage(`{"specht":{"fix":{"Summary":"Escape the output","URL":"javascript:alert(document.cookie)"}}}`),
+			wantSummary: "Escape the output",
+		},
+		{
+			name:         "a stored relative link alone is the label",
+			kind:         "sast",
+			metadata:     json.RawMessage(`{"specht":{"fix":{"URL":"/r/local-rule"}}}`),
+			wantSummary:  fixFallback("sast"),
+			wantFallback: true,
 		},
 	}
 

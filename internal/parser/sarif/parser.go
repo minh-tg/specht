@@ -17,8 +17,9 @@
 //   - Results with an accepted suppression are skipped (triaged in the
 //     producing tool); other suppressions and the baseline state are kept
 //     as extensions. Skipped results are counted, never silent.
-//   - The first fix description becomes FixInfo.Summary; CWE ids from rule
-//     relationships and taxonomies land in extensions under the tool
+//   - The first fix description becomes FixInfo.Summary and the rule's
+//     helpUri, when it is an http or https URL, FixInfo.URL; CWE ids from
+//     rule relationships and taxonomies land in extensions under the tool
 //     namespace. Unsupported fields are ignored by the JSON decoder
 //     without dropping usable results.
 //   - A location written as an absolute path or file: URI loses its checkout
@@ -222,6 +223,9 @@ type sarifRule struct {
 	FullDescription struct {
 		Text string `json:"text"`
 	} `json:"fullDescription"`
+	// HelpURI is the rule's documentation page, such as
+	// https://semgrep.dev/r/<rule> or a CodeQL query help page.
+	HelpURI              string `json:"helpUri"`
 	DefaultConfiguration struct {
 		Level string `json:"level"`
 	} `json:"defaultConfiguration"`
@@ -369,7 +373,7 @@ func convertResult(result sarifResult, rule sarifRule, ruleID, ns string) domain
 		Description: description,
 		Severity:    severityFor(result, rule),
 		Location:    location,
-		Fix:         resultFix(result),
+		Fix:         resultFix(result, rule),
 		Dimensions:  resultDims(ruleID, file, line),
 		Extensions:  resultMeta(result, rule, ns),
 	}
@@ -423,12 +427,20 @@ func resultMeta(result sarifResult, rule sarifRule, ns string) map[string]any {
 	return meta
 }
 
-// resultFix extracts the first non-empty fix description.
-func resultFix(result sarifResult) *domain.FixInfo {
-	if len(result.Fixes) == 0 || result.Fixes[0].Description.Text == "" {
+// resultFix takes the first fix description and the rule's helpUri, the page
+// the finding page links as the rule documentation. A helpUri that is not an
+// http or https URL is dropped: the report is untrusted and the link ends up
+// in an href.
+func resultFix(result sarifResult, rule sarifRule) *domain.FixInfo {
+	var summary string
+	if len(result.Fixes) > 0 {
+		summary = result.Fixes[0].Description.Text
+	}
+	help := parseutil.WebURL(rule.HelpURI)
+	if summary == "" && help == "" {
 		return nil
 	}
-	return &domain.FixInfo{Summary: result.Fixes[0].Description.Text}
+	return &domain.FixInfo{Summary: summary, URL: help}
 }
 
 func resultFile(result sarifResult) string {

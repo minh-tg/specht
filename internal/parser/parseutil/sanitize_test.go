@@ -64,6 +64,50 @@ func TestSanitizeText(t *testing.T) {
 	})
 }
 
+func TestWebURL(t *testing.T) {
+	long := "https://example.com/" + strings.Repeat("a", MaxPathLength)
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"https", "https://semgrep.dev/r/python.lang.security.audit.eval-detected", "https://semgrep.dev/r/python.lang.security.audit.eval-detected"},
+		{"http", "http://example.com/rule#G101", "http://example.com/rule#G101"},
+		{"upper-case scheme", "HTTPS://example.com/rule", "HTTPS://example.com/rule"},
+		{"surrounding whitespace", "  https://example.com/rule\n", "https://example.com/rule"},
+		{"javascript", "javascript:alert(document.cookie)", ""},
+		{"javascript in upper case", "JavaScript:alert(1)", ""},
+		{"javascript split by a tab", "java\tscript:alert(1)", ""},
+		{"javascript split by a line break", "java\nscript:alert(1)", ""},
+		{"data", "data:text/html,<script>alert(1)</script>", ""},
+		{"file", "file:///etc/passwd", ""},
+		{"ftp", "ftp://example.com/rule", ""},
+		{"relative", "/docs/rule", ""},
+		{"protocol-relative", "//example.com/rule", ""},
+		{"no host", "https:///rule", ""},
+		{"space inside", "https://example.com/a rule", ""},
+		{"not a URL", "see the rule page", ""},
+		{"empty", "", ""},
+		{"over the bound is dropped, not cut", long, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, WebURL(tt.in))
+		})
+	}
+	atBound := "https://example.com/" + strings.Repeat("a", MaxPathLength-len("https://example.com/"))
+	assert.Equal(t, atBound, WebURL(atBound), "a URL of exactly MaxPathLength bytes is kept")
+}
+
+func TestHardenFindingDropsAFixURLThatIsNotAWebLink(t *testing.T) {
+	for _, raw := range []string{"javascript:alert(1)", "data:text/html,x", "/relative/rule"} {
+		f := HardenFinding(domain.NormalizedFinding{Fix: &domain.FixInfo{Summary: "fix", URL: raw}})
+		require.NotNil(t, f.Fix)
+		assert.Empty(t, f.Fix.URL, raw)
+		assert.Equal(t, "fix", f.Fix.Summary)
+	}
+}
+
 func TestSafeScore(t *testing.T) {
 	assert.Equal(t, 0.0, SafeScore(math.NaN()))
 	assert.Equal(t, 0.0, SafeScore(math.Inf(1)))

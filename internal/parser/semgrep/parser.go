@@ -50,7 +50,10 @@ type sarifRule struct {
 	ShortDescription     sarifDescription `json:"shortDescription"`
 	FullDescription      sarifDescription `json:"fullDescription"`
 	DefaultConfiguration sarifConfig      `json:"defaultConfiguration"`
-	Properties           map[string]any   `json:"properties"`
+	// HelpURI is the rule's page in the Semgrep registry. Rules of a local
+	// config have none.
+	HelpURI    string         `json:"helpUri"`
+	Properties map[string]any `json:"properties"`
 }
 
 type sarifDescription struct {
@@ -275,7 +278,7 @@ func convert(budget *parseutil.Budget, report sarifReport) (*domain.NormalizedRe
 
 			seen = append(seen, sighting{
 				finding: sastFinding(
-					result.RuleID, file, line, message, extractDescription(result, rule),
+					result.RuleID, file, line, message, extractDescription(result, rule), rule.HelpURI,
 					mapSarifLevel(result.Level, rule), resultMeta(result, rule, hasRule),
 				),
 				rule: result.RuleID, file: file, message: message,
@@ -398,14 +401,20 @@ const fingerprintVersion = 3
 
 // sastFinding builds a finding the same way for both Semgrep output formats. Its
 // identity is assigned afterwards by identify, which needs every finding of the
-// report to tell identical ones apart.
-func sastFinding(ruleID, file string, line int, title, description string, severity domain.Severity, extensions map[string]any) domain.NormalizedFinding {
+// report to tell identical ones apart. ruleURL is the rule's documentation page,
+// which the finding page links; one that is not an http or https URL is dropped.
+func sastFinding(ruleID, file string, line int, title, description, ruleURL string, severity domain.Severity, extensions map[string]any) domain.NormalizedFinding {
+	var fix *domain.FixInfo
+	if u := parseutil.WebURL(ruleURL); u != "" {
+		fix = &domain.FixInfo{URL: u}
+	}
 	return parseutil.HardenFinding(domain.NormalizedFinding{
 		FindingKind: "sast",
 		Title:       title,
 		Description: description,
 		Severity:    severity,
 		Location:    fmt.Sprintf("%s:%d", file, line),
+		Fix:         fix,
 		Dimensions: []domain.Dimension{
 			{Key: "rule_id", Value: ruleID},
 			{Key: "file", Value: file},
@@ -469,7 +478,8 @@ func parseNative(budget *parseutil.Budget, data []byte) (*domain.NormalizedRepor
 		seen = append(seen, sighting{
 			finding: sastFinding(
 				r.CheckID, file, line,
-				title, r.Extra.Message, mapNativeSeverity(r.Extra.Severity), nativeMeta(r),
+				title, r.Extra.Message, nativeRuleURL(r),
+				mapNativeSeverity(r.Extra.Severity), nativeMeta(r),
 			),
 			rule: r.CheckID, file: file, message: title,
 			line: line, col: r.Start.Col,
@@ -513,6 +523,13 @@ func nativeMeta(r nativeResult) map[string]any {
 		meta["semgrep_severity"] = r.Extra.Severity
 	}
 	return meta
+}
+
+// nativeRuleURL is the rule's registry page from metadata.source, the page the
+// SARIF output names as the rule's helpUri. Rules of a local config have none.
+func nativeRuleURL(r nativeResult) string {
+	source, _ := r.Extra.Metadata["source"].(string)
+	return source
 }
 
 func extractColumn(result sarifResult) int {

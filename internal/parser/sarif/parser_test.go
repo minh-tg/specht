@@ -180,3 +180,51 @@ func TestProducerNames(t *testing.T) {
 	assert.LessOrEqual(t, len(long), 255)
 	assert.True(t, utf8.ValidString(long), "the cut must not split a character")
 }
+
+// TestRuleHelpURIBecomesTheFixLink reads a captured Semgrep SARIF log with the generic adapter: the
+// rule's helpUri is the page the finding page links as the rule documentation, and a rule whose
+// helpUri is null gets no link.
+func TestRuleHelpURIBecomesTheFixLink(t *testing.T) {
+	data, err := os.ReadFile("../testdata/captured/semgrep.json")
+	require.NoError(t, err)
+	rep, err := NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+	require.Len(t, rep.Findings, 2)
+
+	byRule := map[string]*domain.FixInfo{}
+	for _, f := range rep.Findings {
+		byRule[dimValue(f, domain.DimRuleID)] = f.Fix
+	}
+	fix := byRule["go.lang.security.audit.crypto.math_random.math-random-used"]
+	require.NotNil(t, fix)
+	assert.Equal(t, "https://semgrep.dev/r/go.lang.security.audit.crypto.math_random.math-random-used", fix.URL)
+	assert.Empty(t, fix.Summary, "the result has no fixes")
+	assert.Nil(t, byRule["generic.postgres-insecure-sslmode"], "helpUri is null")
+}
+
+func TestRuleHelpURIKeepsTheFixDescription(t *testing.T) {
+	doc := `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"CodeQL","rules":[{"id":"js/xss",` +
+		`"helpUri":"https://codeql.github.com/codeql-query-help/javascript/js-xss/"}]}},` +
+		`"results":[{"ruleId":"js/xss","message":{"text":"m"},"fixes":[{"description":{"text":"Escape the output"}}]}]}]}`
+	rep, err := NewScanner().Parse(context.Background(), []byte(doc))
+	require.NoError(t, err)
+	require.Len(t, rep.Findings, 1)
+	require.NotNil(t, rep.Findings[0].Fix)
+	assert.Equal(t, "Escape the output", rep.Findings[0].Fix.Summary)
+	assert.Equal(t, "https://codeql.github.com/codeql-query-help/javascript/js-xss/", rep.Findings[0].Fix.URL)
+}
+
+// A SARIF log is uploaded by CI and the link ends up in an href, so a helpUri that is not an http or
+// https URL is dropped.
+func TestRuleHelpURIThatIsNotAWebURLIsDropped(t *testing.T) {
+	for _, link := range []string{"javascript:alert(document.cookie)", "JAVASCRIPT:alert(1)", "data:text/html,x", "docs/rule.md"} {
+		t.Run(link, func(t *testing.T) {
+			doc := `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"Gosec","rules":[{"id":"G101","helpUri":"` +
+				link + `"}]}},"results":[{"ruleId":"G101","message":{"text":"m"}}]}]}`
+			rep, err := NewScanner().Parse(context.Background(), []byte(doc))
+			require.NoError(t, err)
+			require.Len(t, rep.Findings, 1)
+			assert.Nil(t, rep.Findings[0].Fix)
+		})
+	}
+}

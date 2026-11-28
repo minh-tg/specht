@@ -4634,10 +4634,25 @@ components:
     Remediation:
       type: object
       properties:
-        summary: { type: string }
-        url: { type: string, format: uri }
+        summary:
+          type: string
+          description: >-
+            The scanner's fix text, or an upgrade built from the fixed version it reported. When
+            `fallback` is true it is a label for the finding kind instead, not a fix.
+        url:
+          type: string
+          format: uri
+          description: >-
+            The scanner's page for the rule or policy behind the finding, such as a SARIF rule's
+            `helpUri`, a Semgrep registry page or a Checkov guideline. Always an absolute http or
+            https URL; a report that names anything else gets no `url`. It can come with
+            `fallback` true when the scanner named the page but gave no fix text.
         source: { type: string }
-        fallback: { type: boolean }
+        fallback:
+          type: boolean
+          description: >-
+            True when the scanner supplied no fix text and `summary` is the label for the finding
+            kind. A `url` next to it is still the scanner's own.
 
     Location:
       type: object

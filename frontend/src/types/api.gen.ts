@@ -2933,10 +2933,15 @@ export interface components {
       source_link?: string;
     };
     Remediation: {
+      /** @description The scanner's fix text, or an upgrade built from the fixed version it reported. When `fallback` is true it is a label for the finding kind instead, not a fix. */
       summary?: string;
-      /** Format: uri */
+      /**
+       * Format: uri
+       * @description The scanner's page for the rule or policy behind the finding, such as a SARIF rule's `helpUri`, a Semgrep registry page or a Checkov guideline. Always an absolute http or https URL; a report that names anything else gets no `url`. It can come with `fallback` true when the scanner named the page but gave no fix text.
+       */
       url?: string;
       source?: string;
+      /** @description True when the scanner supplied no fix text and `summary` is the label for the finding kind. A `url` next to it is still the scanner's own. */
       fallback?: boolean;
     };
     Location: {

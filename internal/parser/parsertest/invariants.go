@@ -114,6 +114,9 @@ func Check(t testing.TB, rep *domain.NormalizedReport) {
 		if f.Fix != nil {
 			bounded(t, "fix.summary", f.Fix.Summary, parseutil.MaxTitleLength)
 			bounded(t, "fix.url", f.Fix.URL, parseutil.MaxPathLength)
+			if f.Fix.URL != "" && parseutil.WebURL(f.Fix.URL) != f.Fix.URL {
+				t.Fatalf("finding %d: fix url is not an http or https link: %q", i, f.Fix.URL)
+			}
 			bounded(t, "fix.description", f.Fix.Description, parseutil.MaxDescriptionLength)
 		}
 	}
