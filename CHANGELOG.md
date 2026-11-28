@@ -504,6 +504,9 @@ releases.
   with a JSON content type that the browser does not mark `Sec-Fetch-Site: cross-site`. Before this, a
   plain-text form post from any site to the login route set it, and the visitor's next new tab signed
   in as the attacker. The sign-in itself is unchanged.
+- A Slack waiver notice escapes the heading. It names the person who acted, and a project member sets
+  their own display name, so a name such as `<!channel>` pinged the whole channel and a name with a
+  link rendered as a link sent by Specht.
 - A project's only manager can approve their own waiver request with a note. Before, nobody could
   approve it unless a global admin stepped in. The approval is marked self-approved, as a global
   admin's is. Anyone else on the project with manager or admin rights, directly or through a team, or a
