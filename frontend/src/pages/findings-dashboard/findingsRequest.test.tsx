@@ -65,10 +65,62 @@ it("sends the scanner filter from the URL and offers the scanners the server kno
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  await screen.findByText("No findings found");
+  // A scanner filter that matches nothing is a filtered page, not an empty project.
+  await screen.findByText("No findings match these filters.");
 
   expect(urls.some((u) => u.includes("/findings?") && u.includes("scanner=trivy"))).toBe(true);
   expect(await screen.findByRole("combobox", { name: "Filter by scanner" })).toHaveTextContent(
     "Trivy",
   );
 });
+
+it("sends the gate filter from the URL, shows it, and offers to clear it", async () => {
+  const urls: string[] = [];
+  globalThis.fetch = vi.fn().mockImplementation(async (input) => {
+    const url = String(input);
+    urls.push(url);
+    return jsonResponse(url.endsWith("/gate") ? { blocked_by: [] } : []);
+  });
+  render(
+    <QueryClientProvider client={createTestQueryClient()}>
+      <MemoryRouter initialEntries={["/p/findings?blocks_gate=true"]}>
+        <Routes>
+          <Route path="/:slug/findings" element={<FindingsDashboard />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  await screen.findByText("No findings match these filters.");
+
+  expect(urls.some((u) => u.includes("/findings?") && u.includes("blocks_gate=true"))).toBe(true);
+  expect(screen.getByRole("combobox", { name: "Filter by gate" })).toHaveTextContent(
+    "Blocks the gate",
+  );
+  expect(screen.getByRole("button", { name: "Clear filters" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Blocks the gate" })).toHaveAttribute(
+    "href",
+    "/p/findings?blocks_gate=true",
+  );
+});
+
+it("sends no gate filter for a value other than true", () => {
+  expect(findingsRequest({ ...findingsRequestFilters(), blocksGate: "" }).blocksGate)
+    .toBeUndefined();
+  expect(findingsRequest({ ...findingsRequestFilters(), blocksGate: "true" }).blocksGate).toBe(
+    true,
+  );
+});
+
+function findingsRequestFilters() {
+  return {
+    severity: "",
+    status: "",
+    kind: "",
+    analysisState: "",
+    q: "",
+    branchScope: "",
+    assignee: "",
+    scanner: "",
+    blocksGate: "",
+  };
+}

@@ -1510,6 +1510,12 @@ paths:
             Comma list of scanner names, as reports are stored under (`tool_name`). Keeps the
             findings a report of one of them observed. Matched in lower case, at most 32 names.
           schema: { type: string, example: "trivy,semgrep" }
+        - name: blocks_gate
+          in: query
+          description: >-
+            `true` keeps the findings the project verdict counts as blocking, the `blocked_by` of
+            `GET /projects/{slug}/gate` with no parameters. The other filters still apply.
+          schema: { type: boolean, default: false }
         - name: branch_scope
           in: query
           description: >-

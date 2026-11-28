@@ -10,7 +10,11 @@ import {
 import { INLINE_LINK } from "@/components/inlineLink";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UpdatedHint } from "@/components/UpdatedHint";
-import { NEEDS_TRIAGE_QUERY, OPEN_CRITICAL_HIGH_QUERY } from "@/lib/findingViews";
+import {
+  BLOCKS_GATE_QUERY,
+  NEEDS_TRIAGE_QUERY,
+  OPEN_CRITICAL_HIGH_QUERY,
+} from "@/lib/findingViews";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { WaiverRequestDialog } from "./change-view/WaiverRequestDialog";
@@ -91,7 +95,8 @@ export function FindingsDashboard() {
   const sorted = findings ?? [];
   const hasFilters = Boolean(
     filters.severity || filters.status || filters.kind || filters.analysisState
-      || filters.branchScope || filters.assignee || filters.q,
+      || filters.branchScope || filters.assignee || filters.scanner || filters.blocksGate
+      || filters.q,
   );
   // Rows already on screen stay put while the next request is in flight, so the
   // toolbar the user is operating never unmounts under them.
@@ -108,6 +113,12 @@ export function FindingsDashboard() {
         className="flex flex-wrap items-center gap-x-4 gap-y-1 text-body"
       >
         <span className="text-muted-foreground">Quick views</span>
+        <Link
+          to={`/${slug}/findings?${BLOCKS_GATE_QUERY}`}
+          className={`${INLINE_LINK} inline-flex min-h-8 items-center`}
+        >
+          Blocks the gate
+        </Link>
         <Link
           to={`/${slug}/findings?${NEEDS_TRIAGE_QUERY}`}
           className={`${INLINE_LINK} inline-flex min-h-8 items-center`}

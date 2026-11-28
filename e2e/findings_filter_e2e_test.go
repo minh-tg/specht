@@ -87,6 +87,31 @@ func TestE2E_FindingsFiltersAndPagination(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, status, "%s", body)
 	})
 
+	t.Run("blocks_gate keeps exactly what the project verdict counts as blocking", func(t *testing.T) {
+		blocked := getGate(t, slug, "").BlockedBy
+		require.NotEmpty(t, blocked)
+		require.Less(t, len(blocked), 10, "the fixture must leave some findings below the floor")
+
+		page, total := findingsPage(t, slug, "blocks_gate=true&limit=50")
+		ids := make([]string, len(page))
+		for i, f := range page {
+			ids[i] = f.ID
+		}
+		require.ElementsMatch(t, blocked, ids)
+		require.Equal(t, strconv.Itoa(len(blocked)), total)
+
+		critical, _ := findingsPage(t, slug, "blocks_gate=true&severity=critical")
+		require.NotEmpty(t, critical)
+		require.Less(t, len(critical), len(blocked), "the other filters still apply")
+		for _, f := range critical {
+			require.Equal(t, "critical", f.CurrentSeverity)
+			require.Contains(t, blocked, f.ID)
+		}
+
+		status, body := doJSON(t, http.MethodGet, "/api/v1/projects/"+slug+"/findings?blocks_gate=yes", adminToken, nil)
+		require.Equal(t, http.StatusBadRequest, status, "%s", body)
+	})
+
 	t.Run("every listed finding says where it is", func(t *testing.T) {
 		type located struct {
 			FindingKind string `json:"finding_kind"`

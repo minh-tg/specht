@@ -17,6 +17,11 @@ releases.
 - The findings list can be narrowed to scanners. `GET /projects/{slug}/findings` takes `scanner`, a
   comma list of scanner names, and each listed finding carries `scanners`, the scanners whose reports
   observed it.
+- "2 findings block this project" in the project header is a link to exactly those findings. The
+  findings list has a "Blocks the gate" quick view and filter, and `GET /projects/{slug}/findings`
+  takes `blocks_gate=true`, which keeps the `blocked_by` of the project gate. Before this, the only
+  way to find the blockers was to scan the list by severity, where findings seen only on unmerged
+  branches sit among them.
 - The findings list has a scanner filter and a Scanner column, so one tool's findings can be triaged
   at a time. The filter lives in the URL like the others, and on a phone the scanner joins the line
   under each title.

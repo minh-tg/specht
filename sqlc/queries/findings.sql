@@ -105,6 +105,7 @@ WHERE f.project_id = $1
   AND (array_length(sqlc.arg(scanners)::text[], 1) IS NULL OR EXISTS (
     SELECT 1 FROM finding_occurrences so
     WHERE so.finding_id = f.id AND so.tool_name = ANY(sqlc.arg(scanners)::text[])))
+  AND (NOT sqlc.arg(by_ids)::boolean OR f.id = ANY(sqlc.arg(ids)::uuid[]))
 ORDER BY
   CASE WHEN sqlc.arg(sort_key)::text = 'severity' AND sqlc.arg(sort_dir)::text = 'desc' THEN f.current_severity_rank END DESC,
   CASE WHEN sqlc.arg(sort_key)::text = 'severity' AND sqlc.arg(sort_dir)::text = 'asc' THEN f.current_severity_rank END ASC,
@@ -147,7 +148,8 @@ WHERE f.project_id = $1
   AND (sqlc.narg(assignee_id)::uuid IS NULL OR f.assignee_id = sqlc.narg(assignee_id)::uuid)
   AND (array_length(sqlc.arg(scanners)::text[], 1) IS NULL OR EXISTS (
     SELECT 1 FROM finding_occurrences so
-    WHERE so.finding_id = f.id AND so.tool_name = ANY(sqlc.arg(scanners)::text[])));
+    WHERE so.finding_id = f.id AND so.tool_name = ANY(sqlc.arg(scanners)::text[])))
+  AND (NOT sqlc.arg(by_ids)::boolean OR f.id = ANY(sqlc.arg(ids)::uuid[]));
 
 -- name: ListFindingScanners :many
 -- The scanners whose reports observed each given finding, in name order.

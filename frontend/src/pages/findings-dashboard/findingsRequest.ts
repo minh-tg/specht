@@ -13,6 +13,7 @@ const NO_FILTERS: FindingsFilters = {
   branchScope: "",
   assignee: "",
   scanner: "",
+  blocksGate: "",
   q: "",
 };
 
@@ -34,6 +35,7 @@ export function findingsRequest(
     branchScope: filters.branchScope || undefined,
     assignee: filters.assignee || undefined,
     scanner: filters.scanner || undefined,
+    blocksGate: filters.blocksGate === "true" || undefined,
     q: filters.q || undefined,
     sort: sort.by,
     dir: sort.dir,

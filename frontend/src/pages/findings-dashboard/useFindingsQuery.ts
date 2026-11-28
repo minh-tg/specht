@@ -16,6 +16,8 @@ export interface FindingsFilters {
   assignee: string;
   /** Comma list of scanner names, or empty for every scanner. */
   scanner: string;
+  /** "true" for the findings the project verdict counts as blocking, or empty for all. */
+  blocksGate: string;
 }
 
 export interface FindingsSort {
@@ -41,6 +43,7 @@ const FILTER_KEYS = [
   "branch_scope",
   "assignee",
   "scanner",
+  "blocks_gate",
 ] as const;
 
 /**
@@ -59,6 +62,7 @@ export function findingsViewFromSearch(
     branchScope: searchParams.get("branch_scope") ?? "",
     assignee: searchParams.get("assignee") ?? "",
     scanner: searchParams.get("scanner") ?? "",
+    blocksGate: searchParams.get("blocks_gate") === "true" ? "true" : "",
   };
 
   const rawSort = searchParams.get("sort");

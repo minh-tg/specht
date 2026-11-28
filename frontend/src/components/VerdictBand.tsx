@@ -6,7 +6,7 @@ import { SeverityBadge } from "@/components/ui/severity-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { SEVERITIES, severityLabel } from "@/lib/enums";
-import { NEEDS_TRIAGE_QUERY } from "@/lib/findingViews";
+import { BLOCKS_GATE_QUERY, NEEDS_TRIAGE_QUERY } from "@/lib/findingViews";
 import { pluralize } from "@/lib/format";
 import {
   blockerCount,
@@ -153,7 +153,16 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
 
       <div className="flex flex-wrap items-center gap-2">
         <VerdictBadge verdict={verdict} />
-        <p role="status" className="tabular-nums">{verdictSentence(verdict, blockers)}</p>
+        <p role="status" className="tabular-nums">
+          {/* The count opens the list of exactly those findings, so "2 block" is never a dead end. */}
+          {blockers > 0 && (verdict === "blocked" || verdict === "would_block")
+            ? (
+              <Link to={`/${slug}/findings?${BLOCKS_GATE_QUERY}`} className={INLINE_LINK}>
+                {verdictSentence(verdict, blockers)}
+              </Link>
+            )
+            : verdictSentence(verdict, blockers)}
+        </p>
         {waived > 0 && (
           <span className="text-muted-foreground text-body tabular-nums">· {waived} waived</span>
         )}
