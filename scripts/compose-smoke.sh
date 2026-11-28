@@ -53,7 +53,7 @@ sed \
   -e "s/CHANGE-ME-app-32-plus-random-chars/$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')smokeapp/" \
   -e "s/CHANGE-ME-64-random-chars-min-32-bytes/$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')smoke00000000000000/" \
   -e "s/^SERVER_PORT=.*/SERVER_PORT=$PORT/" \
-  -e "s/^ADMIN_EMAILS=.*/ADMIN_EMAILS=$EMAIL/" \
+  -e "s/^#\{0,1\}ADMIN_EMAILS=.*/ADMIN_EMAILS=$EMAIL/" \
   deploy/.env.prod.example >"$ENV_FILE"
 {
   echo "SETUP_TOKEN=$SETUP_TOKEN"

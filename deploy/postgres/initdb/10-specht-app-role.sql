@@ -14,6 +14,8 @@
 -- Settings come from the environment:
 --   SPECHT_APP_DB_PASSWORD  the role's password (required)
 --   SPECHT_APP_DB_USER      the role's name (default specht_app)
+--   POSTGRES_PASSWORD       the owner's password, set in the bundled container;
+--                           read only to refuse a placeholder
 -- and from psql variables:
 --   owner_role              the role that runs the migrations (default: the
 --                           user running this file), whose future tables the
@@ -31,6 +33,8 @@
 \endif
 \set app_password ''
 \getenv app_password SPECHT_APP_DB_PASSWORD
+\set owner_password ''
+\getenv owner_password POSTGRES_PASSWORD
 \if :{?owner_role}
 \else
 \set owner_role :USER
@@ -38,6 +42,14 @@
 
 SELECT 'DO $$ BEGIN RAISE EXCEPTION ''SPECHT_APP_DB_PASSWORD is not set''; END $$'
 WHERE :'app_password' = '' \gexec
+-- deploy/.env.prod.example ships CHANGE-ME placeholders; refuse them the way
+-- the server refuses one in JWT_SECRET.
+SELECT 'DO $$ BEGIN RAISE EXCEPTION ''SPECHT_APP_DB_PASSWORD still holds the change-me placeholder; '
+    'set a random value, for example openssl rand -hex 32''; END $$'
+WHERE :'app_password' ~* 'change-?me' \gexec
+SELECT 'DO $$ BEGIN RAISE EXCEPTION ''POSTGRES_PASSWORD still holds the change-me placeholder; '
+    'set a random value, for example openssl rand -hex 32''; END $$'
+WHERE :'owner_password' ~* 'change-?me' \gexec
 SELECT 'DO $$ BEGIN RAISE EXCEPTION ''SPECHT_APP_DB_USER is empty''; END $$'
 WHERE :'app_role' = '' \gexec
 SELECT 'DO $$ BEGIN RAISE EXCEPTION ''the app role must differ from the owner role''; END $$'

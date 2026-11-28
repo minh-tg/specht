@@ -201,6 +201,10 @@ releases.
 
 ### Changed
 
+- The GitHub Actions snippet on the CI setup page and in `examples/ci/github-actions.yml` grants
+  `checks: write`, so the gate publishes the "Specht Security Gate" check on the pull request.
+  Before, the permission was commented out, no check appeared, and branch protection had no check to
+  require. A workflow without the permission still gates through the job's exit code.
 - The change view judges the whole commit. Every scanner's reports of the commit count together,
   the verdict the pull-request check gives, so the Trivy step's link and the Gitleaks step's link
   show the same blockers. A `report` in the link now only picks which CI run the header links to.
@@ -507,6 +511,16 @@ releases.
 - A Slack waiver notice escapes the heading. It names the person who acted, and a project member sets
   their own display name, so a name such as `<!channel>` pinged the whole channel and a name with a
   link rendered as a link sent by Specht.
+- `GET /metrics` answers 404 with a plain-text body. Before, the web app's fallback served its HTML
+  page there with 200, so a Prometheus scrape looked configured and gathered nothing. Specht has no
+  metrics endpoint yet.
+- The compose file passes `SPECHT_BASE_URL`, `SSO_ALLOW_PRIVATE_ISSUER` and `GOMEMLIMIT` to the
+  server, and sets `GOMEMLIMIT` to `2700MiB`, about 90% of the default 3 GiB container limit.
+  Before, setting them in `deploy/.env.prod` did nothing: waiver notifications went out without a
+  link, an identity provider on a private address stayed refused, and without a soft limit the
+  garbage collector let the heap grow to twice its live size, which a large ingest could push past
+  the container limit. `scripts/compose-config-test.sh` now fails when a variable the server reads
+  is missing from the compose file.
 - A project's only manager can approve their own waiver request with a note. Before, nobody could
   approve it unless a global admin stepped in. The approval is marked self-approved, as a global
   admin's is. Anyone else on the project with manager or admin rights, directly or through a team, or a
@@ -671,6 +685,11 @@ releases.
 
 ### Security
 
+- The database init script refuses a `POSTGRES_PASSWORD` or `SPECHT_APP_DB_PASSWORD` that
+  contains `change-me` or `changeme`, in any case, and names the variable. Before, it refused only
+  an empty password, so a `deploy/.env.prod` copied from the example without editing ran Postgres
+  with the placeholder passwords published in the repository. The server already refused such a
+  `JWT_SECRET`.
 - The server and adapter are built with Go 1.27.4, which fixes GO-2026-6859: an HTTP/1 server
   could crash on a data race between `http.MaxBytesReader` and the request headers. Specht wraps
   request bodies in `MaxBytesReader`, so a client could take the server down. Go 1.27.3 was affected.

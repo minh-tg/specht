@@ -75,10 +75,17 @@ func isAssetPath(cleanPath string) bool {
 	return cleanPath == "assets" || strings.HasPrefix(cleanPath, "assets/")
 }
 
+// notAppRoutes are extensionless paths that tools probe and the app never
+// routes. Specht has no metrics endpoint, and the app shell with 200 under
+// /metrics would make a Prometheus scrape look configured while it gathers
+// nothing.
+var notAppRoutes = map[string]bool{"metrics": true}
+
 // isAppRoute reports whether a cleaned path is a client-side route that
-// should fall back to index.html: no file extension and not an asset path.
+// should fall back to index.html: no file extension, not an asset path and
+// not a path tools probe.
 func isAppRoute(cleanPath string) bool {
-	return !isAssetPath(cleanPath) && path.Ext(cleanPath) == ""
+	return !isAssetPath(cleanPath) && !notAppRoutes[cleanPath] && path.Ext(cleanPath) == ""
 }
 
 func fileExists(fsys fs.FS, name string) bool {

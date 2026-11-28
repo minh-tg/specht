@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a vulnerability
+    url: https://github.com/minh-tg/specht/security/advisories/new
+    about: Report a security vulnerability privately. Only the maintainers can read the advisory. Do not open a public issue for it.

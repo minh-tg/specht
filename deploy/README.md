@@ -8,6 +8,8 @@ attached to each GitHub Release. No Helm deployment is provided.
 
 ## 1. Secrets
 
+Run one server process per database. Several replicas are not supported in 0.1.
+
 ```bash
 cp deploy/.env.prod.example deploy/.env.prod
 # Fill in POSTGRES_PASSWORD and SPECHT_APP_DB_PASSWORD (letters and digits
@@ -20,6 +22,15 @@ head -c 48 /dev/urandom | base64
 `deploy/.env.prod` must never be committed. The server refuses to start with
 a missing or short `JWT_SECRET`; Postgres refuses an empty password — both
 fail fast instead of running insecure.
+
+The database init script (see Database roles) also refuses a
+`POSTGRES_PASSWORD` or `SPECHT_APP_DB_PASSWORD` that still contains
+`change-me` or `changeme` in any case, as the placeholders in
+`.env.prod.example` do, and the database log names the variable. Postgres
+runs that script only on the first start of an empty volume, so on a new
+install set real passwords, remove the volume with
+`docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod down -v`
+and start again.
 
 The bundled Postgres container has no TLS and the server reaches it over the
 private Compose network, so `POSTGRES_SSLMODE` stays `disable` for it; setting
@@ -84,7 +95,7 @@ server starts with the new compose file:
 
    ```bash
    docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod up -d
-   docker compose -f deploy/docker-compose.yml logs server | grep 'database role' || echo ok
+   docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod logs server | grep 'database role' || echo ok
    ```
 
 Without `SPECHT_APP_DB_PASSWORD`, compose refuses to start. If the server
@@ -92,6 +103,10 @@ starts before step 4, it cannot log in as `specht_app` and restarts until the
 role exists.
 
 #### Your own Postgres
+
+Specht is tested on PostgreSQL 17 and requires 15 or newer: migration 000062
+creates a `UNIQUE NULLS NOT DISTINCT` constraint, which older versions reject,
+so the server stops at that migration on 14 or earlier.
 
 Run the same script with `psql` 15 or newer as the role that owns the schema
 (or as a superuser, naming the owner with `-v owner_role=<owner>`). Creating a
@@ -116,6 +131,12 @@ curl -fsS http://localhost:8080/api/v1/health   # liveness: the process is up
 curl -fsS http://localhost:8080/api/v1/ready    # readiness: the database answers
 curl -fsS http://localhost:8080/api/v1/version
 ```
+
+Run every compose command from the checkout root with the same
+`-f deploy/docker-compose.yml --env-file deploy/.env.prod`, including `logs`,
+`exec`, `cp` and `stop`. The compose file requires the database passwords, so
+without the env file it stops with
+`required variable POSTGRES_PASSWORD is missing a value`.
 
 The server service pulls `ghcr.io/minh-tg/specht:${SPECHT_VERSION}`. Set
 `SPECHT_VERSION` in `deploy/.env.prod` to a release tag such as `v0.1.0` so a
@@ -178,7 +199,8 @@ and `SSO_ALLOW_PRIVATE_ISSUER` accept only the exact words `true` and `false`.
 | `INVENTORY_TTL` | `2160h` | How long a scanned package stays in the watcher's active inventory. |
 | `INGEST_MAX_CONCURRENCY` | `8` | Report ingests processed at once. Each parse holds several times the request body in memory (bodies are capped at 25 MiB), so this bounds the worst case. A request is authorized from the start of its body before it takes anything, and a slot is taken only after the whole body has arrived (the body has 30 s), so a slow upload holds no slot. One caller, a user or an API key, may hold at most half of the slots (at least one), and so may one project however many callers it has (a manager's session and any number of its keys together): at the default of 8, a project runs at most 4 ingests at once. A single-project install therefore uses at most half of the slots; raise this setting if its CI needs more at once. Further requests wait up to 15 s in their own queue and get `503 ingest_busy` with `Retry-After`, without delaying other callers. An ingest holds two database connections at once, so the server caps this at `DB_MAX_CONNS` minus one and logs a warning when it does: with `DB_MAX_CONNS=8`, at most 7 ingests run. An ingest may take up to two minutes once its body is in, and it finishes even if the client hangs up. One that runs past the two minutes is stopped, its report is marked failed, and the caller gets `503 ingest_timeout` with `Retry-After` (not a 422), so a CI job knows to upload the scan again. Must be a positive integer. |
 | `INGEST_MAX_FINDINGS` | `100000` | Findings and packages one report may produce. A report past it is refused with `422 too_many_findings`, and the parser stops at the limit instead of converting the whole file. A parsed finding holds about 1.4 KB in memory, so one report at the default holds about 140 MB of findings. `INGEST_MEMORY_BUDGET` bounds how many reports decode at once. Lower the limit on small hosts; raise it only with the memory to match. Before any parser decodes a report, the server also counts its JSON objects and the objects in the arrays that carry findings; a document with more than 16 objects, 64 JSON values of any kind, or 2 finding-array elements (objects, `null`, strings or numbers alike) per allowed finding is refused with the same error. Array names match the way the JSON decoder matches fields, ignoring case and JSON escapes. A document nested more than 64 levels deep is refused with the same error; the captured reports for the supported scanners nest at most 14 levels, so the cap refuses only hostile or malformed documents. A document whose values are packed tighter than 40 estimated bytes of decoded memory per byte of the report (one-key objects every 6 bytes, for example) is refused with the same error too. Each element of the arrays that carry findings is priced at 5.5 KiB on top of its JSON, because it becomes a parsed finding and stored rows, so a report needs about 160 bytes per finding to pass; the captured reports estimate at 6 to 20. Must be a positive integer. |
-| `INGEST_MEMORY_BUDGET` | `2GiB` | Memory that all report ingests in flight may charge together. Before it decodes a report, an ingest charges 64 bytes per byte of the report's `raw_data` against this budget and gives the charge back when it ends, whatever way it ends. A 25 MiB report charges 1.56 GiB, so at the default one large report runs with at most 7 MiB of other reports beside it, and eight 4 MiB reports run together. A charge above the whole budget is capped to the budget, so a report of any size is admitted, alone. An ingest that cannot get its charge within 15 s, the wait a concurrency slot has, gets `503 ingest_busy` with `Retry-After`. One caller, and separately one project, also has an allowance of half the budget that its ingests in flight share, so a second 25 MiB report of the same project waits for its first. The allowance caps what one caller or project can queue; it does not lower a single ingest's charge against the whole budget. One 25 MiB report still charges 1.56 GiB there (78% of the default, and all of a 1 GiB budget), and an ingest of another project waits for it like any other. The factor 64 is 2.5 to 10 times what decoding costs: peaks measured at the default limit were 6 to 24 times the report (150 MB for a 14 MB Trivy report with 100000 findings). Decoding memory stays under 2 GiB as long as no report costs more than 64 times its size, which the document scan enforces: it estimates what a document's values take to decode and refuses one past 40 times its length, and the densest shapes the parsers accept peak at about 43 times in the heap and 43 to 65 times in the server's resident memory, depending on when the Go garbage collector runs (see `internal/parser/ingest_memory_test.go` and `e2e/ingest_memory_e2e_test.go`), and it is about 0.2 to 0.8 GiB for ordinary reports. The request bodies come on top: up to 25 MiB each, `INGEST_MAX_CONCURRENCY` of them (200 MiB at the defaults), each held about twice while it is read. Give the container at least the budget plus 1 GiB, and set `GOMEMLIMIT` to about 90% of the container's memory (for example `GOMEMLIMIT=2700MiB` for 3 GiB) so the garbage collector runs harder before resident memory reaches the container limit instead of letting the heap grow to twice its live size. Accepts bytes (`2147483648`) or a size such as `512MiB`, `2GiB` or `3GB` (`KiB`, `MiB`, `GiB`, `TiB` are powers of 1024; `KB`, `MB`, `GB`, `TB` of 1000). Must be positive; invalid values fail startup. |
+| `INGEST_MEMORY_BUDGET` | `2GiB` | Memory that all report ingests in flight may charge together. Before it decodes a report, an ingest charges 64 bytes per byte of the report's `raw_data` against this budget and gives the charge back when it ends, whatever way it ends. A 25 MiB report charges 1.56 GiB, so at the default one large report runs with at most 7 MiB of other reports beside it, and eight 4 MiB reports run together. A charge above the whole budget is capped to the budget, so a report of any size is admitted, alone. An ingest that cannot get its charge within 15 s, the wait a concurrency slot has, gets `503 ingest_busy` with `Retry-After`. One caller, and separately one project, also has an allowance of half the budget that its ingests in flight share, so a second 25 MiB report of the same project waits for its first. The allowance caps what one caller or project can queue; it does not lower a single ingest's charge against the whole budget. One 25 MiB report still charges 1.56 GiB there (78% of the default, and all of a 1 GiB budget), and an ingest of another project waits for it like any other. The factor 64 is 2.5 to 10 times what decoding costs: peaks measured at the default limit were 6 to 24 times the report (150 MB for a 14 MB Trivy report with 100000 findings). Decoding memory stays under 2 GiB as long as no report costs more than 64 times its size, which the document scan enforces: it estimates what a document's values take to decode and refuses one past 40 times its length, and the densest shapes the parsers accept peak at about 43 times in the heap and 43 to 65 times in the server's resident memory, depending on when the Go garbage collector runs (see `internal/parser/ingest_memory_test.go` and `e2e/ingest_memory_e2e_test.go`), and it is about 0.2 to 0.8 GiB for ordinary reports. The request bodies come on top: up to 25 MiB each, `INGEST_MAX_CONCURRENCY` of them (200 MiB at the defaults), each held about twice while it is read. Give the container at least the budget plus 1 GiB, and set `GOMEMLIMIT` to about 90% of the container's memory (compose sets `GOMEMLIMIT=2700MiB` for its 3 GiB default) so the garbage collector runs harder before resident memory reaches the container limit instead of letting the heap grow to twice its live size. Accepts bytes (`2147483648`) or a size such as `512MiB`, `2GiB` or `3GB` (`KiB`, `MiB`, `GiB`, `TiB` are powers of 1024; `KB`, `MB`, `GB`, `TB` of 1000). Must be positive; invalid values fail startup. |
+| `GOMEMLIMIT` | *(none)*; compose sets `2700MiB` | Soft memory limit of the Go runtime. Set it to about 90% of the container's memory limit, so the garbage collector runs harder before resident memory reaches the limit. Compose sets the container limit from `SPECHT_MEM_LIMIT` (default `3g`) and its `GOMEMLIMIT` default matches that; raise both together. Takes a number of bytes, optionally with a unit: `B`, `KiB`, `MiB`, `GiB` or `TiB`. |
 | `SESSION_MAX_AGE` | `720h` | Absolute lifetime of a sign-in. Each refresh renews the token for a week, but never past this long after the original login; the next refresh then answers `401 refresh_failed` and the user signs in again. Must be a positive duration. |
 | `RAW_RETENTION_DAYS` | `30` | Days a report keeps its `raw_data` payload. Each sweep on `LIFECYCLE_SWEEP_INTERVAL` clears the payload of every report older than this and keeps the report row, its findings and their summaries. Responses then carry `raw_data_expired: true` on the report and on the finding detail, with `raw_data_expires_at` as the date the window ended, and the finding detail page says when the raw evidence expired. `0` keeps every payload. Must be a whole number of days from 0 to 36500 (100 years); a negative, non-numeric or larger value fails startup. |
 | `LIFECYCLE_SWEEP_INTERVAL` | `5m` | Period of the analysis-expiry, waiver-expiry, stale-report and dead-refresh-token sweeps; must be a positive duration. The stale-report sweep marks a report that has been `processing` for more than 10 minutes as `failed` and removes the findings it created that no occurrence supports (it archives ones that already had triage). The refresh token sweep deletes tokens that expired or were revoked more than 7 days ago, at most 50,000 rows per run. |
@@ -484,13 +506,14 @@ boolean), and its last success and last error category.
 | `CVE_DETAIL_TTL` | `24h` | How long a found record is reused. |
 | `CVE_DETAIL_NEGATIVE_TTL` | `6h` | How long a "not found" answer is reused. |
 | `CVE_DETAIL_TIMEOUT` | `10s` | Per-request timeout. |
-| `CVE_DETAIL_NVD_RPS` | `0.16` without a key, `1.6` with one | Requests per second to NVD, per server replica. |
-| `CVE_DETAIL_VULNCHECK_RPS` | `1` | Requests per second to VulnCheck, per server replica. |
-| `CVE_DETAIL_OSV_RPS` | `1` | Requests per second to OSV, per server replica. |
+| `CVE_DETAIL_NVD_RPS` | `0.16` without a key, `1.6` with one | Requests per second to NVD. |
+| `CVE_DETAIL_VULNCHECK_RPS` | `1` | Requests per second to VulnCheck. |
+| `CVE_DETAIL_OSV_RPS` | `1` | Requests per second to OSV. |
 
-The rates apply per replica. Replicas share one fetch per CVE through a lease in
-PostgreSQL and share a provider's backoff after a rate limit, so with several
-replicas divide the rate by their count if you need to stay under a provider's
+The rates apply to the one server process. A note for a later release that
+supports several replicas: they share one fetch per CVE through a lease in
+PostgreSQL and a provider's backoff after a rate limit, but each applies the
+rate on its own, so divide it by their count to stay under a provider's
 published limit.
 
 ### Compose-only
@@ -537,11 +560,11 @@ Tenant isolation is enforced: every project needs members, and project
 administration needs a global admin.
 
 1. On the first start, read the setup token from the server log
-   (`docker compose logs server | grep setup_token`), open the app and create
-   the first administrator with it. Or set `SETUP_TOKEN` in `deploy/.env.prod`
-   and use that value. Setup stays open until a global admin exists, so a
-   stranger who registers before you does not close it; setup closes as soon
-   as the first admin is created. If the address you enter already belongs to
+   (`docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod logs server | grep setup_token`),
+   open the app and create the first administrator with it. Or set
+   `SETUP_TOKEN` in `deploy/.env.prod` and use that value. Setup stays open
+   until a global admin exists, so a stranger who registers before you does
+   not close it; setup closes as soon as the first admin is created. If the address you enter already belongs to
    an account, setup answers `409 email_in_use`; use another address. An
    existing server that has accounts but no admin offers a new token in the
    log at the next start.
@@ -568,8 +591,8 @@ container. They act on the database directly, so access to the host is the
 credential:
 
 ```bash
-docker compose -f deploy/docker-compose.yml exec server specht reset-password ada@example.com
-docker compose -f deploy/docker-compose.yml exec server specht grant-admin ada@example.com
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec server specht reset-password ada@example.com
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec server specht grant-admin ada@example.com
 ```
 
 `reset-password` prints a generated 24-character password once and ends every
@@ -716,8 +739,11 @@ missing, expired, altered or issued for another state, before the code is sent
 anywhere. Someone who obtains a callback URL (from a log, a browser extension
 or a shared device) cannot finish the login without that browser's cookie.
 
-The cookie is signed with a key derived from `JWT_SECRET`, so every replica
-that shares the secret can finish a login another one started. Changing
+The cookie is signed with a key derived from `JWT_SECRET` and the server keeps
+no other state for the login, so a login started before a restart finishes
+after it. (A later release that supports several replicas relies on the same
+key: any replica that shares the secret can finish a login another one
+started.) Changing
 `JWT_SECRET` fails the logins in flight. Each login has its own cookie, so
 several tabs can sign in at once. A browser keeps at most four pending logins;
 starting a fifth drops the oldest, and that tab answers "start sign-in again".
@@ -812,7 +838,7 @@ format (`-Fc`): `pg_restore` can read it selectively and restores faster than
 plain SQL. The `-T` flag turns off the TTY so the redirect gets clean binary:
 
 ```bash
-docker compose -f deploy/docker-compose.yml exec -T db \
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec -T db \
   pg_dump -U specht -Fc specht > specht-$(date +%F).dump
 ```
 
@@ -820,7 +846,7 @@ A nightly cron entry that keeps 14 days of dumps. In a crontab, `%` must be
 escaped as `\%`. Create the directory first with `mkdir -p /var/backups/specht`.
 
 ```cron
-30 2 * * * cd /opt/specht && docker compose -f deploy/docker-compose.yml exec -T db pg_dump -U specht -Fc specht > /var/backups/specht/specht-$(date +\%F).dump && find /var/backups/specht -name 'specht-*.dump' -mtime +14 -delete
+30 2 * * * cd /opt/specht && docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec -T db pg_dump -U specht -Fc specht > /var/backups/specht/specht-$(date +\%F).dump && find /var/backups/specht -name 'specht-*.dump' -mtime +14 -delete
 ```
 
 A dump on the same disk as the database protects against a bad migration or
@@ -836,10 +862,10 @@ database:
 
 ```bash
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod up -d db
-docker compose -f deploy/docker-compose.yml cp specht-YYYY-MM-DD.dump db:/tmp/specht.dump
-docker compose -f deploy/docker-compose.yml exec db \
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod cp specht-YYYY-MM-DD.dump db:/tmp/specht.dump
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec db \
   pg_restore -U specht -d specht --no-owner /tmp/specht.dump
-docker compose -f deploy/docker-compose.yml exec db rm /tmp/specht.dump
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec db rm /tmp/specht.dump
 ```
 
 Read the `pg_restore` output for errors before you continue. A dump taken
@@ -873,9 +899,10 @@ Existing install (section 1). Compose refuses to start until
    curl -fsS http://localhost:8080/api/v1/ready
    ```
 
-   Pending migrations run before the new server takes traffic. Check
-   `docker compose -f deploy/docker-compose.yml logs server` if `ready` does
-   not answer 200.
+   Pending migrations run before the new server takes traffic. If `ready`
+   does not answer 200, read the server log with
+   `docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod logs server`
+   and see Migration failed below.
 
    From a source checkout, add the override and `--build` instead of `pull`:
    `docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml --env-file deploy/.env.prod up -d --build`.
@@ -909,16 +936,54 @@ migrations. One thing the migrations cannot fix: an API key made by an early
 preview build carries only the `ingest` scope and cannot read the gate. Create
 a new key for those pipelines.
 
+### Migration failed
+
+A migration that fails at startup makes the server log
+`level=ERROR msg="startup migration failed"` with the error and exit with
+status 1, before it listens. Compose restarts it and every start fails the
+same way, so `/api/v1/ready` never answers. Find the line with:
+
+```bash
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod logs server | grep 'startup migration failed'
+```
+
+Restore the pre-upgrade dump and start the previous version (Rolling back,
+below), then report the issue with that line and both versions.
+
+For experts: golang-migrate records the version it is about to apply in the
+`schema_migrations` table with `dirty` set, and clears `dirty` only when the
+migration succeeds. After a failure the table holds the failed migration's
+number with `dirty = t`, and every later start fails with
+`Dirty database version N. Fix and force version.` Inspect it with:
+
+```bash
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec db \
+  psql -U specht -d specht -c 'SELECT version, dirty FROM schema_migrations'
+```
+
+The version is the number that starts the file name in `migrations/`. A
+migration file runs as one statement batch, which PostgreSQL applies in one
+transaction unless the file builds an index `CONCURRENTLY`, so a failed
+migration normally leaves none of its changes behind; compare the database
+with its `.up.sql` before you change the table. Setting `version` to the
+previous number and `dirty` to `false` makes the next start apply the
+migration again.
+
 ### Rolling back
 
 An older server cannot read a schema that a newer migration changed, so a
 rollback restores the pre-upgrade dump:
 
-1. Stop the server and drop the database: `docker compose -f deploy/docker-compose.yml stop server`, then
-   `docker compose -f deploy/docker-compose.yml exec db dropdb -U specht specht`
-   and `... exec db createdb -U specht specht`. The new database has no grants
-   for `specht_app` yet; run the role script (Database roles, step 4) on it
-   before the restore.
+1. Stop the server, drop the database and create an empty one:
+
+   ```bash
+   docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod stop server
+   docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec db dropdb -U specht specht
+   docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec db createdb -U specht specht
+   ```
+
+   The new database has no grants for `specht_app` yet; run the role script
+   (Database roles, step 4) on it before the restore.
 2. Set `SPECHT_VERSION` back to the previous tag.
 3. Follow the restore steps above with the pre-upgrade dump, then start the
    previous version.
@@ -950,3 +1015,34 @@ rollback restores the pre-upgrade dump:
   database on the same host. For anything else set `require` or `verify-full`;
   at startup the server logs a warning when `DATABASE_URL` reaches a non-local
   host with `sslmode` of `disable`, `allow`, `prefer`, or unset.
+
+### Monitoring
+
+- Probe `GET /api/v1/ready` from an uptime monitor or load balancer: 200
+  while the database answers, 503 when it does not. The image's HEALTHCHECK
+  runs `specht healthcheck` against the same endpoint every 30 seconds, and
+  after three failures in a row
+  `docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod ps`
+  shows the server as `unhealthy`. Docker does not restart an unhealthy
+  container, so alert on that state.
+- The server writes `key=value` log lines to standard output. Alert on any
+  `level=ERROR` line; every 5xx response writes one (`msg=request` with its
+  `status` and `request_id`). These messages need a closer look:
+  - `msg="readiness check failed"` (WARN): the database stopped answering.
+    It is logged when readiness turns bad, and
+    `msg="readiness check recovered"` follows when the database is back.
+  - `msg="database not reachable"` and `msg="startup migration failed"`
+    (ERROR): the server gave up at startup and exited (see Migration failed).
+  - `msg="ingest report"` (ERROR): an upload failed on the server. When the
+    processing window ran out, the client got `503 ingest_timeout`, and the
+    `msg=request` line with the same `request_id` has `status=503`.
+  - `msg="cve watcher poll failed"` (ERROR): a watcher poll failed and is
+    retried after `next_retry`.
+  - `msg="slack notification failed after retries"` and
+    `msg="webhook notification failed after retries"` (ERROR): an advisory or
+    waiver notification was dropped after every attempt failed.
+- `GET /api/v1/admin/status`, called with a global admin's session (an API key
+  gets 403), returns the number of projects, users, open findings and reports,
+  the oldest settled report and, for each CVE detail provider, its last
+  success and the category of its last error.
+- Specht has no metrics endpoint yet: `GET /metrics` answers 404.

@@ -117,12 +117,12 @@ describe("ciSnippets", () => {
     expect(snippet).toContain("tool: trivy");
   });
 
-  it("grants only contents: read and marks checks: write as optional", () => {
+  it("grants contents: read and checks: write so the gate check is published", () => {
     const snippet = githubActionsSnippet(OPTIONS);
-    expect(snippet).toContain("contents: read");
-    expect(snippet).toContain("Optional");
-    expect(snippet).toContain("# checks: write");
-    expect(snippet).not.toMatch(/^\s+checks: write$/m);
+    expect(snippet).toMatch(/^permissions:\n  contents: read\n(?:  #.*\n)*  checks: write\n\n/m);
+    expect(snippet).toContain("Specht Security Gate");
+    expect(snippet).toContain("still gates through its exit code");
+    expect(snippet).not.toContain("# checks: write");
   });
 
   it("explains that fork pull requests skip the gate", () => {

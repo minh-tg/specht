@@ -1,0 +1,89 @@
+name: Bug report
+description: Specht does something other than what it or its docs say.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report a vulnerability here. Report it privately on the
+        repository's **Security** tab with **Report a vulnerability**, as
+        [SECURITY.md](https://github.com/minh-tg/specht/blob/main/SECURITY.md) describes.
+
+        Remove API keys, tokens, passwords and the contents of `deploy/.env.prod`
+        from everything you paste below.
+  - type: input
+    id: version
+    attributes:
+      label: Specht version
+      description: |
+        What `GET /api/v1/version` returns, for example
+        `curl -fsS https://specht.example.com/api/v1/version`. For the adapter
+        or the CLI, also give the release it was downloaded from.
+      placeholder: '{"version":"v0.1.0","commit":"..."}'
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install method
+      options:
+        - Docker Compose, published image
+        - Docker Compose, built from source (docker-compose.build.yml)
+        - Podman compose
+        - Release binary
+        - Built from a source checkout (go build or go run)
+        - Other (say which below)
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Part of Specht
+      multiple: true
+      options:
+        - Server or API
+        - Web app
+        - specht-adapter or the GitHub Action
+        - specht CLI
+        - specht-mcp
+        - Deployment files (deploy/)
+        - Documentation
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The requests, clicks or commands, in order. Name the scanner and its version if a report is involved.
+      placeholder: |
+        1. Upload a Trivy 0.70.0 report with ...
+        2. Open the change view for ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: What you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+      description: What happened instead, with the status code and error body for an API call.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: |
+        Every response carries an `X-Request-Id` header, and the server's log
+        lines for that request carry the same `request_id`. Paste the lines with
+        that id, for example from
+        `docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod logs server | grep <request id>`.
+      render: text
+  - type: textarea
+    id: settings
+    attributes:
+      label: Settings that matter
+      description: Non-default settings involved, such as a reverse proxy, SSO, `TRUSTED_PROXIES` or the watcher. Leave secrets out.
