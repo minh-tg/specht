@@ -666,6 +666,11 @@ releases.
 
 ### Security
 
+- The server refuses to start when `WATCHER_SLACK_URL` or `WATCHER_WEBHOOK_URL` is a plain `http`
+  URL to a host other than loopback, also with `WATCHER_ENABLE` off. Waiver notices use both
+  channels whether or not the watcher runs, but the URLs were checked only with the watcher on, so a
+  mistyped `http://` URL sent signed notices in clear text.
+
 - An API key reads a finding's assignee as an id with an empty `name`. Before, `assignee.name`
   gave a key the person's display name, or their email address when they set none, while the member
   list and waiver history give a key no names.
