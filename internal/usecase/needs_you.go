@@ -167,8 +167,9 @@ func (u *Usecases) managedAmong(ctx context.Context, userID string, reach []stri
 	return out, nil
 }
 
-// requestsToDecide lists the pending requests the caller may decide, by the rule ApproveWaiver
-// applies: a person's own request waits on someone else, unless nobody else can decide it.
+// requestsToDecide lists the pending requests the caller may decide, by the rule checkSelfApproval
+// applies: a global admin decides their own request too, and anyone else's own request waits on
+// someone else unless nobody else can decide it.
 func (u *Usecases) requestsToDecide(ctx context.Context, ident *auth.Identity, managed []string) ([]NeedsYouItem, error) {
 	if len(managed) == 0 {
 		return nil, nil
@@ -180,7 +181,7 @@ func (u *Usecases) requestsToDecide(ctx context.Context, ident *auth.Identity, m
 	alone := map[string]bool{}
 	var items []NeedsYouItem
 	for _, w := range pending {
-		if w.RequestedBy == ident.UserID {
+		if w.RequestedBy == ident.UserID && ident.Role != auth.RoleAdmin {
 			sole, known := alone[w.ProjectID]
 			if !known {
 				sole, err = u.soleWaiverDecider(ctx, w.ProjectID, ident.UserID)

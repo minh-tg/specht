@@ -406,8 +406,8 @@ export interface paths {
      * @description What waits on the caller across the projects they can reach, in four kinds:
      *
      *     - `waiver_to_decide`: a pending waiver request on a project where the caller may approve or
-     *       reject. The caller's own request is listed only when nobody else can decide it, the same
-     *       rule as approving it.
+     *       reject. The caller's own request is listed when they are a global admin or nobody else can
+     *       decide it, the same rule as approving it.
      *     - `waiver_ending`: an approved waiver on a project the caller manages that ends within
      *       seven days, after which its findings block again.
      *     - `finding_assigned`: an open finding assigned to the caller, most severe first.

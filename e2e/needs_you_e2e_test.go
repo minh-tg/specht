@@ -140,3 +140,27 @@ func TestE2E_NeedsYou(t *testing.T) {
 		require.Equal(t, http.StatusForbidden, status, string(raw))
 	})
 }
+
+// TestE2E_NeedsYouGlobalAdminOwnRequest: a global admin may approve their own waiver request even
+// when a project manager could decide it too, so the request waits on them as well.
+func TestE2E_NeedsYouGlobalAdminOwnRequest(t *testing.T) {
+	slug := newProject(t, "needs-you-admin")
+	key := mintKey(t, slug)
+	ingestFixture(t, slug, key, "high.sarif.json")
+	finding := highFinding(t, slug)
+	base := "/api/v1/projects/" + slug
+
+	manager := azRegister(t, "ny-admin-manager")
+	azAddMember(t, slug, manager.UserID, "manager")
+
+	request[waiverDetail](t, http.MethodPost, base+"/waivers/requests", adminToken, map[string]any{
+		"target_ids": []string{finding.ID},
+		"reason":     "Admin's own request.",
+		"expires_at": time.Now().Add(7 * 24 * time.Hour).UTC().Format(time.RFC3339),
+	}, http.StatusCreated)
+
+	waiting := needsYouOf(t, adminToken).ofKind("waiver_to_decide", slug)
+	require.Len(t, waiting, 1, "the admin may approve it, so it waits on them")
+	require.Equal(t, "Admin's own request.", waiting[0].Detail)
+	require.Len(t, needsYouOf(t, manager.Token).ofKind("waiver_to_decide", slug), 1)
+}

@@ -154,6 +154,17 @@ func TestGetNeedsYou_AnOwnRequestCountsOnlyForTheSoleDecider(t *testing.T) {
 	}
 }
 
+// A global admin may approve their own request whoever else can decide it, as checkSelfApproval
+// allows, so it waits on them like anyone else's.
+func TestGetNeedsYou_AGlobalAdminDecidesTheirOwnRequest(t *testing.T) {
+	store := &nyStore{pending: []port.NeedsYouWaiver{nyWaiver("own", nyProjA, nyAlice, nyNow.Add(-time.Hour))}}
+	out, err := nyUsecase(store, 1).GetNeedsYou(nyCtx(nyAlice, auth.RoleAdmin))
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{NeedsYouWaiverToDecide}, kinds(out.Items))
+	assert.Equal(t, 1, out.Count)
+}
+
 // A global admin may decide on every project, hidden from nobody.
 func TestGetNeedsYou_AGlobalAdminReachesEveryProject(t *testing.T) {
 	store := &nyStore{pending: []port.NeedsYouWaiver{nyWaiver("w1", nyHidden, nyBob, nyNow)}}
