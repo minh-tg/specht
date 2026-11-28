@@ -21,6 +21,15 @@ head -c 48 /dev/urandom | base64
 a missing or short `JWT_SECRET`; Postgres refuses an empty password — both
 fail fast instead of running insecure.
 
+The database init script (see Database roles) also refuses a
+`POSTGRES_PASSWORD` or `SPECHT_APP_DB_PASSWORD` that still contains
+`change-me` or `changeme` in any case, as the placeholders in
+`.env.prod.example` do, and the database log names the variable. Postgres
+runs that script only on the first start of an empty volume, so on a new
+install set real passwords, remove the volume with
+`docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod down -v`
+and start again.
+
 The bundled Postgres container has no TLS and the server reaches it over the
 private Compose network, so `POSTGRES_SSLMODE` stays `disable` for it; setting
 `require` makes the server fail to connect. If you replace the bundled database

@@ -678,6 +678,11 @@ releases.
 
 ### Security
 
+- The database init script refuses a `POSTGRES_PASSWORD` or `SPECHT_APP_DB_PASSWORD` that
+  contains `change-me` or `changeme`, in any case, and names the variable. Before, it refused only
+  an empty password, so a `deploy/.env.prod` copied from the example without editing ran Postgres
+  with the placeholder passwords published in the repository. The server already refused such a
+  `JWT_SECRET`.
 - The server and adapter are built with Go 1.27.4, which fixes GO-2026-6859: an HTTP/1 server
   could crash on a data race between `http.MaxBytesReader` and the request headers. Specht wraps
   request bodies in `MaxBytesReader`, so a client could take the server down. Go 1.27.3 was affected.

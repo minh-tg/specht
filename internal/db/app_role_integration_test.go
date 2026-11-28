@@ -189,6 +189,23 @@ func TestAppRoleScript(t *testing.T) {
 		require.Contains(t, out, "SPECHT_APP_DB_PASSWORD is not set")
 	})
 
+	t.Run("a placeholder password is refused", func(t *testing.T) {
+		// The values deploy/.env.prod.example ships, and a respelling.
+		for _, env := range []string{
+			"SPECHT_APP_DB_PASSWORD=CHANGE-ME-app-32-plus-random-chars",
+			"SPECHT_APP_DB_PASSWORD=myChangeMe2024",
+		} {
+			code, out := pg.runScript(t, "specht", env)
+			require.NotZerof(t, code, "%s was accepted", env)
+			require.Contains(t, out, "SPECHT_APP_DB_PASSWORD still holds the change-me placeholder")
+		}
+		code, out := pg.runScript(t, "specht", "POSTGRES_PASSWORD=CHANGE-ME-32-plus-random-chars")
+		require.NotZero(t, code, "a placeholder owner password was accepted")
+		require.Contains(t, out, "POSTGRES_PASSWORD still holds the change-me placeholder")
+		// Refused before the role was touched: the real password still works.
+		requireDMLOnly(t, connect(t, pg.dsn("specht_app", appPassword, "specht")))
+	})
+
 	t.Run("an elevated role is refused", func(t *testing.T) {
 		_, err := connect(t, owner).Exec(ctx, "CREATE ROLE specht_elevated LOGIN CREATEDB")
 		require.NoError(t, err)
