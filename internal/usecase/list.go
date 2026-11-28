@@ -773,9 +773,16 @@ func (u *Usecases) attachAssignees(ctx context.Context, findings []FindingRespon
 	if err != nil {
 		return fmt.Errorf("list finding assignees: %w", err)
 	}
+	// The name is the display name or the email address. An API key gets neither, as from the
+	// member list and peopleLabels.
+	ident := auth.ContextIdentity(ctx)
+	named := ident != nil && !ident.IsAPIKey
 	for i := range findings {
 		if a, ok := assignees[findings[i].ID]; ok {
-			findings[i].Assignee = &AssigneeResponse{UserID: a.UserID, Name: a.Name}
+			findings[i].Assignee = &AssigneeResponse{UserID: a.UserID}
+			if named {
+				findings[i].Assignee.Name = a.Name
+			}
 		}
 	}
 	return nil

@@ -666,6 +666,10 @@ releases.
 
 ### Security
 
+- An API key reads a finding's assignee as an id with an empty `name`. Before, `assignee.name`
+  gave a key the person's display name, or their email address when they set none, while the member
+  list and waiver history give a key no names.
+
 - `POST /findings/bulk-analysis/undo` answers 404 when an id matches no finding, as it does for a
   finding in a project the caller cannot see. Before, an unknown id came back as a per-item
   `analysis_conflict` while a hidden finding answered 404, so any signed-in user could test which
