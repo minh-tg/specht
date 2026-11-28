@@ -32,8 +32,9 @@ func recoveryUsage() string {
 
 These commands act directly on the database, so they are the way back in when
 the only administrator has lost access. Run them inside the server container,
-for example:
-  docker compose exec server %[1]s reset-password ada@example.com
+for example from the repository root:
+  docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod \
+    exec server %[1]s reset-password ada@example.com
 
 reset-password prints a generated password once. With --password-stdin it reads
 the new password from standard input instead and prints nothing secret.

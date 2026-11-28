@@ -93,7 +93,7 @@ server starts with the new compose file:
 
    ```bash
    docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod up -d
-   docker compose -f deploy/docker-compose.yml logs server | grep 'database role' || echo ok
+   docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod logs server | grep 'database role' || echo ok
    ```
 
 Without `SPECHT_APP_DB_PASSWORD`, compose refuses to start. If the server
@@ -125,6 +125,12 @@ curl -fsS http://localhost:8080/api/v1/health   # liveness: the process is up
 curl -fsS http://localhost:8080/api/v1/ready    # readiness: the database answers
 curl -fsS http://localhost:8080/api/v1/version
 ```
+
+Run every compose command from the checkout root with the same
+`-f deploy/docker-compose.yml --env-file deploy/.env.prod`, including `logs`,
+`exec`, `cp` and `stop`. The compose file requires the database passwords, so
+without the env file it stops with
+`required variable POSTGRES_PASSWORD is missing a value`.
 
 The server service pulls `ghcr.io/minh-tg/specht:${SPECHT_VERSION}`. Set
 `SPECHT_VERSION` in `deploy/.env.prod` to a release tag such as `v0.1.0` so a
@@ -547,11 +553,11 @@ Tenant isolation is enforced: every project needs members, and project
 administration needs a global admin.
 
 1. On the first start, read the setup token from the server log
-   (`docker compose logs server | grep setup_token`), open the app and create
-   the first administrator with it. Or set `SETUP_TOKEN` in `deploy/.env.prod`
-   and use that value. Setup stays open until a global admin exists, so a
-   stranger who registers before you does not close it; setup closes as soon
-   as the first admin is created. If the address you enter already belongs to
+   (`docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod logs server | grep setup_token`),
+   open the app and create the first administrator with it. Or set
+   `SETUP_TOKEN` in `deploy/.env.prod` and use that value. Setup stays open
+   until a global admin exists, so a stranger who registers before you does
+   not close it; setup closes as soon as the first admin is created. If the address you enter already belongs to
    an account, setup answers `409 email_in_use`; use another address. An
    existing server that has accounts but no admin offers a new token in the
    log at the next start.
@@ -578,8 +584,8 @@ container. They act on the database directly, so access to the host is the
 credential:
 
 ```bash
-docker compose -f deploy/docker-compose.yml exec server specht reset-password ada@example.com
-docker compose -f deploy/docker-compose.yml exec server specht grant-admin ada@example.com
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec server specht reset-password ada@example.com
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec server specht grant-admin ada@example.com
 ```
 
 `reset-password` prints a generated 24-character password once and ends every
@@ -822,7 +828,7 @@ format (`-Fc`): `pg_restore` can read it selectively and restores faster than
 plain SQL. The `-T` flag turns off the TTY so the redirect gets clean binary:
 
 ```bash
-docker compose -f deploy/docker-compose.yml exec -T db \
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec -T db \
   pg_dump -U specht -Fc specht > specht-$(date +%F).dump
 ```
 
@@ -830,7 +836,7 @@ A nightly cron entry that keeps 14 days of dumps. In a crontab, `%` must be
 escaped as `\%`. Create the directory first with `mkdir -p /var/backups/specht`.
 
 ```cron
-30 2 * * * cd /opt/specht && docker compose -f deploy/docker-compose.yml exec -T db pg_dump -U specht -Fc specht > /var/backups/specht/specht-$(date +\%F).dump && find /var/backups/specht -name 'specht-*.dump' -mtime +14 -delete
+30 2 * * * cd /opt/specht && docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec -T db pg_dump -U specht -Fc specht > /var/backups/specht/specht-$(date +\%F).dump && find /var/backups/specht -name 'specht-*.dump' -mtime +14 -delete
 ```
 
 A dump on the same disk as the database protects against a bad migration or
@@ -846,10 +852,10 @@ database:
 
 ```bash
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod up -d db
-docker compose -f deploy/docker-compose.yml cp specht-YYYY-MM-DD.dump db:/tmp/specht.dump
-docker compose -f deploy/docker-compose.yml exec db \
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod cp specht-YYYY-MM-DD.dump db:/tmp/specht.dump
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec db \
   pg_restore -U specht -d specht --no-owner /tmp/specht.dump
-docker compose -f deploy/docker-compose.yml exec db rm /tmp/specht.dump
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec db rm /tmp/specht.dump
 ```
 
 Read the `pg_restore` output for errors before you continue. A dump taken
@@ -883,9 +889,9 @@ Existing install (section 1). Compose refuses to start until
    curl -fsS http://localhost:8080/api/v1/ready
    ```
 
-   Pending migrations run before the new server takes traffic. Check
-   `docker compose -f deploy/docker-compose.yml logs server` if `ready` does
-   not answer 200.
+   Pending migrations run before the new server takes traffic. If `ready`
+   does not answer 200, read the server log with
+   `docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod logs server`.
 
    From a source checkout, add the override and `--build` instead of `pull`:
    `docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml --env-file deploy/.env.prod up -d --build`.
@@ -924,11 +930,16 @@ a new key for those pipelines.
 An older server cannot read a schema that a newer migration changed, so a
 rollback restores the pre-upgrade dump:
 
-1. Stop the server and drop the database: `docker compose -f deploy/docker-compose.yml stop server`, then
-   `docker compose -f deploy/docker-compose.yml exec db dropdb -U specht specht`
-   and `... exec db createdb -U specht specht`. The new database has no grants
-   for `specht_app` yet; run the role script (Database roles, step 4) on it
-   before the restore.
+1. Stop the server, drop the database and create an empty one:
+
+   ```bash
+   docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod stop server
+   docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec db dropdb -U specht specht
+   docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec db createdb -U specht specht
+   ```
+
+   The new database has no grants for `specht_app` yet; run the role script
+   (Database roles, step 4) on it before the restore.
 2. Set `SPECHT_VERSION` back to the previous tag.
 3. Follow the restore steps above with the pre-upgrade dump, then start the
    previous version.
