@@ -1,5 +1,6 @@
 import {
   POLL_MS,
+  useChangeGate,
   useFinding,
   useFindingEvents,
   useGateStatus,
@@ -13,7 +14,12 @@ import { TOUCH_TARGET } from "@/components/inlineLink";
 import { Section } from "@/components/Section";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UpdatedHint } from "@/components/UpdatedHint";
-import { changeViewBackPath, entryModeFromSearch, findingsListSearch } from "@/lib/entryMode";
+import {
+  changeScopeFromSearch,
+  changeViewBackPath,
+  entryModeFromSearch,
+  findingsListSearch,
+} from "@/lib/entryMode";
 import { analysisStateLabel, isReachabilityState } from "@/lib/enums";
 import { blocksGate, blocksGateSentence } from "@/lib/gate";
 import { waiverAction } from "@/lib/waiverRequest";
@@ -62,14 +68,27 @@ export function FindingDetail() {
     error,
     refetch,
   } = useFinding(findingId ?? "", poll);
-  const { data: gate } = useGateStatus(slug ?? "");
+  const mode = entryModeFromSearch(location.search);
+  // Opened from a change's blocker, the finding is judged with that change's gate, the verdict the
+  // change view showed. A change gate that cannot be read (its reports were deleted) falls back to
+  // the project's, the gate the page used before.
+  const changeScope = mode === "unblock" ? changeScopeFromSearch(location.search) : null;
+  const changeGate = useChangeGate(
+    slug ?? "",
+    changeScope?.commit,
+    changeScope?.projectWide,
+    changeScope?.severity,
+    changeScope?.branch,
+  );
+  const { data: projectGate } = useGateStatus(slug ?? "");
+  const judgingChange = changeScope !== null && !changeGate.isError;
+  const gate = judgingChange ? changeGate.data : projectGate;
   const { data: project, isLoading: projectLoading } = useProject(slug ?? "");
   const pendingWaivers = useWaivers(slug ?? "", ["pending"]);
   const pendingTriage = usePendingTriage(findingId ?? "");
   const [waiverOpen, setWaiverOpen] = useState(false);
   // The page's one polite live region: save results and queue moves are spoken here.
   const [announcement, setAnnouncement] = useState("");
-  const mode = entryModeFromSearch(location.search);
   // Opened from the findings list, J and K walk that filtered list. A pasted link has no list.
   const queue = useFindingQueue(
     slug ?? "",
@@ -127,7 +146,7 @@ export function FindingDetail() {
   const shown = pendingTriage
     ? { ...finding, analysis_state: pendingTriage.analysisState }
     : finding;
-  const gateResult = blocksGate(finding, pendingTriage ? undefined : gate);
+  const gateResult = blocksGate(finding, pendingTriage ? undefined : gate, { judgingChange });
   const currentGate = blocksGateSentence(gateResult);
   const waiverPending = (Array.isArray(pendingWaivers.data) ? pendingWaivers.data : []).some((
     waiver,

@@ -24,6 +24,7 @@ import {
   StalledNotice,
   UncheckedNotice,
 } from "@/pages/change-view/ChangeNotice";
+import { ChangeScopeContext } from "@/pages/change-view/changeScope";
 import { carryPrevious, judgeCleared, readPrevious } from "@/pages/change-view/cleared";
 import { ClearedEnd } from "@/pages/change-view/ClearedEnd";
 import { ExistingDebt } from "@/pages/change-view/ExistingDebt";
@@ -433,19 +434,24 @@ export function ChangeView() {
           : undefined}
       />
       {gate.threshold_breached && (
-        <BlockerSection
-          key={scans.sha}
-          slug={slug}
-          commit={scans.sha}
-          ids={blockedBy}
-          floor={gate.policy?.severity_floor}
-          permissions={projectQuery.data?.permissions}
-          permissionsLoading={projectQuery.isPending}
-          projectWide={projectWide}
-          branch={report.branch}
-          source={codeSource(report)}
-          watch={watch}
-        />
+        // A blocker opened from here is judged with this page's gate, not the project's.
+        <ChangeScopeContext.Provider
+          value={{ commit: scans.sha, projectWide, severity, branch: report.branch ?? undefined }}
+        >
+          <BlockerSection
+            key={scans.sha}
+            slug={slug}
+            commit={scans.sha}
+            ids={blockedBy}
+            floor={gate.policy?.severity_floor}
+            permissions={projectQuery.data?.permissions}
+            permissionsLoading={projectQuery.isPending}
+            projectWide={projectWide}
+            branch={report.branch}
+            source={codeSource(report)}
+            watch={watch}
+          />
+        </ChangeScopeContext.Provider>
       )}
       {previous && earlierGateQuery.data && (state === "unblocked" || state === "unconfirmed")
         ? (

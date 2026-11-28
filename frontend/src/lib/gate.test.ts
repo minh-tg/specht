@@ -225,6 +225,12 @@ describe("a finding seen only on change branches", () => {
     expect(blocksGate(finding, onBranch)).toEqual({ blocks: true });
   });
 
+  it("is judged like any other finding by a change's gate, which counts its branch", () => {
+    expect(blocksGate(finding, status, { judgingChange: true })).toEqual({ blocks: false });
+    const listed = { ...status, blocked_by: ["f1"] };
+    expect(blocksGate(finding, listed, { judgingChange: true })).toEqual({ blocks: true });
+  });
+
   it("treats a missing list as counting toward the verdict", () => {
     expect(blocksGate({ ...finding, only_on_branches: undefined }, status)).toEqual({
       blocks: false,

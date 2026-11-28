@@ -29,6 +29,10 @@ export interface BlocksGateResult {
  * Resolves a finding's gate verdict. Returns null while the gate status is
  * unknown (still loading or unavailable) so callers can render an empty state
  * instead of an invented "No".
+ *
+ * `judgingChange` says the gate is a change's (a commit gate), not the
+ * project's. A change gate already counts the findings of its branch, so a
+ * finding seen only on that branch is judged by the gate like any other.
  */
 export function blocksGate(
   finding: {
@@ -40,6 +44,7 @@ export function blocksGate(
     only_on_branches?: readonly string[];
   },
   gate: GateStatus | undefined,
+  { judgingChange = false }: { judgingChange?: boolean; } = {},
 ): BlocksGateResult | null {
   if (!gate) return null;
 
@@ -56,7 +61,7 @@ export function blocksGate(
   }
 
   // Seen only on change branches: the project's verdict answers for its default branch.
-  if ((finding.only_on_branches?.length ?? 0) > 0) {
+  if (!judgingChange && (finding.only_on_branches?.length ?? 0) > 0) {
     return { blocks: false, reason: "change_branch" };
   }
 
