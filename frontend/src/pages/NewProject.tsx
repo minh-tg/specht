@@ -31,6 +31,8 @@ export function NewProject() {
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
   const [description, setDescription] = useState("");
+  // Prefilled so a new project starts with a trunk; the admin can change or clear it.
+  const [defaultBranch, setDefaultBranch] = useState("main");
   const [errors, setErrors] = useState<FieldErrors>({});
 
   function handleNameChange(event: ChangeEvent<HTMLInputElement>) {
@@ -57,7 +59,12 @@ export function NewProject() {
     if (next.name || next.slug) return;
 
     createProject.mutate(
-      { name: name.trim(), slug, description: description.trim() || undefined },
+      {
+        name: name.trim(),
+        slug,
+        description: description.trim() || undefined,
+        default_branch: defaultBranch.trim() || undefined,
+      },
       {
         onSuccess: (project) => navigate(`/${project.slug}/setup`),
         onError: (error) => {
@@ -152,6 +159,27 @@ export function NewProject() {
             onChange={(event) => setDescription(event.target.value)}
             rows={3}
           />
+        </div>
+
+        <div>
+          <label htmlFor="new-project-default-branch" className="text-body font-medium">
+            Default branch
+          </label>
+          <span className="text-muted-foreground ml-1 text-meta">(optional)</span>
+          <Input
+            id="new-project-default-branch"
+            maxLength={255}
+            autoComplete="off"
+            spellCheck={false}
+            className="mt-1 font-mono"
+            value={defaultBranch}
+            onChange={(event) => setDefaultBranch(event.target.value)}
+            aria-describedby="new-project-default-branch-help"
+          />
+          <p id="new-project-default-branch-help" className="text-muted-foreground mt-1 text-meta">
+            The branch whose scans decide the project verdict; pull request branches are judged
+            against it.
+          </p>
         </div>
 
         {errors.form && <p role="alert" className="text-destructive text-body">{errors.form}</p>}
