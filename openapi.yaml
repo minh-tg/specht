@@ -5493,7 +5493,14 @@ components:
           type: string
           format: date-time
           description: When the request was made or answered, when the waiver ends, or when the finding was last seen.
-        link: { type: string, description: The app path that opens the item., example: /payments-api/waivers }
+        link:
+          type: string
+          description: >-
+            The app path that opens the item. A waiver item opens the Waivers tab that holds it: a
+            request to decide on Waiting, the default; a waiver that ends on `?state=in_force`; an
+            answer on `?state=in_force` while its waiver lets findings through, otherwise on
+            `?state=closed`.
+          example: /payments-api/waivers?state=in_force
     NeedsYouResponse:
       type: object
       required: [count, items, assigned_findings]

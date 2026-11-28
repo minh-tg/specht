@@ -93,6 +93,7 @@ func TestE2E_NeedsYou(t *testing.T) {
 		require.Len(t, answers, 1)
 		require.Equal(t, "approved", answers[0].Status)
 		require.Equal(t, "Fine until the VPN change.", answers[0].Detail)
+		require.Equal(t, "/"+slug+"/waivers?state=in_force", answers[0].Link, "the approved waiver is in force")
 		require.NotZero(t, needsYouOf(t, member.Token).Count, "a fresh answer shows in the badge")
 	})
 
@@ -114,11 +115,13 @@ func TestE2E_NeedsYou(t *testing.T) {
 		}
 		require.Len(t, rejected, 1)
 		require.Equal(t, "Too broad.", rejected[0].Detail)
+		require.Equal(t, "/"+slug+"/waivers?state=closed", rejected[0].Link)
 	})
 
 	t.Run("an approved waiver that ends within a week waits on the manager", func(t *testing.T) {
 		ending := needsYouOf(t, manager.Token).ofKind("waiver_ending", slug)
 		require.Len(t, ending, 1, "the approved waiver ends in seven days")
+		require.Equal(t, "/"+slug+"/waivers?state=in_force", ending[0].Link)
 		require.Empty(t, needsYouOf(t, member.Token).ofKind("waiver_ending", slug), "a member does not manage it")
 	})
 

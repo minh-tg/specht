@@ -913,6 +913,10 @@ test("a waiver request reaches the manager's Needs you page and the answer reach
   await memberPage.getByRole("link", { name: /^Needs you/ }).click();
   const answers = memberPage.getByRole("region", { name: /Answers to your requests/ });
   await expect(answers).toContainText("Approved: Fine until the image bump.");
+  // The answer opens the tab that holds the waiver now, not the Waiting tab it left.
+  await answers.getByRole("link").first().click();
+  await expect(memberPage).toHaveURL(new RegExp(`/${slug}/waivers\\?state=in_force$`));
+  await expect(memberPage.getByRole("tab", { name: "In force 1", selected: true })).toBeVisible();
   await memberContext.close();
 });
 

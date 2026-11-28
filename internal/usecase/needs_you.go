@@ -103,7 +103,9 @@ func (u *Usecases) GetNeedsYou(ctx context.Context) (*NeedsYouResponse, error) {
 			return nil, fmt.Errorf("list waivers ending: %w", err)
 		}
 		for _, w := range ending {
-			out.Items = append(out.Items, waiverItem(NeedsYouWaiverEnding, w))
+			item := waiverItem(NeedsYouWaiverEnding, w)
+			item.Link = waiversTab(w.ProjectSlug, waiversInForce)
+			out.Items = append(out.Items, item)
 		}
 	}
 
@@ -133,6 +135,11 @@ func (u *Usecases) GetNeedsYou(ctx context.Context) (*NeedsYouResponse, error) {
 		item := waiverItem(NeedsYouRequestDecided, w)
 		item.Status = answerStatus(w)
 		item.Detail = w.DecisionNote
+		if inForce(w, now) {
+			item.Link = waiversTab(w.ProjectSlug, waiversInForce)
+		} else {
+			item.Link = waiversTab(w.ProjectSlug, waiversClosed)
+		}
 		out.Items = append(out.Items, item)
 		if now.Sub(w.At) <= needsYouFreshAnswer {
 			fresh++
@@ -201,11 +208,30 @@ func (u *Usecases) requestsToDecide(ctx context.Context, ident *auth.Identity, m
 	return items, nil
 }
 
+// The tabs of the Waivers page, by the value of its state query parameter. Waiting, for pending
+// requests, is the page's default and needs no parameter.
+const (
+	waiversInForce = "in_force"
+	waiversClosed  = "closed"
+)
+
+// waiverItem links to the Waiting tab, where a pending request is; the caller relinks other kinds.
 func waiverItem(kind string, w port.NeedsYouWaiver) NeedsYouItem {
 	return NeedsYouItem{
 		Kind: kind, ProjectSlug: w.ProjectSlug, ProjectName: w.ProjectName, Title: w.Name,
 		At: w.At, Link: "/" + w.ProjectSlug + "/waivers",
 	}
+}
+
+func waiversTab(slug, tab string) string {
+	return "/" + slug + "/waivers?state=" + tab
+}
+
+// inForce reports whether an answered request is a waiver that lets findings through now, the
+// rule the Waivers page sorts its In force tab by: approved, switched on and not past its end.
+// A revoked or lapsed approval sits on the Closed tab with the rejections.
+func inForce(w port.NeedsYouWaiver, now time.Time) bool {
+	return w.Status == WaiverStatusApproved && w.Enabled && (w.ExpiresAt == nil || w.ExpiresAt.After(now))
 }
 
 // answerStatus names how a request ended: a lapse with no reviewer is "expired", not "rejected".

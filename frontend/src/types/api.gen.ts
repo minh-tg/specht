@@ -3726,8 +3726,8 @@ export interface components {
        */
       at: string;
       /**
-       * @description The app path that opens the item.
-       * @example /payments-api/waivers
+       * @description The app path that opens the item. A waiver item opens the Waivers tab that holds it: a request to decide on Waiting, the default; a waiver that ends on `?state=in_force`; an answer on `?state=in_force` while its waiver lets findings through, otherwise on `?state=closed`.
+       * @example /payments-api/waivers?state=in_force
        */
       link: string;
     };

@@ -208,6 +208,44 @@ func TestGetNeedsYou_CountsEndingWaiversAndEveryAssignedFinding(t *testing.T) {
 	assert.Equal(t, 13, out.Count, "one waiver ending and twelve assigned findings")
 }
 
+// Each item opens the Waivers tab that holds it: a request on Waiting, the page's default, a waiver
+// that ends on In force, and an answer on In force while its waiver lets findings through and on
+// Closed once it does not.
+func TestGetNeedsYou_LinksEachWaiverToItsTab(t *testing.T) {
+	later := nyNow.Add(48 * time.Hour)
+	past := nyNow.Add(-time.Hour)
+	store := &nyStore{
+		managed: []string{nyProjA},
+		pending: []port.NeedsYouWaiver{nyWaiver("p1", nyProjA, nyBob, nyNow.Add(-time.Hour))},
+		ending:  []port.NeedsYouWaiver{{ID: "e1", ProjectSlug: "alpha", Name: "Waiver: lodash", Status: "approved", At: later}},
+		decided: []port.NeedsYouWaiver{
+			{ID: "on", ProjectSlug: "alpha", Name: "on", Status: "approved", Enabled: true, ExpiresAt: &later, At: nyNow},
+			{ID: "open-ended", ProjectSlug: "alpha", Name: "open-ended", Status: "approved", Enabled: true, At: nyNow},
+			{ID: "revoked", ProjectSlug: "alpha", Name: "revoked", Status: "approved", ExpiresAt: &later, At: nyNow},
+			{ID: "ran-out", ProjectSlug: "alpha", Name: "ran-out", Status: "approved", Enabled: true, ExpiresAt: &past, At: nyNow},
+			{ID: "no", ProjectSlug: "alpha", Name: "no", Status: "rejected", At: nyNow},
+			{ID: "lapsed", ProjectSlug: "alpha", Name: "lapsed", Status: "rejected", DecisionReason: "expired", At: nyNow},
+		},
+	}
+	out, err := nyUsecase(store, 1).GetNeedsYou(nyCtx(nyAlice, "member"))
+
+	require.NoError(t, err)
+	links := map[string]string{}
+	for _, item := range out.Items {
+		links[item.Kind+" "+item.Title] = item.Link
+	}
+	assert.Equal(t, map[string]string{
+		"waiver_to_decide Waiver request: p1": "/alpha/waivers",
+		"waiver_ending Waiver: lodash":        "/alpha/waivers?state=in_force",
+		"request_decided on":                  "/alpha/waivers?state=in_force",
+		"request_decided open-ended":          "/alpha/waivers?state=in_force",
+		"request_decided revoked":             "/alpha/waivers?state=closed",
+		"request_decided ran-out":             "/alpha/waivers?state=closed",
+		"request_decided no":                  "/alpha/waivers?state=closed",
+		"request_decided lapsed":              "/alpha/waivers?state=closed",
+	}, links)
+}
+
 func TestGetNeedsYou_NothingWaitingGivesAnEmptyListNotNull(t *testing.T) {
 	out, err := nyUsecase(&nyStore{}, 1).GetNeedsYou(nyCtx(nyAlice, "member"))
 

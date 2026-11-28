@@ -1957,6 +1957,10 @@ type NeedsYouWaiver struct {
 	DecisionNote string
 	// DecisionReason is "expired" when a request lapsed unanswered, empty for a reviewer's decision.
 	DecisionReason string
+	// Enabled and ExpiresAt say whether an approved request still lets findings through. Only
+	// ListDecidedWaiverRequests sets them. A nil ExpiresAt means the waiver does not end.
+	Enabled   bool
+	ExpiresAt *time.Time
 	// At is when the request was made, decided or will end, by the query that returned it.
 	At time.Time
 }

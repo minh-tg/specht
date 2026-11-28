@@ -32,7 +32,8 @@ func (q *Queries) CountOpenFindingsAssignedTo(ctx context.Context, arg CountOpen
 
 const listDecidedWaiverRequests = `-- name: ListDecidedWaiverRequests :many
 SELECT w.id, w.project_id, p.slug AS project_slug, p.name AS project_name, w.name, w.status,
-       w.decision_note, w.decision_reason, w.decided_at::timestamptz AS decided_at
+       w.decision_note, w.decision_reason, w.decided_at::timestamptz AS decided_at, w.enabled,
+       w.expires_at
 FROM waivers w
 JOIN projects p ON p.id = w.project_id
 WHERE w.requested_by = $1
@@ -60,6 +61,8 @@ type ListDecidedWaiverRequestsRow struct {
 	DecisionNote   string             `json:"decision_note"`
 	DecisionReason pgtype.Text        `json:"decision_reason"`
 	DecidedAt      pgtype.Timestamptz `json:"decided_at"`
+	Enabled        bool               `json:"enabled"`
+	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
 }
 
 // Requests one person made that were approved or rejected since a time, newest first. A request
@@ -88,6 +91,8 @@ func (q *Queries) ListDecidedWaiverRequests(ctx context.Context, arg ListDecided
 			&i.DecisionNote,
 			&i.DecisionReason,
 			&i.DecidedAt,
+			&i.Enabled,
+			&i.ExpiresAt,
 		); err != nil {
 			return nil, err
 		}

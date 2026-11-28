@@ -25,7 +25,8 @@ LIMIT sqlc.arg(max_rows);
 -- Requests one person made that were approved or rejected since a time, newest first. A request
 -- that lapsed unanswered is rejected with the decision reason "expired".
 SELECT w.id, w.project_id, p.slug AS project_slug, p.name AS project_name, w.name, w.status,
-       w.decision_note, w.decision_reason, w.decided_at::timestamptz AS decided_at
+       w.decision_note, w.decision_reason, w.decided_at::timestamptz AS decided_at, w.enabled,
+       w.expires_at
 FROM waivers w
 JOIN projects p ON p.id = w.project_id
 WHERE w.requested_by = sqlc.arg(user_id)

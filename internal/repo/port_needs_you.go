@@ -84,7 +84,8 @@ func (r *pgNeedsYouPort) ListDecidedWaiverRequests(ctx context.Context, userID s
 		out[i] = port.NeedsYouWaiver{
 			ID: toUUID(row.ID), ProjectID: toUUID(row.ProjectID), ProjectSlug: row.ProjectSlug,
 			ProjectName: row.ProjectName, Name: row.Name, RequestedBy: userID, Status: row.Status,
-			DecisionNote: row.DecisionNote, DecisionReason: row.DecisionReason.String, At: row.DecidedAt.Time,
+			DecisionNote: row.DecisionNote, DecisionReason: row.DecisionReason.String,
+			Enabled: row.Enabled, ExpiresAt: timePtrFromTimestamptz(row.ExpiresAt), At: row.DecidedAt.Time,
 		}
 	}
 	return out, nil
