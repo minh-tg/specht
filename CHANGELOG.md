@@ -507,6 +507,9 @@ releases.
 - A Slack waiver notice escapes the heading. It names the person who acted, and a project member sets
   their own display name, so a name such as `<!channel>` pinged the whole channel and a name with a
   link rendered as a link sent by Specht.
+- `GET /metrics` answers 404 with a plain-text body. Before, the web app's fallback served its HTML
+  page there with 200, so a Prometheus scrape looked configured and gathered nothing. Specht has no
+  metrics endpoint yet.
 - The compose file passes `SPECHT_BASE_URL`, `SSO_ALLOW_PRIVATE_ISSUER` and `GOMEMLIMIT` to the
   server, and sets `GOMEMLIMIT` to `2700MiB`, about 90% of the default 3 GiB container limit.
   Before, setting them in `deploy/.env.prod` did nothing: waiver notifications went out without a

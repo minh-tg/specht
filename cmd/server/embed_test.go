@@ -229,6 +229,29 @@ func TestSPAHandler_missingAssetReturns404NotShell(t *testing.T) {
 	}
 }
 
+// Specht has no metrics endpoint. The app shell with 200 under /metrics would
+// make a Prometheus scrape look configured while it gathers nothing.
+func TestSPAHandler_metricsReturns404NotShell(t *testing.T) {
+	handler := newSPATestHandler(t)
+
+	for _, path := range []string{"/metrics", "/metrics/"} {
+		t.Run(path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+
+			if rec.Code != http.StatusNotFound {
+				t.Errorf("expected 404, got %d", rec.Code)
+			}
+			if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+				t.Errorf("Content-Type = %q, want text/plain", ct)
+			}
+			if strings.Contains(rec.Body.String(), "<!doctype html>") {
+				t.Errorf("/metrics answered with the app shell: %q", rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestSPAHandler_existingAssetIsImmutable(t *testing.T) {
 	handler := newSPATestHandler(t)
 
