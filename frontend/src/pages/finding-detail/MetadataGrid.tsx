@@ -2,6 +2,7 @@ import { DetailList, type DetailRow } from "@/components/DetailList";
 import { analysisStateLabel, technicalStateLabel } from "@/lib/enums";
 import { EMPTY_VALUE, formatDateTime } from "@/lib/format";
 import type { Finding } from "@/types/api";
+import { breakAfterSeparators } from "./breakAfterSeparators";
 import { formatPercent } from "./cveText";
 
 /** A date for a row, or nothing when the report carried none or an unreadable one. */
@@ -39,7 +40,11 @@ export function MetadataGrid({ finding }: { readonly finding: Finding; }) {
         : "Unattributed",
       code: true,
     },
-    { label: "Fingerprint", value: finding.fingerprint, code: true },
+    {
+      label: "Fingerprint",
+      value: finding.fingerprint ? breakAfterSeparators(finding.fingerprint) : undefined,
+      code: true,
+    },
   ];
 
   return <DetailList variant="inline" className="border-border border-t pt-4" rows={rows} />;

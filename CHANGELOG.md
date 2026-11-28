@@ -499,6 +499,9 @@ releases.
 
 ### Fixed
 
+- The finding page no longer draws a second rule under its header, which read as an empty tab
+  strip, and the fingerprint in the side list breaks after `:`, `/`, `|` and `@` instead of in the
+  middle of a word such as `npm`.
 - A person whose account an admin deactivated is told so. The next request of a tab that was open
   reads a revoked sign-in, which the server took for a replayed token, so the sign-in page said the
   token "was used twice" and to change the password. `POST /auth/refresh` now answers
