@@ -34,12 +34,17 @@ WHERE id = $1 AND project_id = $2;
 
 -- name: UpdateWaiver :one
 -- set_expires selects whether expires_at is written: true binds the new
--- value (NULL clears it), false leaves the stored expiry untouched.
+-- value (NULL clears it), false leaves the stored expiry untouched. A different
+-- expiry clears expiry_warned_at, so a waiver extended after its warning is
+-- warned about again before the new date.
 UPDATE waivers SET
     name = COALESCE($3, name),
     description = COALESCE($4, description),
     expires_at = CASE WHEN sqlc.arg(set_expires)::boolean
         THEN sqlc.arg(expires_at)::timestamptz ELSE expires_at END,
+    expiry_warned_at = CASE WHEN sqlc.arg(set_expires)::boolean
+        AND expires_at IS DISTINCT FROM sqlc.arg(expires_at)::timestamptz
+        THEN NULL ELSE expiry_warned_at END,
     updated_at = NOW()
 WHERE id = $1 AND project_id = $2
 RETURNING *;

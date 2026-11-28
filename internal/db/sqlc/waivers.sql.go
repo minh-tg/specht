@@ -898,6 +898,9 @@ UPDATE waivers SET
     description = COALESCE($4, description),
     expires_at = CASE WHEN $5::boolean
         THEN $6::timestamptz ELSE expires_at END,
+    expiry_warned_at = CASE WHEN $5::boolean
+        AND expires_at IS DISTINCT FROM $6::timestamptz
+        THEN NULL ELSE expiry_warned_at END,
     updated_at = NOW()
 WHERE id = $1 AND project_id = $2
 RETURNING id, project_id, name, description, enabled, created_at, updated_at, expires_at, status, scope_all, reason, requested_by, requested_at, decided_by, decided_at, decision_note, decision_reason, expiry_warned_at
@@ -913,7 +916,9 @@ type UpdateWaiverParams struct {
 }
 
 // set_expires selects whether expires_at is written: true binds the new
-// value (NULL clears it), false leaves the stored expiry untouched.
+// value (NULL clears it), false leaves the stored expiry untouched. A different
+// expiry clears expiry_warned_at, so a waiver extended after its warning is
+// warned about again before the new date.
 func (q *Queries) UpdateWaiver(ctx context.Context, arg UpdateWaiverParams) (Waiver, error) {
 	row := q.db.QueryRow(ctx, updateWaiver,
 		arg.ID,
