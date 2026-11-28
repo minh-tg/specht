@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"log/slog"
+	"mime"
 	"net/http"
 
 	"github.com/minh-tg/specht/internal/audit"
@@ -41,6 +42,27 @@ func (h *Handler) setResumeCookie(w http.ResponseWriter, r *http.Request, refres
 		Secure:   auth.SecureTransport(r),
 		SameSite: http.SameSiteStrictMode,
 	})
+}
+
+// setSignInResumeCookie is setResumeCookie for the routes that sign someone in. A page on another
+// site can post a form to them with a plain-text body, which needs no preflight, and the response
+// would plant the attacker's cookie in the visitor's browser, so their next new tab would sign in
+// as the attacker. A cross-site page cannot send a JSON content type without a preflight, which the
+// server does not grant, and a browser says "cross-site" in Sec-Fetch-Site. The sign-in itself still
+// works for such a request: it is the cookie that is withheld, and an existing cookie is left alone.
+func (h *Handler) setSignInResumeCookie(w http.ResponseWriter, r *http.Request, refreshToken string) {
+	if !isSameSiteJSONRequest(r) {
+		return
+	}
+	h.setResumeCookie(w, r, refreshToken)
+}
+
+func isSameSiteJSONRequest(r *http.Request) bool {
+	if site := r.Header.Get("Sec-Fetch-Site"); site == "cross-site" {
+		return false
+	}
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	return err == nil && mediaType == "application/json"
 }
 
 func clearResumeCookie(w http.ResponseWriter, r *http.Request) {

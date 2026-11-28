@@ -253,13 +253,21 @@ describe("CveDetails provenance", () => {
   });
 
   it("says a provider's values came from that provider, never from the scanner", async () => {
-    serve(jsonResponse(providerFilled()));
-    const user = userEvent.setup();
-    renderSection();
-    await openBreakdown(user);
-    const v31 = screen.getByRole("article", { name: "CVSS 3.1" });
-    expect(within(v31).getByText(/^From NVD, fetched .* ago$/)).toBeVisible();
-    expect(screen.queryByText(/From the scan report/)).not.toBeInTheDocument();
+    // Past 30 days the age turns into a date, so the clock is pinned two hours after the fetch.
+    // Only Date is faked: the user events and the query still run on real timers.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date(Date.parse(NVD.fetched_at ?? "") + 2 * 60 * 60 * 1000));
+      serve(jsonResponse(providerFilled()));
+      const user = userEvent.setup();
+      renderSection();
+      await openBreakdown(user);
+      const v31 = screen.getByRole("article", { name: "CVSS 3.1" });
+      expect(within(v31).getByText("From NVD, fetched 2 h ago")).toBeVisible();
+      expect(screen.queryByText(/From the scan report/)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows the scoring party the source names", async () => {
