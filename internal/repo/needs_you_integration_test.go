@@ -150,3 +150,17 @@ func TestNeedsYouStore_EndingWaiversAndAssignedFindings(t *testing.T) {
 	assert.Equal(t, "c", assigned.Items[0].Title, "most severe first")
 	assert.Equal(t, 2, assigned.Total, "a and c are open; b is fixed and d is nobody's")
 }
+
+// The assigned findings query filters on assignee_id for every signed-in person's navigation, so
+// a partial index keeps it from reading every open finding of their projects.
+func TestMigration000079_IndexesFindingAssignees(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	var def string
+	err := repos.pool.QueryRow(context.Background(),
+		`SELECT indexdef FROM pg_indexes WHERE tablename = 'findings' AND indexname = 'idx_findings_assignee_id'`).Scan(&def)
+	require.NoError(t, err, "the index exists")
+	assert.Contains(t, def, "(assignee_id)")
+	assert.Contains(t, def, "WHERE (assignee_id IS NOT NULL)")
+}
