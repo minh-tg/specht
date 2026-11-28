@@ -499,6 +499,9 @@ releases.
 
 ### Fixed
 
+- A pull request check that only reports, because of the project's gate mode, is titled "N
+  finding(s) would block (report only)". Before, a change-scoped check with blockers in that mode was
+  titled "N finding(s), none mappable to files", even when every finding had a file and line.
 - A page on another site can no longer plant its own resume cookie in a visitor's browser. Sign-in,
   register, setup, invite accept, SSO exchange and change password set the cookie only for a request
   with a JSON content type that the browser does not mark `Sec-Fetch-Site: cross-site`. Before this, a

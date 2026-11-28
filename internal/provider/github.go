@@ -81,7 +81,7 @@ func (p *GitHubProvider) PlanCheck(input CheckInput) (CheckPlan, error) {
 	default:
 		plan.Conclusion = ConclusionSuccess
 	}
-	plan.Title = checkTitle(plan.Conclusion, len(findings))
+	plan.Title = checkTitle(plan.Conclusion, input.Breached && input.ReportOnly, len(findings))
 	plan.Summary = checkSummary(input, plan)
 	return plan, nil
 }
@@ -142,12 +142,15 @@ func annotationMessage(f Finding) string {
 	return b.String()
 }
 
-// checkTitle summarizes the verdict in one line.
-func checkTitle(conclusion Conclusion, total int) string {
-	switch conclusion {
-	case ConclusionFailure:
+// checkTitle summarizes the verdict in one line. A neutral check is either a
+// breach the gate mode only reports, or findings with no file to annotate.
+func checkTitle(conclusion Conclusion, reportOnlyBreach bool, total int) string {
+	switch {
+	case conclusion == ConclusionFailure:
 		return fmt.Sprintf("Specht: %d blocking finding(s)", total)
-	case ConclusionNeutral:
+	case conclusion == ConclusionNeutral && reportOnlyBreach:
+		return fmt.Sprintf("Specht: %d finding(s) would block (report only)", total)
+	case conclusion == ConclusionNeutral:
 		return fmt.Sprintf("Specht: %d finding(s), none mappable to files", total)
 	default:
 		return "Specht: no blocking findings"
