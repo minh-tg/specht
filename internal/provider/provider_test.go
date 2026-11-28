@@ -115,3 +115,27 @@ func TestPlanCheck_SuccessWhenClean(t *testing.T) {
 	assert.Equal(t, ConclusionSuccess, plan.Conclusion)
 	assert.True(t, strings.Contains(plan.Title, "no blocking"))
 }
+
+// A breach the project's gate mode only reports keeps the check neutral, and its title says what
+// would block. "None mappable to files" belongs to an unbreached check whose findings have no file.
+func TestPlanCheck_ReportOnlyBreachSaysWhatWouldBlock(t *testing.T) {
+	p := NewGitHubProvider()
+	plan, err := p.PlanCheck(CheckInput{
+		CommitSha: "abc123", ReportID: "r1", Breached: true, ReportOnly: true,
+		Findings: []Finding{
+			{ID: "f1", Title: "XSS", Severity: "high", SeverityRank: 3, Fingerprint: "fp1", File: "a.go", StartLine: 2},
+			{ID: "f2", Title: "SQLi", Severity: "critical", SeverityRank: 4, Fingerprint: "fp2"},
+		},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, ConclusionNeutral, plan.Conclusion)
+	assert.Equal(t, "Specht: 2 finding(s) would block (report only)", plan.Title)
+
+	unmapped, err := p.PlanCheck(CheckInput{
+		CommitSha: "abc123", ReportID: "r1",
+		Findings: []Finding{{ID: "f2", Title: "SQLi", Severity: "low", SeverityRank: 1, Fingerprint: "fp2"}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, ConclusionNeutral, unmapped.Conclusion)
+	assert.Equal(t, "Specht: 1 finding(s), none mappable to files", unmapped.Title)
+}
