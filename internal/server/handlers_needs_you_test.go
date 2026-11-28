@@ -6,10 +6,15 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"reflect"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/minh-tg/specht/internal/usecase"
 )
@@ -63,6 +68,46 @@ func TestNeedsYou_Errors(t *testing.T) {
 			assert.Equal(t, tc.code, w.Code)
 			assert.Contains(t, w.Body.String(), tc.want)
 			assert.NotContains(t, w.Body.String(), "db down")
+		})
+	}
+}
+
+// The schemas in openapi.yaml name the fields the response carries, and each property holds only
+// schema keywords. An unquoted description in a flow mapping ends at its first comma, and the
+// rest of the sentence becomes a stray key that the generated client types drop without a word.
+func TestNeedsYou_OpenAPISchemasMatchTheResponse(t *testing.T) {
+	raw, err := os.ReadFile("../../openapi.yaml")
+	require.NoError(t, err)
+	var spec struct {
+		Components struct {
+			Schemas map[string]struct {
+				Properties map[string]map[string]any `yaml:"properties"`
+			} `yaml:"schemas"`
+		} `yaml:"components"`
+	}
+	require.NoError(t, yaml.Unmarshal(raw, &spec))
+
+	keywords := []string{"type", "format", "description", "enum", "example", "items", "$ref"}
+	for name, goType := range map[string]reflect.Type{
+		"NeedsYouItem":     reflect.TypeFor[usecase.NeedsYouItem](),
+		"NeedsYouResponse": reflect.TypeFor[usecase.NeedsYouResponse](),
+	} {
+		t.Run(name, func(t *testing.T) {
+			schema, ok := spec.Components.Schemas[name]
+			require.True(t, ok, "openapi.yaml has no schema %s", name)
+			var documented, sent []string
+			for prop, body := range schema.Properties {
+				documented = append(documented, prop)
+				for key := range body {
+					assert.Contains(t, keywords, key, "%s.%s has a stray key", name, prop)
+				}
+			}
+			for field := range goType.Fields() {
+				sent = append(sent, strings.Split(field.Tag.Get("json"), ",")[0])
+			}
+			slices.Sort(documented)
+			slices.Sort(sent)
+			assert.Equal(t, sent, documented)
 		})
 	}
 }

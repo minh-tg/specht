@@ -5487,7 +5487,7 @@ components:
           type: string
           enum: [approved, rejected, expired]
           description: How an answered request ended. `expired` is a request that lapsed unanswered. Sent for `request_decided` only.
-        detail: { type: string, description: The request's reason, or the reviewer's note on an answer. }
+        detail: { type: string, description: "The request's reason, or the reviewer's note on an answer." }
         severity: { type: string, description: The finding's severity. Sent for `finding_assigned` only. }
         at:
           type: string
