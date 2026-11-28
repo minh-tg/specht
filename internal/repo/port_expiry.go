@@ -167,15 +167,23 @@ func (s *pgWaiverExpiryStore) ExpireExpired(ctx context.Context) ([]port.Waiver,
 		return nil, fmt.Errorf("commit tx: %w", err)
 	}
 
-	out := make([]port.Waiver, len(expired))
-	for i, w := range expired {
+	return expiredWaivers(expired), nil
+}
+
+// expiredWaivers maps the rows ExpireWaivers returned. Status is approved for a
+// waiver the sweep disabled and rejected for a request it turned down; the
+// announcer reads it to stay quiet about requests that were never in force.
+func expiredWaivers(rows []sqlc.ExpireWaiversRow) []port.Waiver {
+	out := make([]port.Waiver, len(rows))
+	for i, w := range rows {
 		out[i] = port.Waiver{
 			ID:        toUUID(w.ID),
 			ProjectID: toUUID(w.ProjectID),
 			Name:      w.Name,
+			Status:    w.Status,
 			Enabled:   false,
 			UpdatedAt: time.Now(),
 		}
 	}
-	return out, nil
+	return out
 }
