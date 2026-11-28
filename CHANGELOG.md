@@ -499,6 +499,11 @@ releases.
 
 ### Fixed
 
+- A page on another site can no longer plant its own resume cookie in a visitor's browser. Sign-in,
+  register, setup, invite accept, SSO exchange and change password set the cookie only for a request
+  with a JSON content type that the browser does not mark `Sec-Fetch-Site: cross-site`. Before this, a
+  plain-text form post from any site to the login route set it, and the visitor's next new tab signed
+  in as the attacker. The sign-in itself is unchanged.
 - A Slack waiver notice escapes the heading. It names the person who acted, and a project member sets
   their own display name, so a name such as `<!channel>` pinged the whole channel and a name with a
   link rendered as a link sent by Specht.
