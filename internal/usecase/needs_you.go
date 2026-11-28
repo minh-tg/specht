@@ -41,7 +41,7 @@ type NeedsYouItem struct {
 	Title string `json:"title"`
 	// Status is "approved", "rejected" or "expired" for an answered request.
 	Status string `json:"status,omitempty"`
-	// Detail is the request's reason, or the reviewer's note on an answer.
+	// Detail is the request's reason, or the reviewer's note on an approved or rejected answer.
 	Detail   string    `json:"detail,omitempty"`
 	Severity string    `json:"severity,omitempty"`
 	At       time.Time `json:"at"`
@@ -144,7 +144,10 @@ func (u *Usecases) GetNeedsYou(ctx context.Context) (*NeedsYouResponse, error) {
 	for _, w := range answers.Items {
 		item := waiverItem(NeedsYouRequestDecided, w)
 		item.Status = answerStatus(w)
-		item.Detail = w.DecisionNote
+		// A lapsed request carries the expiry sweep's fixed note, which only repeats the status.
+		if item.Status != "expired" {
+			item.Detail = w.DecisionNote
+		}
 		if inForce(w, now) {
 			item.Link = waiversTab(w.ProjectSlug, waiversInForce)
 		} else {

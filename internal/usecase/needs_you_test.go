@@ -222,14 +222,15 @@ func TestGetNeedsYou_AnOldAnswerIsListedButNotCounted(t *testing.T) {
 	store := &nyStore{decided: []port.NeedsYouWaiver{
 		{ID: "new", ProjectSlug: "alpha", Name: "Waiver request: new", Status: "approved", At: nyNow.Add(-time.Hour)},
 		{ID: "old", ProjectSlug: "alpha", Name: "Waiver request: old", Status: "rejected", DecisionNote: "too broad", At: nyNow.Add(-10 * 24 * time.Hour)},
-		{ID: "lapsed", ProjectSlug: "alpha", Name: "Waiver request: lapsed", Status: "rejected", DecisionReason: "expired", At: nyNow.Add(-2 * time.Hour)},
+		{ID: "lapsed", ProjectSlug: "alpha", Name: "Waiver request: lapsed", Status: "rejected", DecisionReason: "expired", DecisionNote: "expired before a decision", At: nyNow.Add(-2 * time.Hour)},
 	}}
 	out, err := nyUsecase(store, 1).GetNeedsYou(nyCtx(nyAlice, "member"))
 
 	require.NoError(t, err)
 	require.Len(t, out.Items, 3)
 	assert.Equal(t, []string{"approved", "rejected", "expired"}, []string{out.Items[0].Status, out.Items[1].Status, out.Items[2].Status})
-	assert.Equal(t, "too broad", out.Items[1].Detail)
+	assert.Equal(t, "too broad", out.Items[1].Detail, "a reviewer's note is kept")
+	assert.Empty(t, out.Items[2].Detail, "the expiry sweep's fixed note would repeat the status")
 	assert.Equal(t, 2, out.Count, "the answer from ten days ago is listed only")
 }
 

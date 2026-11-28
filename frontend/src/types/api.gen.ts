@@ -3718,7 +3718,7 @@ export interface components {
        * @enum {string}
        */
       status?: "approved" | "rejected" | "expired";
-      /** @description The request's reason, or the reviewer's note on an answer. */
+      /** @description The request's reason, or the reviewer's note on an approved or rejected answer. Not sent for an `expired` answer. */
       detail?: string;
       /** @description The finding's severity. Sent for `finding_assigned` only. */
       severity?: string;
