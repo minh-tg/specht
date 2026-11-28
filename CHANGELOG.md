@@ -499,6 +499,9 @@ releases.
 
 ### Fixed
 
+- A Slack waiver notice escapes the heading. It names the person who acted, and a project member sets
+  their own display name, so a name such as `<!channel>` pinged the whole channel and a name with a
+  link rendered as a link sent by Specht.
 - A project's only manager can approve their own waiver request with a note. Before, nobody could
   approve it unless a global admin stepped in. The approval is marked self-approved, as a global
   admin's is. Anyone else on the project with manager or admin rights, directly or through a team, or a
