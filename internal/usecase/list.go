@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	urlpkg "net/url"
 	"strings"
 	"time"
 	"unicode"
@@ -135,10 +136,12 @@ type FindingContextResponse struct {
 // RemediationResponse is one finding's fix guidance with its provenance.
 type RemediationResponse struct {
 	Summary string `json:"summary,omitempty"`
-	URL     string `json:"url,omitempty"`
+	// URL is the scanner's page for the rule or policy, always http or
+	// https. It can come with Fallback set.
+	URL string `json:"url,omitempty"`
 	// Source names the scanner whose observation supplied the guidance.
 	Source string `json:"source,omitempty"`
-	// Fallback is true when the source supplied nothing and the section
+	// Fallback is true when the source supplied no fix text and Summary
 	// is a kind-level label instead of tool guidance.
 	Fallback bool `json:"fallback,omitempty"`
 }
@@ -175,16 +178,20 @@ type SuggestionResponse struct {
 }
 
 // suggestionFromEvidence builds the remediation suggestion from persisted
-// dimensions plus the assembled remediation section. The fix summary and
-// URL come from source guidance when present (rem.Fallback marks their
-// absence, in which case only dims feed the model).
+// dimensions plus the assembled remediation section. The fix summary comes
+// from source guidance when present (rem.Fallback marks the kind-level label,
+// which is not a fix). The URL is the scanner's own whether or not the summary
+// is the label.
 func suggestionFromEvidence(f port.Finding, dims []port.FindingDimension, tool string, rem *RemediationResponse) *SuggestionResponse {
 	in := remediate.Input{
 		FindingID: f.ID, FindingKind: f.FindingKind, Title: f.CurrentTitle,
 		Dims: dimensionValues(dims), Tool: tool,
 	}
-	if rem != nil && !rem.Fallback {
-		in.FixSummary, in.FixURL = rem.Summary, rem.URL
+	if rem != nil {
+		in.FixURL = rem.URL
+		if !rem.Fallback {
+			in.FixSummary = rem.Summary
+		}
 	}
 	s := remediate.Suggest(in)
 	return &SuggestionResponse{
@@ -1008,24 +1015,37 @@ type spechtMetadata struct {
 // guidance wins; otherwise a known fixed version supplies the upgrade path,
 // and a kind-level label marks the remaining gap explicitly instead of
 // inventing a fix.
+//
+// The URL is the scanner's page for the rule or policy (a SARIF helpUri, a
+// Checkov guideline). It is not a fix, so a URL without fix text keeps the
+// kind-level label as the summary, with Fallback set, and the URL next to it.
 func remediationFromMetadata(metadata json.RawMessage, tool, kind string, dims []port.FindingDimension) *RemediationResponse {
 	var doc spechtMetadata
 	if len(metadata) > 0 {
 		_ = json.Unmarshal(metadata, &doc)
 	}
-	if doc.Specht.Fix.Summary != "" || doc.Specht.Fix.URL != "" {
-		return &RemediationResponse{
-			Summary: doc.Specht.Fix.Summary,
-			URL:     doc.Specht.Fix.URL,
-			Source:  tool,
-		}
+	link := webLink(doc.Specht.Fix.URL)
+	if doc.Specht.Fix.Summary != "" {
+		return &RemediationResponse{Summary: doc.Specht.Fix.Summary, URL: link, Source: tool}
 	}
 	if kind == "sca" {
 		if summary, ok := scaRemediation(dims); ok {
-			return &RemediationResponse{Summary: summary, Source: tool}
+			return &RemediationResponse{Summary: summary, URL: link, Source: tool}
 		}
 	}
-	return &RemediationResponse{Summary: fixFallback(kind), Source: tool, Fallback: true}
+	return &RemediationResponse{Summary: fixFallback(kind), URL: link, Source: tool, Fallback: true}
+}
+
+// webLink returns raw when it is an absolute http or https URL, and "" for
+// anything else. Ingest already drops other links; this also covers rows
+// stored before it did, since the URL reaches an href, a pull request
+// annotation and notifications.
+func webLink(raw string) string {
+	u, err := urlpkg.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return ""
+	}
+	return raw
 }
 
 // scaRemediation derives an upgrade instruction from the fixed version

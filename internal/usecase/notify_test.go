@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,6 +12,11 @@ import (
 )
 
 func notifyHarness(t *testing.T, state string) *Usecases {
+	t.Helper()
+	return notifyHarnessWithMetadata(t, state, nil)
+}
+
+func notifyHarnessWithMetadata(t *testing.T, state string, metadata json.RawMessage) *Usecases {
 	t.Helper()
 	pr, rr, fr := makeTestRepos()
 	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
@@ -29,7 +35,7 @@ func notifyHarness(t *testing.T, state string) *Usecases {
 		return f, nil
 	}
 	fr.getDisplayContextFn = func(ctx context.Context, findingID string) (port.FindingDisplayContext, error) {
-		return port.FindingDisplayContext{ToolName: "semgrep"}, nil
+		return port.FindingDisplayContext{ToolName: "semgrep", Metadata: metadata}, nil
 	}
 	return New(Deps{Stores: &port.Stores{
 		Projects: pr, Reports: rr, Findings: fr,
@@ -49,6 +55,31 @@ func TestPreviewNotification_IssueCreate(t *testing.T) {
 	assert.Equal(t, "create", string(out.Plan.Action))
 	assert.Equal(t, "SEC", out.Plan.Target)
 	assert.NotEmpty(t, out.Plan.DedupeKey)
+}
+
+// The rule's documentation page goes out as the fix link even though the fix text is only the
+// kind-level label.
+func TestPreviewNotification_LinksTheRuleDocumentation(t *testing.T) {
+	uc := notifyHarnessWithMetadata(t, "open",
+		json.RawMessage(`{"specht":{"fix":{"URL":"https://semgrep.dev/r/python.flask.debug-enabled"}}}`))
+	out, err := uc.PreviewNotification(
+		findingScopeCtx(makeProject(true).ID),
+		"00000000-0000-0000-0000-000000000021", "issue", "SEC", false,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, out.Plan)
+	assert.Equal(t, "https://semgrep.dev/r/python.flask.debug-enabled", out.Plan.Links.Fix)
+}
+
+func TestPreviewNotification_LeavesTheLabelOut(t *testing.T) {
+	uc := notifyHarness(t, "open")
+	out, err := uc.PreviewNotification(
+		findingScopeCtx(makeProject(true).ID),
+		"00000000-0000-0000-0000-000000000021", "issue", "SEC", false,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, out.Plan)
+	assert.Empty(t, out.Plan.Links.Fix)
 }
 
 func TestPreviewNotification_FixedCloses(t *testing.T) {

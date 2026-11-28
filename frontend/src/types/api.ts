@@ -253,10 +253,11 @@ export interface FindingContext {
 
 export interface FindingRemediation {
   summary?: string;
+  /** The scanner's page for the rule or policy, always http or https. Can come with `fallback`. */
   url?: string;
   /** Scanner whose observation supplied the guidance. */
   source?: string;
-  /** True when the source supplied nothing and the section is a label. */
+  /** True when the source supplied no fix text and `summary` is a label. */
   fallback?: boolean;
 }
 

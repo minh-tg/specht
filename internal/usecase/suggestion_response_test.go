@@ -48,6 +48,18 @@ func TestSuggestionFromEvidence_FixFields(t *testing.T) {
 			rem:  &RemediationResponse{Fallback: true},
 			want: SuggestionResponse{Action: "review", Target: "db.go", Fallback: true},
 		},
+		{
+			name: "sast rule page is not a fix",
+			kind: "sast", dims: []port.FindingDimension{{Key: "file", Value: "db.go"}},
+			rem:  &RemediationResponse{Summary: fixFallback("sast"), URL: "https://semgrep.dev/r/x", Fallback: true},
+			want: SuggestionResponse{Action: "review", Target: "db.go", Fallback: true},
+		},
+		{
+			name: "iac guideline without fix text is still guidance",
+			kind: "iac", dims: []port.FindingDimension{{Key: "resource", Value: "aws_s3_bucket.data"}},
+			rem:  &RemediationResponse{Summary: fixFallback("iac"), URL: "https://docs.example.com/ckv-aws-20", Fallback: true},
+			want: SuggestionResponse{Action: "configure", Target: "aws_s3_bucket.data", Fallback: false},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

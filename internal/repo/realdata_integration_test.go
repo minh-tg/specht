@@ -529,9 +529,15 @@ func TestRemediation_EndToEnd(t *testing.T) {
 	detail, err := uc.GetFinding(findingScopeCtx(creator.ID), findings[0].ID)
 	require.NoError(t, err)
 	require.NotNil(t, detail.Remediation, "guideline-backed fix must surface on detail")
-	assert.False(t, detail.Remediation.Fallback)
+	// Checkov names a guideline page and no fix text, so the summary is the
+	// iac label and the guideline is the link next to it.
+	assert.True(t, detail.Remediation.Fallback)
+	assert.Contains(t, detail.Remediation.Summary, "policy guideline")
 	assert.Contains(t, detail.Remediation.URL, "bridgecrew.io")
 	assert.Equal(t, "checkov", detail.Remediation.Source)
+	require.NotNil(t, detail.Suggestion)
+	assert.Equal(t, "configure", detail.Suggestion.Action, "the guideline is still guidance")
+	assert.False(t, detail.Suggestion.Fallback)
 	require.NotNil(t, detail.Location)
 	assert.NotEmpty(t, detail.Location.Resource)
 	assert.NotEmpty(t, detail.Location.File)

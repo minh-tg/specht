@@ -19,11 +19,13 @@ func (u *Usecases) PreviewNotification(ctx context.Context, findingID, channel, 
 	if err != nil {
 		return nil, err
 	}
+	// The scanner's link is sent even when the summary is only the kind-level
+	// label (Fallback), which is not worth sending.
 	var remediation string
-	if detail.Remediation != nil && !detail.Remediation.Fallback {
-		remediation = detail.Remediation.URL
-		if remediation == "" {
-			remediation = detail.Remediation.Summary
+	if rem := detail.Remediation; rem != nil {
+		remediation = rem.URL
+		if remediation == "" && !rem.Fallback {
+			remediation = rem.Summary
 		}
 	}
 	introduced := ""

@@ -122,6 +122,26 @@ func SanitizeText(raw string, maxLen int) string {
 	return TruncateString(cleanText(raw, false), maxLen)
 }
 
+// WebURL returns raw when it is an absolute http or https URL with a host and
+// at most MaxPathLength bytes, and "" otherwise. A report is uploaded by CI, so
+// a link in it can carry any scheme, and the finding page puts it in an href,
+// where a javascript: URL runs script when clicked. Escape sequences and
+// control characters are dropped first, and a URL that still holds whitespace
+// is refused: a browser deletes tabs and line breaks inside a URL, so the text
+// checked here would not be the URL it opens. A URL over the bound is dropped
+// rather than cut, since a cut URL points somewhere else.
+func WebURL(raw string) string {
+	s := strings.TrimSpace(cleanText(raw, false))
+	if s == "" || len(s) > MaxPathLength || strings.ContainsFunc(s, unicode.IsSpace) {
+		return ""
+	}
+	u, err := url.Parse(s)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return ""
+	}
+	return s
+}
+
 // SanitizeMultiline is SanitizeText for text shown as several lines, such as a
 // description or a code snippet: line breaks stay, as LF (a CRLF pair or a
 // lone CR becomes one LF).
@@ -334,7 +354,7 @@ func HardenFinding(f domain.NormalizedFinding) domain.NormalizedFinding {
 
 	if f.Fix != nil {
 		f.Fix.Summary = SanitizeText(f.Fix.Summary, MaxTitleLength)
-		f.Fix.URL = SanitizeText(f.Fix.URL, MaxPathLength)
+		f.Fix.URL = WebURL(f.Fix.URL)
 		f.Fix.Description = SanitizeMultiline(f.Fix.Description, MaxDescriptionLength)
 	}
 

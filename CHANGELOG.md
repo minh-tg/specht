@@ -10,6 +10,16 @@ releases.
 
 ### Added
 
+- The finding page links a SAST finding's rule documentation, in a new tab, where it used to say
+  "follow the rule documentation" with nothing to follow. The link shows when the scanner named the
+  page, such as Semgrep's registry page for the rule; without one the text stays as it was.
+- A SAST finding carries its rule's documentation page. The SARIF and Semgrep scanners read the
+  rule's `helpUri` (`metadata.source` in Semgrep's `--json` output), which both dropped before, and
+  `GET /api/v1/findings/{id}` returns it as `remediation.url`. Without fix text the summary stays
+  the kind-level label with `fallback` true. A Checkov guideline now comes back the same way, where
+  `summary` used to be empty and the full finding page hid the link. A link that is not an absolute
+  http or https URL is dropped at ingest for every scanner and never returned, because the finding
+  page puts it in an href.
 - `GET /projects/{slug}/gate?introduced_only=true&commit=<sha>` judges a whole commit: the findings
   that every completed report of the commit introduced, whichever scanner sent it. This is the
   verdict of the pull-request check for that commit. A commit with no completed report answers 404
