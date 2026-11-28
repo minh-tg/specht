@@ -234,6 +234,9 @@ export async function revokeRefreshToken(
  * session because a refresh token was used twice. */
 export const SESSION_REUSED_REASON = "session_reused";
 
+/** The `reason` the sign-in page is sent with after an admin deactivated the account. */
+export const ACCOUNT_DISABLED_REASON = "account_disabled";
+
 /** Tears the session down, bounces to the sign-in page, and rethrows. A reason
  * rides along so the page can tell the user why they are signed out. */
 function endSession(err: unknown, reason?: string): never {
@@ -273,6 +276,11 @@ async function startRefresh(): Promise<Session> {
     // and says why instead of retrying.
     if (err instanceof APIError && err.status === 401 && err.code === "refresh_reused") {
       endSession(err, SESSION_REUSED_REASON);
+    }
+    // `account_disabled` is an admin turning the account off, which ended every sign-in. It is not
+    // a replay, so it must not say a token was used twice.
+    if (err instanceof APIError && err.status === 401 && err.code === "account_disabled") {
+      endSession(err, ACCOUNT_DISABLED_REASON);
     }
     if (unauthorized(err)) endSession(err);
     throw err;

@@ -131,6 +131,14 @@ describe("Login", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/signed out/i);
   });
 
+  it("says the account was deactivated, and does not blame a reused token", () => {
+    renderLoginWithAuth("/login?redirect=%2Fdashboard&reason=account_disabled");
+
+    const notice = screen.getByRole("status");
+    expect(notice).toHaveTextContent(/deactivated your account/i);
+    expect(notice).not.toHaveTextContent(/used twice/i);
+  });
+
   it("shows no sign-out notice on a plain visit", () => {
     renderLoginWithAuth("/login");
 

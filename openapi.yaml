@@ -401,7 +401,10 @@ paths:
             session's absolute lifetime (`refresh_failed`). A token that was
             already used answers `refresh_reused` and revokes the sign-in it
             belongs to, successor included, but not the user's other devices.
-            The client should sign the user out and say the session ended.
+            A revoked token of an account an admin deactivated answers
+            `account_disabled`, since deactivating ends every sign-in and the
+            next refresh is not a replay. The client should sign the user out
+            and say which of these happened.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -410,6 +413,8 @@ paths:
                   value: { error: { code: refresh_failed, message: invalid refresh token } }
                 reused:
                   value: { error: { code: refresh_reused, message: refresh token was already used } }
+                deactivated:
+                  value: { error: { code: account_disabled, message: this account was deactivated } }
 
   /api/v1/auth/resume:
     post:

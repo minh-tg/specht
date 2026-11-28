@@ -499,6 +499,11 @@ releases.
 
 ### Fixed
 
+- A person whose account an admin deactivated is told so. The next request of a tab that was open
+  reads a revoked sign-in, which the server took for a replayed token, so the sign-in page said the
+  token "was used twice" and to change the password. `POST /auth/refresh` now answers
+  `account_disabled`, and the page says an administrator deactivated the account. A sign-in revoked
+  for another reason, such as a password change on another device, still reads as a replay.
 - A rerun of a CI job gets the same exit code as the first run in `changes_only` mode. The server
   answered `change_report: false` for an identical upload it replayed, so the adapter took the
   project's report-only verdict and let a branch push that introduced a blocker pass on "Re-run

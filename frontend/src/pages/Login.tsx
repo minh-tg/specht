@@ -1,4 +1,4 @@
-import { APIError, SESSION_REUSED_REASON } from "@/api/client";
+import { ACCOUNT_DISABLED_REASON, APIError, SESSION_REUSED_REASON } from "@/api/client";
 import { useCapabilities } from "@/api/hooks";
 import { markSsoAttempt } from "@/auth/sso";
 import { useAuth } from "@/auth/useAuth";
@@ -40,6 +40,7 @@ export function Login() {
   const capabilities = useCapabilities();
   const redirect = safeRedirect(searchParams.get("redirect"));
   const sessionRevoked = searchParams.get("reason") === SESSION_REUSED_REASON;
+  const accountDisabled = searchParams.get("reason") === ACCOUNT_DISABLED_REASON;
   const ssoRefusal = ssoRefusalMessage(searchParams.get("sso_error"));
   const ssoHref = redirect === "/"
     ? "/api/v1/auth/sso/login"
@@ -104,6 +105,15 @@ export function Login() {
             className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-body"
           >
             {ssoRefusal}
+          </p>
+        )}
+        {accountDisabled && !error && (
+          <p
+            role="status"
+            className="bg-muted text-foreground rounded-md px-3 py-2 text-body"
+          >
+            You were signed out because an administrator deactivated your account. Ask an
+            administrator to turn it back on.
           </p>
         )}
         {sessionRevoked && !error && (

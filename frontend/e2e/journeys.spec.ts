@@ -862,6 +862,29 @@ test("a manager approves a waiver request, the verdict passes, and revoking it b
   await expect(page.getByText(/^Revoked by /)).toBeVisible();
 });
 
+test("a person whose account an admin deactivates is told so, not that a token was reused", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const person = await registerPerson(request, "deactivated-tab");
+  const signedIn = await request.post("/api/v1/auth/login", {
+    data: { email: person.email, password: person.password },
+  });
+  expect(signedIn.ok(), await signedIn.text()).toBeTruthy();
+  const userId = (await signedIn.json()).user_id as string;
+  await uiLoginAs(page, person.email, person.password);
+
+  const off = await request.post(`/api/v1/users/${userId}/deactivate`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(off.ok(), await off.text()).toBeTruthy();
+
+  // The tab's next request is refused, its refresh finds the account off, and the sign-in page says so.
+  await page.goto("/teams");
+  await expect(page).toHaveURL(/\/login\?.*reason=account_disabled/);
+  await expect(page.getByRole("status").filter({ hasText: "deactivated your account" }))
+    .toBeVisible();
+  await expect(page.getByText(/used twice/)).toHaveCount(0);
+});
+
 test("the insights page counts only open findings and shows what blocks the gate", async ({ page, request }) => {
   const token = await apiToken(request);
   const slug = uniq("insights");

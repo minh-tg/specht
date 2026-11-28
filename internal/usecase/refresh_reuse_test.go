@@ -205,6 +205,37 @@ func TestRefreshReuse_ConcurrentDoubleRefreshRevokesTheChain(t *testing.T) {
 	assert.True(t, h.store.live(other), "another sign-in is a separate chain and survives")
 }
 
+// Deactivating an account revokes every sign-in. The next refresh of a tab that was open is then a
+// revoked token, and it is not a replay: the person is told the account is off.
+func TestRefresh_ARevokedTokenOfADeactivatedAccountSaysSo(t *testing.T) {
+	h := newReuseHarness(t)
+	raw := h.signIn(t)
+	require.NoError(t, h.store.RevokeAllForUser(context.Background(), lifetimeUserID))
+	disabledAt := h.now
+	h.users.getByIDFn = func(context.Context, string) (port.User, error) {
+		u := makeUser(lifetimeUserID)
+		u.DisabledAt = &disabledAt
+		return u, nil
+	}
+
+	_, err := h.refresh(raw)
+
+	assert.ErrorIs(t, err, ErrRefreshAccountDisabled)
+	assert.NotErrorIs(t, err, ErrRefreshReused)
+}
+
+// A token revoked for any other reason is still read as a replay. Only an account an admin turned
+// off gets the other answer.
+func TestRefresh_ARevokedTokenOfAnActiveAccountIsStillAReplay(t *testing.T) {
+	h := newReuseHarness(t)
+	raw := h.signIn(t)
+	require.NoError(t, h.store.RevokeAllForUser(context.Background(), lifetimeUserID))
+
+	_, err := h.refresh(raw)
+
+	assert.ErrorIs(t, err, ErrRefreshReused)
+}
+
 // A thief who refreshes first gets a successor. The owner's refresh with the
 // same token is the second use, and it takes the thief's successor with it
 // instead of being served as a retry.
