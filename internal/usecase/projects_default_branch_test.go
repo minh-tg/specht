@@ -91,3 +91,60 @@ func TestUpdateProject_DefaultBranchNeedsAProjectAdmin(t *testing.T) {
 		assert.ErrorIs(t, err, ErrProjectAccessDenied)
 	})
 }
+
+// A new project can name its default branch: the trimmed value goes to the
+// store in the same Create call as the project, a blank one is stored as
+// unset, and an invalid one is refused before anything is written.
+func TestCreateProject_DefaultBranch(t *testing.T) {
+	run := func(t *testing.T, branch string) (*string, error) {
+		t.Helper()
+		pr, _, _ := makeTestRepos()
+		var stored port.CreateProjectInput
+		pr.createFn = func(ctx context.Context, arg port.CreateProjectInput) (port.Project, error) {
+			stored = arg
+			p := makeProject(true)
+			p.DefaultBranch = arg.DefaultBranch
+			return p, nil
+		}
+		uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+		resp, err := uc.CreateProject(sessionCtx("creator-1", auth.RoleAdmin), CreateProjectInput{
+			Name: "My App", Slug: "my-app", DefaultBranch: branch, CreatorID: "creator-1",
+		})
+		if err != nil {
+			return nil, err
+		}
+		assert.Equal(t, "creator-1", stored.AdminID, "the branch and the first admin are one Create call")
+		assert.Equal(t, stored.DefaultBranch, resp.DefaultBranch)
+		return stored.DefaultBranch, nil
+	}
+
+	got, err := run(t, "  main ")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "main", *got, "the value is trimmed")
+
+	for _, blank := range []string{"", "   "} {
+		got, err = run(t, blank)
+		require.NoError(t, err)
+		assert.Nil(t, got, "a blank value %q leaves it unset", blank)
+	}
+
+	long := strings.Repeat("b", 255)
+	got, err = run(t, long)
+	require.NoError(t, err, "255 bytes is the limit")
+	require.NotNil(t, got)
+	assert.Equal(t, long, *got)
+
+	for _, bad := range []string{strings.Repeat("b", 256), "main\x00", "ma\nin"} {
+		pr, _, _ := makeTestRepos()
+		pr.createFn = func(ctx context.Context, arg port.CreateProjectInput) (port.Project, error) {
+			t.Fatal("an invalid default branch must not reach the store")
+			return port.Project{}, nil
+		}
+		uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+		_, err := uc.CreateProject(sessionCtx("creator-1", auth.RoleAdmin), CreateProjectInput{
+			Name: "My App", Slug: "my-app", DefaultBranch: bad, CreatorID: "creator-1",
+		})
+		assert.ErrorIs(t, err, ErrInvalidDefaultBranch, "%q", bad)
+	}
+}

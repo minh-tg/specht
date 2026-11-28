@@ -48,7 +48,7 @@ func TestIngestBatchQueryCountRegression(t *testing.T) {
 		requireNoError(t, registry.Register(sc))
 	}
 	uc := usecase.New(usecase.Deps{Stores: stores, Registry: registry})
-	_, err = uc.CreateProject(globalAdminCtx(creator.ID), "Ingest profile", "ingest-profile", "validation", creator.ID)
+	_, err = uc.CreateProject(globalAdminCtx(creator.ID), usecase.CreateProjectInput{Name: "Ingest profile", Slug: "ingest-profile", Description: "validation", CreatorID: creator.ID})
 	requireNoError(t, err)
 
 	type sample struct {

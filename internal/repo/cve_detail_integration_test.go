@@ -196,7 +196,7 @@ func TestCVEDetailStore_LatestOccurrencesIncludeWatcherFindings(t *testing.T) {
 	creator, err := stores.Users.Create(ctx, "cve-detail-watcher@example.com", nil, nil)
 	require.NoError(t, err)
 	uc := usecase.New(usecase.Deps{Stores: stores, Registry: scanner.NewRegistry()})
-	_, err = uc.CreateProject(globalAdminCtx(creator.ID), "CVE detail watcher", "cve-detail-watcher", "validation", creator.ID)
+	_, err = uc.CreateProject(globalAdminCtx(creator.ID), usecase.CreateProjectInput{Name: "CVE detail watcher", Slug: "cve-detail-watcher", Description: "validation", CreatorID: creator.ID})
 	require.NoError(t, err)
 	project, err := stores.Projects.GetBySlug(ctx, "cve-detail-watcher")
 	require.NoError(t, err)

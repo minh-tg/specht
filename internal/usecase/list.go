@@ -401,34 +401,51 @@ func changedFilesOpt(raw json.RawMessage) []string {
 	return files
 }
 
+// CreateProjectInput carries the fields of a new project.
+type CreateProjectInput struct {
+	Name        string
+	Slug        string
+	Description string
+	// DefaultBranch names the branch whose reports are the baseline for pull
+	// requests. Blank leaves it unset.
+	DefaultBranch string
+	// CreatorID is the global admin who becomes the project's first admin.
+	CreatorID string
+}
+
 // CreateProject creates a project and makes the authenticated global admin
 // its admin member, establishing the tenant-isolation invariant that every
 // project has an admin. Project-scoped API keys cannot create projects.
-func (u *Usecases) CreateProject(ctx context.Context, name, slug, description, creatorID string) (*ProjectResponse, error) {
+func (u *Usecases) CreateProject(ctx context.Context, in CreateProjectInput) (*ProjectResponse, error) {
 	ident := auth.ContextIdentity(ctx)
-	if ident == nil || ident.IsAPIKey || ident.Role != auth.RoleAdmin || ident.UserID != creatorID {
+	if ident == nil || ident.IsAPIKey || ident.Role != auth.RoleAdmin || ident.UserID != in.CreatorID {
 		return nil, ErrProjectAccessDenied
 	}
-	if err := validateProjectSlug(slug); err != nil {
+	if err := validateProjectSlug(in.Slug); err != nil {
 		return nil, err
 	}
-	if err := checkName("name", strings.TrimSpace(name)); err != nil {
+	if err := checkName("name", strings.TrimSpace(in.Name)); err != nil {
 		return nil, err
 	}
-	if err := checkDescription("description", strings.TrimSpace(description)); err != nil {
+	if err := checkDescription("description", strings.TrimSpace(in.Description)); err != nil {
+		return nil, err
+	}
+	defaultBranch, err := normalizeDefaultBranch(&in.DefaultBranch)
+	if err != nil {
 		return nil, err
 	}
 	p, err := u.deps.Stores.Projects.Create(ctx, port.CreateProjectInput{
-		Slug:                slug,
-		Name:                name,
-		Description:         description,
+		Slug:                in.Slug,
+		Name:                in.Name,
+		Description:         in.Description,
 		DeploymentThreshold: "high",
 		Settings:            []byte("{}"),
+		DefaultBranch:       defaultBranch,
 		// The creator becomes the first admin in the same transaction,
 		// under a lock on the creator's account, so a deactivation that
 		// races the request leaves either no project or a project whose
 		// admin row it found and handled.
-		AdminID: creatorID,
+		AdminID: in.CreatorID,
 	})
 	if err != nil {
 		switch {
@@ -439,7 +456,7 @@ func (u *Usecases) CreateProject(ctx context.Context, name, slug, description, c
 			// the account's next request gets.
 			return nil, ErrAccountDeactivated
 		}
-		return nil, fmt.Errorf("create project %q: %w", slug, err)
+		return nil, fmt.Errorf("create project %q: %w", in.Slug, err)
 	}
 	resp := toProject(p)
 	return &resp, nil

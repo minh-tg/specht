@@ -62,7 +62,7 @@ func TestCreateProject_RejectsInvalidSlugBeforeTouchingTheStore(t *testing.T) {
 	}
 	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
 
-	_, err := uc.CreateProject(sessionCtx("creator-1", auth.RoleAdmin), "Docs", "docs.site", "", "creator-1")
+	_, err := uc.CreateProject(sessionCtx("creator-1", auth.RoleAdmin), CreateProjectInput{Name: "Docs", Slug: "docs.site", CreatorID: "creator-1"})
 	require.ErrorIs(t, err, ErrInvalidSlug)
 	assert.Contains(t, err.Error(), "lowercase letters, digits")
 }

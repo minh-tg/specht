@@ -16,8 +16,8 @@ SELECT * FROM projects
 WHERE id = $1 LIMIT 1;
 
 -- name: CreateProject :one
-INSERT INTO projects (slug, name, description, deployment_threshold, settings)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO projects (slug, name, description, deployment_threshold, settings, default_branch)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: UpdateProject :one

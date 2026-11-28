@@ -2565,6 +2565,15 @@ export interface components {
       slug: string;
       /** @description At most 2000 characters after trimming. Line breaks and tabs are allowed, other control characters are not. Otherwise 400 `invalid_field`. */
       description?: string;
+      /**
+       * @description The branch whose reports serve as the baseline for pull requests,
+       *     stored with the project (see `Project.default_branch`). Omit it or
+       *     send an empty string to leave it unset. Surrounding spaces are
+       *     trimmed. More than 255 bytes or a control character is refused
+       *     with 400 `invalid_field` and no project is created.
+       * @example main
+       */
+      default_branch?: string;
     };
     UpdateProjectRequest: {
       /** @description Omit to leave unchanged. At most 100 characters after trimming, with no control characters. Otherwise 400 `invalid_field`. */

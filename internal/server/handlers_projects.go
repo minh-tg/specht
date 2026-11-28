@@ -31,9 +31,10 @@ var commitFilterPattern = regexp.MustCompile(`^[0-9a-fA-F]{7,64}$`)
 
 func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name        string `json:"name"`
-		Slug        string `json:"slug"`
-		Description string `json:"description,omitempty"`
+		Name          string `json:"name"`
+		Slug          string `json:"slug"`
+		Description   string `json:"description,omitempty"`
+		DefaultBranch string `json:"default_branch,omitempty"`
 	}
 	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", projectsMsgInvalidBody) {
 		return
@@ -48,10 +49,20 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
-	result, err := h.usecase.CreateProject(r.Context(), req.Name, req.Slug, req.Description, ident.UserID)
+	result, err := h.usecase.CreateProject(r.Context(), usecase.CreateProjectInput{
+		Name:          req.Name,
+		Slug:          req.Slug,
+		Description:   req.Description,
+		DefaultBranch: req.DefaultBranch,
+		CreatorID:     ident.UserID,
+	})
 	if err != nil {
 		if errors.Is(err, usecase.ErrInvalidSlug) {
 			respondError(w, http.StatusBadRequest, "invalid_slug", err.Error())
+			return
+		}
+		if errors.Is(err, usecase.ErrInvalidDefaultBranch) {
+			respondError(w, http.StatusBadRequest, "invalid_field", "default_branch: "+err.Error())
 			return
 		}
 		if errors.Is(err, usecase.ErrInvalidField) {

@@ -35,7 +35,7 @@ func TestLatestCompletedInFindingScope_IgnoresNewerOtherScope(t *testing.T) {
 
 	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
 	require.NoError(t, err)
-	_, err = uc.CreateProject(globalAdminCtx(creator.ID), "My App", "my-app", "validation", creator.ID)
+	_, err = uc.CreateProject(globalAdminCtx(creator.ID), usecase.CreateProjectInput{Name: "My App", Slug: "my-app", Description: "validation", CreatorID: creator.ID})
 	require.NoError(t, err)
 	project, err := stores.Projects.GetBySlug(ctx, "my-app")
 	require.NoError(t, err)

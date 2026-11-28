@@ -203,6 +203,9 @@ type CreateProjectInput struct {
 	Description         string
 	DeploymentThreshold string
 	Settings            json.RawMessage
+	// DefaultBranch is stored in the same INSERT as the project; nil leaves
+	// it unset.
+	DefaultBranch *string
 	// AdminID, when set, is the account that becomes the project's first
 	// admin in the same transaction. The store share-locks that account
 	// before it inserts anything and refuses a deactivated one with

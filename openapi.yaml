@@ -4261,6 +4261,16 @@ components:
           type: string
           maxLength: 2000
           description: At most 2000 characters after trimming. Line breaks and tabs are allowed, other control characters are not. Otherwise 400 `invalid_field`.
+        default_branch:
+          type: string
+          maxLength: 255
+          example: main
+          description: |
+            The branch whose reports serve as the baseline for pull requests,
+            stored with the project (see `Project.default_branch`). Omit it or
+            send an empty string to leave it unset. Surrounding spaces are
+            trimmed. More than 255 bytes or a control character is refused
+            with 400 `invalid_field` and no project is created.
 
     UpdateProjectRequest:
       type: object
