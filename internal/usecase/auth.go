@@ -745,6 +745,17 @@ var ErrRefreshReused = errors.New("refresh token was already used")
 // to be told the account is off.
 var ErrRefreshAccountDisabled = errors.New("account is deactivated")
 
+// ErrRefreshPasswordChanged is returned when a revoked refresh token was ended by a new password on
+// the account: a change from another session, a reset link or the host-side recovery. That revoked
+// every sign-in, so the next refresh of a tab that was open is not a replay, and the person is told
+// to sign in with the new password instead of being told a token was stolen.
+var ErrRefreshPasswordChanged = errors.New("password was changed")
+
+// ErrRefreshSSOLinked is returned when a revoked refresh token was ended by an SSO login that linked
+// the account and removed its password. Like a new password it revoked every sign-in; the person
+// signs in through SSO from now on.
+var ErrRefreshSSOLinked = errors.New("account was linked to single sign-on")
+
 const (
 	// refreshReuseGrace is how long after rotation a replay of the old token
 	// is still answered as a benign race and leaves the session alone. It is
@@ -859,6 +870,16 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 	if stored.RevokedAt != nil {
 		if u.accountDisabled(ctx, stored.UserID) {
 			return nil, ErrRefreshAccountDisabled
+		}
+		// A new password and an SSO link revoke every live token of the account in one statement,
+		// and no token can join a chain whose tokens are all revoked, so this token's chain has
+		// nothing left to revoke: the reason only picks the answer. Every other reason, and none (a
+		// token revoked before reasons were recorded), is a replay.
+		switch stored.RevokedReason {
+		case port.RevokePasswordChanged:
+			return nil, ErrRefreshPasswordChanged
+		case port.RevokeSSOLinked:
+			return nil, ErrRefreshSSOLinked
 		}
 		return nil, u.refuseReuse(ctx, stored, *stored.RevokedAt)
 	}

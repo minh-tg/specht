@@ -403,8 +403,13 @@ paths:
             belongs to, successor included, but not the user's other devices.
             A revoked token of an account an admin deactivated answers
             `account_disabled`, since deactivating ends every sign-in and the
-            next refresh is not a replay. The client should sign the user out
-            and say which of these happened.
+            next refresh is not a replay. For the same reason a token revoked
+            by a new password (a change from another session, a reset link or
+            the host-side recovery) answers `password_changed`, and one revoked
+            by an SSO login that linked the account and removed its password
+            answers `sso_linked`. None of these three revokes anything more.
+            The client should sign the user out and say which of these
+            happened.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -415,6 +420,10 @@ paths:
                   value: { error: { code: refresh_reused, message: refresh token was already used } }
                 deactivated:
                   value: { error: { code: account_disabled, message: this account was deactivated } }
+                passwordChanged:
+                  value: { error: { code: password_changed, message: the account's password was changed } }
+                ssoLinked:
+                  value: { error: { code: sso_linked, message: the account now signs in through SSO } }
 
   /api/v1/auth/resume:
     post:

@@ -27,6 +27,9 @@ type memRefreshStore struct {
 	// a row: a test uses it to land another request between the caller's read
 	// and its revoke.
 	beforeRevoke func()
+	// familyRevokes lists the reasons RevokeFamily was called with, so a test
+	// can tell whether the replay path ran.
+	familyRevokes []port.RevokeReason
 }
 
 func (m *memRefreshStore) Create(_ context.Context, in port.NewRefreshToken) (port.RefreshToken, error) {
@@ -117,6 +120,7 @@ func (m *memRefreshStore) RevokeAllForUser(_ context.Context, userID string, rea
 func (m *memRefreshStore) RevokeFamily(_ context.Context, familyID string, reason port.RevokeReason) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.familyRevokes = append(m.familyRevokes, reason)
 	for _, r := range m.rows {
 		if r.FamilyID == familyID && r.RevokedAt == nil {
 			at := m.now()
@@ -231,8 +235,8 @@ func TestRefresh_ARevokedTokenOfADeactivatedAccountSaysSo(t *testing.T) {
 	assert.NotErrorIs(t, err, ErrRefreshReused)
 }
 
-// A token revoked for any other reason is still read as a replay. Only an account an admin turned
-// off gets the other answer.
+// A token a deactivation revoked, of an account that is active again, is still read as a replay.
+// Only an account an admin turned off, and still has off, gets the other answer.
 func TestRefresh_ARevokedTokenOfAnActiveAccountIsStillAReplay(t *testing.T) {
 	h := newReuseHarness(t)
 	raw := h.signIn(t)
@@ -241,6 +245,81 @@ func TestRefresh_ARevokedTokenOfAnActiveAccountIsStillAReplay(t *testing.T) {
 	_, err := h.refresh(raw)
 
 	assert.ErrorIs(t, err, ErrRefreshReused)
+}
+
+// A new password or an SSO link revokes every sign-in of the account, so the next refresh of a tab
+// that was open presents a revoked token. The reason the store recorded picks the answer, and the
+// replay path does not run: there is nothing left to revoke. Every other reason, and none (a token
+// revoked before reasons were recorded), is still a replay that revokes the token's sign-in chain.
+func TestRefresh_TheRevokeReasonTellsAReplayFromAnAccountChange(t *testing.T) {
+	for _, tc := range []struct {
+		reason port.RevokeReason
+		want   error
+	}{
+		{port.RevokePasswordChanged, ErrRefreshPasswordChanged},
+		{port.RevokeSSOLinked, ErrRefreshSSOLinked},
+		{"", ErrRefreshReused},
+		{port.RevokeRotated, ErrRefreshReused},
+		{port.RevokeLogout, ErrRefreshReused},
+		{port.RevokeReuse, ErrRefreshReused},
+		{port.RevokeDeactivated, ErrRefreshReused},
+	} {
+		name := string(tc.reason)
+		if name == "" {
+			name = "none"
+		}
+		t.Run(name, func(t *testing.T) {
+			h := newReuseHarness(t)
+			raw := h.signIn(t)
+			require.NoError(t, h.store.RevokeAllForUser(context.Background(), lifetimeUserID, tc.reason))
+
+			_, err := h.refresh(raw)
+
+			require.ErrorIs(t, err, tc.want)
+			if tc.want == ErrRefreshReused {
+				assert.Equal(t, []port.RevokeReason{port.RevokeReuse}, h.store.familyRevokes, "the replay path revokes the chain")
+				return
+			}
+			assert.NotErrorIs(t, err, ErrRefreshReused)
+			assert.Empty(t, h.store.familyRevokes, "an account change is not a replay and revokes nothing more")
+		})
+	}
+}
+
+// The owner's tab rotated its token, then a password change on another device revoked the
+// successor. The spent token coming back after that is someone else's copy: it is still a replay,
+// and it still revokes the chain.
+func TestRefresh_ASpentTokenAfterAPasswordChangeIsStillAReplay(t *testing.T) {
+	h := newReuseHarness(t)
+	spent := h.signIn(t)
+	successor, err := h.refresh(spent)
+	require.NoError(t, err)
+	require.NoError(t, h.store.RevokeAllForUser(context.Background(), lifetimeUserID, port.RevokePasswordChanged))
+
+	_, err = h.refresh(spent)
+
+	require.ErrorIs(t, err, ErrRefreshReused)
+	assert.Equal(t, []port.RevokeReason{port.RevokeReuse}, h.store.familyRevokes)
+	_, err = h.refresh(successor.RefreshToken)
+	assert.ErrorIs(t, err, ErrRefreshPasswordChanged, "the tab that holds the successor is told the password changed")
+}
+
+// An account that was deactivated after a password change says it is deactivated: signing in with
+// the new password would not work.
+func TestRefresh_ADeactivatedAccountWinsOverAPasswordChange(t *testing.T) {
+	h := newReuseHarness(t)
+	raw := h.signIn(t)
+	require.NoError(t, h.store.RevokeAllForUser(context.Background(), lifetimeUserID, port.RevokePasswordChanged))
+	disabledAt := h.now
+	h.users.getByIDFn = func(context.Context, string) (port.User, error) {
+		u := makeUser(lifetimeUserID)
+		u.DisabledAt = &disabledAt
+		return u, nil
+	}
+
+	_, err := h.refresh(raw)
+
+	assert.ErrorIs(t, err, ErrRefreshAccountDisabled)
 }
 
 // A thief who refreshes first gets a successor. The owner's refresh with the

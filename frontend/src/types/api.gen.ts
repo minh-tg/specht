@@ -4493,8 +4493,13 @@ export interface operations {
        *     belongs to, successor included, but not the user's other devices.
        *     A revoked token of an account an admin deactivated answers
        *     `account_disabled`, since deactivating ends every sign-in and the
-       *     next refresh is not a replay. The client should sign the user out
-       *     and say which of these happened.
+       *     next refresh is not a replay. For the same reason a token revoked
+       *     by a new password (a change from another session, a reset link or
+       *     the host-side recovery) answers `password_changed`, and one revoked
+       *     by an SSO login that linked the account and removed its password
+       *     answers `sso_linked`. None of these three revokes anything more.
+       *     The client should sign the user out and say which of these
+       *     happened.
        */
       401: {
         headers: {

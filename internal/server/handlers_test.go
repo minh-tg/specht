@@ -3187,6 +3187,30 @@ func TestRefresh_ADeactivatedAccountHasItsOwnCode(t *testing.T) {
 	assert.NotContains(t, w.Body.String(), "refresh_reused")
 }
 
+// A sign-in a new password or an SSO link revoked is not a replay; each has its own code so the
+// page can say what happened.
+func TestRefresh_AnAccountChangeHasItsOwnCode(t *testing.T) {
+	for want, cause := range map[string]error{
+		"password_changed": usecase.ErrRefreshPasswordChanged,
+		"sso_linked":       usecase.ErrRefreshSSOLinked,
+	} {
+		t.Run(want, func(t *testing.T) {
+			h := &Handler{usecase: &mockUsecases{
+				refreshFn: func(context.Context, string) (*usecase.AuthResponse, error) {
+					return nil, fmt.Errorf("revoked: %w", cause)
+				},
+			}}
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", strings.NewReader(`{"refresh_token":"r"}`))
+			h.Refresh(w, req)
+
+			assert.Equal(t, http.StatusUnauthorized, w.Code)
+			assert.Contains(t, w.Body.String(), `"code":"`+want+`"`)
+			assert.NotContains(t, w.Body.String(), "refresh_reused")
+		})
+	}
+}
+
 func TestSSOExchange_Success(t *testing.T) {
 	mock := &mockUsecases{
 		exchangeSSOCodeFn: func(ctx context.Context, code string, presented []auth.PresentedLogin) (*usecase.AuthResponse, auth.PresentedLogin, error) {

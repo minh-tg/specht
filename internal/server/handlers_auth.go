@@ -138,6 +138,15 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusUnauthorized, "account_disabled", "this account was deactivated")
 			return
 		}
+		// Not replays either: a new password or an SSO link ended every sign-in of the account.
+		if errors.Is(err, usecase.ErrRefreshPasswordChanged) {
+			respondError(w, http.StatusUnauthorized, "password_changed", "the account's password was changed")
+			return
+		}
+		if errors.Is(err, usecase.ErrRefreshSSOLinked) {
+			respondError(w, http.StatusUnauthorized, "sso_linked", "the account now signs in through SSO")
+			return
+		}
 		slog.Error("refresh", "error", err)
 		respondError(w, http.StatusUnauthorized, "refresh_failed", "invalid or expired refresh token")
 		return

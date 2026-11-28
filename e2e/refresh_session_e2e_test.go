@@ -91,6 +91,25 @@ func TestE2E_RefreshOfADeactivatedAccount(t *testing.T) {
 	require.Equal(t, "refresh_reused", errorCode(t, raw))
 }
 
+// TestE2E_RefreshAfterAPasswordChange covers the tab that is still open when the person changes the
+// password on another device. The change revokes every other sign-in, so the tab's next refresh
+// presents a revoked token. That must not read as a stolen one: the person is told the password
+// changed.
+func TestE2E_RefreshAfterAPasswordChange(t *testing.T) {
+	time.Sleep(2500 * time.Millisecond)
+	t.Cleanup(func() { time.Sleep(2500 * time.Millisecond) })
+	tab := registerPerson(t, "password-tab")
+	phone := request[authResponse](t, http.MethodPost, "/api/v1/auth/login", "",
+		map[string]string{"email": tab.Email, "password": adminPass}, http.StatusOK)
+	request[authResponse](t, http.MethodPut, "/api/v1/me/password", phone.Token,
+		map[string]string{"current_password": adminPass, "new_password": "a-brand-new-password-" + randomHex(4)}, http.StatusOK)
+
+	status, raw := doJSON(t, http.MethodPost, "/api/v1/auth/refresh", "", map[string]string{"refresh_token": tab.RefreshToken})
+
+	require.Equal(t, http.StatusUnauthorized, status, string(raw))
+	require.Equal(t, "password_changed", errorCode(t, raw))
+}
+
 // TestE2E_RefreshReuse covers theft detection against the real server. A token
 // is single-use: any second use, however soon after the first, revokes that
 // sign-in and leaves the user's other sign-ins alone.
