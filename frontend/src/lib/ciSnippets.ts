@@ -77,8 +77,9 @@ on:
 
 permissions:
   contents: read
-  # Optional: uncomment to publish the gate result as a GitHub check run.
-  # checks: write
+  # Publishes the "Specht Security Gate" check on the pull request.
+  # Without it the job still gates through its exit code.
+  checks: write
 
 jobs:
   specht:

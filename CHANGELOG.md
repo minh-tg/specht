@@ -201,6 +201,10 @@ releases.
 
 ### Changed
 
+- The GitHub Actions snippet on the CI setup page and in `examples/ci/github-actions.yml` grants
+  `checks: write`, so the gate publishes the "Specht Security Gate" check on the pull request.
+  Before, the permission was commented out, no check appeared, and branch protection had no check to
+  require. A workflow without the permission still gates through the job's exit code.
 - The change view judges the whole commit. Every scanner's reports of the commit count together,
   the verdict the pull-request check gives, so the Trivy step's link and the Gitleaks step's link
   show the same blockers. A `report` in the link now only picks which CI run the header links to.
