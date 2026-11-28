@@ -8,6 +8,8 @@ attached to each GitHub Release. No Helm deployment is provided.
 
 ## 1. Secrets
 
+Run one server process per database. Several replicas are not supported in 0.1.
+
 ```bash
 cp deploy/.env.prod.example deploy/.env.prod
 # Fill in POSTGRES_PASSWORD and SPECHT_APP_DB_PASSWORD (letters and digits
@@ -500,13 +502,14 @@ boolean), and its last success and last error category.
 | `CVE_DETAIL_TTL` | `24h` | How long a found record is reused. |
 | `CVE_DETAIL_NEGATIVE_TTL` | `6h` | How long a "not found" answer is reused. |
 | `CVE_DETAIL_TIMEOUT` | `10s` | Per-request timeout. |
-| `CVE_DETAIL_NVD_RPS` | `0.16` without a key, `1.6` with one | Requests per second to NVD, per server replica. |
-| `CVE_DETAIL_VULNCHECK_RPS` | `1` | Requests per second to VulnCheck, per server replica. |
-| `CVE_DETAIL_OSV_RPS` | `1` | Requests per second to OSV, per server replica. |
+| `CVE_DETAIL_NVD_RPS` | `0.16` without a key, `1.6` with one | Requests per second to NVD. |
+| `CVE_DETAIL_VULNCHECK_RPS` | `1` | Requests per second to VulnCheck. |
+| `CVE_DETAIL_OSV_RPS` | `1` | Requests per second to OSV. |
 
-The rates apply per replica. Replicas share one fetch per CVE through a lease in
-PostgreSQL and share a provider's backoff after a rate limit, so with several
-replicas divide the rate by their count if you need to stay under a provider's
+The rates apply to the one server process. A note for a later release that
+supports several replicas: they share one fetch per CVE through a lease in
+PostgreSQL and a provider's backoff after a rate limit, but each applies the
+rate on its own, so divide it by their count to stay under a provider's
 published limit.
 
 ### Compose-only
@@ -732,8 +735,11 @@ missing, expired, altered or issued for another state, before the code is sent
 anywhere. Someone who obtains a callback URL (from a log, a browser extension
 or a shared device) cannot finish the login without that browser's cookie.
 
-The cookie is signed with a key derived from `JWT_SECRET`, so every replica
-that shares the secret can finish a login another one started. Changing
+The cookie is signed with a key derived from `JWT_SECRET` and the server keeps
+no other state for the login, so a login started before a restart finishes
+after it. (A later release that supports several replicas relies on the same
+key: any replica that shares the secret can finish a login another one
+started.) Changing
 `JWT_SECRET` fails the logins in flight. Each login has its own cookie, so
 several tabs can sign in at once. A browser keeps at most four pending logins;
 starting a fifth drops the oldest, and that tab answers "start sign-in again".
