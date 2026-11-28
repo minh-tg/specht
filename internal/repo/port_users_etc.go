@@ -279,7 +279,7 @@ func (r *pgUserPort) setDisabled(ctx context.Context, userID string, disabled, f
 		// The account row is locked, so a refresh in flight has committed its
 		// successor and a sign-in waits; every live token is revoked here, not
 		// in a step after the commit that a failure could skip.
-		if err := q.RevokeUserRefreshTokens(ctx, uid); err != nil {
+		if err := q.RevokeUserRefreshTokens(ctx, sqlc.RevokeUserRefreshTokensParams{UserID: uid, Reason: string(port.RevokeDeactivated)}); err != nil {
 			return err
 		}
 		// A reset link is a way to set a password on the account, so it ends
@@ -395,7 +395,7 @@ func (r *pgUserPort) SetPassword(ctx context.Context, userID, passwordHash strin
 		// generation. A refresh in flight holds a share lock on this row until
 		// it stores its successor, so the update above waits for it and the
 		// statement below revokes the successor too.
-		if err := q.RevokeUserRefreshTokens(ctx, uid); err != nil {
+		if err := q.RevokeUserRefreshTokens(ctx, sqlc.RevokeUserRefreshTokensParams{UserID: uid, Reason: string(port.RevokePasswordChanged)}); err != nil {
 			return err
 		}
 		// A link issued before this password was set would overwrite it.
@@ -424,7 +424,7 @@ func (r *pgUserPort) ChangePasswordAndRevoke(ctx context.Context, userID, passwo
 		if verifiedHash != "" && (!current.Valid || current.String != verifiedHash) {
 			return port.ErrPasswordStale
 		}
-		if err := q.RevokeUserRefreshTokens(ctx, uid); err != nil {
+		if err := q.RevokeUserRefreshTokens(ctx, sqlc.RevokeUserRefreshTokensParams{UserID: uid, Reason: string(port.RevokePasswordChanged)}); err != nil {
 			return err
 		}
 		// A link issued before this password was set would overwrite it.
@@ -612,7 +612,7 @@ func (r *pgRefreshTokenPort) Rotate(ctx context.Context, oldID string, in port.N
 		if row.DisabledAt.Valid || row.TokenVersion != tokenVersion {
 			return port.ErrSessionStale
 		}
-		if _, err := q.RevokeRefreshToken(ctx, oid); err != nil {
+		if _, err := q.RevokeRefreshToken(ctx, sqlc.RevokeRefreshTokenParams{ID: oid, Reason: string(port.RevokeRotated)}); err != nil {
 			return mappingErr(err)
 		}
 		_, err = insertRefreshToken(ctx, q, in)
@@ -628,12 +628,12 @@ func (r *pgRefreshTokenPort) GetByHash(ctx context.Context, tokenHash string) (p
 	return refreshTokenToPort(row), nil
 }
 
-func (r *pgRefreshTokenPort) Revoke(ctx context.Context, id string) (port.RefreshToken, error) {
+func (r *pgRefreshTokenPort) Revoke(ctx context.Context, id string, reason port.RevokeReason) (port.RefreshToken, error) {
 	tid, err := parseID(id)
 	if err != nil {
 		return port.RefreshToken{}, err
 	}
-	row, err := r.q.RevokeRefreshToken(ctx, tid)
+	row, err := r.q.RevokeRefreshToken(ctx, sqlc.RevokeRefreshTokenParams{ID: tid, Reason: string(reason)})
 	if err != nil {
 		return port.RefreshToken{}, mappingErr(err)
 	}
@@ -643,7 +643,7 @@ func (r *pgRefreshTokenPort) Revoke(ctx context.Context, id string) (port.Refres
 // RevokeAllForUser revokes every live token of the account. It takes the
 // account row lock first, so a refresh in flight has committed its successor by
 // the time the revoke statement runs and the successor is revoked with the rest.
-func (r *pgRefreshTokenPort) RevokeAllForUser(ctx context.Context, userID string) error {
+func (r *pgRefreshTokenPort) RevokeAllForUser(ctx context.Context, userID string, reason port.RevokeReason) error {
 	uid, err := parseID(userID)
 	if err != nil {
 		return err
@@ -654,7 +654,7 @@ func (r *pgRefreshTokenPort) RevokeAllForUser(ctx context.Context, userID string
 		} else if err != nil {
 			return err
 		}
-		return q.RevokeUserRefreshTokens(ctx, uid)
+		return q.RevokeUserRefreshTokens(ctx, sqlc.RevokeUserRefreshTokensParams{UserID: uid, Reason: string(reason)})
 	})
 }
 
@@ -663,7 +663,7 @@ func (r *pgRefreshTokenPort) RevokeAllForUser(ctx context.Context, userID string
 // thief's compare-and-swap and the insert of its successor: the statement
 // waits on the spent row, skips it once it commits, and never sees the
 // successor, so the chain the victim just reported survives.
-func (r *pgRefreshTokenPort) RevokeFamily(ctx context.Context, familyID string) error {
+func (r *pgRefreshTokenPort) RevokeFamily(ctx context.Context, familyID string, reason port.RevokeReason) error {
 	fid, err := parseID(familyID)
 	if err != nil {
 		return err
@@ -674,7 +674,7 @@ func (r *pgRefreshTokenPort) RevokeFamily(ctx context.Context, familyID string) 
 		} else if err != nil {
 			return err
 		}
-		return q.RevokeRefreshTokenFamily(ctx, fid)
+		return q.RevokeRefreshTokenFamily(ctx, sqlc.RevokeRefreshTokenFamilyParams{FamilyID: fid, Reason: string(reason)})
 	})
 }
 
@@ -694,6 +694,7 @@ func refreshTokenToPort(t sqlc.RefreshToken) port.RefreshToken {
 		ExpiresAt: t.ExpiresAt.Time,
 		RevokedAt: timePtrFromTimestamptz(t.RevokedAt),
 
+		RevokedReason:   port.RevokeReason(t.RevokedReason.String),
 		FamilyID:        toUUID(t.FamilyID),
 		FamilyStartedAt: t.FamilyStartedAt.Time,
 	}

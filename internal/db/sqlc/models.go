@@ -378,6 +378,7 @@ type RefreshToken struct {
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	FamilyID        pgtype.UUID        `json:"family_id"`
 	FamilyStartedAt pgtype.Timestamptz `json:"family_started_at"`
+	RevokedReason   pgtype.Text        `json:"revoked_reason"`
 }
 
 type Report struct {

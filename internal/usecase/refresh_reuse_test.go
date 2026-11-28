@@ -16,7 +16,7 @@ import (
 
 // memRefreshStore is an in-memory refresh token table with the semantics the
 // use case relies on: Revoke is a compare-and-swap that matches only an
-// unrevoked row, and revocation stamps the injected clock.
+// unrevoked row, and revocation stamps the injected clock and the reason.
 type memRefreshStore struct {
 	port.RefreshTokenStore
 	mu    sync.Mutex
@@ -62,7 +62,7 @@ func (m *memRefreshStore) Rotate(_ context.Context, oldID string, in port.NewRef
 		return port.ErrNotFound
 	}
 	at := m.now()
-	old.RevokedAt = &at
+	old.RevokedAt, old.RevokedReason = &at, port.RevokeRotated
 	m.rows = append(m.rows, &port.RefreshToken{
 		ID: "row-" + in.TokenHash[:8], UserID: in.UserID, TokenHash: in.TokenHash, ExpiresAt: in.ExpiresAt,
 		FamilyID: in.FamilyID, FamilyStartedAt: in.FamilyStartedAt,
@@ -86,7 +86,7 @@ func (m *memRefreshStore) GetByHash(_ context.Context, hash string) (port.Refres
 	return port.RefreshToken{}, port.ErrNotFound
 }
 
-func (m *memRefreshStore) Revoke(_ context.Context, id string) (port.RefreshToken, error) {
+func (m *memRefreshStore) Revoke(_ context.Context, id string, reason port.RevokeReason) (port.RefreshToken, error) {
 	if m.beforeRevoke != nil {
 		m.beforeRevoke()
 	}
@@ -95,32 +95,32 @@ func (m *memRefreshStore) Revoke(_ context.Context, id string) (port.RefreshToke
 	for _, r := range m.rows {
 		if r.ID == id && r.RevokedAt == nil {
 			at := m.now()
-			r.RevokedAt = &at
+			r.RevokedAt, r.RevokedReason = &at, reason
 			return *r, nil
 		}
 	}
 	return port.RefreshToken{}, port.ErrNotFound
 }
 
-func (m *memRefreshStore) RevokeAllForUser(_ context.Context, userID string) error {
+func (m *memRefreshStore) RevokeAllForUser(_ context.Context, userID string, reason port.RevokeReason) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, r := range m.rows {
 		if r.UserID == userID && r.RevokedAt == nil {
 			at := m.now()
-			r.RevokedAt = &at
+			r.RevokedAt, r.RevokedReason = &at, reason
 		}
 	}
 	return nil
 }
 
-func (m *memRefreshStore) RevokeFamily(_ context.Context, familyID string) error {
+func (m *memRefreshStore) RevokeFamily(_ context.Context, familyID string, reason port.RevokeReason) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, r := range m.rows {
 		if r.FamilyID == familyID && r.RevokedAt == nil {
 			at := m.now()
-			r.RevokedAt = &at
+			r.RevokedAt, r.RevokedReason = &at, reason
 		}
 	}
 	return nil
@@ -131,6 +131,13 @@ func (m *memRefreshStore) live(raw string) bool {
 	sum := sha256.Sum256([]byte(raw))
 	r, err := m.GetByHash(context.Background(), hex.EncodeToString(sum[:]))
 	return err == nil && r.RevokedAt == nil
+}
+
+// reason returns why the row for a raw token was revoked, empty when it is live or unknown.
+func (m *memRefreshStore) reason(raw string) port.RevokeReason {
+	sum := sha256.Sum256([]byte(raw))
+	r, _ := m.GetByHash(context.Background(), hex.EncodeToString(sum[:]))
+	return r.RevokedReason
 }
 
 type reuseHarness struct {
@@ -210,7 +217,7 @@ func TestRefreshReuse_ConcurrentDoubleRefreshRevokesTheChain(t *testing.T) {
 func TestRefresh_ARevokedTokenOfADeactivatedAccountSaysSo(t *testing.T) {
 	h := newReuseHarness(t)
 	raw := h.signIn(t)
-	require.NoError(t, h.store.RevokeAllForUser(context.Background(), lifetimeUserID))
+	require.NoError(t, h.store.RevokeAllForUser(context.Background(), lifetimeUserID, port.RevokeDeactivated))
 	disabledAt := h.now
 	h.users.getByIDFn = func(context.Context, string) (port.User, error) {
 		u := makeUser(lifetimeUserID)
@@ -229,7 +236,7 @@ func TestRefresh_ARevokedTokenOfADeactivatedAccountSaysSo(t *testing.T) {
 func TestRefresh_ARevokedTokenOfAnActiveAccountIsStillAReplay(t *testing.T) {
 	h := newReuseHarness(t)
 	raw := h.signIn(t)
-	require.NoError(t, h.store.RevokeAllForUser(context.Background(), lifetimeUserID))
+	require.NoError(t, h.store.RevokeAllForUser(context.Background(), lifetimeUserID, port.RevokeDeactivated))
 
 	_, err := h.refresh(raw)
 
@@ -321,6 +328,24 @@ func TestLogout_LosingTheRevokeToARefreshRunsTheReusePath(t *testing.T) {
 	require.NotEmpty(t, successor, "the refresh ran between Logout's read and its revoke")
 	assert.False(t, h.store.live(successor), "the successor of the token Logout lost is revoked")
 	assert.True(t, h.store.live(phone), "another sign-in survives")
+}
+
+// A replay and a sign-out each record why they revoked, so a later refresh with one of those
+// tokens is still read as a replay.
+func TestLogoutAndReplayRecordWhyTheyRevoked(t *testing.T) {
+	h := newReuseHarness(t)
+	laptop := h.signIn(t)
+	phone := h.signIn(t)
+	rotated, err := h.refresh(laptop)
+	require.NoError(t, err)
+
+	_, err = h.refresh(laptop)
+	require.ErrorIs(t, err, ErrRefreshReused)
+	require.NoError(t, h.uc.Logout(context.Background(), phone))
+
+	assert.Equal(t, port.RevokeRotated, h.store.reason(laptop))
+	assert.Equal(t, port.RevokeReuse, h.store.reason(rotated.RefreshToken), "the replay revoked the chain")
+	assert.Equal(t, port.RevokeLogout, h.store.reason(phone))
 }
 
 func TestLogout_CurrentTokenEndsOnlyItsOwnSession(t *testing.T) {

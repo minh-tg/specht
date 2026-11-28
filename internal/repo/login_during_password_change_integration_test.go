@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/minh-tg/specht/internal/port"
 )
 
 // ChangePassword revokes the account's refresh tokens and then writes the new
@@ -25,7 +27,7 @@ func TestPasswordChangeLeavesNoSessionFromALoginBetweenItsRevokeAndSet(t *testin
 	user := newUser(t, repos, "login-change@test.com", "member")
 
 	// ChangePassword, step 1: RevokeAllForUser.
-	require.NoError(t, stores.RefreshTokens.RevokeAllForUser(ctx, user.ID))
+	require.NoError(t, stores.RefreshTokens.RevokeAllForUser(ctx, user.ID, port.RevokePasswordChanged))
 	// A login that verified the old password stores its session now.
 	_, err := loginAttempt(t, stores, user)
 	require.NoError(t, err, "the login's guard sees the old hash and generation")
@@ -46,7 +48,7 @@ func TestPasswordChangeLeavesNoSessionFromALoginHoldingItsLock(t *testing.T) {
 	stores := NewPortStores(repos.pool)
 	user := newUser(t, repos, "login-change2@test.com", "member")
 
-	require.NoError(t, stores.RefreshTokens.RevokeAllForUser(ctx, user.ID))
+	require.NoError(t, stores.RefreshTokens.RevokeAllForUser(ctx, user.ID, port.RevokePasswordChanged))
 	tx, err := repos.pool.Begin(ctx)
 	require.NoError(t, err)
 	defer func() { _ = tx.Rollback(ctx) }()

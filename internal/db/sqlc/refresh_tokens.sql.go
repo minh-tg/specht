@@ -14,7 +14,7 @@ import (
 const createRefreshToken = `-- name: CreateRefreshToken :one
 INSERT INTO refresh_tokens (user_id, token_hash, expires_at, family_id, family_started_at)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, user_id, token_hash, expires_at, revoked_at, created_at, family_id, family_started_at
+RETURNING id, user_id, token_hash, expires_at, revoked_at, created_at, family_id, family_started_at, revoked_reason
 `
 
 type CreateRefreshTokenParams struct {
@@ -43,12 +43,13 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 		&i.CreatedAt,
 		&i.FamilyID,
 		&i.FamilyStartedAt,
+		&i.RevokedReason,
 	)
 	return i, err
 }
 
 const getRefreshTokenByHash = `-- name: GetRefreshTokenByHash :one
-SELECT id, user_id, token_hash, expires_at, revoked_at, created_at, family_id, family_started_at FROM refresh_tokens WHERE token_hash = $1
+SELECT id, user_id, token_hash, expires_at, revoked_at, created_at, family_id, family_started_at, revoked_reason FROM refresh_tokens WHERE token_hash = $1
 `
 
 func (q *Queries) GetRefreshTokenByHash(ctx context.Context, tokenHash string) (RefreshToken, error) {
@@ -63,6 +64,7 @@ func (q *Queries) GetRefreshTokenByHash(ctx context.Context, tokenHash string) (
 		&i.CreatedAt,
 		&i.FamilyID,
 		&i.FamilyStartedAt,
+		&i.RevokedReason,
 	)
 	return i, err
 }
@@ -105,11 +107,20 @@ func (q *Queries) RefreshTokenIsLive(ctx context.Context, id pgtype.UUID) (bool,
 }
 
 const revokeRefreshToken = `-- name: RevokeRefreshToken :one
-UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL RETURNING id, user_id, token_hash, expires_at, revoked_at, created_at, family_id, family_started_at
+UPDATE refresh_tokens SET revoked_at = NOW(), revoked_reason = $1::text
+WHERE id = $2 AND revoked_at IS NULL RETURNING id, user_id, token_hash, expires_at, revoked_at, created_at, family_id, family_started_at, revoked_reason
 `
 
-func (q *Queries) RevokeRefreshToken(ctx context.Context, id pgtype.UUID) (RefreshToken, error) {
-	row := q.db.QueryRow(ctx, revokeRefreshToken, id)
+type RevokeRefreshTokenParams struct {
+	Reason string      `json:"reason"`
+	ID     pgtype.UUID `json:"id"`
+}
+
+// Every revoke records why (revoked_reason, migration 000080), so a refresh
+// that presents the token later can tell a replay from a revocation the person
+// caused.
+func (q *Queries) RevokeRefreshToken(ctx context.Context, arg RevokeRefreshTokenParams) (RefreshToken, error) {
+	row := q.db.QueryRow(ctx, revokeRefreshToken, arg.Reason, arg.ID)
 	var i RefreshToken
 	err := row.Scan(
 		&i.ID,
@@ -120,24 +131,37 @@ func (q *Queries) RevokeRefreshToken(ctx context.Context, id pgtype.UUID) (Refre
 		&i.CreatedAt,
 		&i.FamilyID,
 		&i.FamilyStartedAt,
+		&i.RevokedReason,
 	)
 	return i, err
 }
 
 const revokeRefreshTokenFamily = `-- name: RevokeRefreshTokenFamily :exec
-UPDATE refresh_tokens SET revoked_at = NOW() WHERE family_id = $1 AND revoked_at IS NULL
+UPDATE refresh_tokens SET revoked_at = NOW(), revoked_reason = $1::text
+WHERE family_id = $2 AND revoked_at IS NULL
 `
 
-func (q *Queries) RevokeRefreshTokenFamily(ctx context.Context, familyID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, revokeRefreshTokenFamily, familyID)
+type RevokeRefreshTokenFamilyParams struct {
+	Reason   string      `json:"reason"`
+	FamilyID pgtype.UUID `json:"family_id"`
+}
+
+func (q *Queries) RevokeRefreshTokenFamily(ctx context.Context, arg RevokeRefreshTokenFamilyParams) error {
+	_, err := q.db.Exec(ctx, revokeRefreshTokenFamily, arg.Reason, arg.FamilyID)
 	return err
 }
 
 const revokeUserRefreshTokens = `-- name: RevokeUserRefreshTokens :exec
-UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL
+UPDATE refresh_tokens SET revoked_at = NOW(), revoked_reason = $1::text
+WHERE user_id = $2 AND revoked_at IS NULL
 `
 
-func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, userID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, revokeUserRefreshTokens, userID)
+type RevokeUserRefreshTokensParams struct {
+	Reason string      `json:"reason"`
+	UserID pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) RevokeUserRefreshTokens(ctx context.Context, arg RevokeUserRefreshTokensParams) error {
+	_, err := q.db.Exec(ctx, revokeUserRefreshTokens, arg.Reason, arg.UserID)
 	return err
 }

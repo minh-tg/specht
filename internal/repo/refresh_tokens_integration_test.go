@@ -50,13 +50,13 @@ func TestRefreshTokenRepo_RevokeIsCompareAndSwap(t *testing.T) {
 	token := createTestRefreshToken(t, repos, user.ID, "hash-cas")
 
 	// First revoke wins the row.
-	revoked, err := repos.RefreshTokens.Revoke(ctx, token.ID)
+	revoked, err := repos.RefreshTokens.Revoke(ctx, token.ID, port.RevokeRotated)
 	require.NoError(t, err)
 	require.True(t, revoked.RevokedAt.Valid)
 
 	// A second revoke of the same token is a zero-row update: pgx reports
 	// no rows, which the adapter maps to port.ErrNotFound.
-	_, err = repos.RefreshTokens.Revoke(ctx, token.ID)
+	_, err = repos.RefreshTokens.Revoke(ctx, token.ID, port.RevokeRotated)
 	assert.ErrorIs(t, err, port.ErrNotFound,
 		"revoking an already-revoked token must surface as not-found, not succeed")
 }
@@ -81,7 +81,7 @@ func TestRefreshTokenRepo_ConcurrentRevokeOnlyOneWins(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			_, errs[i] = repos.RefreshTokens.Revoke(ctx, token.ID)
+			_, errs[i] = repos.RefreshTokens.Revoke(ctx, token.ID, port.RevokeRotated)
 		}(i)
 	}
 	wg.Wait()
@@ -115,18 +115,18 @@ func TestRefreshTokenRepo_RevokeAllForUser(t *testing.T) {
 	// A token belonging to another user must survive the family revoke.
 	otherToken := createTestRefreshToken(t, repos, other.ID, "hash-other")
 
-	err := repos.RefreshTokens.RevokeAllForUser(ctx, user.ID)
+	err := repos.RefreshTokens.RevokeAllForUser(ctx, user.ID, port.RevokeReuse)
 	require.NoError(t, err)
 
-	_, err = repos.RefreshTokens.Revoke(ctx, t1.ID)
+	_, err = repos.RefreshTokens.Revoke(ctx, t1.ID, port.RevokeRotated)
 	assert.ErrorIs(t, err, port.ErrNotFound, "first family token must be revoked")
-	_, err = repos.RefreshTokens.Revoke(ctx, t2.ID)
+	_, err = repos.RefreshTokens.Revoke(ctx, t2.ID, port.RevokeRotated)
 	assert.ErrorIs(t, err, port.ErrNotFound, "second family token must be revoked")
-	_, err = repos.RefreshTokens.Revoke(ctx, otherToken.ID)
+	_, err = repos.RefreshTokens.Revoke(ctx, otherToken.ID, port.RevokeRotated)
 	assert.NoError(t, err, "another user's token must be unaffected by the family revoke")
 
 	// Idempotent: revoking an already-fully-revoked family is not an error.
-	err = repos.RefreshTokens.RevokeAllForUser(ctx, user.ID)
+	err = repos.RefreshTokens.RevokeAllForUser(ctx, user.ID, port.RevokeReuse)
 	require.NoError(t, err)
 }
 
@@ -142,11 +142,11 @@ func TestRefreshTokenRepo_RevokeExpiredTokenStillWins(t *testing.T) {
 	expiredToken, err := repos.RefreshTokens.Create(ctx, user.ID, "hash-expired", time.Now().Add(-time.Hour))
 	require.NoError(t, err)
 
-	revoked, err := repos.RefreshTokens.Revoke(ctx, expiredToken.ID)
+	revoked, err := repos.RefreshTokens.Revoke(ctx, expiredToken.ID, port.RevokeRotated)
 	require.NoError(t, err)
 	assert.True(t, revoked.RevokedAt.Valid)
 
-	_, err = repos.RefreshTokens.Revoke(ctx, expiredToken.ID)
+	_, err = repos.RefreshTokens.Revoke(ctx, expiredToken.ID, port.RevokeRotated)
 	assert.ErrorIs(t, err, port.ErrNotFound)
 }
 
@@ -200,10 +200,10 @@ func TestRefreshTokenStore_RevokeFamilyLeavesOtherSignInsAlone(t *testing.T) {
 		return row
 	}
 	laptopOld, laptopNew, phoneRow := create("laptop-old", laptop), create("laptop-new", laptop), create("phone", phone)
-	_, err = stores.RefreshTokens.Revoke(ctx, laptopOld.ID)
+	_, err = stores.RefreshTokens.Revoke(ctx, laptopOld.ID, port.RevokeRotated)
 	require.NoError(t, err)
 
-	require.NoError(t, stores.RefreshTokens.RevokeFamily(ctx, laptop))
+	require.NoError(t, stores.RefreshTokens.RevokeFamily(ctx, laptop, port.RevokeReuse))
 
 	revoked := func(hash string) bool {
 		row, err := stores.RefreshTokens.GetByHash(ctx, hash)

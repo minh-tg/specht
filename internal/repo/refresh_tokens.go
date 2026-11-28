@@ -16,8 +16,8 @@ import (
 type RefreshTokenRepo interface {
 	Create(ctx context.Context, userID pgtype.UUID, tokenHash string, expiresAt time.Time) (sqlc.RefreshToken, error)
 	GetByHash(ctx context.Context, tokenHash string) (sqlc.RefreshToken, error)
-	Revoke(ctx context.Context, id pgtype.UUID) (sqlc.RefreshToken, error)
-	RevokeAllForUser(ctx context.Context, userID pgtype.UUID) error
+	Revoke(ctx context.Context, id pgtype.UUID, reason port.RevokeReason) (sqlc.RefreshToken, error)
+	RevokeAllForUser(ctx context.Context, userID pgtype.UUID, reason port.RevokeReason) error
 }
 
 type pgRefreshTokenRepo struct {
@@ -43,8 +43,8 @@ func (r *pgRefreshTokenRepo) GetByHash(ctx context.Context, tokenHash string) (s
 // guarded UPDATE matches only unrevoked rows, so a second call finds no row.
 // pgx reports that as ErrNoRows; it is translated to port.ErrNotFound so
 // callers detect replays without importing pgx.
-func (r *pgRefreshTokenRepo) Revoke(ctx context.Context, id pgtype.UUID) (sqlc.RefreshToken, error) {
-	row, err := r.q.RevokeRefreshToken(ctx, id)
+func (r *pgRefreshTokenRepo) Revoke(ctx context.Context, id pgtype.UUID, reason port.RevokeReason) (sqlc.RefreshToken, error) {
+	row, err := r.q.RevokeRefreshToken(ctx, sqlc.RevokeRefreshTokenParams{ID: id, Reason: string(reason)})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return sqlc.RefreshToken{}, port.ErrNotFound
@@ -54,6 +54,6 @@ func (r *pgRefreshTokenRepo) Revoke(ctx context.Context, id pgtype.UUID) (sqlc.R
 	return row, nil
 }
 
-func (r *pgRefreshTokenRepo) RevokeAllForUser(ctx context.Context, userID pgtype.UUID) error {
-	return r.q.RevokeUserRefreshTokens(ctx, userID)
+func (r *pgRefreshTokenRepo) RevokeAllForUser(ctx context.Context, userID pgtype.UUID, reason port.RevokeReason) error {
+	return r.q.RevokeUserRefreshTokens(ctx, sqlc.RevokeUserRefreshTokensParams{UserID: userID, Reason: string(reason)})
 }

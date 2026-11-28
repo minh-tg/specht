@@ -76,10 +76,10 @@ func waitForLockWaiters(t *testing.T, repos *Repos, n int) {
 func TestRevokeWaitsForAnInFlightRotation(t *testing.T) {
 	revokes := map[string]func(ctx context.Context, stores *port.Stores, user port.User, familyID string) error{
 		"family": func(ctx context.Context, stores *port.Stores, _ port.User, familyID string) error {
-			return stores.RefreshTokens.RevokeFamily(ctx, familyID)
+			return stores.RefreshTokens.RevokeFamily(ctx, familyID, port.RevokeReuse)
 		},
 		"all of a user's tokens": func(ctx context.Context, stores *port.Stores, user port.User, _ string) error {
-			return stores.RefreshTokens.RevokeAllForUser(ctx, user.ID)
+			return stores.RefreshTokens.RevokeAllForUser(ctx, user.ID, port.RevokeDeactivated)
 		},
 	}
 	for name, revoke := range revokes {

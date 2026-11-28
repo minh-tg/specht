@@ -83,7 +83,7 @@ func (r *pgIdentityPort) LinkRevokingKeys(ctx context.Context, userID, issuer, s
 		if err := q.BumpUserTokenVersion(ctx, uid); err != nil {
 			return err
 		}
-		if err := q.RevokeUserRefreshTokens(ctx, uid); err != nil {
+		if err := q.RevokeUserRefreshTokens(ctx, sqlc.RevokeUserRefreshTokensParams{UserID: uid, Reason: string(port.RevokeSSOLinked)}); err != nil {
 			return err
 		}
 		if err := q.RevokePendingPasswordResets(ctx, uid); err != nil {

@@ -12,13 +12,19 @@ SELECT * FROM refresh_tokens WHERE token_hash = $1;
 SELECT (revoked_at IS NULL)::boolean AS live FROM refresh_tokens WHERE id = $1;
 
 -- name: RevokeRefreshToken :one
-UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL RETURNING *;
+-- Every revoke records why (revoked_reason, migration 000080), so a refresh
+-- that presents the token later can tell a replay from a revocation the person
+-- caused.
+UPDATE refresh_tokens SET revoked_at = NOW(), revoked_reason = sqlc.arg(reason)::text
+WHERE id = sqlc.arg(id) AND revoked_at IS NULL RETURNING *;
 
 -- name: RevokeUserRefreshTokens :exec
-UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL;
+UPDATE refresh_tokens SET revoked_at = NOW(), revoked_reason = sqlc.arg(reason)::text
+WHERE user_id = sqlc.arg(user_id) AND revoked_at IS NULL;
 
 -- name: RevokeRefreshTokenFamily :exec
-UPDATE refresh_tokens SET revoked_at = NOW() WHERE family_id = $1 AND revoked_at IS NULL;
+UPDATE refresh_tokens SET revoked_at = NOW(), revoked_reason = sqlc.arg(reason)::text
+WHERE family_id = sqlc.arg(family_id) AND revoked_at IS NULL;
 
 -- name: PruneRefreshTokens :execrows
 DELETE FROM refresh_tokens

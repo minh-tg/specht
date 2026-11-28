@@ -73,7 +73,7 @@ func (r *pgPasswordResetPort) Redeem(ctx context.Context, tokenHash, passwordHas
 		if err != nil {
 			return err
 		}
-		if err := q.RevokeUserRefreshTokens(ctx, reset.UserID); err != nil {
+		if err := q.RevokeUserRefreshTokens(ctx, sqlc.RevokeUserRefreshTokensParams{UserID: reset.UserID, Reason: string(port.RevokePasswordChanged)}); err != nil {
 			return err
 		}
 		if err := q.SetUserPassword(ctx, sqlc.SetUserPasswordParams{

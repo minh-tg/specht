@@ -932,7 +932,7 @@ func (u *Usecases) refuseReuse(ctx context.Context, stored port.RefreshToken, ro
 	if refreshReuseGrace > 0 && u.clock().Sub(rotatedAt) < refreshReuseGrace {
 		return ErrRefreshReused
 	}
-	if err := u.deps.Stores.RefreshTokens.RevokeFamily(ctx, stored.FamilyID); err != nil {
+	if err := u.deps.Stores.RefreshTokens.RevokeFamily(ctx, stored.FamilyID, port.RevokeReuse); err != nil {
 		slog.Error("refresh: revoke family after reuse", "user_id", stored.UserID, "family_id", stored.FamilyID, "error", err)
 	}
 	return ErrRefreshReused
@@ -962,7 +962,7 @@ func (u *Usecases) Logout(ctx context.Context, refreshToken string) error {
 	// Revoke is a guarded compare-and-swap: when a refresh spends the token
 	// between the read above and this call it matches zero rows and reports
 	// ErrNotFound. That is a replay too.
-	_, err = u.deps.Stores.RefreshTokens.Revoke(ctx, stored.ID)
+	_, err = u.deps.Stores.RefreshTokens.Revoke(ctx, stored.ID, port.RevokeLogout)
 	if errors.Is(err, port.ErrNotFound) {
 		_ = u.refuseReuse(ctx, stored, u.clock())
 		return nil
@@ -972,7 +972,7 @@ func (u *Usecases) Logout(ctx context.Context, refreshToken string) error {
 	}
 	// Signing out ends this sign-in everywhere it reached: the other tabs that
 	// resumed it and the cookie that would start another. Separate sign-ins stay.
-	return u.deps.Stores.RefreshTokens.RevokeFamily(ctx, stored.FamilyID)
+	return u.deps.Stores.RefreshTokens.RevokeFamily(ctx, stored.FamilyID, port.RevokeLogout)
 }
 
 func (u *Usecases) GetProfile(ctx context.Context, userID string) (*UserProfile, error) {

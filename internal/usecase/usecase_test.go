@@ -1309,7 +1309,9 @@ func (m *mockUserRepo) ListByIDs(ctx context.Context, ids []string) ([]port.User
 	return m.listByIDsFn(ctx, ids)
 }
 
-func (m *mockRefreshTokenRepo) RevokeFamily(context.Context, string) error { return nil }
+func (m *mockRefreshTokenRepo) RevokeFamily(context.Context, string, port.RevokeReason) error {
+	return nil
+}
 
 type mockRefreshTokenRepo struct {
 	port.RefreshTokenStore
@@ -1342,7 +1344,7 @@ func (m *mockRefreshTokenRepo) CreateForLogin(ctx context.Context, in port.NewRe
 // Rotate spends the old token through revokeFn and stores the successor
 // through createFn, which is what the real store does in one transaction.
 func (m *mockRefreshTokenRepo) Rotate(ctx context.Context, oldID string, in port.NewRefreshToken, _ int32) error {
-	if _, err := m.Revoke(ctx, oldID); err != nil {
+	if _, err := m.Revoke(ctx, oldID, port.RevokeRotated); err != nil {
 		return err
 	}
 	_, err := m.Create(ctx, in)
@@ -1356,14 +1358,14 @@ func (m *mockRefreshTokenRepo) GetByHash(ctx context.Context, tokenHash string) 
 	return m.getByHashFn(ctx, tokenHash)
 }
 
-func (m *mockRefreshTokenRepo) Revoke(ctx context.Context, id string) (port.RefreshToken, error) {
+func (m *mockRefreshTokenRepo) Revoke(ctx context.Context, id string, _ port.RevokeReason) (port.RefreshToken, error) {
 	if m.revokeFn == nil {
 		return port.RefreshToken{}, fmt.Errorf("unexpected call to Revoke")
 	}
 	return m.revokeFn(ctx, id)
 }
 
-func (m *mockRefreshTokenRepo) RevokeAllForUser(ctx context.Context, userID string) error {
+func (m *mockRefreshTokenRepo) RevokeAllForUser(ctx context.Context, userID string, _ port.RevokeReason) error {
 	if m.revokeAllFn == nil {
 		return fmt.Errorf("unexpected call to RevokeAllForUser")
 	}

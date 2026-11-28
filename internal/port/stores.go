@@ -473,6 +473,28 @@ type SSOCodeStore interface {
 
 // ---------- Refresh tokens ----------
 
+// RevokeReason is why a refresh token stopped working. It is written with
+// RevokedAt, and a refresh that presents a revoked token reads it to tell a
+// replay from a revocation the person caused themselves.
+type RevokeReason string
+
+const (
+	// RevokeRotated is a refresh that spent the token and stored its successor.
+	RevokeRotated RevokeReason = "rotated"
+	// RevokeLogout is a sign-out of the token's sign-in.
+	RevokeLogout RevokeReason = "logout"
+	// RevokeReuse is a spent token presented again: its sign-in chain was revoked.
+	RevokeReuse RevokeReason = "reuse"
+	// RevokePasswordChanged is a new password: a change, a reset link or the
+	// host-side recovery.
+	RevokePasswordChanged RevokeReason = "password_changed"
+	// RevokeSSOLinked is an SSO login that linked the account and removed its
+	// password.
+	RevokeSSOLinked RevokeReason = "sso_linked"
+	// RevokeDeactivated is an admin deactivating the account.
+	RevokeDeactivated RevokeReason = "deactivated"
+)
+
 // RefreshToken is a persisted refresh-token row.
 type RefreshToken struct {
 	ID        string
@@ -480,6 +502,9 @@ type RefreshToken struct {
 	TokenHash string
 	ExpiresAt time.Time
 	RevokedAt *time.Time
+	// RevokedReason is empty for a live token and for one revoked before the
+	// reason was recorded.
+	RevokedReason RevokeReason
 	// FamilyID names the sign-in this token descends from; rotation keeps it.
 	// FamilyStartedAt is the time of that original sign-in, also kept by
 	// rotation, and bounds the session's absolute lifetime.
@@ -534,11 +559,13 @@ type RefreshTokenStore interface {
 	// (the change revokes the successor with the rest).
 	Rotate(ctx context.Context, oldID string, in NewRefreshToken, tokenVersion int32) error
 	GetByHash(ctx context.Context, tokenHash string) (RefreshToken, error)
-	Revoke(ctx context.Context, id string) (RefreshToken, error)
-	RevokeAllForUser(ctx context.Context, userID string) error
+	// Revoke, RevokeAllForUser and RevokeFamily record reason on every token
+	// they revoke. Rotate records RevokeRotated on the token it spends.
+	Revoke(ctx context.Context, id string, reason RevokeReason) (RefreshToken, error)
+	RevokeAllForUser(ctx context.Context, userID string, reason RevokeReason) error
 	// RevokeFamily revokes every unrevoked token of one sign-in chain and
 	// leaves the user's other sign-ins alone.
-	RevokeFamily(ctx context.Context, familyID string) error
+	RevokeFamily(ctx context.Context, familyID string, reason RevokeReason) error
 	// Prune deletes up to limit rows that expired before expiredBefore or
 	// were revoked before revokedBefore, and returns how many it deleted.
 	Prune(ctx context.Context, expiredBefore, revokedBefore time.Time, limit int) (int64, error)
