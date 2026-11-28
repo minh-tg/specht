@@ -1015,3 +1015,34 @@ rollback restores the pre-upgrade dump:
   database on the same host. For anything else set `require` or `verify-full`;
   at startup the server logs a warning when `DATABASE_URL` reaches a non-local
   host with `sslmode` of `disable`, `allow`, `prefer`, or unset.
+
+### Monitoring
+
+- Probe `GET /api/v1/ready` from an uptime monitor or load balancer: 200
+  while the database answers, 503 when it does not. The image's HEALTHCHECK
+  runs `specht healthcheck` against the same endpoint every 30 seconds, and
+  after three failures in a row
+  `docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod ps`
+  shows the server as `unhealthy`. Docker does not restart an unhealthy
+  container, so alert on that state.
+- The server writes `key=value` log lines to standard output. Alert on any
+  `level=ERROR` line; every 5xx response writes one (`msg=request` with its
+  `status` and `request_id`). These messages need a closer look:
+  - `msg="readiness check failed"` (WARN): the database stopped answering.
+    It is logged when readiness turns bad, and
+    `msg="readiness check recovered"` follows when the database is back.
+  - `msg="database not reachable"` and `msg="startup migration failed"`
+    (ERROR): the server gave up at startup and exited (see Migration failed).
+  - `msg="ingest report"` (ERROR): an upload failed on the server. When the
+    processing window ran out, the client got `503 ingest_timeout`, and the
+    `msg=request` line with the same `request_id` has `status=503`.
+  - `msg="cve watcher poll failed"` (ERROR): a watcher poll failed and is
+    retried after `next_retry`.
+  - `msg="slack notification failed after retries"` and
+    `msg="webhook notification failed after retries"` (ERROR): an advisory or
+    waiver notification was dropped after every attempt failed.
+- `GET /api/v1/admin/status`, called with a global admin's session (an API key
+  gets 403), returns the number of projects, users, open findings and reports,
+  the oldest settled report and, for each CVE detail provider, its last
+  success and the category of its last error.
+- Specht has no metrics endpoint yet: `GET /metrics` answers 404.
