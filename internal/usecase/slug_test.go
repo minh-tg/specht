@@ -38,14 +38,15 @@ func TestValidateProjectSlug(t *testing.T) {
 		"reserved keys":   "api-keys",
 		// Every top-level page of the app: a project with one of these slugs
 		// would be shadowed by the page, or would shadow it.
-		"reserved admin":    "admin",
-		"reserved ingest":   "ingest",
-		"reserved invite":   "invite",
-		"reserved profile":  "profile",
-		"reserved reset":    "reset",
-		"reserved projects": "projects",
-		"reserved register": "register",
-		"reserved setup":    "setup",
+		"reserved admin":     "admin",
+		"reserved ingest":    "ingest",
+		"reserved invite":    "invite",
+		"reserved needs-you": "needs-you",
+		"reserved profile":   "profile",
+		"reserved reset":     "reset",
+		"reserved projects":  "projects",
+		"reserved register":  "register",
+		"reserved setup":     "setup",
 	}
 	for name, slug := range invalid {
 		t.Run(name, func(t *testing.T) {
