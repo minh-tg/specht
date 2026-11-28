@@ -499,6 +499,10 @@ releases.
 
 ### Fixed
 
+- A rerun of a CI job gets the same exit code as the first run in `changes_only` mode. The server
+  answered `change_report: false` for an identical upload it replayed, so the adapter took the
+  project's report-only verdict and let a branch push that introduced a blocker pass on "Re-run
+  failed jobs".
 - A page on another site can no longer plant its own resume cookie in a visitor's browser. Sign-in,
   register, setup, invite accept, SSO exchange and change password set the cookie only for a request
   with a JSON content type that the browser does not mark `Sec-Fetch-Site: cross-site`. Before this, a
