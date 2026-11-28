@@ -1302,6 +1302,57 @@ func TestRun_IntroducedOnly_Fail_WithAnnotations_And_Summary(t *testing.T) {
 	assert.Contains(t, string(summaryBytes), "[View this change in Specht]("+srv.URL+"/my-app/changes/abc12345?report=rep-fail&scope=introduced)")
 }
 
+// TestRun_IntroducedOnly_ReportOnlyWouldFail pins a pull request under
+// report_only that introduces a blocker. The check it publishes is neutral and
+// says the change would block, so the log says the gate would fail, and the run
+// still passes.
+func TestRun_IntroducedOnly_ReportOnlyWouldFail(t *testing.T) {
+	clearCIEnvironment(t)
+	t.Setenv("API_KEY", "test-key")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/reports":
+			writeTestJSONResponse(t, w, client.IngestResponse{
+				ReportID:          "rep-report-only",
+				TotalFindings:     7,
+				IntroducedCount:   3,
+				PreExistingCount:  4,
+				ThresholdBreached: true,
+				ReportOnly:        true,
+			})
+		case "/api/v1/projects/my-app/pr-check":
+			writeTestJSONResponse(t, w, client.PRCheckPreview{
+				Conclusion:    "neutral",
+				SummaryCounts: map[string]int{"high": 2},
+				Annotations: []client.PRCheckAnnotation{
+					{File: "go.mod", StartLine: 34, Level: "error", Title: "CVE-2023-45853"},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("API_URL", srv.URL)
+
+	var stdout, stderr bytes.Buffer
+	args := []string{
+		"-file=../../internal/parser/trivy/testdata/alpine-scan.json",
+		"-project=my-app",
+		"-tool=trivy",
+		"-base-ref=main",
+		"-commit=abc12345",
+		"-branch=feat/add-dep",
+	}
+	code := run(args, bytes.NewReader(nil), &stdout, &stderr, srv.Client())
+	assert.Equal(t, 0, code, stderr.String())
+	assert.Contains(t, stderr.String(), "SPECHT SECURITY GATE: WOULD FAIL (the project's gate mode only reports)")
+	assert.Contains(t, stderr.String(), "2 finding(s) this change introduced would block it.",
+		"the count is the blockers the check names, not every finding the change introduced")
+	assert.NotContains(t, stderr.String(), "PASSED")
+}
+
 func TestRun_BaselinePolicy_Warn_And_Fail(t *testing.T) {
 	clearCIEnvironment(t)
 	t.Setenv("API_KEY", "test-key")

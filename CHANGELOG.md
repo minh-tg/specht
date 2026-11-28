@@ -502,6 +502,10 @@ releases.
 - A Slack waiver notice escapes the heading. It names the person who acted, and a project member sets
   their own display name, so a name such as `<!channel>` pinged the whole channel and a name with a
   link rendered as a link sent by Specht.
+- `specht-adapter` says the gate would fail on a pull request under `report_only` that introduces a
+  blocker, and names the blockers the check counts. It printed "SPECHT SECURITY GATE: PASSED" while
+  the check it published concluded neutral: the run read only a failing check as a breach and
+  dropped the server's verdict. The run still exits 0.
 - `specht-adapter` fails a `changes_only` rerun the way the first run failed. When a push build of
   a branch uploaded the same report again and the server answered `409 duplicate_report`, the
   answer named no report, so the adapter could not ask what the report introduced and passed on the

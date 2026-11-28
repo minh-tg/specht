@@ -666,13 +666,34 @@ func introducedBlockers(preview *client.PRCheckPreview) int {
 	return max(total, len(preview.Annotations))
 }
 
+// previewVerdict reads the change-scoped verdict from the check the run
+// publishes, so the log and the exit code say what the check says. A failure
+// fails the run. A neutral check with blockers is a breach the project's gate
+// mode only reports: the run passes and says the gate would fail.
+func previewVerdict(preview *client.PRCheckPreview) (breached, reportOnly bool) {
+	switch {
+	case preview.Conclusion == "failure":
+		return true, false
+	case preview.Conclusion == "neutral" && introducedBlockers(preview) > 0:
+		return true, true
+	default:
+		return false, false
+	}
+}
+
 // reportIntroducedGate prints the change-scoped verdict and returns its
 // exit code (0 pass, 1 breached).
 func reportIntroducedGate(resp *client.IngestResponse, preview *client.PRCheckPreview, payload client.IngestPayload, stderr io.Writer) int {
 	if resp.ThresholdBreached && resp.ReportOnly {
 		writeDiagnostic(stderr, "⚠️  SPECHT SECURITY GATE: WOULD FAIL (the project's gate mode only reports)\n")
 		printContextBanner(stderr, payload)
-		writeDiagnostic(stderr, "\n%d finding(s) this change introduced would block it.\n", resp.IntroducedCount)
+		// The introduced count covers every finding the change introduced; the
+		// check counts only the blockers.
+		blockers := resp.IntroducedCount
+		if preview != nil {
+			blockers = introducedBlockers(preview)
+		}
+		writeDiagnostic(stderr, "\n%d finding(s) this change introduced would block it.\n", blockers)
 		return 0
 	}
 	if !resp.ThresholdBreached {
@@ -860,7 +881,7 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 		if stepGate != nil {
 			applyProjectVerdict(preview, checkGate, stepGate, payload.Scanner)
 		} else {
-			resp.ThresholdBreached = preview.Conclusion == "failure"
+			resp.ThresholdBreached, resp.ReportOnly = previewVerdict(preview)
 			if duplicate {
 				for _, n := range preview.SummaryCounts {
 					resp.IntroducedCount += n

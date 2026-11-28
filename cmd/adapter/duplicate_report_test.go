@@ -135,6 +135,13 @@ func TestRun_DuplicateReportExitsAsTheStoredChangeVerdict(t *testing.T) {
 		require.Equal(t, 1, code, stderr)
 		assert.Contains(t, stderr, "NEW BLOCKING FINDINGS INTRODUCED IN THIS CHANGE: 3")
 	})
+	t.Run("report only says the gate would fail", func(t *testing.T) {
+		d := newDuplicateServer(t, nil, &client.PRCheckPreview{Conclusion: "neutral", SummaryCounts: map[string]int{"high": 2}})
+		code, stderr := runDuplicate(t, d, args...)
+		require.Equal(t, 0, code, stderr)
+		assert.Contains(t, stderr, "SPECHT SECURITY GATE: WOULD FAIL")
+		assert.Contains(t, stderr, "2 finding(s) this change introduced would block it.")
+	})
 	t.Run("verdict unreadable fails closed", func(t *testing.T) {
 		d := newDuplicateServer(t, nil, nil)
 		code, stderr := runDuplicate(t, d, args...)
