@@ -2005,7 +2005,8 @@ type NeedsYouStore interface {
 	// requests in the projects of hideOwnIn.
 	ListPendingWaiverRequests(ctx context.Context, callerID string, projectIDs, hideOwnIn []string, limit int32) (NeedsYouWaivers, error)
 	// ListDecidedWaiverRequests returns the user's requests approved or rejected since a time,
-	// newest first, and counts those decided since freshSince.
+	// newest first, and counts those decided since freshSince. A request the user decided
+	// themselves is left out.
 	ListDecidedWaiverRequests(ctx context.Context, userID string, projectIDs []string, since, freshSince time.Time, limit int32) (NeedsYouWaivers, error)
 	// ListWaiversEnding returns approved waivers that end after one time and by another, soonest first.
 	ListWaiversEnding(ctx context.Context, projectIDs []string, after, until time.Time, limit int32) (NeedsYouWaivers, error)

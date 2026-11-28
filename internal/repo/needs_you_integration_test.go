@@ -89,7 +89,8 @@ func TestNeedsYouStore_PendingRequests(t *testing.T) {
 	assert.Empty(t, none)
 }
 
-// Answers count in full past the limit, and fresh counts those decided since the given time.
+// Answers count in full past the limit, and fresh counts those decided since the given time. A
+// request the person decided themselves is no answer to them.
 func TestNeedsYouStore_DecidedRequests(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -101,6 +102,7 @@ func TestNeedsYouStore_DecidedRequests(t *testing.T) {
 	f.waiver(t, "lapsed", "rejected", f.aliceUUID, nil, ago(2*time.Hour), nil)
 	f.waiver(t, "too old", "approved", f.aliceUUID, f.bobUID, ago(20*24*time.Hour), nil)
 	f.waiver(t, "bob's", "approved", f.bobUID, f.aliceUUID, ago(time.Hour), nil)
+	f.waiver(t, "self-approved", "approved", f.aliceUUID, f.aliceUUID, ago(time.Minute), nil)
 
 	got, err := store.ListDecidedWaiverRequests(ctx, f.alice, []string{f.project},
 		time.Now().Add(-14*24*time.Hour), time.Now().Add(-3*24*time.Hour), 2)
@@ -109,7 +111,7 @@ func TestNeedsYouStore_DecidedRequests(t *testing.T) {
 	assert.Equal(t, "fresh", got.Items[0].Name, "newest first")
 	assert.True(t, got.Items[0].Enabled)
 	require.NotNil(t, got.Items[0].ExpiresAt)
-	assert.Equal(t, 3, got.Total, "fresh, lapsed and older; not the one past 14 days, not bob's")
+	assert.Equal(t, 3, got.Total, "fresh, lapsed and older; not the one past 14 days, not bob's, not the one alice decided herself")
 	assert.Equal(t, 2, got.Fresh, "fresh and lapsed were decided in the last three days")
 }
 

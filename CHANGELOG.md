@@ -20,11 +20,11 @@ releases.
   behind the page.
 - `GET /api/v1/me/needs-you` lists what waits on the signed-in person across their projects:
   waiver requests they may decide (their own when they are a global admin or nobody else can, as
-  with approving), the answers to requests they made for 14 days, approved waivers on projects they
-  manage that end within a week, and open findings assigned to them. Each kind lists at most 50
-  items and `totals` counts all of them. `count`, the number for a badge, is the totals of the first
-  three kinds plus the answers from the last three days. It keeps no read marks. A project key gets
-  403, since it has no person behind it.
+  with approving), the answers to requests they made for 14 days (not those they decided
+  themselves), approved waivers on projects they manage that end within a week, and open findings
+  assigned to them. Each kind lists at most 50 items and `totals` counts all of them. `count`, the
+  number for a badge, is the totals of the first three kinds plus the answers from the last three
+  days. It keeps no read marks. A project key gets 403, since it has no person behind it.
 - `GET /projects/{slug}/gate?introduced_only=true&commit=<sha>` judges a whole commit: the findings
   that every completed report of the commit introduced, whichever scanner sent it. This is the
   verdict of the pull-request check for that commit. A commit with no completed report answers 404

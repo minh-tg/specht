@@ -147,7 +147,8 @@ func TestE2E_NeedsYou(t *testing.T) {
 }
 
 // TestE2E_NeedsYouGlobalAdminOwnRequest: a global admin may approve their own waiver request even
-// when a project manager could decide it too, so the request waits on them as well.
+// when a project manager could decide it too, so the request waits on them as well. Once they
+// approve it, it is no answer to them: they gave it.
 func TestE2E_NeedsYouGlobalAdminOwnRequest(t *testing.T) {
 	slug := newProject(t, "needs-you-admin")
 	key := mintKey(t, slug)
@@ -158,7 +159,7 @@ func TestE2E_NeedsYouGlobalAdminOwnRequest(t *testing.T) {
 	manager := azRegister(t, "ny-admin-manager")
 	azAddMember(t, slug, manager.UserID, "manager")
 
-	request[waiverDetail](t, http.MethodPost, base+"/waivers/requests", adminToken, map[string]any{
+	w := request[waiverDetail](t, http.MethodPost, base+"/waivers/requests", adminToken, map[string]any{
 		"target_ids": []string{finding.ID},
 		"reason":     "Admin's own request.",
 		"expires_at": time.Now().Add(7 * 24 * time.Hour).UTC().Format(time.RFC3339),
@@ -168,4 +169,10 @@ func TestE2E_NeedsYouGlobalAdminOwnRequest(t *testing.T) {
 	require.Len(t, waiting, 1, "the admin may approve it, so it waits on them")
 	require.Equal(t, "Admin's own request.", waiting[0].Detail)
 	require.Len(t, needsYouOf(t, manager.Token).ofKind("waiver_to_decide", slug), 1)
+
+	status, raw := doJSON(t, http.MethodPost, base+"/waivers/"+w.ID+"/approve", adminToken,
+		map[string]string{"note": "Approving my own."})
+	require.Equal(t, http.StatusOK, status, string(raw))
+	require.Empty(t, needsYouOf(t, adminToken).ofKind("request_decided", slug),
+		"an answer the admin gave themselves is not news to them")
 }

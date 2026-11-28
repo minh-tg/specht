@@ -411,7 +411,8 @@ export interface paths {
      *     - `waiver_ending`: an approved waiver on a project the caller manages that ends within
      *       seven days, after which its findings block again.
      *     - `finding_assigned`: an open finding assigned to the caller, most severe first.
-     *     - `request_decided`: the answer to a request the caller made, kept for 14 days.
+     *     - `request_decided`: the answer to a request the caller made, kept for 14 days. A request
+     *       the caller decided themselves is left out.
      *
      *     There are no read marks. An item stays until its cause is gone or its window has passed.
      *     `items` holds at most 50 of each kind, and `totals` counts every item of each kind, so a

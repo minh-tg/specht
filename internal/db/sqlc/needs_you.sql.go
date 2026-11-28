@@ -19,6 +19,7 @@ SELECT w.id, w.project_id, p.slug AS project_slug, p.name AS project_name, w.nam
 FROM waivers w
 JOIN projects p ON p.id = w.project_id
 WHERE w.requested_by = $2
+  AND w.decided_by IS DISTINCT FROM $2
   AND w.status IN ('approved', 'rejected')
   AND w.decided_at >= $3
   AND w.project_id = ANY($4::uuid[])
@@ -51,8 +52,9 @@ type ListDecidedWaiverRequestsRow struct {
 }
 
 // Requests one person made that were approved or rejected since a time, newest first. A request
-// that lapsed unanswered is rejected with the decision reason "expired". total is how many match
-// before the limit, and fresh how many of them were decided since fresh_since.
+// that lapsed unanswered is rejected with the decision reason "expired" and no decider. A request
+// the person decided themselves is left out: it is no news to them. total is how many match before
+// the limit, and fresh how many of them were decided since fresh_since.
 func (q *Queries) ListDecidedWaiverRequests(ctx context.Context, arg ListDecidedWaiverRequestsParams) ([]ListDecidedWaiverRequestsRow, error) {
 	rows, err := q.db.Query(ctx, listDecidedWaiverRequests,
 		arg.FreshSince,

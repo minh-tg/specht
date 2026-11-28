@@ -33,8 +33,9 @@ LIMIT sqlc.arg(max_rows);
 
 -- name: ListDecidedWaiverRequests :many
 -- Requests one person made that were approved or rejected since a time, newest first. A request
--- that lapsed unanswered is rejected with the decision reason "expired". total is how many match
--- before the limit, and fresh how many of them were decided since fresh_since.
+-- that lapsed unanswered is rejected with the decision reason "expired" and no decider. A request
+-- the person decided themselves is left out: it is no news to them. total is how many match before
+-- the limit, and fresh how many of them were decided since fresh_since.
 SELECT w.id, w.project_id, p.slug AS project_slug, p.name AS project_name, w.name, w.status,
        w.decision_note, w.decision_reason, w.decided_at::timestamptz AS decided_at, w.enabled,
        w.expires_at, COUNT(*) OVER () AS total,
@@ -42,6 +43,7 @@ SELECT w.id, w.project_id, p.slug AS project_slug, p.name AS project_name, w.nam
 FROM waivers w
 JOIN projects p ON p.id = w.project_id
 WHERE w.requested_by = sqlc.arg(user_id)
+  AND w.decided_by IS DISTINCT FROM sqlc.arg(user_id)
   AND w.status IN ('approved', 'rejected')
   AND w.decided_at >= sqlc.arg(since)
   AND w.project_id = ANY(sqlc.arg(project_ids)::uuid[])
