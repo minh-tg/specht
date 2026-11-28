@@ -104,6 +104,10 @@ role exists.
 
 #### Your own Postgres
 
+Specht is tested on PostgreSQL 17 and requires 15 or newer: migration 000062
+creates a `UNIQUE NULLS NOT DISTINCT` constraint, which older versions reject,
+so the server stops at that migration on 14 or earlier.
+
 Run the same script with `psql` 15 or newer as the role that owns the schema
 (or as a superuser, naming the owner with `-v owner_role=<owner>`). Creating a
 role takes `CREATEROLE` or a superuser:
