@@ -507,6 +507,13 @@ releases.
 - A Slack waiver notice escapes the heading. It names the person who acted, and a project member sets
   their own display name, so a name such as `<!channel>` pinged the whole channel and a name with a
   link rendered as a link sent by Specht.
+- The compose file passes `SPECHT_BASE_URL`, `SSO_ALLOW_PRIVATE_ISSUER` and `GOMEMLIMIT` to the
+  server, and sets `GOMEMLIMIT` to `2700MiB`, about 90% of the default 3 GiB container limit.
+  Before, setting them in `deploy/.env.prod` did nothing: waiver notifications went out without a
+  link, an identity provider on a private address stayed refused, and without a soft limit the
+  garbage collector let the heap grow to twice its live size, which a large ingest could push past
+  the container limit. `scripts/compose-config-test.sh` now fails when a variable the server reads
+  is missing from the compose file.
 - A project's only manager can approve their own waiver request with a note. Before, nobody could
   approve it unless a global admin stepped in. The approval is marked self-approved, as a global
   admin's is. Anyone else on the project with manager or admin rights, directly or through a team, or a

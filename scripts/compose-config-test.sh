@@ -18,11 +18,24 @@ ENV
 docker compose -f deploy/docker-compose.yml --env-file "$work/env" \
   config --format json >"$work/config.json"
 python3 - "$work/config.json" <<'PY'
-import json, sys
+import glob, json, re, sys
 
 services = json.load(open(sys.argv[1]))['services']
 server = services['server']
 env = server['environment']
+
+# Every variable the server reads must reach it: deploy/README.md tells
+# operators to set them in deploy/.env.prod, and compose passes on only the
+# ones the file names. The names are the quoted ones in the server's sources;
+# the rest are built at runtime or read by the Go runtime.
+read = {'CVE_DETAIL_NVD_RPS', 'CVE_DETAIL_VULNCHECK_RPS', 'CVE_DETAIL_OSV_RPS', 'GOMEMLIMIT'}
+for pattern in ('internal/config/*.go', 'internal/tracker/*.go', 'internal/watcher/*.go', 'cmd/server/*.go'):
+    for path in glob.glob(pattern):
+        if not path.endswith('_test.go'):
+            read.update(re.findall(r'"([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)"', open(path).read()))
+missing = sorted(read - env.keys())
+if missing:
+    raise SystemExit('the server reads these variables but compose does not forward them: ' + ', '.join(missing))
 if not env['DATABASE_URL'].startswith('postgres://specht_app:compose-config-test-app-password@db:5432/specht?'):
     raise SystemExit('the server must query as specht_app')
 if not env['MIGRATE_DATABASE_URL'].startswith('postgres://specht:compose-config-test-password@db:5432/specht?'):
@@ -44,5 +57,11 @@ if env['INGEST_MEMORY_BUDGET'] != '2GiB':
     raise SystemExit('update the memory-default check for the configured ingest budget')
 if int(server['mem_limit']) < 3 * 1024**3:
     raise SystemExit('the container needs the 2 GiB ingest budget plus 1 GiB')
-print('compose environment settings, database roles and memory defaults: ok')
+soft = re.fullmatch(r'(\d+)(B|KiB|MiB|GiB)', env['GOMEMLIMIT'])
+if not soft:
+    raise SystemExit('GOMEMLIMIT must be a whole number with a unit such as MiB')
+soft_bytes = int(soft[1]) * {'B': 1, 'KiB': 1024, 'MiB': 1024**2, 'GiB': 1024**3}[soft[2]]
+if not 0.8 * int(server['mem_limit']) <= soft_bytes < int(server['mem_limit']):
+    raise SystemExit('GOMEMLIMIT should be about 90% of the container memory limit')
+print('compose environment settings, forwarded variables, database roles and memory defaults: ok')
 PY
