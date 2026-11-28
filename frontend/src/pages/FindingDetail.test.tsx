@@ -876,6 +876,58 @@ describe("FindingDetail remediation", () => {
     const link = await screen.findByRole("link", { name: /remediation reference/i });
     expect(link).toHaveAttribute("href", "https://example.com/advisory/1");
   });
+
+  const ruleLabel =
+    "No fix description reported — follow the rule documentation for the secure coding pattern.";
+
+  it("links the rule documentation the fallback text points to", async () => {
+    findingFixture = {
+      finding_kind: "sast",
+      remediation: {
+        summary: ruleLabel,
+        url: "https://semgrep.dev/r/python.flask.debug-enabled",
+        source: "semgrep",
+        fallback: true,
+      },
+    };
+    renderDetail();
+
+    const link = await screen.findByRole("link", {
+      name: "Rule documentation (opens in a new tab)",
+    });
+    expect(link).toHaveAttribute("href", "https://semgrep.dev/r/python.flask.debug-enabled");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getByText(ruleLabel)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /remediation reference/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps the rule documentation text without a link when the scanner named no page", async () => {
+    findingFixture = {
+      finding_kind: "sast",
+      remediation: { summary: ruleLabel, source: "semgrep", fallback: true },
+    };
+    renderDetail();
+
+    expect(await screen.findByText(ruleLabel)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /rule documentation/i })).not.toBeInTheDocument();
+  });
+
+  it("does not link a rule page that is not http or https", async () => {
+    findingFixture = {
+      finding_kind: "sast",
+      remediation: {
+        summary: ruleLabel,
+        url: "javascript:alert(document.cookie)",
+        source: "semgrep",
+        fallback: true,
+      },
+    };
+    renderDetail();
+
+    expect(await screen.findByText(ruleLabel)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /rule documentation/i })).not.toBeInTheDocument();
+  });
 });
 
 describe("FindingDetail suggested action", () => {

@@ -1,9 +1,9 @@
 import { CopyButton } from "@/components/CopyButton";
-import { INLINE_LINK } from "@/components/inlineLink";
 import { Section } from "@/components/Section";
 import type { Finding, FindingSuggestion } from "@/types/api";
 import { locationLine } from "../change-view/resolve";
-import { confidenceLabel, parseSourceLink } from "./format";
+import { confidenceLabel } from "./format";
+import { RemediationLink } from "./RemediationLink";
 
 /** The sca fix as the scanner reported it: a package with a version to move to. */
 function structuredFix(suggestion?: FindingSuggestion) {
@@ -43,7 +43,6 @@ export function FixFirst({ finding }: { readonly finding: Finding; }) {
   const structured = structuredFix(suggestion);
   const sentence = structured ? structured.sentence : fixSentence(finding);
   const where = locationLine(finding.location);
-  const link = remediation?.url && parseSourceLink(remediation.url) ? remediation.url : null;
 
   const real = suggestion && !suggestion.fallback ? suggestion : null;
   const meta = [
@@ -84,13 +83,7 @@ export function FixFirst({ finding }: { readonly finding: Finding; }) {
             </p>
           </div>
         )}
-      {link && (
-        <p className="mt-2 text-body">
-          <a href={link} target="_blank" rel="noreferrer" className={INLINE_LINK}>
-            Remediation reference
-          </a>
-        </p>
-      )}
+      <RemediationLink finding={finding} className="mt-2 text-body" />
     </Section>
   );
 }

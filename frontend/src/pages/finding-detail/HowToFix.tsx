@@ -1,8 +1,8 @@
 import { CopyButton } from "@/components/CopyButton";
-import { INLINE_LINK } from "@/components/inlineLink";
 import { Section } from "@/components/Section";
 import type { Finding } from "@/types/api";
-import { confidenceLabel, parseSourceLink } from "./format";
+import { confidenceLabel } from "./format";
+import { RemediationLink } from "./RemediationLink";
 
 /** Remediation guidance and the suggested fix for one finding. */
 export function HowToFix({ finding }: { readonly finding: Finding; }) {
@@ -22,18 +22,7 @@ export function HowToFix({ finding }: { readonly finding: Finding; }) {
                 General guidance. The scanner reported no specific fix.
               </p>
             )}
-            {finding.remediation.url && parseSourceLink(finding.remediation.url) && (
-              <p>
-                <a
-                  href={finding.remediation.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={`${INLINE_LINK} text-body`}
-                >
-                  Remediation reference
-                </a>
-              </p>
-            )}
+            <RemediationLink finding={finding} />
             {finding.remediation.source && (
               <p className="text-muted-foreground text-meta">
                 Source: {finding.remediation.source}

@@ -308,9 +308,60 @@ describe("FindingDetail fix-first fix", () => {
     await loaded();
 
     expect(screen.getByText("Use a parameterised query")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Remediation reference" })).toHaveAttribute(
+    const link = screen.getByRole("link", { name: "Rule documentation (opens in a new tab)" });
+    expect(link).toHaveAttribute("href", "https://example.com/rule");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("links the rule documentation when the scanner gave no fix", async () => {
+    finding = makeFinding({
+      location: { file: "app.py", start_line: 4, summary: "app.py:4" },
+      remediation: {
+        summary: "No fix description reported.",
+        url: "https://semgrep.dev/r/python.flask.debug-enabled",
+        source: "semgrep",
+        fallback: true,
+      },
+      suggestion: { action: "review", target: "app.py", confidence: "low", fallback: true },
+    });
+    renderDetail();
+    await loaded();
+
+    expect(screen.getByText("No known fix.")).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: /^Rule documentation/ });
+    expect(link).toHaveAttribute("href", "https://semgrep.dev/r/python.flask.debug-enabled");
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("shows no rule link when the scanner named no page", async () => {
+    finding = makeFinding({
+      location: { file: "app.py", start_line: 4, summary: "app.py:4" },
+      remediation: { summary: "No fix description reported.", source: "semgrep", fallback: true },
+      suggestion: { action: "review", target: "app.py", confidence: "low", fallback: true },
+    });
+    renderDetail();
+    await loaded();
+
+    expect(screen.getByText("No known fix.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /rule documentation/i })).not.toBeInTheDocument();
+  });
+
+  it("names a policy page on other kinds a remediation reference", async () => {
+    finding = makeFinding({
+      finding_kind: "iac",
+      remediation: {
+        summary: "No remediation reported.",
+        url: "https://docs.example.com/ckv-aws-20",
+        source: "checkov",
+        fallback: true,
+      },
+    });
+    renderDetail();
+    await loaded();
+
+    expect(screen.getByRole("link", { name: /^Remediation reference/ })).toHaveAttribute(
       "href",
-      "https://example.com/rule",
+      "https://docs.example.com/ckv-aws-20",
     );
   });
 });

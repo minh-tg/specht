@@ -10,6 +10,9 @@ releases.
 
 ### Added
 
+- The finding page links a SAST finding's rule documentation, in a new tab, where it used to say
+  "follow the rule documentation" with nothing to follow. The link shows when the scanner named the
+  page, such as Semgrep's registry page for the rule; without one the text stays as it was.
 - A SAST finding carries its rule's documentation page. The SARIF and Semgrep scanners read the
   rule's `helpUri` (`metadata.source` in Semgrep's `--json` output), which both dropped before, and
   `GET /api/v1/findings/{id}` returns it as `remediation.url`. Without fix text the summary stays
