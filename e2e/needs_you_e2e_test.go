@@ -20,9 +20,9 @@ type needsYouItem struct {
 }
 
 type needsYouList struct {
-	Count            int            `json:"count"`
-	AssignedFindings int            `json:"assigned_findings"`
-	Items            []needsYouItem `json:"items"`
+	Count  int            `json:"count"`
+	Items  []needsYouItem `json:"items"`
+	Totals map[string]int `json:"totals"`
 }
 
 func needsYouOf(t *testing.T, token string) needsYouList {
@@ -76,7 +76,9 @@ func TestE2E_NeedsYou(t *testing.T) {
 		require.Len(t, waiting, 1)
 		require.Equal(t, "Only reachable from the admin network.", waiting[0].Detail)
 		require.Equal(t, "/"+slug+"/waivers", waiting[0].Link)
-		require.NotZero(t, needsYouOf(t, manager.Token).Count)
+		got := needsYouOf(t, manager.Token)
+		require.Equal(t, 1, got.Totals["waiver_to_decide"])
+		require.Equal(t, 1, got.Count, "the badge counts the one request")
 
 		require.Empty(t, needsYouOf(t, member.Token).ofKind("waiver_to_decide", slug),
 			"the person who asked waits on the manager")
@@ -134,7 +136,7 @@ func TestE2E_NeedsYou(t *testing.T) {
 		assigned := got.ofKind("finding_assigned", slug)
 		require.Len(t, assigned, 1)
 		require.Equal(t, "/"+slug+"/findings/"+finding.ID, assigned[0].Link)
-		require.GreaterOrEqual(t, got.AssignedFindings, 1)
+		require.GreaterOrEqual(t, got.Totals["finding_assigned"], 1)
 		require.Empty(t, needsYouOf(t, manager.Token).ofKind("finding_assigned", slug), "it is the member's, not the manager's")
 	})
 

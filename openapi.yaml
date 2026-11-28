@@ -662,9 +662,11 @@ paths:
         - `request_decided`: the answer to a request the caller made, kept for 14 days.
 
         There are no read marks. An item stays until its cause is gone or its window has passed.
-        `count` is what a badge shows: the items that ask for action, and answers newer than three
-        days. Each kind lists at most 50 items, and `assigned_findings` is the exact number of
-        assigned findings. Sessions only.
+        `items` holds at most 50 of each kind, and `totals` counts every item of each kind, so a
+        client can say "showing 50 of 120". `count` is what a badge shows:
+        `totals.waiver_to_decide` + `totals.waiver_ending` + `totals.finding_assigned` + the
+        answers from the last three days. An older answer stays listed for 14 days and is not
+        counted. Sessions only.
       x-auth: session
       security:
         - sessionAuth: []
@@ -5503,13 +5505,27 @@ components:
           example: /payments-api/waivers?state=in_force
     NeedsYouResponse:
       type: object
-      required: [count, items, assigned_findings]
+      required: [count, items, totals]
       properties:
-        count: { type: integer, description: What a badge shows. }
+        count:
+          type: integer
+          description: >-
+            What a badge shows: every waiver request to decide, waiver ending and assigned finding,
+            listed or not, and the answers from the last three days.
         items:
           type: array
+          description: At most 50 items of each kind.
           items: { $ref: "#/components/schemas/NeedsYouItem" }
-        assigned_findings: { type: integer, description: The exact number of open findings assigned to the caller. }
+        totals: { $ref: "#/components/schemas/NeedsYouTotals" }
+    NeedsYouTotals:
+      type: object
+      description: How many items of each kind exist. A total above the items listed of that kind means some were left out.
+      required: [waiver_to_decide, waiver_ending, finding_assigned, request_decided]
+      properties:
+        waiver_to_decide: { type: integer }
+        waiver_ending: { type: integer }
+        finding_assigned: { type: integer }
+        request_decided: { type: integer, description: Answers from the last 14 days. }
     ProjectSummary:
       type: object
       required: [slug, gate, stats]

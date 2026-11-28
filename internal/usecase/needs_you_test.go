@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -23,7 +24,8 @@ const (
 var nyNow = time.Date(2026, 11, 23, 12, 0, 0, 0, time.UTC)
 
 // nyStore answers from fixed rows and records the project ids each list was asked for, so a test
-// can see that a project the caller cannot reach never reaches the store.
+// can see that a project the caller cannot reach never reaches the store. It filters and counts the
+// way the SQL does. totals overrides the reported total of a kind, for rows beyond those listed.
 type nyStore struct {
 	port.NeedsYouStore
 	managed  []string
@@ -31,36 +33,74 @@ type nyStore struct {
 	decided  []port.NeedsYouWaiver
 	ending   []port.NeedsYouWaiver
 	assigned []port.NeedsYouFinding
-	total    int64
+	totals   map[string]int
 
-	pendingFor, endingFor, assignedFor []string
+	pendingFor, endingFor, assignedFor, hideOwnIn []string
+	limits                                        map[string]int32
+}
+
+func (s *nyStore) total(kind string, listed int) int {
+	if n, ok := s.totals[kind]; ok {
+		return n
+	}
+	return listed
+}
+
+func (s *nyStore) asked(kind string, limit int32) {
+	if s.limits == nil {
+		s.limits = map[string]int32{}
+	}
+	s.limits[kind] = limit
 }
 
 func (s *nyStore) ListManagedProjectIDs(context.Context, string) ([]string, error) {
 	return s.managed, nil
 }
 
-func (s *nyStore) ListPendingWaiverRequests(_ context.Context, ids []string, _ int32) ([]port.NeedsYouWaiver, error) {
-	s.pendingFor = ids
-	return s.pending, nil
+func (s *nyStore) ListProjectsWithOwnPendingRequests(_ context.Context, userID string, ids []string) ([]string, error) {
+	var out []string
+	for _, w := range s.pending {
+		if w.RequestedBy == userID && slices.Contains(ids, w.ProjectID) && !slices.Contains(out, w.ProjectID) {
+			out = append(out, w.ProjectID)
+		}
+	}
+	return out, nil
 }
 
-func (s *nyStore) ListDecidedWaiverRequests(context.Context, string, []string, time.Time, int32) ([]port.NeedsYouWaiver, error) {
-	return s.decided, nil
+func (s *nyStore) ListPendingWaiverRequests(_ context.Context, callerID string, ids, hideOwnIn []string, limit int32) (port.NeedsYouWaivers, error) {
+	s.pendingFor, s.hideOwnIn = ids, hideOwnIn
+	s.asked(NeedsYouWaiverToDecide, limit)
+	var out port.NeedsYouWaivers
+	for _, w := range s.pending {
+		if w.RequestedBy != callerID || !slices.Contains(hideOwnIn, w.ProjectID) {
+			out.Items = append(out.Items, w)
+		}
+	}
+	out.Total = s.total(NeedsYouWaiverToDecide, len(out.Items))
+	return out, nil
 }
 
-func (s *nyStore) ListWaiversEnding(_ context.Context, ids []string, _, _ time.Time, _ int32) ([]port.NeedsYouWaiver, error) {
+func (s *nyStore) ListDecidedWaiverRequests(_ context.Context, _ string, _ []string, _, freshSince time.Time, limit int32) (port.NeedsYouWaivers, error) {
+	s.asked(NeedsYouRequestDecided, limit)
+	out := port.NeedsYouWaivers{Items: s.decided, Total: s.total(NeedsYouRequestDecided, len(s.decided))}
+	for _, w := range s.decided {
+		if !w.At.Before(freshSince) {
+			out.Fresh++
+		}
+	}
+	return out, nil
+}
+
+func (s *nyStore) ListWaiversEnding(_ context.Context, ids []string, _, _ time.Time, limit int32) (port.NeedsYouWaivers, error) {
 	s.endingFor = ids
-	return s.ending, nil
+	s.asked(NeedsYouWaiverEnding, limit)
+	return port.NeedsYouWaivers{Items: s.ending, Total: s.total(NeedsYouWaiverEnding, len(s.ending))}, nil
 }
 
-func (s *nyStore) ListOpenFindingsAssignedTo(_ context.Context, _ string, ids []string, _ int32) ([]port.NeedsYouFinding, error) {
+func (s *nyStore) ListOpenFindingsAssignedTo(_ context.Context, _ string, ids []string, limit int32) (port.NeedsYouFindings, error) {
 	s.assignedFor = ids
-	return s.assigned, nil
-}
-
-func (s *nyStore) CountOpenFindingsAssignedTo(context.Context, string, []string) (int64, error) {
-	return s.total, nil
+	s.asked(NeedsYouFindingAssigned, limit)
+	return port.NeedsYouFindings{Items: s.assigned, Total: s.total(NeedsYouFindingAssigned, len(s.assigned))}, nil
 }
 
 func nyUsecase(store *nyStore, otherDeciders int) *Usecases {
@@ -149,6 +189,7 @@ func TestGetNeedsYou_AnOwnRequestCountsOnlyForTheSoleDecider(t *testing.T) {
 
 			require.NoError(t, err)
 			assert.Len(t, out.Items, tc.want)
+			assert.Equal(t, tc.want, out.Totals.WaiverToDecide, "the store leaves the hidden request out of the total too")
 			assert.Equal(t, tc.want, out.Count)
 		})
 	}
@@ -161,6 +202,7 @@ func TestGetNeedsYou_AGlobalAdminDecidesTheirOwnRequest(t *testing.T) {
 	out, err := nyUsecase(store, 1).GetNeedsYou(nyCtx(nyAlice, auth.RoleAdmin))
 
 	require.NoError(t, err)
+	assert.Empty(t, store.hideOwnIn)
 	assert.Equal(t, []string{NeedsYouWaiverToDecide}, kinds(out.Items))
 	assert.Equal(t, 1, out.Count)
 }
@@ -191,21 +233,27 @@ func TestGetNeedsYou_AnOldAnswerIsListedButNotCounted(t *testing.T) {
 	assert.Equal(t, 2, out.Count, "the answer from ten days ago is listed only")
 }
 
-// Ending waivers are for managers, and assigned findings count in full beyond the listed ones.
-func TestGetNeedsYou_CountsEndingWaiversAndEveryAssignedFinding(t *testing.T) {
+// Ending waivers are for managers, and every kind that asks for action counts in full beyond the
+// listed items, with the total of each kind in the response.
+func TestGetNeedsYou_CountsEveryItemThatAsksForActionBeyondTheListed(t *testing.T) {
 	store := &nyStore{
 		managed:  []string{nyProjA},
+		pending:  []port.NeedsYouWaiver{nyWaiver("p1", nyProjA, nyBob, nyNow.Add(-time.Hour))},
 		ending:   []port.NeedsYouWaiver{{ID: "e1", ProjectSlug: "alpha", Name: "Waiver: lodash", Status: "approved", At: nyNow.Add(48 * time.Hour)}},
 		assigned: []port.NeedsYouFinding{{ID: "f1", ProjectSlug: "alpha", Title: "lodash", Severity: "high", LastSeenAt: nyNow}},
-		total:    12,
+		decided: []port.NeedsYouWaiver{
+			{ID: "new", ProjectSlug: "alpha", Name: "new", Status: "approved", At: nyNow.Add(-time.Hour)},
+			{ID: "old", ProjectSlug: "alpha", Name: "old", Status: "rejected", At: nyNow.Add(-10 * 24 * time.Hour)},
+		},
+		totals: map[string]int{NeedsYouWaiverToDecide: 70, NeedsYouWaiverEnding: 3, NeedsYouFindingAssigned: 120, NeedsYouRequestDecided: 9},
 	}
 	out, err := nyUsecase(store, 1).GetNeedsYou(nyCtx(nyAlice, "member"))
 
 	require.NoError(t, err)
-	assert.Equal(t, []string{NeedsYouWaiverEnding, NeedsYouFindingAssigned}, kinds(out.Items))
-	assert.Equal(t, "/alpha/findings/f1", out.Items[1].Link)
-	assert.Equal(t, 12, out.AssignedFindings)
-	assert.Equal(t, 13, out.Count, "one waiver ending and twelve assigned findings")
+	assert.Equal(t, []string{NeedsYouWaiverToDecide, NeedsYouWaiverEnding, NeedsYouFindingAssigned, NeedsYouRequestDecided, NeedsYouRequestDecided}, kinds(out.Items))
+	assert.Equal(t, "/alpha/findings/f1", out.Items[2].Link)
+	assert.Equal(t, NeedsYouTotals{WaiverToDecide: 70, WaiverEnding: 3, FindingAssigned: 120, RequestDecided: 9}, out.Totals)
+	assert.Equal(t, 70+3+120+1, out.Count, "every request, ending waiver and assigned finding, and the one fresh answer")
 }
 
 // Each item opens the Waivers tab that holds it: a request on Waiting, the page's default, a waiver
@@ -263,4 +311,15 @@ func TestGetNeedsYou_RefusesAnAPIKeyAndAnAnonymousCaller(t *testing.T) {
 	assert.ErrorIs(t, err, ErrProjectAccessDenied)
 	_, err = uc.GetNeedsYou(context.Background())
 	assert.ErrorIs(t, err, ErrProjectAccessDenied)
+}
+
+// Every kind lists at most the documented 50.
+func TestGetNeedsYou_ListsAtMostFiftyOfAKind(t *testing.T) {
+	store := &nyStore{managed: []string{nyProjA}}
+	_, err := nyUsecase(store, 1).GetNeedsYou(nyCtx(nyAlice, "member"))
+
+	require.NoError(t, err)
+	assert.Equal(t, map[string]int32{
+		NeedsYouWaiverToDecide: 50, NeedsYouWaiverEnding: 50, NeedsYouFindingAssigned: 50, NeedsYouRequestDecided: 50,
+	}, store.limits)
 }

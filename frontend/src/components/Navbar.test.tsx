@@ -67,7 +67,11 @@ beforeEach(() => {
     }
     if (url.endsWith("/api/v1/projects")) return jsonResponse([]);
     if (url.endsWith("/api/v1/me/needs-you")) {
-      return jsonResponse({ count: needsYouCount, items: [], assigned_findings: 0 });
+      return jsonResponse({
+        count: needsYouCount,
+        items: [],
+        totals: { waiver_to_decide: 0, waiver_ending: 0, finding_assigned: 0, request_decided: 0 },
+      });
     }
     if (url.includes("/api/v1/me")) {
       meCalls.push(url);

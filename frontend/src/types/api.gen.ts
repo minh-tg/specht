@@ -414,9 +414,11 @@ export interface paths {
      *     - `request_decided`: the answer to a request the caller made, kept for 14 days.
      *
      *     There are no read marks. An item stays until its cause is gone or its window has passed.
-     *     `count` is what a badge shows: the items that ask for action, and answers newer than three
-     *     days. Each kind lists at most 50 items, and `assigned_findings` is the exact number of
-     *     assigned findings. Sessions only.
+     *     `items` holds at most 50 of each kind, and `totals` counts every item of each kind, so a
+     *     client can say "showing 50 of 120". `count` is what a badge shows:
+     *     `totals.waiver_to_decide` + `totals.waiver_ending` + `totals.finding_assigned` + the
+     *     answers from the last three days. An older answer stays listed for 14 days and is not
+     *     counted. Sessions only.
      */
     get: operations["getNeedsYou"];
     put?: never;
@@ -3732,11 +3734,19 @@ export interface components {
       link: string;
     };
     NeedsYouResponse: {
-      /** @description What a badge shows. */
+      /** @description What a badge shows: every waiver request to decide, waiver ending and assigned finding, listed or not, and the answers from the last three days. */
       count: number;
+      /** @description At most 50 items of each kind. */
       items: components["schemas"]["NeedsYouItem"][];
-      /** @description The exact number of open findings assigned to the caller. */
-      assigned_findings: number;
+      totals: components["schemas"]["NeedsYouTotals"];
+    };
+    /** @description How many items of each kind exist. A total above the items listed of that kind means some were left out. */
+    NeedsYouTotals: {
+      waiver_to_decide: number;
+      waiver_ending: number;
+      finding_assigned: number;
+      /** @description Answers from the last 14 days. */
+      request_decided: number;
     };
     ProjectSummary: {
       slug: string;

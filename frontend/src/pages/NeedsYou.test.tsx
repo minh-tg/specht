@@ -20,8 +20,10 @@ function item(overrides: Record<string, unknown>) {
   };
 }
 
+const NONE = { waiver_to_decide: 0, waiver_ending: 0, finding_assigned: 0, request_decided: 0 };
+
 beforeEach(() => {
-  reply = () => jsonResponse({ count: 0, items: [], assigned_findings: 0 });
+  reply = () => jsonResponse({ count: 0, items: [], totals: NONE });
   globalThis.fetch = vi.fn().mockImplementation(async () => reply());
 });
 
@@ -47,7 +49,7 @@ describe("NeedsYou", () => {
     reply = () =>
       jsonResponse({
         count: 4,
-        assigned_findings: 1,
+        totals: { waiver_to_decide: 1, waiver_ending: 1, finding_assigned: 1, request_decided: 1 },
         items: [
           item({
             kind: "request_decided",
@@ -103,7 +105,7 @@ describe("NeedsYou", () => {
     reply = () =>
       jsonResponse({
         count: 1,
-        assigned_findings: 0,
+        totals: { ...NONE, waiver_ending: 1 },
         items: [item({ kind: "waiver_ending", at: "2099-01-02T10:00:00Z" })],
       });
     renderPage();
@@ -118,7 +120,7 @@ describe("NeedsYou", () => {
     reply = () =>
       jsonResponse({
         count: 3,
-        assigned_findings: 0,
+        totals: { ...NONE, request_decided: 3 },
         items: [
           item({
             kind: "request_decided",
@@ -139,25 +141,41 @@ describe("NeedsYou", () => {
     expect(answers).toHaveTextContent("Expired without an answer");
   });
 
-  it("counts every assigned finding and says how many are not listed", async () => {
+  it("says when a group shows fewer items than exist", async () => {
     reply = () =>
       jsonResponse({
-        count: 12,
-        assigned_findings: 12,
+        count: 122,
+        totals: {
+          waiver_to_decide: 2,
+          waiver_ending: 0,
+          finding_assigned: 120,
+          request_decided: 1,
+        },
         items: [
+          item({ kind: "waiver_to_decide", title: "Waiver request: one" }),
           item({
             kind: "finding_assigned",
             title: "lodash",
             severity: "high",
             link: "/payments/findings/f1",
           }),
+          item({ kind: "request_decided", title: "Waiver request: two", status: "approved" }),
         ],
       });
     renderPage();
 
     const assigned = await screen.findByRole("region", { name: /Assigned to you/ });
-    expect(assigned).toHaveTextContent("Assigned to you12");
-    expect(assigned).toHaveTextContent("and 11 more findings assigned to you");
+    expect(assigned).toHaveTextContent("Assigned to you120");
+    expect(assigned).toHaveTextContent(
+      "Showing 1 of 120. The rest are in each project's findings list.",
+    );
+    const decide = screen.getByRole("region", { name: /Waiver requests to decide/ });
+    expect(decide).toHaveTextContent("Waiver requests to decide2");
+    expect(decide).toHaveTextContent(
+      "Showing 1 of 2. The rest are on each project's Waivers page.",
+    );
+    const answers = screen.getByRole("region", { name: /Answers to your requests/ });
+    expect(within(answers).queryByText(/^Showing/)).not.toBeInTheDocument();
   });
 
   it("offers a retry when the list cannot load", async () => {
@@ -165,13 +183,13 @@ describe("NeedsYou", () => {
     renderPage();
 
     expect(await screen.findByText("Could not load what needs you.")).toBeInTheDocument();
-    reply = () => jsonResponse({ count: 0, items: [], assigned_findings: 0 });
+    reply = () => jsonResponse({ count: 0, items: [], totals: NONE });
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("Nothing waits on you")).toBeInTheDocument();
   });
 
   it("treats a missing item list as nothing waiting", async () => {
-    reply = () => jsonResponse({ count: 0, items: null, assigned_findings: 0 });
+    reply = () => jsonResponse({ count: 0, items: null, totals: NONE });
     renderPage();
 
     expect(await screen.findByText("Nothing waits on you")).toBeInTheDocument();

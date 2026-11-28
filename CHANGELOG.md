@@ -12,15 +12,19 @@ releases.
 
 - A "Needs you" page and a link with a number in the navigation. The page groups what waits on the
   person: waiver requests to decide, waivers about to end, findings assigned to them, and the
-  answers to requests they made. The number is the items that ask for action. Before this, nobody
-  learned a waiver request existed unless they opened that project's Waivers tab. The page lives at
-  `/needs-you`, so a new project can no longer take the slug `needs-you`; an existing project with
-  that slug keeps it, and its overview is hidden behind the page.
+  answers to requests they made. The number counts every request, ending waiver and assigned
+  finding, and the answers from the last three days. A group lists at most 50 and says so when it
+  holds more ("Showing 50 of 120"). Before this, nobody learned a waiver request existed unless they
+  opened that project's Waivers tab. The page lives at `/needs-you`, so a new project can no longer
+  take the slug `needs-you`; an existing project with that slug keeps it, and its overview is hidden
+  behind the page.
 - `GET /api/v1/me/needs-you` lists what waits on the signed-in person across their projects:
   waiver requests they may decide (their own when they are a global admin or nobody else can, as
   with approving), the answers to requests they made for 14 days, approved waivers on projects they
-  manage that end within a week, and open findings assigned to them. `count` is the number for a
-  badge. It keeps no read marks. A project key gets 403, since it has no person behind it.
+  manage that end within a week, and open findings assigned to them. Each kind lists at most 50
+  items and `totals` counts all of them. `count`, the number for a badge, is the totals of the first
+  three kinds plus the answers from the last three days. It keeps no read marks. A project key gets
+  403, since it has no person behind it.
 - `GET /projects/{slug}/gate?introduced_only=true&commit=<sha>` judges a whole commit: the findings
   that every completed report of the commit introduced, whichever scanner sent it. This is the
   verdict of the pull-request check for that commit. A commit with no completed report answers 404

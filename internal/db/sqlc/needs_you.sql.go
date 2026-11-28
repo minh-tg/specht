@@ -11,40 +11,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countOpenFindingsAssignedTo = `-- name: CountOpenFindingsAssignedTo :one
-SELECT COUNT(*) FROM findings f
-WHERE f.assignee_id = $1
-  AND f.state IN ('open', 'reopened')
-  AND f.project_id = ANY($2::uuid[])
-`
-
-type CountOpenFindingsAssignedToParams struct {
-	UserID     pgtype.UUID   `json:"user_id"`
-	ProjectIds []pgtype.UUID `json:"project_ids"`
-}
-
-func (q *Queries) CountOpenFindingsAssignedTo(ctx context.Context, arg CountOpenFindingsAssignedToParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countOpenFindingsAssignedTo, arg.UserID, arg.ProjectIds)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const listDecidedWaiverRequests = `-- name: ListDecidedWaiverRequests :many
 SELECT w.id, w.project_id, p.slug AS project_slug, p.name AS project_name, w.name, w.status,
        w.decision_note, w.decision_reason, w.decided_at::timestamptz AS decided_at, w.enabled,
-       w.expires_at
+       w.expires_at, COUNT(*) OVER () AS total,
+       COUNT(*) FILTER (WHERE w.decided_at >= $1) OVER () AS fresh
 FROM waivers w
 JOIN projects p ON p.id = w.project_id
-WHERE w.requested_by = $1
+WHERE w.requested_by = $2
   AND w.status IN ('approved', 'rejected')
-  AND w.decided_at >= $2
-  AND w.project_id = ANY($3::uuid[])
+  AND w.decided_at >= $3
+  AND w.project_id = ANY($4::uuid[])
 ORDER BY w.decided_at DESC, w.id
-LIMIT $4
+LIMIT $5
 `
 
 type ListDecidedWaiverRequestsParams struct {
+	FreshSince pgtype.Timestamptz `json:"fresh_since"`
 	UserID     pgtype.UUID        `json:"user_id"`
 	Since      pgtype.Timestamptz `json:"since"`
 	ProjectIds []pgtype.UUID      `json:"project_ids"`
@@ -63,12 +46,16 @@ type ListDecidedWaiverRequestsRow struct {
 	DecidedAt      pgtype.Timestamptz `json:"decided_at"`
 	Enabled        bool               `json:"enabled"`
 	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
+	Total          int64              `json:"total"`
+	Fresh          int64              `json:"fresh"`
 }
 
 // Requests one person made that were approved or rejected since a time, newest first. A request
-// that lapsed unanswered is rejected with the decision reason "expired".
+// that lapsed unanswered is rejected with the decision reason "expired". total is how many match
+// before the limit, and fresh how many of them were decided since fresh_since.
 func (q *Queries) ListDecidedWaiverRequests(ctx context.Context, arg ListDecidedWaiverRequestsParams) ([]ListDecidedWaiverRequestsRow, error) {
 	rows, err := q.db.Query(ctx, listDecidedWaiverRequests,
+		arg.FreshSince,
 		arg.UserID,
 		arg.Since,
 		arg.ProjectIds,
@@ -93,6 +80,8 @@ func (q *Queries) ListDecidedWaiverRequests(ctx context.Context, arg ListDecided
 			&i.DecidedAt,
 			&i.Enabled,
 			&i.ExpiresAt,
+			&i.Total,
+			&i.Fresh,
 		); err != nil {
 			return nil, err
 		}
@@ -140,7 +129,7 @@ func (q *Queries) ListManagedProjectIDs(ctx context.Context, userID pgtype.UUID)
 
 const listOpenFindingsAssignedTo = `-- name: ListOpenFindingsAssignedTo :many
 SELECT f.id, f.project_id, p.slug AS project_slug, p.name AS project_name, f.current_title,
-       f.current_severity, f.last_seen_at::timestamptz AS last_seen_at
+       f.current_severity, f.last_seen_at::timestamptz AS last_seen_at, COUNT(*) OVER () AS total
 FROM findings f
 JOIN projects p ON p.id = f.project_id
 WHERE f.assignee_id = $1
@@ -164,9 +153,11 @@ type ListOpenFindingsAssignedToRow struct {
 	CurrentTitle    string             `json:"current_title"`
 	CurrentSeverity string             `json:"current_severity"`
 	LastSeenAt      pgtype.Timestamptz `json:"last_seen_at"`
+	Total           int64              `json:"total"`
 }
 
-// Open findings assigned to one person, most severe first.
+// Open findings assigned to one person, most severe first. total is how many match before the
+// limit.
 func (q *Queries) ListOpenFindingsAssignedTo(ctx context.Context, arg ListOpenFindingsAssignedToParams) ([]ListOpenFindingsAssignedToRow, error) {
 	rows, err := q.db.Query(ctx, listOpenFindingsAssignedTo, arg.UserID, arg.ProjectIds, arg.MaxRows)
 	if err != nil {
@@ -184,6 +175,7 @@ func (q *Queries) ListOpenFindingsAssignedTo(ctx context.Context, arg ListOpenFi
 			&i.CurrentTitle,
 			&i.CurrentSeverity,
 			&i.LastSeenAt,
+			&i.Total,
 		); err != nil {
 			return nil, err
 		}
@@ -197,16 +189,21 @@ func (q *Queries) ListOpenFindingsAssignedTo(ctx context.Context, arg ListOpenFi
 
 const listPendingWaiverRequests = `-- name: ListPendingWaiverRequests :many
 SELECT w.id, w.project_id, p.slug AS project_slug, p.name AS project_name, w.name, w.reason,
-       w.requested_by, COALESCE(w.requested_at, w.created_at)::timestamptz AS asked_at
+       w.requested_by, COALESCE(w.requested_at, w.created_at)::timestamptz AS asked_at,
+       COUNT(*) OVER () AS total
 FROM waivers w
 JOIN projects p ON p.id = w.project_id
 WHERE w.status = 'pending' AND w.project_id = ANY($1::uuid[])
+  AND (w.requested_by IS DISTINCT FROM $2::uuid
+       OR w.project_id <> ALL($3::uuid[]))
 ORDER BY asked_at ASC, w.id
-LIMIT $2
+LIMIT $4
 `
 
 type ListPendingWaiverRequestsParams struct {
 	ProjectIds []pgtype.UUID `json:"project_ids"`
+	CallerID   pgtype.UUID   `json:"caller_id"`
+	HideOwnIn  []pgtype.UUID `json:"hide_own_in"`
 	MaxRows    int32         `json:"max_rows"`
 }
 
@@ -219,11 +216,18 @@ type ListPendingWaiverRequestsRow struct {
 	Reason      string             `json:"reason"`
 	RequestedBy pgtype.UUID        `json:"requested_by"`
 	AskedAt     pgtype.Timestamptz `json:"asked_at"`
+	Total       int64              `json:"total"`
 }
 
-// Pending requests in the given projects, oldest first.
+// Pending requests in the given projects, oldest first, without the caller's own requests in the
+// projects of hide_own_in. total is how many match before the limit.
 func (q *Queries) ListPendingWaiverRequests(ctx context.Context, arg ListPendingWaiverRequestsParams) ([]ListPendingWaiverRequestsRow, error) {
-	rows, err := q.db.Query(ctx, listPendingWaiverRequests, arg.ProjectIds, arg.MaxRows)
+	rows, err := q.db.Query(ctx, listPendingWaiverRequests,
+		arg.ProjectIds,
+		arg.CallerID,
+		arg.HideOwnIn,
+		arg.MaxRows,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -240,6 +244,7 @@ func (q *Queries) ListPendingWaiverRequests(ctx context.Context, arg ListPending
 			&i.Reason,
 			&i.RequestedBy,
 			&i.AskedAt,
+			&i.Total,
 		); err != nil {
 			return nil, err
 		}
@@ -251,9 +256,41 @@ func (q *Queries) ListPendingWaiverRequests(ctx context.Context, arg ListPending
 	return items, nil
 }
 
+const listProjectsWithOwnPendingRequests = `-- name: ListProjectsWithOwnPendingRequests :many
+SELECT DISTINCT w.project_id FROM waivers w
+WHERE w.status = 'pending' AND w.requested_by = $1
+  AND w.project_id = ANY($2::uuid[])
+`
+
+type ListProjectsWithOwnPendingRequestsParams struct {
+	UserID     pgtype.UUID   `json:"user_id"`
+	ProjectIds []pgtype.UUID `json:"project_ids"`
+}
+
+// Projects among the given ones where a user has a pending request of their own.
+func (q *Queries) ListProjectsWithOwnPendingRequests(ctx context.Context, arg ListProjectsWithOwnPendingRequestsParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listProjectsWithOwnPendingRequests, arg.UserID, arg.ProjectIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var project_id pgtype.UUID
+		if err := rows.Scan(&project_id); err != nil {
+			return nil, err
+		}
+		items = append(items, project_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWaiversEnding = `-- name: ListWaiversEnding :many
 SELECT w.id, w.project_id, p.slug AS project_slug, p.name AS project_name, w.name,
-       w.expires_at::timestamptz AS ends_at
+       w.expires_at::timestamptz AS ends_at, COUNT(*) OVER () AS total
 FROM waivers w
 JOIN projects p ON p.id = w.project_id
 WHERE w.status = 'approved' AND w.enabled
@@ -277,9 +314,11 @@ type ListWaiversEndingRow struct {
 	ProjectName string             `json:"project_name"`
 	Name        string             `json:"name"`
 	EndsAt      pgtype.Timestamptz `json:"ends_at"`
+	Total       int64              `json:"total"`
 }
 
-// Approved waivers that end between two times, soonest first.
+// Approved waivers that end between two times, soonest first. total is how many match before the
+// limit.
 func (q *Queries) ListWaiversEnding(ctx context.Context, arg ListWaiversEndingParams) ([]ListWaiversEndingRow, error) {
 	rows, err := q.db.Query(ctx, listWaiversEnding,
 		arg.After,
@@ -301,6 +340,7 @@ func (q *Queries) ListWaiversEnding(ctx context.Context, arg ListWaiversEndingPa
 			&i.ProjectName,
 			&i.Name,
 			&i.EndsAt,
+			&i.Total,
 		); err != nil {
 			return nil, err
 		}

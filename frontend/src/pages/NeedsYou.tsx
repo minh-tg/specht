@@ -4,8 +4,8 @@ import { INLINE_LINK, TOUCH_TARGET } from "@/components/inlineLink";
 import { RelativeTime } from "@/components/RelativeTime";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { SeverityBadge } from "@/components/ui/severity-badge";
-import { formatDateTime, pluralize } from "@/lib/format";
-import type { NeedsYouItem } from "@/types/api";
+import { formatDateTime } from "@/lib/format";
+import type { NeedsYou as NeedsYouData, NeedsYouItem } from "@/types/api";
 import { Link } from "react-router-dom";
 
 interface Group {
@@ -13,15 +13,34 @@ interface Group {
   readonly title: string;
   /** What the time on a row says. */
   readonly timeLabel: string;
+  /** Where the items the list leaves out can be found. */
+  readonly rest: string;
 }
+
+const ON_WAIVERS = "The rest are on each project's Waivers page.";
 
 // The order is the order of urgency: a request blocks someone now, a waiver ending blocks
 // findings soon, an assigned finding is the person's own work, and an answer is news.
 const GROUPS: readonly Group[] = [
-  { kind: "waiver_to_decide", title: "Waiver requests to decide", timeLabel: "Asked" },
-  { kind: "waiver_ending", title: "Waivers ending soon", timeLabel: "Ends" },
-  { kind: "finding_assigned", title: "Assigned to you", timeLabel: "Last seen" },
-  { kind: "request_decided", title: "Answers to your requests", timeLabel: "Answered" },
+  {
+    kind: "waiver_to_decide",
+    title: "Waiver requests to decide",
+    timeLabel: "Asked",
+    rest: ON_WAIVERS,
+  },
+  { kind: "waiver_ending", title: "Waivers ending soon", timeLabel: "Ends", rest: ON_WAIVERS },
+  {
+    kind: "finding_assigned",
+    title: "Assigned to you",
+    timeLabel: "Last seen",
+    rest: "The rest are in each project's findings list.",
+  },
+  {
+    kind: "request_decided",
+    title: "Answers to your requests",
+    timeLabel: "Answered",
+    rest: ON_WAIVERS,
+  },
 ];
 
 const ANSWER_WORDS: Record<NonNullable<NeedsYouItem["status"]>, string> = {
@@ -51,14 +70,17 @@ export function NeedsYou() {
           />
         )
         : needs.data
-        ? <Lists items={needs.data.items} assigned={needs.data.assigned_findings} />
+        ? <Lists items={needs.data.items} totals={needs.data.totals} />
         : <SkeletonLines label="Loading what needs you" lines={5} />}
     </div>
   );
 }
 
 function Lists(
-  { items, assigned }: { readonly items: readonly NeedsYouItem[]; readonly assigned: number; },
+  { items, totals }: {
+    readonly items: readonly NeedsYouItem[];
+    readonly totals: NeedsYouData["totals"];
+  },
 ) {
   if (items.length === 0) {
     return (
@@ -75,7 +97,8 @@ function Lists(
       {GROUPS.map((group) => {
         const rows = items.filter((item) => item.kind === group.kind);
         if (rows.length === 0) return null;
-        const more = group.kind === "finding_assigned" ? assigned - rows.length : 0;
+        // The server lists at most 50 of a kind and counts them all.
+        const total = Math.max(totals[group.kind], rows.length);
         return (
           <section
             key={group.kind}
@@ -85,7 +108,7 @@ function Lists(
             <h2 id={`needs-${group.kind}`} className="text-section font-semibold">
               {group.title}
               <span className="text-muted-foreground ml-2 text-body font-normal tabular-nums">
-                {group.kind === "finding_assigned" ? assigned : rows.length}
+                {total}
               </span>
             </h2>
             <ul className="divide-border divide-y">
@@ -97,10 +120,9 @@ function Lists(
                 />
               ))}
             </ul>
-            {more > 0 && (
+            {total > rows.length && (
               <p className="text-muted-foreground text-body">
-                and {pluralize(more, "more finding")}{" "}
-                assigned to you. Open the findings list of a project to see them.
+                Showing {rows.length} of {total}. {group.rest}
               </p>
             )}
           </section>

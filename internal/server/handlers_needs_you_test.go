@@ -23,7 +23,7 @@ func TestNeedsYou_Success(t *testing.T) {
 	h := &Handler{usecase: &mockUsecases{
 		getNeedsYouFn: func(context.Context) (*usecase.NeedsYouResponse, error) {
 			return &usecase.NeedsYouResponse{
-				Count: 1, AssignedFindings: 1,
+				Count: 1, Totals: usecase.NeedsYouTotals{FindingAssigned: 1},
 				Items: []usecase.NeedsYouItem{{
 					Kind: usecase.NeedsYouFindingAssigned, ProjectSlug: "my-app", ProjectName: "My app",
 					Title: "lodash", Link: "/my-app/findings/f1",
@@ -42,9 +42,13 @@ func TestNeedsYou_Success(t *testing.T) {
 			Kind string `json:"kind"`
 			Link string `json:"link"`
 		} `json:"items"`
+		Totals map[string]int `json:"totals"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, 1, resp.Count)
+	assert.Equal(t, map[string]int{
+		"waiver_to_decide": 0, "waiver_ending": 0, "finding_assigned": 1, "request_decided": 0,
+	}, resp.Totals, "every kind has a total, zero included")
 	require.Len(t, resp.Items, 1)
 	assert.Equal(t, "finding_assigned", resp.Items[0].Kind)
 	assert.Equal(t, "/my-app/findings/f1", resp.Items[0].Link)
@@ -91,6 +95,7 @@ func TestNeedsYou_OpenAPISchemasMatchTheResponse(t *testing.T) {
 	for name, goType := range map[string]reflect.Type{
 		"NeedsYouItem":     reflect.TypeFor[usecase.NeedsYouItem](),
 		"NeedsYouResponse": reflect.TypeFor[usecase.NeedsYouResponse](),
+		"NeedsYouTotals":   reflect.TypeFor[usecase.NeedsYouTotals](),
 	} {
 		t.Run(name, func(t *testing.T) {
 			schema, ok := spec.Components.Schemas[name]

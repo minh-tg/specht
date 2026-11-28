@@ -28,7 +28,7 @@ const (
 	// needsYouFreshAnswer is how long an answer counts toward the badge. The list keeps no
 	// read marks, so an older answer is shown but no longer asks for attention.
 	needsYouFreshAnswer = 3 * 24 * time.Hour
-	// needsYouLimit bounds each kind. The count of assigned findings is exact beyond it.
+	// needsYouLimit bounds the items listed of each kind. NeedsYouTotals counts beyond it.
 	needsYouLimit = 50
 )
 
@@ -50,13 +50,21 @@ type NeedsYouItem struct {
 }
 
 // NeedsYouResponse is everything waiting on the caller. Count is what the navigation badge shows:
-// the items that ask for action, and answers newer than three days.
+// every request to decide, waiver ending and assigned finding, listed or not, and the answers
+// from the last three days. Older answers stay listed for 14 days without counting.
 type NeedsYouResponse struct {
 	Count int            `json:"count"`
 	Items []NeedsYouItem `json:"items"`
-	// AssignedFindings is the exact number of open findings assigned to the caller, which can
-	// exceed the findings listed.
-	AssignedFindings int `json:"assigned_findings"`
+	// Totals is how many items of each kind exist. Items lists at most needsYouLimit of a kind.
+	Totals NeedsYouTotals `json:"totals"`
+}
+
+// NeedsYouTotals counts the items of each kind, including those beyond the listed ones.
+type NeedsYouTotals struct {
+	WaiverToDecide  int `json:"waiver_to_decide"`
+	WaiverEnding    int `json:"waiver_ending"`
+	FindingAssigned int `json:"finding_assigned"`
+	RequestDecided  int `json:"request_decided"`
 }
 
 // GetNeedsYou lists what waits on the signed-in person across the projects they can reach:
@@ -95,43 +103,45 @@ func (u *Usecases) GetNeedsYou(ctx context.Context) (*NeedsYouResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	out.Items = append(out.Items, toDecide...)
+	for _, w := range toDecide.Items {
+		item := waiverItem(NeedsYouWaiverToDecide, w)
+		item.Detail = w.Reason
+		out.Items = append(out.Items, item)
+	}
+	out.Totals.WaiverToDecide = toDecide.Total
 
 	if len(managed) > 0 {
 		ending, err := store.ListWaiversEnding(ctx, managed, now, now.Add(WaiverExpiryWarning), needsYouLimit)
 		if err != nil {
 			return nil, fmt.Errorf("list waivers ending: %w", err)
 		}
-		for _, w := range ending {
+		for _, w := range ending.Items {
 			item := waiverItem(NeedsYouWaiverEnding, w)
 			item.Link = waiversTab(w.ProjectSlug, waiversInForce)
 			out.Items = append(out.Items, item)
 		}
+		out.Totals.WaiverEnding = ending.Total
 	}
 
 	assigned, err := store.ListOpenFindingsAssignedTo(ctx, ident.UserID, reach, needsYouLimit)
 	if err != nil {
 		return nil, fmt.Errorf("list assigned findings: %w", err)
 	}
-	for _, f := range assigned {
+	for _, f := range assigned.Items {
 		out.Items = append(out.Items, NeedsYouItem{
 			Kind: NeedsYouFindingAssigned, ProjectSlug: f.ProjectSlug, ProjectName: f.ProjectName,
 			Title: f.Title, Severity: f.Severity, At: f.LastSeenAt,
 			Link: "/" + f.ProjectSlug + "/findings/" + f.ID,
 		})
 	}
-	total, err := store.CountOpenFindingsAssignedTo(ctx, ident.UserID, reach)
-	if err != nil {
-		return nil, fmt.Errorf("count assigned findings: %w", err)
-	}
-	out.AssignedFindings = int(total)
+	out.Totals.FindingAssigned = assigned.Total
 
-	answers, err := store.ListDecidedWaiverRequests(ctx, ident.UserID, reach, now.Add(-needsYouDecidedWindow), needsYouLimit)
+	answers, err := store.ListDecidedWaiverRequests(ctx, ident.UserID, reach,
+		now.Add(-needsYouDecidedWindow), now.Add(-needsYouFreshAnswer), needsYouLimit)
 	if err != nil {
 		return nil, fmt.Errorf("list decided requests: %w", err)
 	}
-	fresh := 0
-	for _, w := range answers {
+	for _, w := range answers.Items {
 		item := waiverItem(NeedsYouRequestDecided, w)
 		item.Status = answerStatus(w)
 		item.Detail = w.DecisionNote
@@ -141,17 +151,10 @@ func (u *Usecases) GetNeedsYou(ctx context.Context) (*NeedsYouResponse, error) {
 			item.Link = waiversTab(w.ProjectSlug, waiversClosed)
 		}
 		out.Items = append(out.Items, item)
-		if now.Sub(w.At) <= needsYouFreshAnswer {
-			fresh++
-		}
 	}
+	out.Totals.RequestDecided = answers.Total
 
-	out.Count = len(toDecide) + int(total) + fresh
-	for _, item := range out.Items {
-		if item.Kind == NeedsYouWaiverEnding {
-			out.Count++
-		}
-	}
+	out.Count = out.Totals.WaiverToDecide + out.Totals.WaiverEnding + out.Totals.FindingAssigned + answers.Fresh
 	return out, nil
 }
 
@@ -176,36 +179,34 @@ func (u *Usecases) managedAmong(ctx context.Context, userID string, reach []stri
 
 // requestsToDecide lists the pending requests the caller may decide, by the rule checkSelfApproval
 // applies: a global admin decides their own request too, and anyone else's own request waits on
-// someone else unless nobody else can decide it.
-func (u *Usecases) requestsToDecide(ctx context.Context, ident *auth.Identity, managed []string) ([]NeedsYouItem, error) {
+// someone else unless nobody else can decide it. The store leaves out the hidden ones, so the
+// total counts only what the caller may decide.
+func (u *Usecases) requestsToDecide(ctx context.Context, ident *auth.Identity, managed []string) (port.NeedsYouWaivers, error) {
 	if len(managed) == 0 {
-		return nil, nil
+		return port.NeedsYouWaivers{}, nil
 	}
-	pending, err := u.deps.Stores.NeedsYou.ListPendingWaiverRequests(ctx, managed, 2*needsYouLimit)
-	if err != nil {
-		return nil, fmt.Errorf("list pending waiver requests: %w", err)
-	}
-	alone := map[string]bool{}
-	var items []NeedsYouItem
-	for _, w := range pending {
-		if w.RequestedBy == ident.UserID && ident.Role != auth.RoleAdmin {
-			sole, known := alone[w.ProjectID]
-			if !known {
-				sole, err = u.soleWaiverDecider(ctx, w.ProjectID, ident.UserID)
-				if err != nil {
-					return nil, err
-				}
-				alone[w.ProjectID] = sole
+	store := u.deps.Stores.NeedsYou
+	hideOwnIn := []string{}
+	if ident.Role != auth.RoleAdmin {
+		own, err := store.ListProjectsWithOwnPendingRequests(ctx, ident.UserID, managed)
+		if err != nil {
+			return port.NeedsYouWaivers{}, fmt.Errorf("list projects with own requests: %w", err)
+		}
+		for _, projectID := range own {
+			sole, err := u.soleWaiverDecider(ctx, projectID, ident.UserID)
+			if err != nil {
+				return port.NeedsYouWaivers{}, err
 			}
 			if !sole {
-				continue
+				hideOwnIn = append(hideOwnIn, projectID)
 			}
 		}
-		item := waiverItem(NeedsYouWaiverToDecide, w)
-		item.Detail = w.Reason
-		items = append(items, item)
 	}
-	return items, nil
+	pending, err := store.ListPendingWaiverRequests(ctx, ident.UserID, managed, hideOwnIn, needsYouLimit)
+	if err != nil {
+		return port.NeedsYouWaivers{}, fmt.Errorf("list pending waiver requests: %w", err)
+	}
+	return pending, nil
 }
 
 // The tabs of the Waivers page, by the value of its state query parameter. Waiting, for pending

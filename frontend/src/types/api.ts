@@ -479,11 +479,15 @@ export interface NeedsYouItem {
 }
 
 export interface NeedsYou {
-  /** What the navigation badge shows. */
+  /**
+   * What the navigation badge shows: every request to decide, waiver ending and assigned finding,
+   * listed or not, and the answers from the last three days.
+   */
   count: number;
+  /** At most 50 of each kind. */
   items: NeedsYouItem[];
-  /** The exact number of open findings assigned to the person, which can exceed those listed. */
-  assigned_findings: number;
+  /** How many items of each kind exist, which can exceed those listed. */
+  totals: Record<NeedsYouItem["kind"], number>;
 }
 
 export interface UserProfile {
