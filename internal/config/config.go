@@ -756,17 +756,17 @@ func (s *Server) Validate() error {
 
 // validateURLs checks the notification and tracker endpoints. Their paths or
 // queries carry credentials, so the errors name the variable and never echo
-// the value. A channel that is switched off is never checked.
+// the value. The Slack and webhook channels carry waiver notices whether or
+// not the watcher runs, so a URL that is set is always checked; tracker
+// endpoints only matter to the webhook tracker.
 func (w Watcher) validateURLs() []error {
 	var problems []error
-	if w.Enable {
-		for _, u := range []struct{ name, value string }{
-			{"WATCHER_SLACK_URL", w.SlackURL},
-			{"WATCHER_WEBHOOK_URL", w.WebhookURL},
-		} {
-			if err := requireWebhookURL(u.name, u.value); err != nil {
-				problems = append(problems, err)
-			}
+	for _, u := range []struct{ name, value string }{
+		{"WATCHER_SLACK_URL", w.SlackURL},
+		{"WATCHER_WEBHOOK_URL", w.WebhookURL},
+	} {
+		if err := requireWebhookURL(u.name, u.value); err != nil {
+			problems = append(problems, err)
 		}
 	}
 	if w.TrackerProvider == "webhook" {

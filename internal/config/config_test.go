@@ -923,12 +923,32 @@ func TestServerValidate_AcceptsHTTPSAndLoopbackNotificationURLs(t *testing.T) {
 	assert.NoError(t, s.Validate())
 }
 
-func TestServerValidate_SkipsNotificationURLsOfSwitchedOffChannels(t *testing.T) {
+// Waiver notices go to the Slack and webhook channels whether or not the watcher runs, so a URL
+// that is set is checked even with WATCHER_ENABLE off. A plain http URL to another host would
+// carry signed bodies in clear text.
+func TestServerValidate_ChecksNotificationURLsWithTheWatcherOff(t *testing.T) {
+	for name, set := range map[string]func(*Server){
+		"slack":   func(s *Server) { s.Watcher.SlackURL = "http://hooks.example.com/x" },
+		"webhook": func(s *Server) { s.Watcher.WebhookURL = "http://hooks.example.com/x" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := validServer()
+			s.Watcher.Enable = false
+			set(s)
+			err := s.Validate()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "must use https unless the host is loopback")
+			assert.NotContains(t, err.Error(), "hooks.example.com", "a webhook URL is a credential")
+		})
+	}
+}
+
+// Tracker endpoints are used only by the webhook tracker, so another provider leaves them alone.
+func TestServerValidate_SkipsTrackerURLsOfAnotherProvider(t *testing.T) {
 	s := validServer()
-	s.Watcher.SlackURL = "http://hooks.example.com/x"
 	s.Watcher.TrackerProvider = "noop"
 	s.Watcher.TrackerWebhookURLs = []string{"http://hooks.example.com/y"}
-	assert.NoError(t, s.Validate(), "watcher disabled and tracker not webhook")
+	assert.NoError(t, s.Validate())
 }
 
 func TestLoad_ReadsTrackerWebhookSettings(t *testing.T) {

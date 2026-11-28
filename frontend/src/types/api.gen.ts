@@ -2906,6 +2906,7 @@ export interface components {
       assignee?: {
         /** Format: uuid */
         user_id: string;
+        /** @description The display name, or the email address when none is set. Empty for an API key, which reads no names, as from the member list. */
         name: string;
       };
       /** @description The change branches of a finding seen only there. The project verdict leaves it out until the default branch sees it. Absent means it counts toward the verdict. */

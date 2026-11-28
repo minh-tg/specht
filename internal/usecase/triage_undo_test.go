@@ -347,6 +347,26 @@ func TestBulkUndoTriage_SaysWhatHappenedToEachFinding(t *testing.T) {
 	assert.Equal(t, "analysis_conflict", results[1].Reason)
 }
 
+// An id that matches no finding refuses the whole undo as not found, the answer a finding in a
+// project the caller cannot see gets. A per-item "analysis_conflict" for it would tell the two
+// apart, so a caller could probe which finding ids exist in other projects.
+func TestBulkUndoTriage_AnUnknownFindingIsNotFoundLikeAHiddenOne(t *testing.T) {
+	before := analysisSnapshot{AnalysisState: "unanalyzed", AnalysisSource: "manual"}
+	fx := newUndoFixture(t, findingIn("false_positive"),
+		triageEvent(t, undoEventID, "unanalyzed", "false_positive", &before))
+	fx.repo.listByIDsFn = func(context.Context, []string) ([]port.Finding, error) {
+		return []port.Finding{findingIn("false_positive")}, nil
+	}
+
+	_, err := fx.uc.BulkUndoTriage(findingScopeCtx(findingFixtureProjectID), BulkUndoTriageInput{UserID: snapshotUserID, Undos: []BulkUndoTarget{
+		{FindingID: findingIn("x").ID, EventID: undoEventID},
+		{FindingID: "00000000-0000-0000-0000-00000000dead", EventID: undoEventID},
+	}})
+
+	require.ErrorIs(t, err, ErrFindingNotFound)
+	assert.Nil(t, fx.applied, "nothing is undone when one id is unknown")
+}
+
 func TestBulkUndoTriage_RefusesBadInputBeforeWriting(t *testing.T) {
 	uc := New(Deps{Stores: &port.Stores{Findings: &mockFindingRepo{}, Projects: memberProjects()}})
 	ctx := findingScopeCtx(findingFixtureProjectID)

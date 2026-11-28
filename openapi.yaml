@@ -4600,7 +4600,11 @@ components:
           description: Who owns this finding. Absent means nobody does.
           properties:
             user_id: { type: string, format: uuid }
-            name: { type: string }
+            name:
+              type: string
+              description: >-
+                The display name, or the email address when none is set. Empty for an API key,
+                which reads no names, as from the member list.
         only_on_branches:
           type: array
           items: { type: string }

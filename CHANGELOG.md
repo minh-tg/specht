@@ -666,6 +666,20 @@ releases.
 
 ### Security
 
+- The server refuses to start when `WATCHER_SLACK_URL` or `WATCHER_WEBHOOK_URL` is a plain `http`
+  URL to a host other than loopback, also with `WATCHER_ENABLE` off. Waiver notices use both
+  channels whether or not the watcher runs, but the URLs were checked only with the watcher on, so a
+  mistyped `http://` URL sent signed notices in clear text.
+
+- An API key reads a finding's assignee as an id with an empty `name`. Before, `assignee.name`
+  gave a key the person's display name, or their email address when they set none, while the member
+  list and waiver history give a key no names.
+
+- `POST /findings/bulk-analysis/undo` answers 404 when an id matches no finding, as it does for a
+  finding in a project the caller cannot see. Before, an unknown id came back as a per-item
+  `analysis_conflict` while a hidden finding answered 404, so any signed-in user could test which
+  finding ids exist in other projects.
+
 - The server and adapter are built with Go 1.27.4, which fixes GO-2026-6859: an HTTP/1 server
   could crash on a data race between `http.MaxBytesReader` and the request headers. Specht wraps
   request bodies in `MaxBytesReader`, so a client could take the server down. Go 1.27.3 was affected.

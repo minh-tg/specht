@@ -312,9 +312,15 @@ func (u *Usecases) BulkUndoTriage(ctx context.Context, input BulkUndoTriageInput
 		}
 		ids[i] = undo.FindingID
 	}
-	findings, err := u.deps.Stores.Findings.ListByIDs(ctx, distinctUUIDs(ids))
+	distinct := distinctUUIDs(ids)
+	findings, err := u.deps.Stores.Findings.ListByIDs(ctx, distinct)
 	if err != nil {
 		return nil, fmt.Errorf("lookup findings: %w", err)
+	}
+	// An id with no finding is refused like a finding in a project the caller cannot see. A
+	// per-item conflict for it would let a caller probe which ids exist in other projects.
+	if len(findings) != len(distinct) {
+		return nil, fmt.Errorf("%w: one or more findings not found", ErrFindingNotFound)
 	}
 	if err := u.checkFindingRowsProjectEditor(ctx, findings); err != nil {
 		return nil, err
