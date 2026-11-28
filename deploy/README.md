@@ -901,7 +901,8 @@ Existing install (section 1). Compose refuses to start until
 
    Pending migrations run before the new server takes traffic. If `ready`
    does not answer 200, read the server log with
-   `docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod logs server`.
+   `docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod logs server`
+   and see Migration failed below.
 
    From a source checkout, add the override and `--build` instead of `pull`:
    `docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml --env-file deploy/.env.prod up -d --build`.
@@ -934,6 +935,39 @@ the account, project, scan, triage decision and API key must survive the
 migrations. One thing the migrations cannot fix: an API key made by an early
 preview build carries only the `ingest` scope and cannot read the gate. Create
 a new key for those pipelines.
+
+### Migration failed
+
+A migration that fails at startup makes the server log
+`level=ERROR msg="startup migration failed"` with the error and exit with
+status 1, before it listens. Compose restarts it and every start fails the
+same way, so `/api/v1/ready` never answers. Find the line with:
+
+```bash
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod logs server | grep 'startup migration failed'
+```
+
+Restore the pre-upgrade dump and start the previous version (Rolling back,
+below), then report the issue with that line and both versions.
+
+For experts: golang-migrate records the version it is about to apply in the
+`schema_migrations` table with `dirty` set, and clears `dirty` only when the
+migration succeeds. After a failure the table holds the failed migration's
+number with `dirty = t`, and every later start fails with
+`Dirty database version N. Fix and force version.` Inspect it with:
+
+```bash
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod exec db \
+  psql -U specht -d specht -c 'SELECT version, dirty FROM schema_migrations'
+```
+
+The version is the number that starts the file name in `migrations/`. A
+migration file runs as one statement batch, which PostgreSQL applies in one
+transaction unless the file builds an index `CONCURRENTLY`, so a failed
+migration normally leaves none of its changes behind; compare the database
+with its `.up.sql` before you change the table. Setting `version` to the
+previous number and `dirty` to `false` makes the next start apply the
+migration again.
 
 ### Rolling back
 
