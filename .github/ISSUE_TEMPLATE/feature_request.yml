@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest a change or a new feature.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Changes to supported scanner kinds, the finding format, database schemas
+        or CI policy need an approved RFC before code lands; see
+        [rfcs/](https://github.com/minh-tg/specht/tree/main/rfcs). An issue is a
+        good place to find out whether one is worth writing.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you are trying to do, and what stops you or slows you down today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The change you would like. API calls, screens or settings help.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Workarounds you use now, or other designs you considered.
+  - type: input
+    id: version
+    attributes:
+      label: Specht version
+      description: What `GET /api/v1/version` returns, if you run Specht already.
