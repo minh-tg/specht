@@ -191,7 +191,8 @@ func BuildSlackPayload(notifications []Notification) ([]byte, error) {
 // slackHeading opens a message: the notification's own heading, or the watcher's.
 func slackHeading(notifications []Notification) string {
 	if len(notifications) > 0 && notifications[0].Heading != "" {
-		return notifications[0].Heading
+		// A waiver heading names the person who acted, and a member sets their own display name.
+		return slackEscape(notifications[0].Heading)
 	}
 	return fmt.Sprintf("CVE watcher: %d new finding(s)", len(notifications))
 }

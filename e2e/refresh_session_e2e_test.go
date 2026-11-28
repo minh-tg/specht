@@ -66,6 +66,31 @@ func TestE2E_RefreshStopsAtTheAbsoluteSessionLifetime(t *testing.T) {
 	})
 }
 
+// TestE2E_RefreshOfADeactivatedAccount covers the tab that is still open when an admin turns the
+// account off. Deactivating revokes every sign-in, so the tab's next refresh presents a revoked token.
+// That must not read as a stolen one: the person is told the account is deactivated.
+func TestE2E_RefreshOfADeactivatedAccount(t *testing.T) {
+	time.Sleep(2500 * time.Millisecond)
+	t.Cleanup(func() { time.Sleep(2500 * time.Millisecond) })
+	person := registerPerson(t, "deactivated-tab")
+	status, raw := doJSON(t, http.MethodPost, "/api/v1/users/"+person.UserID+"/deactivate", adminToken, nil)
+	require.Equal(t, http.StatusOK, status, string(raw))
+
+	status, raw = doJSON(t, http.MethodPost, "/api/v1/auth/refresh", "", map[string]string{"refresh_token": person.RefreshToken})
+
+	require.Equal(t, http.StatusUnauthorized, status, string(raw))
+	require.Equal(t, "account_disabled", errorCode(t, raw))
+
+	// A person whose token is revoked while the account is active still reads as a replay.
+	other := registerPerson(t, "replayed-tab")
+	request[authResponse](t, http.MethodPost, "/api/v1/auth/refresh", "",
+		map[string]string{"refresh_token": other.RefreshToken}, http.StatusOK)
+	time.Sleep(1500 * time.Millisecond)
+	status, raw = doJSON(t, http.MethodPost, "/api/v1/auth/refresh", "", map[string]string{"refresh_token": other.RefreshToken})
+	require.Equal(t, http.StatusUnauthorized, status, string(raw))
+	require.Equal(t, "refresh_reused", errorCode(t, raw))
+}
+
 // TestE2E_RefreshReuse covers theft detection against the real server. A token
 // is single-use: any second use, however soon after the first, revokes that
 // sign-in and leaves the user's other sign-ins alone.

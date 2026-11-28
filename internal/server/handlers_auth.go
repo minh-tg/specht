@@ -65,7 +65,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusUnprocessableEntity, "registration_failed", "registration failed")
 		return
 	}
-	h.setResumeCookie(w, r, result.RefreshToken)
+	h.setSignInResumeCookie(w, r, result.RefreshToken)
 	respondJSON(w, http.StatusCreated, result)
 	h.audit.HTTP(r, audit.EventRegister, audit.OutcomeSuccess, "", auth.MaskEmail(req.Email), nil)
 }
@@ -105,7 +105,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	if h.loginDelay != nil && ticket.key != "" {
 		h.loginDelay.succeed(ticket)
 	}
-	h.setResumeCookie(w, r, result.RefreshToken)
+	h.setSignInResumeCookie(w, r, result.RefreshToken)
 	respondJSON(w, http.StatusOK, result)
 	h.audit.HTTP(r, audit.EventLogin, audit.OutcomeSuccess, "", auth.MaskEmail(req.Email), nil)
 }
@@ -130,6 +130,12 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 			// it names the client address, never a token.
 			h.audit.HTTP(r, audit.EventRefresh, audit.OutcomeFailure, "", remoteHost(r), err)
 			respondError(w, http.StatusUnauthorized, "refresh_reused", "refresh token was already used")
+			return
+		}
+		if errors.Is(err, usecase.ErrRefreshAccountDisabled) {
+			// Not a replay: an admin turned the account off, which ended every sign-in. The
+			// holder of the token is told, so the page says so instead of blaming a stolen token.
+			respondError(w, http.StatusUnauthorized, "account_disabled", "this account was deactivated")
 			return
 		}
 		slog.Error("refresh", "error", err)
@@ -167,7 +173,7 @@ func (h *Handler) SSOExchange(w http.ResponseWriter, r *http.Request) {
 	}
 	// The code is spent, so the login cookie that proved this browser is done too.
 	auth.ClearLoginCookie(w, r, login.Name)
-	h.setResumeCookie(w, r, result.RefreshToken)
+	h.setSignInResumeCookie(w, r, result.RefreshToken)
 	respondJSON(w, http.StatusOK, result)
 }
 
@@ -313,7 +319,7 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	if h.loginDelay != nil {
 		h.loginDelay.succeed(ticket)
 	}
-	h.setResumeCookie(w, r, result.RefreshToken)
+	h.setSignInResumeCookie(w, r, result.RefreshToken)
 	respondJSON(w, http.StatusOK, result)
 	h.audit.HTTP(r, audit.EventChangePassword, audit.OutcomeSuccess, "", ident.UserID, nil)
 }
@@ -657,7 +663,7 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "internal_error", "could not complete setup")
 		return
 	}
-	h.setResumeCookie(w, r, resp.RefreshToken)
+	h.setSignInResumeCookie(w, r, resp.RefreshToken)
 	respondJSON(w, http.StatusCreated, resp)
 	h.audit.HTTP(r, audit.EventSetupComplete, audit.OutcomeSuccess, "", resp.UserID, nil)
 }

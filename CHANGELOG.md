@@ -502,6 +502,23 @@ releases.
 - The finding page no longer draws a second rule under its header, which read as an empty tab
   strip, and the fingerprint in the side list breaks after `:`, `/`, `|` and `@` instead of in the
   middle of a word such as `npm`.
+- A person whose account an admin deactivated is told so. The next request of a tab that was open
+  reads a revoked sign-in, which the server took for a replayed token, so the sign-in page said the
+  token "was used twice" and to change the password. `POST /auth/refresh` now answers
+  `account_disabled`, and the page says an administrator deactivated the account. A sign-in revoked
+  for another reason, such as a password change on another device, still reads as a replay.
+- A rerun of a CI job gets the same exit code as the first run in `changes_only` mode. The server
+  answered `change_report: false` for an identical upload it replayed, so the adapter took the
+  project's report-only verdict and let a branch push that introduced a blocker pass on "Re-run
+  failed jobs".
+- A page on another site can no longer plant its own resume cookie in a visitor's browser. Sign-in,
+  register, setup, invite accept, SSO exchange and change password set the cookie only for a request
+  with a JSON content type that the browser does not mark `Sec-Fetch-Site: cross-site`. Before this, a
+  plain-text form post from any site to the login route set it, and the visitor's next new tab signed
+  in as the attacker. The sign-in itself is unchanged.
+- A Slack waiver notice escapes the heading. It names the person who acted, and a project member sets
+  their own display name, so a name such as `<!channel>` pinged the whole channel and a name with a
+  link rendered as a link sent by Specht.
 - A project's only manager can approve their own waiver request with a note. Before, nobody could
   approve it unless a global admin stepped in. The approval is marked self-approved, as a global
   admin's is. Anyone else on the project with manager or admin rights, directly or through a team, or a

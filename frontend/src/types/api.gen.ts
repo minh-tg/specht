@@ -4491,7 +4491,10 @@ export interface operations {
        *     session's absolute lifetime (`refresh_failed`). A token that was
        *     already used answers `refresh_reused` and revokes the sign-in it
        *     belongs to, successor included, but not the user's other devices.
-       *     The client should sign the user out and say the session ended.
+       *     A revoked token of an account an admin deactivated answers
+       *     `account_disabled`, since deactivating ends every sign-in and the
+       *     next refresh is not a replay. The client should sign the user out
+       *     and say which of these happened.
        */
       401: {
         headers: {
